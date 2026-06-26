@@ -8,9 +8,6 @@ Credential contract by platform
 ────────────────────────────────
 • YouTube Music  → editable via ConfigWizard (browser.json)
 • Apple Music    → editable via ConfigWizard (.env)
-• Spotify        → read-only in UI; credentials set directly in .env;
-                   authentication via official OAuth Authorization Code
-                   Flow (browser redirect to http://127.0.0.1:8080/callback)
 
 browser.json  (YouTube Music)
     {
@@ -22,13 +19,7 @@ browser.json  (YouTube Music)
         "Cookie": "<raw cookie string>"
     }
 
-.env  (Spotify & Apple Music)
-    # SPOTIFY — Authorization Code Flow (Official v5.0)
-    SPOTIFY_CLIENT_ID="<App Client ID from Developer Dashboard>"
-    SPOTIFY_CLIENT_SECRET="<App Client Secret from Developer Dashboard>"
-    SPOTIFY_REDIRECT_URI="http://127.0.0.1:8080/callback"
-
-    # APPLE MUSIC
+.env  (Apple Music)
     APPLE_AUTH_BEARER="<value>"
     APPLE_MUSIC_USER_TOKEN="<value>"
 """
@@ -36,15 +27,10 @@ browser.json  (YouTube Music)
 from __future__ import annotations
 
 import asyncio
-import http.server
 import json
-import os
 import random
-import threading
-import webbrowser
 from pathlib import Path
 from typing import Callable, Optional
-from urllib.parse import parse_qs, urlparse
 
 import flet as ft
 import requests
@@ -64,21 +50,11 @@ BROWSER_JSON_FIXED: dict[str, str] = {
 }
 
 # ── Required .env variable names (exact, ordered) ──────────────────────
-ENV_KEYS_SPOTIFY = [
-    "SPOTIFY_CLIENT_ID",
-    "SPOTIFY_CLIENT_SECRET",
-    "SPOTIFY_REDIRECT_URI",
-]
 ENV_KEYS_APPLE = [
     "APPLE_AUTH_BEARER",
     "APPLE_MUSIC_USER_TOKEN",
 ]
-ENV_KEYS_ALL = ENV_KEYS_SPOTIFY + ENV_KEYS_APPLE
-
-# ── Spotify OAuth settings ──────────────────────────────────────────────
-SPOTIFY_REDIRECT_URI  = "http://127.0.0.1:8080/callback"
-SPOTIFY_CALLBACK_PORT = 8080
-SPOTIFY_OAUTH_TIMEOUT = 180  # seconds to wait for browser callback
+ENV_KEYS_ALL = ENV_KEYS_APPLE
 
 # ── Design tokens (mirrored from app.py) ───────────────────────────────
 _BG_DEEP      = "#FF000000"
@@ -142,9 +118,7 @@ def write_env_values(values: dict[str, str]) -> None:
     """
     if not ENV_FILE.exists():
         ENV_FILE.write_text(
-            "# SPOTIFY — Authorization Code Flow (Official v5.0)\n"
-            + "\n".join(f'{k}=""' for k in ENV_KEYS_SPOTIFY)
-            + "\n\n# APPLE MUSIC\n"
+            "# APPLE MUSIC\n"
             + "\n".join(f'{k}=""' for k in ENV_KEYS_APPLE)
             + "\n",
             encoding="utf-8",
@@ -163,7 +137,6 @@ def write_env_values(values: dict[str, str]) -> None:
 class AuthFailureCode:
     """Códigos de sesión para UI / diagnóstico (Global Auth Check)."""
     YT_EXPIRED      = "YT_EXPIRED"
-    SPOTIFY_EXPIRED = "SPOTIFY_EXPIRED"
     APPLE_EXPIRED   = "APPLE_EXPIRED"
 
 
@@ -205,79 +178,6 @@ def _preflight_youtube() -> PreFlightResult:
         r.error   = (
             "401 — token expirado o inválido"
             if any(k in msg for k in ("401", "unauthorized", "sign in", "cookie", "parse"))
-            else str(exc)[:200]
-        )
-    return r
-
-
-def _preflight_spotify() -> PreFlightResult:
-    """
-    Pre-flight de Spotify v5.0 — Authorization Code Flow oficial.
-
-    Verifica que CLIENT_ID / CLIENT_SECRET están configurados y que el
-    token cacheado (.spotify_cache) es válido o puede refrescarse.
-    Si no hay cache, expired=True → AuthManager inicia el flujo OAuth.
-    """
-    r             = PreFlightResult("Spotify")
-    env           = read_env_values()
-    client_id     = env.get("SPOTIFY_CLIENT_ID", "").strip()
-    client_secret = env.get("SPOTIFY_CLIENT_SECRET", "").strip()
-    redirect_uri  = (
-        env.get("SPOTIFY_REDIRECT_URI", SPOTIFY_REDIRECT_URI).strip()
-        or SPOTIFY_REDIRECT_URI
-    )
-
-    if not client_id or not client_secret:
-        r.expired = True
-        r.code    = AuthFailureCode.SPOTIFY_EXPIRED
-        r.error   = "SPOTIFY_CLIENT_ID o SPOTIFY_CLIENT_SECRET no configurados en .env"
-        return r
-
-    try:
-        from spotipy.oauth2 import SpotifyOAuth          # pylint: disable=import-outside-toplevel
-        from cache_handler import CacheFileHandler        # pylint: disable=import-outside-toplevel
-
-        cache_handler = CacheFileHandler(cache_path=str(BASE_DIR / ".spotify_cache"))
-        oauth = SpotifyOAuth(
-            client_id=client_id,
-            client_secret=client_secret,
-            redirect_uri=redirect_uri,
-            scope="playlist-modify-public playlist-modify-private user-library-read",
-            cache_handler=cache_handler,
-            open_browser=False,
-        )
-        token_info = oauth.get_cached_token()
-        if not token_info:
-            r.expired = True
-            r.code    = AuthFailureCode.SPOTIFY_EXPIRED
-            r.error   = "Sin token cacheado — es necesario autenticarse con Spotify"
-            return r
-
-        if oauth.is_token_expired(token_info):
-            token_info = oauth.refresh_access_token(token_info["refresh_token"])
-
-        resp = requests.get(
-            "https://api.spotify.com/v1/me",
-            headers={"Authorization": f"Bearer {token_info['access_token']}"},
-            timeout=8,
-        )
-        if resp.status_code == 401:
-            r.expired = True
-            r.code    = AuthFailureCode.SPOTIFY_EXPIRED
-            r.error   = "401 — token expirado o scopes insuficientes"
-            return r
-        if resp.status_code == 200:
-            r.ok = True
-        else:
-            r.error = f"Spotify /v1/me devolvió HTTP {resp.status_code}"
-
-    except Exception as exc:  # pylint: disable=broad-exception-caught
-        msg       = str(exc).lower()
-        r.code    = AuthFailureCode.SPOTIFY_EXPIRED
-        r.expired = True
-        r.error   = (
-            "401 — token expirado o scopes insuficientes"
-            if any(k in msg for k in ("401", "unauthorized", "token", "expired"))
             else str(exc)[:200]
         )
     return r
@@ -343,7 +243,6 @@ def auth_failure_tooltip(r: PreFlightResult) -> str:
         return ""
     hints = {
         "YouTube Music": "browser.json: Cookie + Authorization (SAPISIDHASH)",
-        "Spotify":       ".env: SPOTIFY_CLIENT_ID / SPOTIFY_CLIENT_SECRET / SPOTIFY_REDIRECT_URI (OAuth 2.0)",
         "Apple Music":   ".env: APPLE_AUTH_BEARER + APPLE_MUSIC_USER_TOKEN",
     }
     tag = f"[{r.code}] " if r.code else ""
@@ -352,17 +251,16 @@ def auth_failure_tooltip(r: PreFlightResult) -> str:
 
 async def run_preflight() -> list[PreFlightResult]:
     """
-    Run all three pre-flight checks in parallel using asyncio.gather().
-    Returns [yt_result, sp_result, am_result].
+    Run all pre-flight checks in parallel using asyncio.gather().
+    Returns [yt_result, am_result].
     """
     results = await asyncio.gather(
         asyncio.to_thread(_preflight_youtube),
-        asyncio.to_thread(_preflight_spotify),
         asyncio.to_thread(_preflight_apple),
         return_exceptions=True,
     )
     out: list[PreFlightResult] = []
-    platforms = ["YouTube Music", "Spotify", "Apple Music"]
+    platforms = ["YouTube Music", "Apple Music"]
     for plat, res in zip(platforms, results):
         if isinstance(res, Exception):
             r       = PreFlightResult(plat)
@@ -374,139 +272,24 @@ async def run_preflight() -> list[PreFlightResult]:
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-# §3  SPOTIFY OAUTH — LOCAL CALLBACK SERVER
-# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-_HTML_SUCCESS = (
-    "<!DOCTYPE html><html><head><meta charset='utf-8'>"
-    "<title>MelomaniacPass — Login exitoso</title>"
-    "<style>body{font-family:sans-serif;background:#000;color:#f2f6ff;"
-    "display:flex;align-items:center;justify-content:center;height:100vh;margin:0}"
-    "div{text-align:center} h2{color:#00d084} p{color:#7a8499}</style></head>"
-    "<body><div>"
-    "<h2>&#10003; Login con Spotify exitoso</h2>"
-    "<p>Puedes cerrar esta ventana y volver a MelomaniacPass.</p>"
-    "</div></body></html>"
-).encode()
-
-_HTML_ERROR = (
-    "<!DOCTYPE html><html><head><meta charset='utf-8'>"
-    "<title>MelomaniacPass — Error de autenticación</title>"
-    "<style>body{font-family:sans-serif;background:#000;color:#f2f6ff;"
-    "display:flex;align-items:center;justify-content:center;height:100vh;margin:0}"
-    "div{text-align:center} h2{color:#ff4444} p{color:#7a8499}</style></head>"
-    "<body><div>"
-    "<h2>&#10007; Error de autenticación</h2>"
-    "<p>Cierra esta ventana y vuelve a intentarlo desde MelomaniacPass.</p>"
-    "</div></body></html>"
-).encode()
-
-
-class _OAuthCallbackServer:
-    """
-    Minimal single-shot HTTP server that captures the Spotify OAuth callback.
-
-    Listens on 127.0.0.1:8080, waits for GET /callback?code=… and signals
-    completion via a threading.Event so the caller can await asynchronously.
-    """
-
-    def __init__(self) -> None:
-        self.auth_code: Optional[str] = None
-        self.error:     Optional[str] = None
-        self._done   = threading.Event()
-        self._server: Optional[http.server.HTTPServer] = None
-
-    def start(self) -> None:
-        """Start the background listener thread."""
-        server_ref = self
-
-        class _Handler(http.server.BaseHTTPRequestHandler):
-            def do_GET(self):  # pylint: disable=invalid-name
-                parsed = urlparse(self.path)
-                params = parse_qs(parsed.query)
-                if "code" in params:
-                    server_ref.auth_code = params["code"][0]
-                    body = _HTML_SUCCESS
-                elif "error" in params:
-                    server_ref.error = params.get("error", ["unknown"])[0]
-                    body = _HTML_ERROR
-                else:
-                    self.send_response(200)
-                    self.end_headers()
-                    return
-                self.send_response(200)
-                self.send_header("Content-Type", "text/html; charset=utf-8")
-                self.send_header("Content-Length", str(len(body)))
-                self.end_headers()
-                self.wfile.write(body)
-                server_ref._done.set()
-
-            def log_message(self, *_args):
-                pass  # silence access log
-
-        try:
-            self._server = http.server.HTTPServer(
-                ("127.0.0.1", SPOTIFY_CALLBACK_PORT), _Handler
-            )
-            self._server.timeout = 1.0
-        except OSError as exc:
-            raise RuntimeError(
-                f"No se pudo abrir el puerto {SPOTIFY_CALLBACK_PORT} para el callback "
-                f"OAuth. Asegúrate de que ningún otro proceso lo esté usando. Detalle: {exc}"
-            ) from exc
-
-        thread = threading.Thread(
-            target=self._serve, daemon=True, name="spotify-oauth-cb"
-        )
-        thread.start()
-
-    def wait(self, timeout: float = SPOTIFY_OAUTH_TIMEOUT) -> bool:
-        """Block until callback received or timeout. Returns True on success."""
-        return self._done.wait(timeout=timeout)
-
-    def stop(self) -> None:
-        self._done.set()
-        if self._server:
-            try:
-                self._server.server_close()
-            except OSError:
-                pass
-
-    def _serve(self) -> None:
-        assert self._server is not None
-        while not self._done.is_set():
-            self._server.handle_request()
-        try:
-            self._server.server_close()
-        except OSError:
-            pass
-
-
-# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # §4  FLET CONFIGURATION WIZARD
 #     Tab 0 — YouTube Music  : fully editable  (browser.json)
-#     Tab 1 — Spotify        : read-only status + OAuth connect button
-#     Tab 2 — Apple Music    : fully editable  (.env)
+#     Tab 1 — Apple Music    : fully editable  (.env)
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 class ConfigWizard:
     """
     Flet overlay dialog for platform credential management.
 
-    YouTube Music and Apple Music panels are fully editable as before.
-    The Spotify panel is read-only: it shows the current auth status and
-    provides a single "Conectar con Spotify" button that opens the system
-    browser to complete the OAuth Authorization Code Flow.
-
-    "Guardar y Aplicar" only writes YouTube Music (browser.json) and
-    Apple Music (.env). Spotify credentials are never written from here.
+    YouTube Music and Apple Music panels are fully editable.
+    "Guardar y Aplicar" writes YouTube Music (browser.json) and
+    Apple Music (.env).
     """
 
     # Platform name → panel index
     _PLATFORM_INDEX = {
         "YouTube Music": 0,
-        "Spotify":       1,
-        "Apple Music":   2,
+        "Apple Music":   1,
     }
 
     def __init__(
@@ -533,12 +316,6 @@ class ConfigWizard:
 
         # Apple Music field refs (editable)
         self._am_fields: dict[str, ft.TextField] = {}
-
-        # Spotify panel control refs (read-only status)
-        self._sp_status_icon:  Optional[ft.Icon]         = None
-        self._sp_status_label: Optional[ft.Text]         = None
-        self._sp_connect_btn:  Optional[ft.TextButton]   = None
-        self._sp_spinner:      Optional[ft.ProgressRing] = None
 
     # ── Dialog lifecycle ───────────────────────────────────────────────
 
@@ -568,7 +345,7 @@ class ConfigWizard:
         if initial_platform and initial_platform in self._PLATFORM_INDEX:
             return self._PLATFORM_INDEX[initial_platform]
         if failed_platforms:
-            order = ["YouTube Music", "Spotify", "Apple Music"]
+            order = ["YouTube Music", "Apple Music"]
             return next(
                 (self._PLATFORM_INDEX[p] for p in order if p in failed_platforms), 0
             )
@@ -581,7 +358,7 @@ class ConfigWizard:
         self._active_tab_idx = idx
         if self._panel_holder is not None:
             self._panel_holder.content = self._tab_panels[idx]
-        tab_order = ["YouTube Music", "Spotify", "Apple Music"]
+        tab_order = ["YouTube Music", "Apple Music"]
         for i, btn in enumerate(self._tab_buttons):
             is_warn      = tab_order[i] in self._failed_platforms
             col_active   = _WARNING if is_warn else _TEXT_PRIMARY
@@ -703,13 +480,8 @@ class ConfigWizard:
         _initial_idx = self._resolve_initial_tab(self._failed_platforms, initial_platform)
         self._active_tab_idx = _initial_idx
 
-        sp_result = next(
-            (r for r in (results or []) if r.platform == "Spotify"), None
-        )
-
         panels = [
             self._panel_youtube(warn="YouTube Music" in self._failed_platforms),
-            self._panel_spotify(result=sp_result),
             self._panel_apple(warn="Apple Music" in self._failed_platforms),
         ]
         self._tab_panels   = panels
@@ -717,7 +489,6 @@ class ConfigWizard:
 
         TAB_LABELS = [
             ("YouTube Music", ft.Icons.MUSIC_VIDEO,  ft.Icons.WARNING_AMBER_ROUNDED, "YouTube Music"),
-            ("Spotify",       ft.Icons.MUSIC_NOTE,   ft.Icons.WARNING_AMBER_ROUNDED, "Spotify"),
             ("Apple Music",   ft.Icons.APPLE,        ft.Icons.WARNING_AMBER_ROUNDED, "Apple Music"),
         ]
         self._tab_buttons = [
@@ -902,169 +673,7 @@ class ConfigWizard:
             expand=True,
         )
 
-    # ── Tab 1: Spotify (read-only status + OAuth connect) ─────────────
-
-    def _panel_spotify(self, result: Optional[PreFlightResult] = None) -> ft.Container:
-        """
-        Read-only Spotify panel.
-
-        Shows the current authentication status and a single
-        "Conectar con Spotify" button that starts the official OAuth
-        Authorization Code Flow via the system browser.
-
-        No credential TextFields — CLIENT_ID / CLIENT_SECRET / REDIRECT_URI
-        must be configured directly in .env before pressing Connect.
-        """
-        # Status badge
-        if result is None or (not result.ok and not result.expired):
-            ico_name  = ft.Icons.HELP_OUTLINE
-            ico_color = _TEXT_DIM
-            lbl_text  = "Estado desconocido"
-            lbl_color = _TEXT_DIM
-        elif result.ok:
-            ico_name  = ft.Icons.CHECK_CIRCLE_OUTLINE
-            ico_color = _SUCCESS
-            lbl_text  = "Conectado y autenticado"
-            lbl_color = _SUCCESS
-        else:
-            ico_name  = ft.Icons.LOCK_CLOCK_OUTLINED
-            ico_color = _WARNING
-            lbl_text  = "Sin token — requiere autenticación"
-            lbl_color = _WARNING
-
-        self._sp_status_icon  = ft.Icon(ico_name, color=ico_color, size=20)
-        self._sp_status_label = ft.Text(
-            lbl_text, size=13, color=lbl_color,
-            font_family="IBM Plex Sans", weight=ft.FontWeight.W_600,
-        )
-        status_box = ft.Container(
-            content=ft.Row(
-                controls=[self._sp_status_icon, self._sp_status_label],
-                spacing=10,
-                vertical_alignment=ft.CrossAxisAlignment.CENTER,
-            ),
-            bgcolor="#0AFFFFFF",
-            border=ft.Border.all(0.8, "#14FFFFFF"),
-            border_radius=10,
-            padding=ft.Padding.symmetric(horizontal=14, vertical=12),
-        )
-
-        # Error detail row (only when there is a specific message)
-        extra: list[ft.Control] = []
-        if result and not result.ok and result.error:
-            extra.append(
-                ft.Container(
-                    content=ft.Text(
-                        result.error[:160] + ("…" if len(result.error) > 160 else ""),
-                        size=10, color=_TEXT_DIM, font_family="IBM Plex Sans",
-                    ),
-                    bgcolor="#06FFFFFF",
-                    border_radius=6,
-                    padding=ft.Padding.symmetric(horizontal=10, vertical=6),
-                )
-            )
-
-        # Spinner + connect button
-        self._sp_spinner = ft.ProgressRing(
-            width=16, height=16, stroke_width=2,
-            color=_ACCENT, visible=False,
-        )
-        needs_connect = (result is None) or (not result.ok)
-        self._sp_connect_btn = ft.TextButton(
-            "Conectar con Spotify",
-            icon=ft.Icons.OPEN_IN_BROWSER_OUTLINED,
-            on_click=self._on_spotify_connect,
-            disabled=not needs_connect,
-            style=ft.ButtonStyle(
-                color={ft.ControlState.DEFAULT: _ACCENT},
-                bgcolor={
-                    ft.ControlState.DEFAULT:  "#0A4F8BFF",
-                    ft.ControlState.HOVERED:  "#1A4F8BFF",
-                    ft.ControlState.DISABLED: "transparent",
-                },
-                shape=ft.RoundedRectangleBorder(radius=10),
-                padding=ft.Padding.symmetric(horizontal=16, vertical=10),
-            ),
-        )
-        connect_row = ft.Row(
-            controls=[self._sp_spinner, self._sp_connect_btn],
-            spacing=10,
-            vertical_alignment=ft.CrossAxisAlignment.CENTER,
-        )
-
-        how_to = self._instructions_box([
-            ("Configura .env antes de conectar",
-             f"SPOTIFY_CLIENT_ID, SPOTIFY_CLIENT_SECRET y "
-             f"SPOTIFY_REDIRECT_URI={SPOTIFY_REDIRECT_URI} deben estar en .env."),
-            ("Pulsa «Conectar con Spotify»",
-             "Se abrirá el navegador con la página de autorización de Spotify."),
-            ("Acepta los permisos en el navegador",
-             "MelomaniacPass recibirá el token automáticamente en el callback."),
-            ("Siguientes arranques — automático",
-             "El token se guarda en .spotify_cache y se renueva solo. "
-             "No necesitas repetir el proceso."),
-        ])
-
-        read_only_note = self._fixed_note(
-            "Las credenciales de Spotify (CLIENT_ID, CLIENT_SECRET) se configuran "
-            "directamente en el archivo .env y no son editables desde esta interfaz."
-        )
-
-        return ft.Container(
-            content=ft.Column(
-                controls=[status_box, *extra, how_to, read_only_note, connect_row],
-                spacing=12,
-                scroll=ft.ScrollMode.AUTO,
-            ),
-            padding=ft.Padding.all(12),
-            expand=True,
-        )
-
-    def _on_spotify_connect(self, _e: ft.ControlEvent) -> None:
-        asyncio.create_task(self._do_spotify_oauth())
-
-    async def _do_spotify_oauth(self) -> None:
-        self._set_spotify_loading(True)
-        try:
-            ok = await self._auth_manager.start_spotify_oauth_flow()
-        except Exception as exc:  # pylint: disable=broad-exception-caught
-            ok = False
-            self._auth_manager.state_log_fn(f"[ERROR] OAuth Spotify: {exc}")
-        finally:
-            self._set_spotify_loading(False)
-
-        self._update_spotify_status(
-            ok=ok,
-            error="No se completó la autenticación" if not ok else "",
-        )
-        if ok:
-            # Refresh global pre-flight so the header icons update
-            results = await self._auth_manager.check_all_sessions()
-            self._auth_manager.ingest_preflight_results(results)
-
-    def _set_spotify_loading(self, loading: bool) -> None:
-        if self._sp_spinner is not None:
-            self._sp_spinner.visible = loading
-        if self._sp_connect_btn is not None:
-            self._sp_connect_btn.disabled = loading
-        self._safe_dialog_update()
-
-    def _update_spotify_status(self, ok: bool, error: str = "") -> None:
-        if self._sp_status_icon is not None:
-            self._sp_status_icon.name  = (
-                ft.Icons.CHECK_CIRCLE_OUTLINE if ok else ft.Icons.CANCEL_OUTLINED
-            )
-            self._sp_status_icon.color = _SUCCESS if ok else _ERROR_COL
-        if self._sp_status_label is not None:
-            self._sp_status_label.value = (
-                "Conectado y autenticado" if ok else (error or "Error de autenticación")
-            )
-            self._sp_status_label.color = _SUCCESS if ok else _ERROR_COL
-        if self._sp_connect_btn is not None:
-            self._sp_connect_btn.disabled = ok  # disable once successfully connected
-        self._safe_dialog_update()
-
-    # ── Tab 2: Apple Music (editable) ─────────────────────────────────
+    # ── Tab 1: Apple Music (editable) ─────────────────────────────────
 
     def _panel_apple(self, warn: bool = False) -> ft.Container:
         env = read_env_values()
@@ -1122,7 +731,7 @@ class ConfigWizard:
                 self._yt_auth.value   or "",
                 self._yt_cookie.value or "",
             )
-        # .env — Apple Music only (Spotify credentials are never written from here)
+        # .env — Apple Music only
         am_vals = {k: tf.value or "" for k, tf in self._am_fields.items()}
         if am_vals:
             write_env_values(am_vals)
@@ -1185,11 +794,10 @@ class AuthManager:
     """
     High-level auth coordinator used by app.py.
 
-    1. run_startup_check()        — parallel pre-flight on all three platforms.
-    2. start_spotify_oauth_flow() — OAuth browser flow for Spotify.
-    3. open_wizard(platform)      — opens ConfigWizard (routes to correct tab).
-    4. refresh_session_icons()    — revalidates and updates UI icons.
-    5. reload_credentials()       — hot-reloads .env / browser.json and re-inits services.
+    1. run_startup_check()        — parallel pre-flight on all platforms.
+    2. open_wizard(platform)      — opens ConfigWizard (routes to correct tab).
+    3. refresh_session_icons()    — revalidates and updates UI icons.
+    4. reload_credentials()       — hot-reloads .env / browser.json and re-inits services.
     """
 
     def __init__(self, page: ft.Page, service, state) -> None:
@@ -1216,114 +824,10 @@ class AuthManager:
         self._last_results: list[PreFlightResult] = []
         self._reload_task:  Optional[asyncio.Task] = None  # tracked for hard_cleanup
 
-    # ── Spotify OAuth ──────────────────────────────────────────────────
-
-    async def start_spotify_oauth_flow(self) -> bool:
-        """
-        Full Authorization Code Flow for Spotify.
-
-        1. Reads CLIENT_ID / CLIENT_SECRET / REDIRECT_URI from .env.
-        2. Opens the system browser to Spotify's authorization page.
-        3. Starts _OAuthCallbackServer on 127.0.0.1:8080.
-        4. Awaits callback (max SPOTIFY_OAUTH_TIMEOUT seconds).
-        5. Exchanges code for token → saved in .spotify_cache.
-        6. Returns True on success.
-        """
-        env           = read_env_values()
-        client_id     = env.get("SPOTIFY_CLIENT_ID", "").strip()
-        client_secret = env.get("SPOTIFY_CLIENT_SECRET", "").strip()
-        redirect_uri  = (
-            env.get("SPOTIFY_REDIRECT_URI", SPOTIFY_REDIRECT_URI).strip()
-            or SPOTIFY_REDIRECT_URI
-        )
-
-        if not client_id or not client_secret:
-            self.state_log_fn(
-                "[ERROR] OAuth Spotify: SPOTIFY_CLIENT_ID o SPOTIFY_CLIENT_SECRET "
-                "no configurados en .env"
-            )
-            return False
-
-        try:
-            from spotipy.oauth2 import SpotifyOAuth          # pylint: disable=import-outside-toplevel
-            from cache_handler import CacheFileHandler        # pylint: disable=import-outside-toplevel
-        except ImportError as exc:
-            self.state_log_fn(f"[ERROR] OAuth Spotify — import: {exc}")
-            return False
-
-        cache_path    = str(BASE_DIR / ".spotify_cache")
-        cache_handler = CacheFileHandler(cache_path=cache_path)
-        oauth = SpotifyOAuth(
-            client_id=client_id,
-            client_secret=client_secret,
-            redirect_uri=redirect_uri,
-            scope="playlist-modify-public playlist-modify-private user-library-read",
-            cache_handler=cache_handler,
-            open_browser=False,
-            show_dialog=False,
-        )
-
-        # Skip the flow if a valid token is already cached
-        try:
-            existing = oauth.get_cached_token()
-            if existing and not oauth.is_token_expired(existing):
-                self.state_log_fn("[INFO] OAuth Spotify: token válido ya en caché")
-                return True
-        except Exception:  # pylint: disable=broad-exception-caught
-            pass
-
-        # Start local callback server
-        cb_server = _OAuthCallbackServer()
-        try:
-            cb_server.start()
-        except RuntimeError as exc:
-            self.state_log_fn(f"[ERROR] OAuth Spotify — servidor de callback: {exc}")
-            return False
-
-        # Open system browser
-        auth_url = oauth.get_authorize_url()
-        self.state_log_fn(
-            "[INFO] Abriendo navegador para autenticación Spotify…\n"
-            f"       Si no se abre visita: {auth_url}"
-        )
-        await asyncio.to_thread(webbrowser.open, auth_url)
-
-        # Await callback
-        self.state_log_fn(
-            f"[INFO] Esperando callback en {redirect_uri} "
-            f"(máx. {SPOTIFY_OAUTH_TIMEOUT}s)…"
-        )
-        received = await asyncio.to_thread(cb_server.wait, float(SPOTIFY_OAUTH_TIMEOUT))
-        cb_server.stop()
-
-        if not received or cb_server.auth_code is None:
-            reason = cb_server.error or "timeout — no se recibió el código de autorización"
-            self.state_log_fn(f"[ERROR] OAuth Spotify: {reason}")
-            return False
-
-        # Exchange code for token
-        try:
-            token_info = await asyncio.to_thread(
-                oauth.get_access_token, cb_server.auth_code, False, False
-            )
-        except Exception as exc:  # pylint: disable=broad-exception-caught
-            self.state_log_fn(f"[ERROR] OAuth Spotify — intercambio de token: {exc}")
-            return False
-
-        if not token_info:
-            self.state_log_fn("[ERROR] OAuth Spotify: get_access_token devolvió vacío")
-            return False
-
-        self.state_log_fn(
-            "[SUCCESS] Token de Spotify obtenido y guardado en .spotify_cache"
-        )
-        await self.service.init_spotify()
-        return True
-
     # ── Pre-flight / session management ───────────────────────────────
 
     async def check_all_sessions(self) -> list[PreFlightResult]:
-        """Parallel pre-flight on all three platforms."""
+        """Parallel pre-flight on all platforms."""
         return await run_preflight()
 
     def ingest_preflight_results(self, results: list[PreFlightResult]) -> None:
@@ -1348,12 +852,7 @@ class AuthManager:
     async def run_startup_check(self) -> list[PreFlightResult]:
         """
         Parallel pre-flight + conditional service init.
-
-        Spotify: if there is no valid cached token, the state is marked as
-        "requires authentication" but the browser is NOT opened automatically.
-        The user must click "Conectar con Spotify" in the wizard to start the
-        OAuth flow.
-        Other expired platforms open the wizard on their respective tab.
+        Expired platforms open the wizard on their respective tab.
         """
         self.state_log_fn("[INFO] Pre-flight: verificando credenciales…")
         results = await self.check_all_sessions()
@@ -1366,26 +865,17 @@ class AuthManager:
             if r.ok:
                 self.state_log_fn(f"[INFO]  ✓ {r.platform}: OK")
             elif r.expired:
-                if r.platform == "Spotify" and r.code == AuthFailureCode.SPOTIFY_EXPIRED:
-                    # Lazy auth: do NOT open the browser automatically.
-                    # Just log so the status icon shows "Desconectado".
-                    self.state_log_fn(
-                        "[INFO]  ↳ Spotify: sin token cacheado — "
-                        "usa el Wizard → Spotify → «Conectar con Spotify» para autenticarte."
-                    )
-                else:
-                    need_wizard_for.append(r.platform)
-                    self.state_log_fn(
-                        f"[ERROR] ⚠ {r.platform}: credenciales expiradas — "
-                        "actualiza las credenciales en la configuración"
-                    )
+                need_wizard_for.append(r.platform)
+                self.state_log_fn(
+                    f"[ERROR] ⚠ {r.platform}: credenciales expiradas — "
+                    "actualiza las credenciales en la configuración"
+                )
             else:
                 self.state_log_fn(f"[WARN]  – {r.platform}: {r.error}")
 
         await self._init_passing_services(results)
 
         if need_wizard_for:
-            # Open wizard on the first failing non-Spotify platform
             first_fail = need_wizard_for[0]
 
             async def _open_wizard_deferred() -> None:
@@ -1400,9 +890,7 @@ class AuthManager:
         tasks = []
         for r in results:
             if r.ok:
-                if r.platform == "Spotify":
-                    tasks.append(self.service.init_spotify())
-                elif r.platform == "YouTube Music":
+                if r.platform == "YouTube Music":
                     tasks.append(self.service.init_youtube())
                 elif r.platform == "Apple Music":
                     tasks.append(self.service.init_apple())
@@ -1442,12 +930,11 @@ class AuthManager:
         load_dotenv(str(ENV_FILE), override=True)
 
         init_results = await asyncio.gather(
-            self.service.init_spotify(),
             self.service.init_youtube(),
             self.service.init_apple(),
             return_exceptions=True,
         )
-        for plat, res in zip(["Spotify", "YouTube Music", "Apple Music"], init_results):
+        for plat, res in zip(["YouTube Music", "Apple Music"], init_results):
             if res is True:
                 self.state_log_fn(f"[SUCCESS] ✓ {plat}: reconectado")
             else:
@@ -1458,12 +945,4 @@ class AuthManager:
         self._sync_auth_ui_state(chk)
         self.state.notify()
 
-    # ── Deprecated stub ────────────────────────────────────────────────
 
-    def get_spotify_web_token(self) -> Optional[str]:
-        """DEPRECATED in v5.0 — use SpotifyOAuth + CacheFileHandler."""
-        self.state_log_fn(
-            "[WARN] get_spotify_web_token() está deprecado en v5.0. "
-            "Usa SpotifyOAuth + CacheFileHandler (MusicApiService._sync_init_spotify)."
-        )
-        return None

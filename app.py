@@ -173,7 +173,7 @@ async def main(page: ft.Page) -> None:
             
             Refresca los iconos de estado de autenticación cada 90 segundos
             para detectar expiraciones de tokens o cambios en las sesiones
-            de las plataformas (Spotify, YouTube Music, Apple Music).
+            de las plataformas (YouTube Music, Apple Music).
             
             Note:
                 Intervalo de 90 segundos balanceado para detectar cambios

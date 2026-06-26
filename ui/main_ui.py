@@ -91,13 +91,6 @@ TEXT_MUTED   = "#FF7A8499"  # Texto secundario
 TEXT_DIM     = "#FF3D4455"  # Texto terciario
 SKELETON_DARK = "#FF0E1016" # Color de skeleton placeholders
 
-# Detección de disponibilidad de Spotipy
-try:
-    import spotipy
-    HAS_SPOTIFY = True
-except ImportError:
-    HAS_SPOTIFY = False
-
 
 class PlaylistManagerUI:
     """
@@ -266,93 +259,6 @@ class PlaylistManagerUI:
                 self._snack(f"Sesión de {platform} válida y activa.")
             break
 
-    # ── Spotify OAuth ──────────────────────────────────────────────────
-
-    async def _on_connect_spotify(self, _e: ft.ControlEvent) -> None:
-        svc      = self.state.service
-        auth_url = svc.get_spotify_auth_url()
-        if not auth_url:
-            self._snack("No se puede generar la URL de Spotify. Verifica .env", error=True)
-            return
-        await self.page.launch_url(auth_url)
-        self._open_spotify_oauth_dialog()
-
-    def _open_spotify_oauth_dialog(self) -> None:
-        _redirect_field = ft.TextField(
-            label="URL de redirección",
-            hint_text="http://127.0.0.1:8888/callback?code=…",
-            bgcolor=BG_INPUT, border_color=BORDER_LIGHT, focused_border_color=ACCENT,
-            label_style=ft.TextStyle(color=TEXT_MUTED, size=10, font_family="IBM Plex Sans"),
-            text_style=ft.TextStyle(color=TEXT_PRIMARY, size=12, font_family="IBM Plex Sans"),
-            hint_style=ft.TextStyle(color=TEXT_DIM, size=11),
-            border_radius=10, multiline=False, expand=True,
-        )
-        _status_text = ft.Text("", size=10, color=TEXT_MUTED, font_family="IBM Plex Sans", visible=False)
-
-        async def _do_exchange(_e: ft.ControlEvent) -> None:
-            code_or_url = (_redirect_field.value or "").strip()
-            if not code_or_url:
-                _status_text.value   = "Pega la URL completa o solo el código."
-                _status_text.color   = WARNING
-                _status_text.visible = True
-                _status_text.update()
-                return
-            _status_text.value   = "Intercambiando token…"
-            _status_text.color   = TEXT_MUTED
-            _status_text.visible = True
-            _status_text.update()
-            ok = await self.state.service.handle_spotify_redirect(code_or_url)
-            if ok:
-                self.state.auth_session_ok["Spotify"]   = True
-                self.state.auth_session_hint["Spotify"] = "Conectado"
-                self._sync_spotify_connect_ui(connected=True)
-                self.state.notify()
-                self.page.close(dlg)
-                self._snack("✓ Spotify conectado correctamente")
-            else:
-                _status_text.value = "No se pudo completar la autorización. Comprueba la URL."
-                _status_text.color = ERROR_COL
-                _status_text.update()
-
-        dlg = ft.AlertDialog(
-            modal=True,
-            title=ft.Text("Autorizar Spotify", size=15, weight=ft.FontWeight.W_600,
-                          color=TEXT_PRIMARY, font_family="IBM Plex Sans"),
-            content=ft.Container(
-                width=400,
-                content=ft.Column(controls=[
-                    ft.Text("El navegador se ha abierto con la página de Spotify.\n"
-                            "Autoriza la aplicación y copia la URL completa de la barra de dirección:",
-                            size=12, color=TEXT_MUTED, font_family="IBM Plex Sans"),
-                    ft.Container(height=8),
-                    _redirect_field, _status_text,
-                ], spacing=4, tight=True),
-            ),
-            actions=[
-                ft.TextButton("Cancelar", style=ft.ButtonStyle(color={ft.ControlState.DEFAULT: TEXT_MUTED}),
-                              on_click=lambda _: self.page.close(dlg)),
-                ft.TextButton("Autorizar", style=ft.ButtonStyle(color={ft.ControlState.DEFAULT: ACCENT}),
-                              on_click=lambda e: asyncio.create_task(_do_exchange(e))),
-            ],
-            actions_alignment=ft.MainAxisAlignment.END,
-            bgcolor=BG_SURFACE,
-            shape=ft.RoundedRectangleBorder(radius=14),
-        )
-        self.page.open(dlg)
-
-    def _sync_spotify_connect_ui(self, connected: bool) -> None:
-        dot_color  = SUCCESS     if connected else TEXT_DIM
-        label_val  = "Conectado" if connected else "Desconectado"
-        label_col  = SUCCESS     if connected else TEXT_MUTED
-        try:
-            self._sp_status_dot.color    = dot_color
-            self._sp_status_label.value  = label_val
-            self._sp_status_label.color  = label_col
-            self._sp_connect_btn.visible = not connected
-            self._sp_connect_row.update()
-        except Exception:  # pylint: disable=broad-exception-caught
-            pass
-
     def _on_open_wizard(self, _e: ft.ControlEvent) -> None:
         am = getattr(self, "auth_manager", None)
         if not am:
@@ -442,35 +348,6 @@ class PlaylistManagerUI:
             self._dest_session_warn,
         ], spacing=8)
 
-        _sp_connected_init = HAS_SPOTIFY and bool(s.service._sp)
-        self._sp_status_dot   = ft.Icon(ft.Icons.CIRCLE, size=8,
-                                        color=SUCCESS if _sp_connected_init else TEXT_DIM)
-        self._sp_status_label = ft.Text(
-            "Conectado" if _sp_connected_init else "Desconectado",
-            size=10, color=SUCCESS if _sp_connected_init else TEXT_MUTED, font_family="IBM Plex Sans",
-        )
-        self._sp_connect_btn = ft.TextButton(
-            "Conectar", icon=ft.Icons.OPEN_IN_BROWSER_OUTLINED,
-            on_click=self._on_connect_spotify,
-            visible=not _sp_connected_init,
-            style=ft.ButtonStyle(
-                color={ft.ControlState.DEFAULT: ACCENT, ft.ControlState.HOVERED: TEXT_PRIMARY},
-                padding=ft.Padding.symmetric(horizontal=8, vertical=4),
-                text_style=ft.TextStyle(size=10, font_family="IBM Plex Sans"),
-            ),
-        )
-        self._sp_connect_row = ft.Container(
-            content=ft.Row(controls=[
-                self._sp_status_dot, self._sp_status_label,
-                ft.Container(expand=True), self._sp_connect_btn,
-            ], spacing=6, vertical_alignment=ft.CrossAxisAlignment.CENTER),
-            bgcolor=BG_INPUT,
-            border=ft.Border.all(0.8, SUCCESS if _sp_connected_init else BORDER_LIGHT),
-            border_radius=8,
-            padding=ft.Padding.symmetric(horizontal=10, vertical=6),
-            visible=(s.source == "Spotify" or s.destination == "Spotify"),
-        )
-
         self._id_field = ft.TextField(
             label="ID de la Playlist",
             hint_text="pl.u-xxxx  /  PLxxxx  /  37i9dQ…",
@@ -529,7 +406,6 @@ class PlaylistManagerUI:
             logo,
             ft.Divider(height=1, color=BORDER_MUTED, thickness=0.5),
             platform_section,
-            self._sp_connect_row,
             ft.Divider(height=1, color=BORDER_MUTED, thickness=0.5),
             self._playlist_section,
             self._playlist_divider,
@@ -669,15 +545,11 @@ class PlaylistManagerUI:
                                       tooltip="YouTube Music · clic = validar sesión ahora",
                                       on_click=lambda _: asyncio.create_task(self._on_auth_probe("YouTube Music")),
                                       **_ib_style)
-        self._auth_sp = ft.IconButton(icon=ft.Icons.MUSIC_NOTE, icon_color=TEXT_DIM,
-                                      tooltip="Spotify · clic = validar sesión ahora",
-                                      on_click=lambda _: asyncio.create_task(self._on_auth_probe("Spotify")),
-                                      **_ib_style)
         self._auth_am = ft.IconButton(icon=ft.Icons.APPLE, icon_color=TEXT_DIM,
                                       tooltip="Apple Music · clic = validar sesión ahora",
                                       on_click=lambda _: asyncio.create_task(self._on_auth_probe("Apple Music")),
                                       **_ib_style)
-        self._auth_strip = ft.Row(controls=[self._auth_yt, self._auth_sp, self._auth_am],
+        self._auth_strip = ft.Row(controls=[self._auth_yt, self._auth_am],
                                   spacing=2, vertical_alignment=ft.CrossAxisAlignment.CENTER)
 
         self._select_all_chk = ft.Checkbox(
@@ -813,7 +685,7 @@ class PlaylistManagerUI:
             f"{n} canciones" if not s.search_query else f"{n} de {total} coincidencias"
         )
 
-        for plat, ic in (("YouTube Music", self._auth_yt), ("Spotify", self._auth_sp), ("Apple Music", self._auth_am)):
+        for plat, ic in (("YouTube Music", self._auth_yt), ("Apple Music", self._auth_am)):
             ok = s.auth_session_ok.get(plat, True)
             ic.icon_color = SUCCESS if ok else ERROR_COL
             hint = s.auth_session_hint.get(plat) or ""
@@ -823,19 +695,6 @@ class PlaylistManagerUI:
         dest_ok = s.auth_session_ok.get(s.destination, True)
         self._dest_session_warn.visible = not dest_ok
         self._dest_session_warn.value   = "" if dest_ok else f"Sesión expirada en {s.destination}"
-
-        sp_in_use = (s.source == "Spotify" or s.destination == "Spotify")
-        if self._sp_connect_row.visible != sp_in_use:
-            self._sp_connect_row.visible = sp_in_use
-            self._sp_connect_row.update()
-        if sp_in_use:
-            sp_ok = bool(s.service._sp) and s.auth_session_ok.get("Spotify", False)
-            self._sync_spotify_connect_ui(connected=sp_ok)
-            new_border_col = SUCCESS if sp_ok else BORDER_LIGHT
-            if getattr(self._sp_connect_row, "_border_col_cache", None) != new_border_col:
-                self._sp_connect_row._border_col_cache = new_border_col  # pylint: disable=protected-access
-                self._sp_connect_row.border = ft.Border.all(0.8, new_border_col)
-                self._sp_connect_row.update()
 
         if s.source == s.destination:
             self._status_badge.value = "⚠ Origen y destino iguales"

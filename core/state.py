@@ -56,7 +56,7 @@ import uuid
 from typing import Callable, Optional
 
 from core.models import Track, SearchResult, LoadState, TransferState
-from utils.circuit_breaker import CircuitBreaker, RateLimitError, SpotifyBanException
+from utils.circuit_breaker import CircuitBreaker, RateLimitError
 from engine.normalizer import clean_metadata
 from engine.match import _duration_to_seconds, FUZZY_REVISION_THRESHOLD, FUZZY_IDEAL
 from engine.organizer import sort_tracks, split_tracks
@@ -66,35 +66,12 @@ def _failure_reason_from_exc(exc: BaseException) -> str:
     """
     Extrae razón legible de una excepción para post-mortem de fallos.
     
-    Proporciona mensajes de error amigables para el usuario, especialmente
-    para errores HTTP de Spotify que incluyen códigos de estado específicos.
-    
     Args:
         exc: Excepción capturada durante operación de API.
     
     Returns:
         String descriptivo del error, truncado a 300 caracteres.
-    
-    Example:
-        >>> try:
-        ...     # Llamada a API que falla
-        ... except Exception as e:
-        ...     reason = _failure_reason_from_exc(e)
-        ...     # reason = "Spotify HTTP 429" o "Connection timeout"
-    
-    Note:
-        Intenta importar SpotifyException dinámicamente para evitar
-        dependencia hard de spotipy. Si no está disponible, usa el
-        mensaje genérico de la excepción.
     """
-    try:
-        from spotipy.exceptions import SpotifyException  # pylint: disable=import-outside-toplevel
-        if isinstance(exc, SpotifyException):
-            hs = getattr(exc, "http_status", None)
-            if hs is not None:
-                return f"Spotify HTTP {hs}"
-    except ImportError:
-        pass
     msg = str(exc)
     return msg[:300] + ("…" if len(msg) > 300 else "")
 
@@ -120,7 +97,7 @@ async def _search_with_exponential_rl_backoff(
     
     Args:
         service: Instancia de MusicApiService.
-        platform: Plataforma destino ("Spotify", "YouTube Music", "Apple Music").
+        platform: Plataforma destino ("YouTube Music", "Apple Music").
         name: Título de la canción.
         artist: Nombre del artista.
         local_duration_s: Duración en segundos para matching (opcional).
@@ -135,7 +112,7 @@ async def _search_with_exponential_rl_backoff(
     
     Example:
         >>> result = await _search_with_exponential_rl_backoff(
-        ...     service, "Spotify", "Bohemian Rhapsody", "Queen",
+        ...     service, "Apple Music", "Bohemian Rhapsody", "Queen",
         ...     log=lambda msg: print(msg)
         ... )
     
@@ -188,7 +165,7 @@ class AppState:
     
     Attributes:
         service: Instancia de MusicApiService para comunicación con APIs.
-        source: Plataforma de origen ("Spotify", "YouTube Music", etc).
+        source: Plataforma de origen ("YouTube Music", "Apple Music", etc).
         destination: Plataforma destino.
         playlist_id: ID de la playlist cargada.
         playlist_name: Nombre de la playlist.
@@ -217,7 +194,7 @@ class AppState:
     Example:
         >>> state = AppState(service)
         >>> state.subscribe(lambda: print("Estado cambió"))
-        >>> await state.load_playlist("spotify", "playlist_id")
+        >>> await state.load_playlist("youtube", "playlist_id")
         Estado cambió
     
     Note:
@@ -227,13 +204,13 @@ class AppState:
     """
 
     # Plataformas de streaming soportadas
-    PLATFORMS = ["Apple Music", "Spotify", "YouTube Music"]
+    PLATFORMS = ["Apple Music", "YouTube Music"]
     
     # Fuentes locales (no requieren autenticación)
     LOCAL_SOURCES: frozenset = frozenset({"Archivo Local", "Pegar Texto"})
     
     # Todas las opciones de fuente disponibles en la UI
-    SOURCE_OPTIONS = ["Apple Music", "Spotify", "YouTube Music", "Archivo Local", "Pegar Texto"]
+    SOURCE_OPTIONS = ["Apple Music", "YouTube Music", "Archivo Local", "Pegar Texto"]
 
     def __init__(self, service) -> None:
         """
@@ -566,8 +543,6 @@ class AppState:
                     break
                 except RateLimitError:
                     raise
-                except SpotifyBanException:
-                    raise
                 except Exception as exc:  # pylint: disable=broad-exception-caught
                     last_exc = exc
                     wait_s = 2 ** attempt
@@ -626,16 +601,6 @@ class AppState:
                 *(_transfer_one(t) for t in selected),
                 return_exceptions=True,
             ))
-
-            ban = next((r for r in results if isinstance(r, SpotifyBanException)), None)
-            if ban:
-                self._log(
-                    f"[FATAL] Bloqueo de Spotify. Baneo por {int(ban.retry_after)} segundos. "
-                    "Operaci\u00f3n abortada."
-                )
-                self.transfer_state = TransferState.ERROR
-                self.notify()
-                return
 
             for track, result in zip(selected, results):
                 if isinstance(result, RateLimitError):
@@ -714,9 +679,7 @@ class AppState:
             self.notify()
 
     async def _ensure_auth(self, platform: str) -> bool:
-        if platform == "Spotify":
-            return await self.service.init_spotify()
-        elif platform == "YouTube Music":
+        if platform == "YouTube Music":
             return await self.service.init_youtube()
         elif platform == "Apple Music":
             return await self.service.init_apple()

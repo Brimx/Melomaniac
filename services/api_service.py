@@ -5,9 +5,9 @@
 ╚══════════════════════════════════════════════════════════════════════╝
 
 Módulo: services/api_service.py
-Descripción: Fachada unificada asíncrona sobre las APIs de Spotify,
-            YouTube Music y Apple Music. Abstrae las diferencias entre
-            plataformas proporcionando una interfaz consistente.
+Descripción: Fachada unificada asíncrona sobre las APIs de YouTube Music
+             y Apple Music. Abstrae las diferencias entre plataformas
+             proporcionando una interfaz consistente.
 
 Estrategia de Diseño - Patrón Facade:
     MusicApiService actúa como punto único de acceso a múltiples APIs
@@ -19,9 +19,8 @@ Estrategia de Diseño - Patrón Facade:
        - Manejo consistente de errores entre plataformas
     
     2. Gestión de Autenticación:
-       - Spotify: OAuth 2.0 con spotipy
-       - YouTube Music: Headers de sesión (Cookie + Authorization)
-       - Apple Music: Bearer token + User token
+        - YouTube Music: Headers de sesión (Cookie + Authorization)
+        - Apple Music: Bearer token + User token
     
     3. Resiliencia y Rate Limiting:
        - Circuit breakers por plataforma
@@ -39,15 +38,12 @@ Estrategia de Diseño - Patrón Facade:
        - Matching fuzzy con umbrales adaptativos
        - Selección inteligente de mejor resultado
 
-Constantes:
-    - SPOTIFY_REQUIRED_SCOPES: Permisos OAuth necesarios
-    - NETWORK_CONCURRENCY: Límite de peticiones concurrentes (5)
-    - RATE_LIMIT_BACKOFF_STEPS: Reintentos ante rate limiting (10)
+   Constantes:
+       - NETWORK_CONCURRENCY: Límite de peticiones concurrentes (5)
+       - RATE_LIMIT_BACKOFF_STEPS: Reintentos ante rate limiting (10)
 
-Funciones Auxiliares:
-    - _is_spotify_rate_limited: Detecta HTTP 429 de Spotify
-    - _spotify_retry_after: Extrae tiempo de espera del header
-    - _is_ytm_unauthorized: Detecta HTTP 401 de YouTube Music
+   Funciones Auxiliares:
+       - _is_ytm_unauthorized: Detecta HTTP 401 de YouTube Music
 
 Autor: MelomaniacPass Team
 Versión: 5.0
@@ -59,8 +55,6 @@ from __future__ import annotations
 import asyncio
 import os
 import random
-import time
-from collections import deque
 from typing import Callable, Optional
 from urllib.parse import quote
 
@@ -69,14 +63,14 @@ from dotenv import load_dotenv
 
 from auth_manager import BROWSER_JSON
 from core.models import Track, SearchResult
-from utils.circuit_breaker import CircuitBreaker, RateLimitError, SpotifyBanException
+from utils.circuit_breaker import CircuitBreaker, RateLimitError
 from engine.normalizer import (
     clean_metadata, build_search_query, _normalize_title, FUZZY_IDEAL,
 )
 from engine.match import (
     _fuzzy_scores_triple, _fuzzy_flags_elastic, _ideal_pass_hunter,
     _joji_trikeyword_query, _duration_to_seconds,
-    validar_match, _yt_select_best, score_spotify_match,
+    validar_match, _yt_select_best,
 )
 
 load_dotenv()
@@ -84,14 +78,6 @@ load_dotenv()
 # ══════════════════════════════════════════════════════════════════════
 # DETECCIÓN DE LIBRERÍAS OPCIONALES
 # ══════════════════════════════════════════════════════════════════════
-
-try:
-    import spotipy
-    from spotipy.exceptions import SpotifyException
-    HAS_SPOTIFY = True
-except ImportError:
-    HAS_SPOTIFY = False
-    SpotifyException = None  # type: ignore
 
 try:
     from ytmusicapi import YTMusic
@@ -103,14 +89,6 @@ except ImportError:
 # CONSTANTES DE CONFIGURACIÓN
 # ══════════════════════════════════════════════════════════════════════
 
-# Scopes OAuth requeridos para Spotify
-SPOTIFY_REQUIRED_SCOPES = (
-    "playlist-modify-public playlist-modify-private user-library-read"
-)
-
-# Ruta del archivo de caché de tokens de Spotify
-SPOTIFY_CACHE_PATH = ".spotify_cache"
-
 # Límite de peticiones HTTP concurrentes para evitar sobrecarga
 NETWORK_CONCURRENCY = 2
 
@@ -121,121 +99,11 @@ RATE_LIMIT_BACKOFF_STEPS = 10
 GLOBAL_API_SEMAPHORE = asyncio.Semaphore(NETWORK_CONCURRENCY)
 
 
-class SpotifyRateLimiter:
-    """
-    Rate limiter de ventana deslizante para peticiones de búsqueda a Spotify.
-
-    Objetivo principal: prevenir activamente que se reciba un HTTP 429
-    mediante tres capas de protección escalonadas:
-
-      Nivel 1 — Pacemaker: mínimo 0.5s + micro-jitter 0.1-0.2s entre
-                peticiones (~1.5 req/s). Absorbe la latencia de red
-                calculando el tiempo real transcurrido desde el último call.
-
-      Nivel 2 — Sliding Window: ventana de 30s con límite de 40 requests.
-                Si se alcanza el límite, pausa 20s forzados para dejar que
-                el token bucket de Spotify se recargue al 100%.
-
-      Nivel 3 — Kill Switch (emergencia): si Spotify devuelve un 429 a
-                pesar de los niveles anteriores, trip() registra el ban y
-                acquire() lanza SpotifyBanException inmediatamente para
-                todas las tareas en cola, abortando la transferencia de
-                forma limpia en lugar de esperar horas bloqueado.
-    """
-
-    WINDOW_S     = 30
-    WINDOW_LIMIT = 28
-    WINDOW_SLEEP = 20.0
-    PACE_MIN     = 0.5
-    JITTER_MIN   = 0.1
-    JITTER_MAX   = 0.2
-
-    def __init__(self) -> None:
-        self._lock        = asyncio.Lock()
-        self._timestamps: deque[float] = deque()
-        self._last        = 0.0
-        self._unblock_at  = 0.0
-
-    def trip(self, retry_after: float) -> None:
-        """Registra un 429: acquire() lanzará SpotifyBanException hasta que expire."""
-        self._unblock_at = time.monotonic() + retry_after
-
-    async def acquire(self) -> None:
-        async with self._lock:
-            now = time.monotonic()
-
-            # ── Nivel 3: Kill Switch ──────────────────────────────────────
-            if now < self._unblock_at:
-                raise SpotifyBanException(self._unblock_at - now)
-
-            # ── Nivel 2: Sliding Window ───────────────────────────────────
-            while self._timestamps and now - self._timestamps[0] > self.WINDOW_S:
-                self._timestamps.popleft()
-            if len(self._timestamps) >= self.WINDOW_LIMIT:
-                await asyncio.sleep(self.WINDOW_SLEEP)
-                now = time.monotonic()
-                while self._timestamps and now - self._timestamps[0] > self.WINDOW_S:
-                    self._timestamps.popleft()
-
-            # ── Nivel 1: Pacemaker + micro-jitter ────────────────────────
-            elapsed = now - self._last
-            wait    = (self.PACE_MIN - elapsed) + random.uniform(self.JITTER_MIN, self.JITTER_MAX)
-            if wait > 0:
-                await asyncio.sleep(wait)
-
-            # ── Registrar timestamp ───────────────────────────────────────
-            now = time.monotonic()
-            self._timestamps.append(now)
-            self._last = now
-
-
-_SP_LIMITER = SpotifyRateLimiter()
-
 # Mensaje de error para sesión expirada de YouTube Music
 _YTM_401_MSG = (
     "[ERROR] YouTube Music: la sesion de browser.json ha expirado (401). "
     "Renueva Cookie + Authorization desde el navegador."
 )
-
-
-def _is_spotify_rate_limited(exc: BaseException) -> bool:
-    """
-    Detecta si una excepción es un rate limit (HTTP 429) de Spotify.
-    
-    Args:
-        exc: Excepción capturada durante llamada a API de Spotify.
-    
-    Returns:
-        True si es un HTTP 429, False en caso contrario.
-    
-    Note:
-        Requiere que spotipy esté instalado. Si no lo está, retorna False.
-    """
-    if SpotifyException is None:
-        return False
-    return isinstance(exc, SpotifyException) and getattr(exc, "http_status", None) == 429
-
-
-def _spotify_retry_after(exc: BaseException, default: int = 30) -> int:
-    """
-    Extrae el tiempo de espera del header Retry-After de Spotify.
-    
-    Args:
-        exc: Excepción SpotifyException con headers.
-        default: Tiempo por defecto si el header no está presente.
-    
-    Returns:
-        Segundos a esperar antes de reintentar (mínimo 1).
-    
-    Note:
-        El header Retry-After es estándar HTTP y indica cuándo se puede
-        reintentar la petición sin ser bloqueado nuevamente.
-    """
-    headers = getattr(exc, "headers", None) or {}
-    try:
-        return max(1, int(headers.get("Retry-After", default)))
-    except (TypeError, ValueError):
-        return default
 
 
 def _is_ytm_unauthorized(exc: BaseException) -> bool:
@@ -268,13 +136,12 @@ class MusicApiService:
     """
     Fachada unificada asíncrona sobre APIs de plataformas de streaming.
     
-    Proporciona una interfaz consistente para interactuar con Spotify,
-    YouTube Music y Apple Music, ocultando las diferencias de sus APIs
-    y manejando autenticación, rate limiting y errores de forma unificada.
+    Proporciona una interfaz consistente para interactuar con YouTube
+    Music y Apple Music, ocultando las diferencias de sus APIs y
+    manejando autenticación, rate limiting y errores de forma unificada.
     
     Attributes:
         _cb: Diccionario de circuit breakers por plataforma.
-        _sp: Cliente de Spotify (spotipy.Spotify).
         _ytm: Cliente de YouTube Music (YTMusic).
         _am_headers: Headers para peticiones a Apple Music.
         _am_storefront: Código de país para Apple Music (default: "us").
@@ -282,7 +149,6 @@ class MusicApiService:
         auth_manager: Referencia a AuthManager (inyectada externamente).
     
     Methods:
-        init_spotify: Inicializa cliente de Spotify con OAuth.
         init_youtube: Inicializa cliente de YouTube Music con headers.
         init_apple: Inicializa headers de Apple Music.
         search_with_fallback: Búsqueda con fallback a queries alternativos.
@@ -292,9 +158,8 @@ class MusicApiService:
     
     Example:
         >>> service = MusicApiService(circuit_breakers)
-        >>> await service.init_spotify(auth_manager)
         >>> result = await service.search_with_fallback(
-        ...     "Spotify", "Bohemian Rhapsody", "Queen"
+        ...     "YouTube Music", "Bohemian Rhapsody", "Queen"
         ... )
     
     Note:
@@ -311,11 +176,10 @@ class MusicApiService:
             circuit_breakers: Diccionario {plataforma: CircuitBreaker}.
         
         Note:
-            Los clientes de plataformas (_sp, _ytm) se inicializan bajo
-            demanda cuando se necesitan, no en el constructor.
+            Los clientes de plataformas se inicializan bajo demanda
+            cuando se necesitan, no en el constructor.
         """
         self._cb  = circuit_breakers
-        self._sp  = None
         self._ytm = None
         self._am_headers:    dict = {}
         self._am_storefront: str  = "us"
@@ -352,12 +216,6 @@ class MusicApiService:
                 sess.close()
             except OSError:
                 pass
-        try:
-            if self._sp and hasattr(self._sp, '_session'):
-                self._sp._session.close()  # pylint: disable=protected-access
-        except OSError:
-            pass
-        self._sp = None
         self._ytm = None
         self._am_headers = {}
 
@@ -367,95 +225,6 @@ class MusicApiService:
     @property
     def search_cache(self) -> dict:
         return self._search_cache
-
-    # ── Spotify Auth ───────────────────────────────────────────────────
-
-    async def init_spotify(self) -> bool:
-        return await asyncio.to_thread(self._sync_init_spotify)
-
-    def _sync_init_spotify(self) -> bool:
-        if not HAS_SPOTIFY:
-            return False
-        try:
-            from spotipy.oauth2 import SpotifyOAuth          # pylint: disable=import-outside-toplevel
-            from cache_handler import CacheFileHandler        # pylint: disable=import-outside-toplevel
-
-            client_id     = os.getenv("SPOTIFY_CLIENT_ID", "").strip()
-            client_secret = os.getenv("SPOTIFY_CLIENT_SECRET", "").strip()
-            redirect_uri  = os.getenv("SPOTIFY_REDIRECT_URI", "http://127.0.0.1:8888/callback").strip()
-
-            if not client_id or not client_secret:
-                return False
-
-            cache_handler = CacheFileHandler(cache_path=SPOTIFY_CACHE_PATH)
-            oauth = SpotifyOAuth(
-                client_id=client_id,
-                client_secret=client_secret,
-                redirect_uri=redirect_uri,
-                scope=SPOTIFY_REQUIRED_SCOPES,
-                cache_handler=cache_handler,
-                open_browser=False,
-            )
-            token_info = cache_handler.get_cached_token()
-            if not token_info:
-                self._sp_oauth = oauth
-                self._sp = None
-                return False
-
-            self._sp       = spotipy.Spotify(auth_manager=oauth)
-            self._sp_oauth = oauth
-            return True
-        except Exception as exc:  # pylint: disable=broad-exception-caught
-            print(f"[Spotify] init failed: {exc}")
-            return False
-
-    def _safe_sp_call(self, method_name: str, *args, **kwargs):
-        try:
-            return getattr(self._sp, method_name)(*args, **kwargs)
-        except Exception as exc:  # pylint: disable=broad-exception-caught
-            if HAS_SPOTIFY and SpotifyException is not None and isinstance(exc, SpotifyException):
-                hs = getattr(exc, "http_status", None)
-                if hs == 429:
-                    raise RateLimitError("Spotify", _spotify_retry_after(exc)) from exc
-                if hs == 401:
-                    if self._sync_init_spotify() and self._sp:
-                        return getattr(self._sp, method_name)(*args, **kwargs)
-            raise
-
-    def get_spotify_auth_url(self) -> Optional[str]:
-        if not HAS_SPOTIFY:
-            return None
-        if not hasattr(self, "_sp_oauth") or self._sp_oauth is None:
-            self._sync_init_spotify()
-        oauth = getattr(self, "_sp_oauth", None)
-        if oauth is None:
-            return None
-        try:
-            return oauth.get_authorize_url()
-        except Exception as exc:  # pylint: disable=broad-exception-caught
-            print(f"[Spotify] get_authorize_url failed: {exc}")
-            return None
-
-    async def handle_spotify_redirect(self, redirect_response: str) -> bool:
-        if not HAS_SPOTIFY:
-            return False
-        oauth = getattr(self, "_sp_oauth", None)
-        if oauth is None:
-            return False
-        try:
-            code = await asyncio.to_thread(oauth.parse_response_code, redirect_response)
-            if not code or code == redirect_response:
-                return False
-            token_info = await asyncio.to_thread(
-                oauth.get_access_token, code, as_dict=True, check_cache=False
-            )
-            if token_info:
-                self._sp = spotipy.Spotify(auth_manager=oauth)
-                return True
-            return False
-        except Exception as exc:  # pylint: disable=broad-exception-caught
-            print(f"[Spotify] handle_redirect failed: {exc}")
-            return False
 
     # ── YouTube Music Auth ─────────────────────────────────────────────
 
@@ -526,66 +295,11 @@ class MusicApiService:
         progress_cb: Optional[Callable[[int, int, str], None]] = None,
     ) -> tuple[str, list[Track]]:
         self._cb[platform].check_or_raise()
-        if platform == "Spotify":
-            return await self._async_fetch_spotify(playlist_id, progress_cb)
-        elif platform == "YouTube Music":
+        if platform == "YouTube Music":
             return await asyncio.to_thread(self._sync_fetch_youtube, playlist_id, progress_cb)
         elif platform == "Apple Music":
             return await asyncio.to_thread(self._sync_fetch_apple, playlist_id, progress_cb)
         raise ValueError(f"Unknown platform: {platform}")
-
-    def _spotify_playlist_items_to_tracks(self, raw: list, name: str, cb) -> list[Track]:
-        tracks: list[Track] = []
-        total = len(raw)
-        for i, item in enumerate(raw, 1):
-            t = item.get("track")
-            if not t or not t.get("id"):
-                continue
-            ms  = t["duration_ms"]
-            dur = f"{int(ms/60000)}:{int((ms/1000)%60):02d}"
-            imgs = t.get("album", {}).get("images", [])
-            tracks.append(Track(
-                id=t["id"], name=t["name"],
-                artist=", ".join(a["name"] for a in t.get("artists", [])),
-                album=t.get("album", {}).get("name", ""),
-                duration=dur,
-                img_url=imgs[-1]["url"] if imgs else "",
-                platform="Spotify",
-                duration_ms=ms,
-                is_explicit=t.get("explicit", False),
-            ))
-            if cb and i % 50 == 0:
-                cb(i, total, name)
-        return tracks
-
-    async def _async_fetch_spotify(self, pid: str, cb) -> tuple[str, list[Track]]:
-        if not self._sp:
-            await asyncio.to_thread(self._sync_init_spotify)
-        sp = self._sp
-        if not sp:
-            return "Spotify Playlist", []
-
-        async def _one_call(fn, *args, **kwargs):
-            await asyncio.sleep(random.uniform(0.5, 1.5))
-            while True:
-                try:
-                    async with GLOBAL_API_SEMAPHORE:
-                        return await asyncio.to_thread(fn, *args, **kwargs)
-                except Exception as e:  # pylint: disable=broad-exception-caught
-                    if _is_spotify_rate_limited(e):
-                        wait = _spotify_retry_after(e)
-                        self._cb["Spotify"].trip(wait)
-                        raise RateLimitError("Spotify", wait) from e
-                    raise
-
-        info   = await _one_call(sp.playlist, pid, fields="name")
-        name   = info.get("name", "Spotify Playlist")
-        result = await _one_call(sp.playlist_tracks, pid)
-        raw    = list(result["items"])
-        while result.get("next"):
-            result = await _one_call(sp.next, result)
-            raw.extend(result["items"])
-        return name, self._spotify_playlist_items_to_tracks(raw, name, cb)
 
     def _sync_fetch_youtube(self, pid: str, cb) -> tuple[str, list[Track]]:
         if not self._ytm:
@@ -681,8 +395,6 @@ class MusicApiService:
             return await self._yt_hunter_async(ct, ca, name, artist, local_duration_s)
         if platform == "Apple Music":
             return await self._am_hunter_async(ct, ca, name, artist)
-        if platform == "Spotify":
-            return await self._sp_hunter_async(ct, ca, name, artist, local_duration_ms, local_is_explicit)
         return SearchResult(None, False)
 
     async def search_with_fallback(
@@ -892,106 +604,6 @@ class MusicApiService:
                     merged.append(c)
         return self._am_pick_catalog_best(orig_name, orig_artist, merged)
 
-    # ── Spotify Hunter ─────────────────────────────────────────────────
-
-    def _sp_search_items(self, q: str) -> list:
-        r = self._safe_sp_call("search", q=q, type="track", limit=10)
-        if r is None:
-            return []
-        return r.get("tracks", {}).get("items", [])
-
-    def _sp_pick_best_item(self, items, orig_name, orig_artist, local_duration_ms=0, local_is_explicit=False):
-        if not items:
-            return None, 0, 0, 0
-        scored = []
-        for t in items:
-            found_title = t.get("name", "")
-            fa = ", ".join(a["name"] for a in t.get("artists", []))
-            sp_dur_ms   = t.get("duration_ms", 0)
-            sp_explicit = t.get("explicit", False)
-            sc = score_spotify_match(
-                orig_name, orig_artist, local_duration_ms, local_is_explicit,
-                found_title, fa, sp_dur_ms, sp_explicit,
-            )
-            comb, tit, art = _fuzzy_scores_triple(orig_name, orig_artist, found_title, fa)
-            scored.append((t, sc, comb, tit, art))
-        scored.sort(key=lambda x: -x[1])
-        best_t, _sc, comb, tit, art = scored[0]
-        return best_t, comb, tit, art
-
-    def _build_spotify_result(self, t, comb, tit, art) -> SearchResult:
-        needs, low = _fuzzy_flags_elastic(comb, tit, art)
-        isrc: Optional[str] = (t.get("external_ids") or {}).get("isrc")
-        return SearchResult(t["id"], needs, low_confidence=low, isrc=isrc)
-
-    async def _sp_hunter_async(self, ct, ca, orig_name, orig_artist, local_duration_ms=0, local_is_explicit=False) -> SearchResult:
-        if not self._sp:
-            await asyncio.to_thread(self._sync_init_spotify)
-        if not self._sp:
-            return SearchResult(None, False)
-
-        nt = _normalize_title(orig_name)
-        na = _normalize_title(orig_artist)
-        queries_structured = [
-            f"track:{ct} artist:{ca}",
-            f"track:{nt} artist:{na}" if na else f"track:{nt}",
-        ]
-        best_match = None
-        best_comb  = -1
-
-        for q in queries_structured:
-            if not q:
-                continue
-            await _SP_LIMITER.acquire()
-            async with GLOBAL_API_SEMAPHORE:
-                try:
-                    items = await asyncio.to_thread(self._sp_search_items, q)
-                except RateLimitError:
-                    raise
-                except Exception as e:  # pylint: disable=broad-exception-caught
-                    if _is_spotify_rate_limited(e):
-                        wait = _spotify_retry_after(e)
-                        self._cb["Spotify"].trip(wait)
-                        _SP_LIMITER.trip(wait)
-                        raise SpotifyBanException(wait) from e
-                    raise
-            if not items:
-                continue
-            picked, comb, tit, art = self._sp_pick_best_item(items, orig_name, orig_artist, local_duration_ms, local_is_explicit)
-            if picked:
-                if comb >= FUZZY_IDEAL or _ideal_pass_hunter(comb, tit, art):
-                    return self._build_spotify_result(picked, comb, tit, art)
-                if comb > best_comb:
-                    best_comb  = comb
-                    best_match = (picked, comb, tit, art)
-
-        if best_comb < 60:
-            query_plain = build_search_query(ct, ca)
-            await _SP_LIMITER.acquire()
-            async with GLOBAL_API_SEMAPHORE:
-                try:
-                    items = await asyncio.to_thread(self._sp_search_items, query_plain)
-                except RateLimitError:
-                    raise
-                except Exception as e:  # pylint: disable=broad-exception-caught
-                    if _is_spotify_rate_limited(e):
-                        wait = _spotify_retry_after(e)
-                        self._cb["Spotify"].trip(wait)
-                        _SP_LIMITER.trip(wait)
-                        raise SpotifyBanException(wait) from e
-                    raise
-            if items:
-                picked, comb, tit, art = self._sp_pick_best_item(items, orig_name, orig_artist, local_duration_ms, local_is_explicit)
-                if picked:
-                    if comb >= FUZZY_IDEAL or _ideal_pass_hunter(comb, tit, art):
-                        return self._build_spotify_result(picked, comb, tit, art)
-                    if comb > best_comb:
-                        best_match = (picked, comb, tit, art)
-
-        if best_match:
-            return self._build_spotify_result(*best_match)
-        return SearchResult(None, False)
-
     # ── Playlist Creation ──────────────────────────────────────────────
 
     async def create_playlist(self, platform: str, title: str, track_ids: list[str]) -> tuple[bool, str, int, list[str]]:
@@ -1000,36 +612,7 @@ class MusicApiService:
             return await asyncio.to_thread(self._yt_create, title, track_ids)
         elif platform == "Apple Music":
             return await asyncio.to_thread(self._am_create, title, track_ids)
-        elif platform == "Spotify":
-            return await self._async_sp_create(title, track_ids)
         return False, "Platform not supported", 0, []
-
-    async def _async_sp_create(self, title: str, ids: list[str]) -> tuple[bool, str, int, list[str]]:
-        if not self._sp:
-            await asyncio.to_thread(self._sync_init_spotify)
-        sp = self._sp
-        if not sp:
-            return False, "Spotify no disponible", 0, []
-
-        async def _one_call(fn, *args, **kwargs):
-            await asyncio.sleep(random.uniform(0.5, 1.5))
-            while True:
-                try:
-                    async with GLOBAL_API_SEMAPHORE:
-                        return await asyncio.to_thread(fn, *args, **kwargs)
-                except Exception as e:  # pylint: disable=broad-exception-caught
-                    if _is_spotify_rate_limited(e):
-                        wait = _spotify_retry_after(e)
-                        self._cb["Spotify"].trip(wait)
-                        raise RateLimitError("Spotify", wait) from e
-                    raise
-
-        me    = await _one_call(sp.current_user)
-        me_id = me["id"]
-        pl    = await _one_call(sp.user_playlist_create, me_id, title, True, False, "Transferida por MelomaniacPass")
-        for offset in range(0, len(ids), 100):
-            await _one_call(sp.playlist_add_items, pl["id"], ids[offset:offset + 100])
-        return True, pl["id"], len(ids), []
 
     def _yt_create(self, title: str, ids: list[str]) -> tuple[bool, str, int, list[str]]:
         try:

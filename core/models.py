@@ -32,7 +32,7 @@ class Track:
     """
     Representación universal de una canción en el ecosistema MelomaniacPass.
     
-    Abstrae las diferencias entre plataformas (Spotify, YouTube Music, Apple Music)
+    Abstrae las diferencias entre plataformas (YouTube Music, Apple Music)
     proporcionando una interfaz común para manipular metadatos de canciones.
     
     Attributes:
@@ -42,7 +42,7 @@ class Track:
         album: Nombre del álbum al que pertenece.
         duration: Duración en formato legible (ej: "3:45").
         img_url: URL de la imagen de portada del álbum.
-        platform: Plataforma de origen ("spotify", "youtube", "apple").
+        platform: Plataforma de origen ("youtube", "apple").
         selected: Indica si la canción está seleccionada para transferencia.
         transfer_status: Estado actual en el proceso de transferencia.
                         Valores: "pending", "searching", "found", "not_found",
@@ -85,7 +85,7 @@ class SearchResult:
                      True cuando el score fuzzy es <40% tras Hunter Recovery.
         low_confidence: Flag para matches con confianza media (70-84%).
                        Válidos pero registrados para análisis interno.
-        isrc: Código ISRC (ISO 3901) extraído de Spotify external_ids.
+        isrc: Código ISRC (ISO 3901) del track.
              Permite matching preciso entre plataformas cuando está disponible.
     
     Note:

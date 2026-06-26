@@ -7,7 +7,6 @@ __pycache__/
 
 # Secretos y Configuración (CRÍTICO)
 .env
-.spotify_cache
 browser.json
 
 # Logs y temporales
