@@ -307,8 +307,7 @@ class PlaylistManagerUI:
                 self.state.auth_session_hint["Spotify"] = "Conectado"
                 self._sync_spotify_connect_ui(connected=True)
                 self.state.notify()
-                dlg.open = False
-                self.page.update()
+                self.page.close(dlg)
                 self._snack("✓ Spotify conectado correctamente")
             else:
                 _status_text.value = "No se pudo completar la autorización. Comprueba la URL."
@@ -331,7 +330,7 @@ class PlaylistManagerUI:
             ),
             actions=[
                 ft.TextButton("Cancelar", style=ft.ButtonStyle(color={ft.ControlState.DEFAULT: TEXT_MUTED}),
-                              on_click=lambda _: [setattr(dlg, 'open', False), self.page.update()]),
+                              on_click=lambda _: self.page.close(dlg)),
                 ft.TextButton("Autorizar", style=ft.ButtonStyle(color={ft.ControlState.DEFAULT: ACCENT}),
                               on_click=lambda e: asyncio.create_task(_do_exchange(e))),
             ],
@@ -339,9 +338,7 @@ class PlaylistManagerUI:
             bgcolor=BG_SURFACE,
             shape=ft.RoundedRectangleBorder(radius=14),
         )
-        self.page.dialog = dlg
-        dlg.open = True
-        self.page.update()
+        self.page.open(dlg)
 
     def _sync_spotify_connect_ui(self, connected: bool) -> None:
         dot_color  = SUCCESS     if connected else TEXT_DIM
@@ -482,7 +479,8 @@ class PlaylistManagerUI:
             text_style=ft.TextStyle(color=TEXT_PRIMARY, size=12, font_family="IBM Plex Sans"),
             hint_style=ft.TextStyle(color=TEXT_DIM, size=11),
             border_radius=10, focused_border_color=ACCENT,
-            on_submit=self._do_cloud_load,
+            on_change=lambda _: None,
+            on_submit=lambda e: asyncio.create_task(self._do_cloud_load(e)),
         )
         self._playlist_section = ft.Column([
             _section_label("PLAYLIST"), self._id_field,
@@ -576,15 +574,14 @@ class PlaylistManagerUI:
 
         def _apply(_e):
             self.state.organize_sort([_dd_field.value], _switch_rev.value)
-            dlg.open = False
-            self.page.update()
+            self.page.close(dlg)
 
         dlg = ft.AlertDialog(
             modal=True,
             title=ft.Text("Organizar lista", size=15, weight=ft.FontWeight.W_600, color=TEXT_PRIMARY),
             content=ft.Column([_dd_field, _switch_rev], tight=True, spacing=15),
             actions=[
-                ft.TextButton("Cancelar", on_click=lambda _: [setattr(dlg, 'open', False), self.page.update()],
+                ft.TextButton("Cancelar", on_click=lambda _: self.page.close(dlg),
                               style=ft.ButtonStyle(color={ft.ControlState.DEFAULT: TEXT_MUTED})),
                 ft.TextButton("Aplicar", on_click=_apply,
                               style=ft.ButtonStyle(color={ft.ControlState.DEFAULT: ACCENT}))
@@ -592,9 +589,7 @@ class PlaylistManagerUI:
             actions_alignment=ft.MainAxisAlignment.END,
             bgcolor=BG_SURFACE, shape=ft.RoundedRectangleBorder(radius=10)
         )
-        self.page.dialog = dlg
-        dlg.open = True
-        self.page.update()
+        self.page.open(dlg)
 
     def _on_split(self, _e: ft.ControlEvent) -> None:
         """Abre el diálogo para dividir la lista maestra en segmentos."""
@@ -612,13 +607,11 @@ class PlaylistManagerUI:
 
         def _apply(_e):
             self.state.organize_split(_dd_field.value)
-            dlg.open = False
-            self.page.update()
+            self.page.close(dlg)
             
         def _clear(_e):
             self.state.clear_split()
-            dlg.open = False
-            self.page.update()
+            self.page.close(dlg)
 
         dlg = ft.AlertDialog(
             modal=True,
@@ -631,7 +624,7 @@ class PlaylistManagerUI:
                 ft.TextButton("Limpiar División", on_click=_clear,
                               style=ft.ButtonStyle(color={ft.ControlState.DEFAULT: WARNING}),
                               visible=bool(self.state.segments)),
-                ft.TextButton("Cancelar", on_click=lambda _: [setattr(dlg, 'open', False), self.page.update()],
+                ft.TextButton("Cancelar", on_click=lambda _: self.page.close(dlg),
                               style=ft.ButtonStyle(color={ft.ControlState.DEFAULT: TEXT_MUTED})),
                 ft.TextButton("Agrupar", on_click=_apply,
                               style=ft.ButtonStyle(color={ft.ControlState.DEFAULT: ACCENT}))
@@ -639,9 +632,7 @@ class PlaylistManagerUI:
             actions_alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
             bgcolor=BG_SURFACE, shape=ft.RoundedRectangleBorder(radius=10)
         )
-        self.page.dialog = dlg
-        dlg.open = True
-        self.page.update()
+        self.page.open(dlg)
 
 
     # ── BUILD CONTENT ──────────────────────────────────────────────────
@@ -1057,8 +1048,7 @@ class PlaylistManagerUI:
         self._paste_field.value = ""
 
         def _close_paste():
-            paste_dlg.open = False
-            self.page.update()
+            self.page.close(paste_dlg)
 
         def _process(_):
             text = self._paste_field.value or ""
@@ -1085,9 +1075,7 @@ class PlaylistManagerUI:
             actions_alignment=ft.MainAxisAlignment.END,
             bgcolor=BG_PANEL, shape=ft.RoundedRectangleBorder(radius=14),
         )
-        self.page.dialog = paste_dlg
-        paste_dlg.open = True
-        self.page.update()
+        self.page.open(paste_dlg)
 
     def _ask_playlist_name_then_ingest(self, text: str, filename: str, suggested_name: str) -> None:
         import datetime as _dt
@@ -1102,8 +1090,7 @@ class PlaylistManagerUI:
         )
 
         def _close():
-            name_dlg.open = False
-            self.page.update()
+            self.page.close(name_dlg)
 
         def _confirm(_):
             raw        = (name_field.value or "").strip()
@@ -1135,9 +1122,7 @@ class PlaylistManagerUI:
             actions_alignment=ft.MainAxisAlignment.END,
             bgcolor=BG_PANEL, shape=ft.RoundedRectangleBorder(radius=14),
         )
-        self.page.dialog = name_dlg
-        name_dlg.open = True
-        self.page.update()
+        self.page.open(name_dlg)
 
     async def _do_local_pick(self) -> None:
         files = await self._file_picker.pick_files(

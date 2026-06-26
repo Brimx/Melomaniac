@@ -27,8 +27,8 @@ from dotenv import load_dotenv
 
 from core.state import AppState
 from services.api_service import MusicApiService
-from ui.main_ui import PlaylistManagerUI
 from auth_manager import AuthManager
+from ui.main_ui import PlaylistManagerUI
 from utils.circuit_breaker import CircuitBreaker
 
 load_dotenv()

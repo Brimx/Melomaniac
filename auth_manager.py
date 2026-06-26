@@ -543,16 +543,13 @@ class ConfigWizard:
     # ── Dialog lifecycle ───────────────────────────────────────────────
 
     def _show_dialog(self, dlg: ft.AlertDialog) -> None:
-        self.page.dialog = dlg
-        dlg.open = True
-        self.page.update()
+        self.page.open(dlg)
 
     def _dismiss_dialog(self, dlg: ft.AlertDialog) -> None:
         if dlg is None:
             return
         try:
-            dlg.open = False
-            self.page.update()
+            self.page.close(dlg)
         except Exception as e:  # pylint: disable=broad-exception-caught
             print(f"[ConfigWizard] No se pudo cerrar el diálogo: {e}")
 
