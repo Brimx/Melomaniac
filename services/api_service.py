@@ -545,7 +545,7 @@ class MusicApiService:
 
     # ── Apple Music Hunter ─────────────────────────────────────────────
 
-    def _am_candidates_for_term(self, term: str) -> list[tuple[str, str]]:
+    def _am_candidates_for_term(self, term: str) -> list[tuple[str, str, tuple[str, str]]]:
         q   = quote(term)
         url = (
             f"https://api.music.apple.com/v1/catalog/{self._am_storefront}"
@@ -556,7 +556,11 @@ class MusicApiService:
             raise RateLimitError("Apple Music", int(r.headers.get("Retry-After", 60)))
         songs = r.json().get("results", {}).get("songs", {}).get("data", [])
         return [
-            (f"{s['attributes'].get('name','')} - {s['attributes'].get('artistName','')}", s["id"])
+            (
+                f"{s['attributes'].get('name','')} - {s['attributes'].get('artistName','')}",
+                s["id"],
+                (s['attributes'].get('name', ''), s['attributes'].get('artistName', '')),
+            )
             for s in songs
         ]
 
@@ -567,18 +571,17 @@ class MusicApiService:
             from rapidfuzz import fuzz as _fuzz  # pylint: disable=import-outside-toplevel
             ct, ca = clean_metadata(song_title, artist_name)
             ref = f"{ct} {ca}".lower()
-            best_id, best_score, best_cand = None, -1, ""
-            for cand_str, tid in candidates:
+            best_id, best_score, best_meta = None, -1, ("", "")
+            for cand_str, tid, meta in candidates:
                 sc = int(_fuzz.token_sort_ratio(ref, cand_str.lower()))
                 if sc > best_score:
-                    best_score, best_id, best_cand = sc, tid, cand_str
+                    best_score, best_id, best_meta = sc, tid, meta
         except ImportError:
             best_id   = candidates[0][1]
-            best_cand = candidates[0][0]
+            best_meta = candidates[0][2]
         if not best_id:
             return SearchResult(None, False)
-        parts = best_cand.split(" - ", 1)
-        found_t, fa = parts[0], (parts[1] if len(parts) > 1 else "")
+        found_t, fa = best_meta
         comb, tit, art = _fuzzy_scores_triple(song_title, artist_name, found_t, fa)
         needs, low = _fuzzy_flags_elastic(comb, tit, art)
         return SearchResult(best_id, needs, low_confidence=low)
@@ -593,7 +596,7 @@ class MusicApiService:
             t = t.strip()
             if t and t not in terms:
                 terms.append(t)
-        merged: list[tuple[str, str]] = []
+        merged: list[tuple[str, str, tuple[str, str]]] = []
         seen: set[str] = set()
         for term in terms:
             async with GLOBAL_API_SEMAPHORE:
