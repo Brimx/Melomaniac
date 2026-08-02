@@ -21,6 +21,7 @@ Fecha: 2026
 
 import asyncio
 import os
+from pathlib import Path
 
 import flet as ft
 from dotenv import load_dotenv
@@ -43,6 +44,10 @@ BG_LIST  = "#FF161622"      # Fondo principal de listas
 ACCENT   = "#FF4F8BFF"      # Color de acento para elementos interactivos
 BG_SURFACE = "#FF111118"    # Fondo de superficies elevadas
 TEXT_PRIMARY = "#FFF2F6FF"  # Texto principal de alta legibilidad
+
+# Fuentes locales (IBM Plex Sans variable)
+ASSETS_DIR = Path(__file__).resolve().parent / "resources"
+FONTS_DIR  = ASSETS_DIR / "fonts"
 
 
 async def main(page: ft.Page) -> None:
@@ -114,13 +119,12 @@ async def main(page: ft.Page) -> None:
         # ──────────────────────────────────────────────────────────────
         # CONFIGURACIÓN DE FUENTES Y TEMA
         # ──────────────────────────────────────────────────────────────
-        # Carga la fuente IBM Plex Sans desde Google Fonts y configura
-        # el esquema de colores del tema oscuro.
+        # Carga la fuente IBM Plex Sans (variable) desde recursos locales y
+        # configura el esquema de colores del tema oscuro.
         
         page.fonts = {
-            "IBM Plex Sans": (
-                "https://fonts.gstatic.com/s/ibmplexsans/v19/"
-                "zYXgKVElMYYaJe8bpLHnCwDKjR7_MIZs.woff2"
+            "IBM Plex Sans": str(
+                FONTS_DIR / "IBMPlexSans-VariableFont_wdth,wght.ttf"
             ),
         }
         page.theme = ft.Theme(
