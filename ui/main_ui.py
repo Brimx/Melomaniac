@@ -138,6 +138,13 @@ class PlaylistManagerUI:
     # Número de filas skeleton mostradas durante carga
     SKELETON_COUNT = 14
 
+    def _close_dlg(self, dlg) -> None:
+        try:
+            dlg.open = False
+            self.page.update()
+        except Exception:
+            pass      
+                                  
     def __init__(self, page: ft.Page, state: AppState):
         """
         Inicializa la interfaz principal con todos sus componentes.
@@ -450,14 +457,14 @@ class PlaylistManagerUI:
 
         def _apply(_e):
             self.state.organize_sort([_dd_field.value], _switch_rev.value)
-            self.page.close(dlg)
+            self._close_dlg(dlg)
 
         dlg = ft.AlertDialog(
             modal=True,
             title=ft.Text("Organizar lista", size=15, font_family="IBM Plex Sans SemiBold", color=TEXT_PRIMARY),
             content=ft.Column([_dd_field, _switch_rev], tight=True, spacing=15),
             actions=[
-                ft.TextButton("Cancelar", on_click=lambda _: self.page.close(dlg),
+                ft.TextButton("Cancelar", on_click=lambda _: self._close_dlg(dlg),
                               style=ft.ButtonStyle(color={ft.ControlState.DEFAULT: TEXT_MUTED})),
                 ft.TextButton("Aplicar", on_click=_apply,
                               style=ft.ButtonStyle(color={ft.ControlState.DEFAULT: ACCENT}))
@@ -483,11 +490,11 @@ class PlaylistManagerUI:
 
         def _apply(_e):
             self.state.organize_split(_dd_field.value)
-            self.page.close(dlg)
+            self._close_dlg(dlg)
             
         def _clear(_e):
             self.state.clear_split()
-            self.page.close(dlg)
+            self._close_dlg(dlg)
 
         dlg = ft.AlertDialog(
             modal=True,
@@ -500,7 +507,7 @@ class PlaylistManagerUI:
                 ft.TextButton("Limpiar División", on_click=_clear,
                               style=ft.ButtonStyle(color={ft.ControlState.DEFAULT: WARNING}),
                               visible=bool(self.state.segments)),
-                ft.TextButton("Cancelar", on_click=lambda _: self.page.close(dlg),
+                ft.TextButton("Cancelar", on_click=lambda _: self._close_dlg(dlg),
                               style=ft.ButtonStyle(color={ft.ControlState.DEFAULT: TEXT_MUTED})),
                 ft.TextButton("Agrupar", on_click=_apply,
                               style=ft.ButtonStyle(color={ft.ControlState.DEFAULT: ACCENT}))
@@ -907,7 +914,7 @@ class PlaylistManagerUI:
         self._paste_field.value = ""
 
         def _close_paste():
-            self.page.close(paste_dlg)
+            self._close_dlg(paste_dlg)
 
         def _process(_):
             text = self._paste_field.value or ""
@@ -949,7 +956,7 @@ class PlaylistManagerUI:
         )
 
         def _close():
-            self.page.close(name_dlg)
+            self._close_dlg(name_dlg)
 
         def _confirm(_):
             raw        = (name_field.value or "").strip()
