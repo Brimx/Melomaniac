@@ -119,13 +119,15 @@ async def main(page: ft.Page) -> None:
         # ──────────────────────────────────────────────────────────────
         # CONFIGURACIÓN DE FUENTES Y TEMA
         # ──────────────────────────────────────────────────────────────
-        # Carga la fuente IBM Plex Sans (variable) desde recursos locales y
-        # configura el esquema de colores del tema oscuro.
+        # Carga la fuente IBM Plex Sans (estáticos por peso) desde recursos
+        # locales y configura el esquema de colores del tema oscuro.
         
         page.fonts = {
-            "IBM Plex Sans": str(
-                FONTS_DIR / "IBMPlexSans-VariableFont_wdth,wght.ttf"
-            ),
+            "IBM Plex Sans":           str(FONTS_DIR / "IBMPlexSans_w400.ttf"),
+            "IBM Plex Sans Light":     str(FONTS_DIR / "IBMPlexSans_w300.ttf"),
+            "IBM Plex Sans Medium":    str(FONTS_DIR / "IBMPlexSans_w500.ttf"),
+            "IBM Plex Sans SemiBold":  str(FONTS_DIR / "IBMPlexSans_w600.ttf"),
+            "IBM Plex Sans Bold":      str(FONTS_DIR / "IBMPlexSans_w700.ttf"),
         }
         page.theme = ft.Theme(
             font_family="IBM Plex Sans",

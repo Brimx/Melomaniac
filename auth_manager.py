@@ -367,8 +367,8 @@ class ConfigWizard:
             row = btn.content
             row.controls[0].color  = col_active   if i == idx else col_inactive
             row.controls[1].color  = col_active   if i == idx else col_inactive
-            row.controls[1].weight = (
-                ft.FontWeight.W_600 if i == idx else ft.FontWeight.W_400
+            row.controls[1].font_family = (
+                "IBM Plex Sans SemiBold" if i == idx else "IBM Plex Sans"
             )
         self._safe_dialog_update()
         try:
@@ -402,10 +402,9 @@ class ConfigWizard:
                     ft.Icon(icon, color=color, size=13),
                     ft.Text(
                         label, size=11, color=color,
-                        font_family="IBM Plex Sans",
-                        weight=(
-                            ft.FontWeight.W_600
-                            if idx == self._active_tab_idx else ft.FontWeight.W_400
+                        font_family=(
+                            "IBM Plex Sans SemiBold"
+                            if idx == self._active_tab_idx else "IBM Plex Sans"
                         ),
                     ),
                 ],
@@ -527,8 +526,8 @@ class ConfigWizard:
                     ft.Icon(ft.Icons.SETTINGS, color=_ACCENT, size=18),
                     ft.Text(
                         "Configuración de Credenciales",
-                        size=14, weight=ft.FontWeight.W_700,
-                        color=_TEXT_PRIMARY, font_family="IBM Plex Sans",
+                        size=14, font_family="IBM Plex Sans Bold",
+                        color=_TEXT_PRIMARY,
                     ),
                 ],
                 spacing=8,
@@ -584,7 +583,7 @@ class ConfigWizard:
                     ft.Container(
                         content=ft.Text(
                             str(num), size=10, color=_ACCENT,
-                            font_family="IBM Plex Sans", weight=ft.FontWeight.W_700,
+                            font_family="IBM Plex Sans Bold",
                         ),
                         bgcolor="#18FFFFFF",
                         border_radius=20,
@@ -595,7 +594,7 @@ class ConfigWizard:
                         controls=[
                             ft.Text(
                                 label, size=11, color=_TEXT_PRIMARY,
-                                font_family="IBM Plex Sans", weight=ft.FontWeight.W_700,
+                                font_family="IBM Plex Sans Bold",
                             ),
                             ft.Text(
                                 body, size=11, color=_TEXT_MUTED,
@@ -753,7 +752,7 @@ class ConfigWizard:
     def _section(text: str) -> ft.Text:
         return ft.Text(
             text, size=8, color=_TEXT_DIM,
-            font_family="IBM Plex Sans", weight=ft.FontWeight.W_700,
+            font_family="IBM Plex Sans Bold",
             style=ft.TextStyle(letter_spacing=1.2),
         )
 

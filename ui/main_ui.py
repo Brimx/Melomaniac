@@ -295,10 +295,10 @@ class PlaylistManagerUI:
                 ),
                 ft.Column([
                     ft.Text(spans=[
-                        ft.TextSpan("Melomaniac", ft.TextStyle(size=16, weight=ft.FontWeight.W_300,
-                                                               color=TEXT_PRIMARY, font_family="IBM Plex Sans")),
-                        ft.TextSpan("Pass",       ft.TextStyle(size=16, weight=ft.FontWeight.W_700,
-                                                               color=TEXT_PRIMARY, font_family="IBM Plex Sans")),
+                        ft.TextSpan("Melomaniac", ft.TextStyle(size=16,
+                                                               color=TEXT_PRIMARY, font_family="IBM Plex Sans Light")),
+                        ft.TextSpan("Pass",       ft.TextStyle(size=16,
+                                                               color=TEXT_PRIMARY, font_family="IBM Plex Sans Bold")),
                     ], opacity=1.0),
                     ft.Text("v5.0", size=9, color=TEXT_DIM, font_family="IBM Plex Sans",
                             style=ft.TextStyle(letter_spacing=0.8), opacity=1.0),
@@ -454,7 +454,7 @@ class PlaylistManagerUI:
 
         dlg = ft.AlertDialog(
             modal=True,
-            title=ft.Text("Organizar lista", size=15, weight=ft.FontWeight.W_600, color=TEXT_PRIMARY),
+            title=ft.Text("Organizar lista", size=15, font_family="IBM Plex Sans SemiBold", color=TEXT_PRIMARY),
             content=ft.Column([_dd_field, _switch_rev], tight=True, spacing=15),
             actions=[
                 ft.TextButton("Cancelar", on_click=lambda _: self.page.close(dlg),
@@ -491,7 +491,7 @@ class PlaylistManagerUI:
 
         dlg = ft.AlertDialog(
             modal=True,
-            title=ft.Text("Dividir lista", size=15, weight=ft.FontWeight.W_600, color=TEXT_PRIMARY),
+            title=ft.Text("Dividir lista", size=15, font_family="IBM Plex Sans SemiBold", color=TEXT_PRIMARY),
             content=ft.Column([
                 ft.Text("Agrupa tu playlist en segmentos independientes.", size=12, color=TEXT_MUTED),
                 _dd_field
@@ -515,8 +515,8 @@ class PlaylistManagerUI:
 
     def _build_content(self) -> None:
         self._playlist_title = ft.Text(
-            "Cargar una playlist", size=22, weight=ft.FontWeight.W_700,
-            color=TEXT_PRIMARY, font_family="IBM Plex Sans", opacity=1.0,
+            "Cargar una playlist", size=22,
+            color=TEXT_PRIMARY, font_family="IBM Plex Sans Bold", opacity=1.0,
         )
         self._track_count = ft.Text("", size=12, color=TEXT_MUTED, font_family="IBM Plex Sans", opacity=1.0)
         self._search_field = ft.TextField(
@@ -582,8 +582,8 @@ class PlaylistManagerUI:
 
         def _col_header(text, width=None, expand=False, center=False):
             align = ft.Alignment.CENTER if center else ft.Alignment.CENTER_LEFT
-            ctrl  = ft.Text(text, size=9, color=TEXT_DIM, weight=ft.FontWeight.W_700,
-                            font_family="IBM Plex Sans", style=ft.TextStyle(letter_spacing=0.8),
+            ctrl  = ft.Text(text, size=9, color=TEXT_DIM, font_family="IBM Plex Sans Bold",
+                            style=ft.TextStyle(letter_spacing=0.8),
                             text_align=ft.TextAlign.CENTER if center else ft.TextAlign.LEFT, opacity=1.0)
             return ft.Container(content=ctrl, width=width, expand=expand, alignment=align)
 
@@ -621,10 +621,10 @@ class PlaylistManagerUI:
                 ft.Container(content=ft.Icon(ft.Icons.LIBRARY_MUSIC, size=52, color=TEXT_DIM),
                              bgcolor=CHIP_BG, border=ft.Border.all(0.8, BORDER_LIGHT),
                              border_radius=20, padding=ft.Padding.all(20)),
-                ft.Text("Carga una playlist", size=20, color=TEXT_PRIMARY, font_family="IBM Plex Sans",
-                        weight=ft.FontWeight.W_700, opacity=1.0),
-                ft.Text("Sin playlist cargada", size=14, color=TEXT_MUTED, font_family="IBM Plex Sans",
-                        weight=ft.FontWeight.W_500, opacity=1.0),
+                ft.Text("Carga una playlist", size=20, color=TEXT_PRIMARY, font_family="IBM Plex Sans Bold",
+                        opacity=1.0),
+                ft.Text("Sin playlist cargada", size=14, color=TEXT_MUTED, font_family="IBM Plex Sans Medium",
+                        opacity=1.0),
                 self._empty_hint_text,
             ], horizontal_alignment=ft.CrossAxisAlignment.CENTER,
                alignment=ft.CrossAxisAlignment.CENTER, spacing=8),
@@ -922,8 +922,8 @@ class PlaylistManagerUI:
 
         paste_dlg = ft.AlertDialog(
             modal=True,
-            title=ft.Text("Pegar Texto", color=TEXT_PRIMARY, font_family="IBM Plex Sans",
-                          size=14, weight=ft.FontWeight.W_700),
+            title=ft.Text("Pegar Texto", color=TEXT_PRIMARY, font_family="IBM Plex Sans Bold",
+                          size=14),
             content=ft.Container(content=self._paste_field, width=480, height=220),
             actions=[
                 ft.TextButton("Procesar", icon=ft.Icons.PLAY_ARROW_OUTLINED, on_click=_process,
@@ -961,8 +961,8 @@ class PlaylistManagerUI:
             modal=True,
             title=ft.Row([
                 ft.Icon(ft.Icons.DRIVE_FILE_RENAME_OUTLINE, color=ACCENT, size=18),
-                ft.Text("Nombra esta playlist", size=14, weight=ft.FontWeight.W_700,
-                        color=TEXT_PRIMARY, font_family="IBM Plex Sans"),
+                ft.Text("Nombra esta playlist", size=14, font_family="IBM Plex Sans Bold",
+                        color=TEXT_PRIMARY),
             ], spacing=8),
             content=ft.Container(
                 content=ft.Column([

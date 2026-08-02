@@ -112,8 +112,7 @@ class TelemetryDrawer:
 
     def _mk_cnts(self) -> dict:
         def _t(color):
-            return ft.Text("—", size=11, color=color, font_family="IBM Plex Sans",
-                           weight=ft.FontWeight.W_600, opacity=1.0)
+            return ft.Text("—", size=11, color=color, font_family="IBM Plex Sans SemiBold", opacity=1.0)
         return {
             "detected":   _t(TEXT_MUTED),
             "candidates": _t(TEXT_MUTED),
@@ -180,8 +179,7 @@ class TelemetryDrawer:
                 content=ft.Text(
                     label, size=10,
                     color=TEXT_PRIMARY if active else TEXT_DIM,
-                    font_family="IBM Plex Sans",
-                    weight=ft.FontWeight.W_600 if active else ft.FontWeight.W_400,
+                    font_family=("IBM Plex Sans SemiBold" if active else "IBM Plex Sans"),
                     opacity=1.0,
                 ),
                 padding=ft.Padding.symmetric(horizontal=8, vertical=5),
@@ -217,7 +215,7 @@ class TelemetryDrawer:
             p.visible        = is_sel
             b.bgcolor        = BG_HOVER if is_sel else ft.Colors.TRANSPARENT
             b.content.color  = TEXT_PRIMARY if is_sel else TEXT_DIM
-            b.content.weight = ft.FontWeight.W_600 if is_sel else ft.FontWeight.W_400
+            b.content.font_family = "IBM Plex Sans SemiBold" if is_sel else "IBM Plex Sans"
             b.border = ft.Border(bottom=ft.BorderSide(
                 1.5 if is_sel else 0, ACCENT if is_sel else ft.Colors.TRANSPARENT
             ))
