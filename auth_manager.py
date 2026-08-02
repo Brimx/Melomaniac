@@ -326,9 +326,10 @@ class ConfigWizard:
         if dlg is None:
             return
         try:
-            self.page.close(dlg)
-        except Exception as e:  # pylint: disable=broad-exception-caught
-            print(f"[ConfigWizard] No se pudo cerrar el diálogo: {e}")
+            dlg.open = False
+            self.page.update()
+        except Exception:
+            pass
 
     def _safe_dialog_update(self) -> None:
         try:
