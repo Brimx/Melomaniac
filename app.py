@@ -80,12 +80,9 @@ async def main(page: ft.Page) -> None:
         # ventana principal de la aplicación.
         
         page.title             = "MelomaniacPass"
-        page.window.bgcolor    = BG_LIST
         page.bgcolor           = BG_LIST
-        page.window.width      = 1200
-        page.window.height     = 650
-        page.window.min_width  = 1030
-        page.window.min_height = 600
+        page.width             = 1200
+        page.height            = 650
         page.padding           = 0
         page.spacing           = 0
         page.theme_mode        = ft.ThemeMode.DARK
@@ -303,11 +300,8 @@ async def main(page: ft.Page) -> None:
         # Cierre normal de la aplicación, no requiere acción
         pass
     finally:
-        # Último recurso: destruir ventana o forzar salida del proceso
-        try:
-            await page.window.destroy()
-        except Exception:  # pylint: disable=broad-exception-caught
-            os._exit(0)
+        # Último recurso: forzar salida del proceso
+        os._exit(0)
 
 
 if __name__ == "__main__":

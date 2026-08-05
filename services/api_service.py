@@ -390,7 +390,11 @@ class MusicApiService:
     ) -> SearchResult:
         ct, ca = clean_metadata(name, artist)
         self._cb[platform].check_or_raise()
-        await asyncio.sleep(random.uniform(0.5, 1.5))
+        print(f"[SEARCH] {platform} · '{name[:40]}' · breaker_ok")
+        if platform == "Apple Music":
+            await asyncio.sleep(random.uniform(2.0, 4.0))
+        else:
+            await asyncio.sleep(random.uniform(0.5, 1.5))
         if platform == "YouTube Music":
             return await self._yt_hunter_async(ct, ca, name, artist, local_duration_s)
         if platform == "Apple Music":
@@ -554,7 +558,9 @@ class MusicApiService:
         r = self._http_session.get(url, timeout=10)
         if r.status_code == 429:
             raise RateLimitError("Apple Music", int(r.headers.get("Retry-After", 60)))
+        print(f"[AM-SEARCH] {r.status_code} · {url[:110]}")
         songs = r.json().get("results", {}).get("songs", {}).get("data", [])
+        print(f"[AM-SEARCH] {len(songs)} resultados para '{term[:40]}'")
         return [
             (
                 f"{s['attributes'].get('name','')} - {s['attributes'].get('artistName','')}",
@@ -598,7 +604,9 @@ class MusicApiService:
                 terms.append(t)
         merged: list[tuple[str, str, tuple[str, str]]] = []
         seen: set[str] = set()
-        for term in terms:
+        for i, term in enumerate(terms):
+            if i > 0:
+                await asyncio.sleep(random.uniform(1.5, 3.0))
             async with GLOBAL_API_SEMAPHORE:
                 chunk = await asyncio.to_thread(self._am_candidates_for_term, term)
             for c in chunk:

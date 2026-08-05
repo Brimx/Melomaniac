@@ -320,7 +320,7 @@ class ConfigWizard:
     # ── Dialog lifecycle ───────────────────────────────────────────────
 
     def _show_dialog(self, dlg: ft.AlertDialog) -> None:
-        self.page.open(dlg)
+        self.page.show_dialog(dlg)
 
     def _dismiss_dialog(self, dlg: ft.AlertDialog) -> None:
         if dlg is None:

@@ -472,7 +472,7 @@ class PlaylistManagerUI:
             actions_alignment=ft.MainAxisAlignment.END,
             bgcolor=BG_SURFACE, shape=ft.RoundedRectangleBorder(radius=10)
         )
-        self.page.open(dlg)
+        self.page.show_dialog(dlg)
 
     def _on_split(self, _e: ft.ControlEvent) -> None:
         """Abre el diálogo para dividir la lista maestra en segmentos."""
@@ -515,7 +515,7 @@ class PlaylistManagerUI:
             actions_alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
             bgcolor=BG_SURFACE, shape=ft.RoundedRectangleBorder(radius=10)
         )
-        self.page.open(dlg)
+        self.page.show_dialog(dlg)
 
 
     # ── BUILD CONTENT ──────────────────────────────────────────────────
@@ -941,7 +941,7 @@ class PlaylistManagerUI:
             actions_alignment=ft.MainAxisAlignment.END,
             bgcolor=BG_PANEL, shape=ft.RoundedRectangleBorder(radius=14),
         )
-        self.page.open(paste_dlg)
+        self.page.show_dialog(paste_dlg)
 
     def _ask_playlist_name_then_ingest(self, text: str, filename: str, suggested_name: str) -> None:
         import datetime as _dt
@@ -988,7 +988,7 @@ class PlaylistManagerUI:
             actions_alignment=ft.MainAxisAlignment.END,
             bgcolor=BG_PANEL, shape=ft.RoundedRectangleBorder(radius=14),
         )
-        self.page.open(name_dlg)
+        self.page.show_dialog(name_dlg)
 
     async def _do_local_pick(self) -> None:
         files = await self._file_picker.pick_files(

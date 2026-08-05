@@ -223,7 +223,7 @@ class TelemetryDrawer:
     def show_postmortem(self) -> None:
         self._switch_to_tab(2, self._d_panels, self._d_tab_btns)
         self._switch_to_tab(2, self._o_panels, self._o_tab_btns)
-        h = self.page.height or self.page.window.height or 720
+        h = self.page.height or 720
         if h < _TELE_DOCKED_MIN and not self._open:
             self._open_overlay()
         else:
@@ -268,7 +268,7 @@ class TelemetryDrawer:
             self._snack(f"Error al exportar: {exc}")
 
     def sync_mode(self) -> None:
-        h      = self.page.height or self.page.window.height or 720
+        h      = self.page.height or 720
         docked = h >= _TELE_DOCKED_MIN
         if docked:
             self.container.visible = True
@@ -287,7 +287,7 @@ class TelemetryDrawer:
 
     def _open_overlay(self) -> None:
         self._open = True
-        target_w   = max(400, int((self.page.window.width or 1200) * 0.4))
+        target_w   = max(400, int((self.page.width or 1200) * 0.4))
         if self._overlay_panel not in self.page.overlay:
             self.page.overlay.append(self._overlay_panel)
         self._overlay_panel.width = target_w

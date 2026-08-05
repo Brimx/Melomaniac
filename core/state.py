@@ -472,6 +472,8 @@ class AppState:
         completed_count = 0
         BATCH_SIZE      = 10
         batch_pending   = 0
+        TRANSFER_CONCURRENCY = 3
+        transfer_sem = asyncio.Semaphore(TRANSFER_CONCURRENCY)
 
         async def _transfer_one(track: Track) -> Optional[str]:
             nonlocal completed_count, batch_pending
@@ -597,8 +599,12 @@ class AppState:
             if not init_ok:
                 raise RuntimeError(f"No se pudo autenticar en {self.destination}")
 
+            async def _bounded(track: Track):
+                async with transfer_sem:
+                    return await _transfer_one(track)
+
             results = list(await asyncio.gather(
-                *(_transfer_one(t) for t in selected),
+                *(_bounded(t) for t in selected),
                 return_exceptions=True,
             ))
 
