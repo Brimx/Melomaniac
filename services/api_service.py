@@ -341,8 +341,7 @@ class MusicApiService:
         name = "Apple Music Playlist"
         try:
             r = self._http_session.get(info_url, timeout=10)
-            if r.status_code == 429:
-                raise RateLimitError("Apple Music", int(r.headers.get("Retry-After", 60)))
+            self._am_check_status(r)
             if r.ok:
                 name = r.json()["data"][0]["attributes"].get("name", name)
         except RateLimitError:
@@ -354,8 +353,7 @@ class MusicApiService:
         while url:
             full = url if url.startswith("http") else f"https://amp-api.music.apple.com{url}"
             r    = self._http_session.get(full, timeout=10)
-            if r.status_code == 429:
-                raise RateLimitError("Apple Music", int(r.headers.get("Retry-After", 60)))
+            self._am_check_status(r)
             r.raise_for_status()
             data = r.json()
             for item in data.get("data", []):
@@ -549,25 +547,48 @@ class MusicApiService:
 
     # ── Apple Music Hunter ─────────────────────────────────────────────
 
+    @staticmethod
+    def _am_check_status(r) -> None:
+        """
+        Centraliza la detección de rate limiting / bloqueo de Apple Music.
+
+        HTTP 429 (Too Many Requests) y 423 (Locked) se traducen a
+        RateLimitError para que el circuit breaker los gestione. Un 423
+        conlleva un cooldown mínimo de 120s por ser típicamente un
+        bloqueo temporal del token de sesión web.
+        """
+        if r.status_code in (429, 423):
+            retry = int(r.headers.get("Retry-After", 60))
+            if r.status_code == 423:
+                retry = max(retry, 120)
+            raise RateLimitError("Apple Music", retry)
+
     def _am_candidates_for_term(self, term: str) -> list[tuple[str, str, tuple[str, str]]]:
+        """
+        Busca canciones en el catálogo vía iTunes Search API pública.
+
+        No requiere autenticación ni consume el token web de sesión, lo que
+        evita los bloqueos 423/429 de amp-api. El trackId devuelto es el mismo
+        song ID del catálogo que usa la API de Apple Music para crear playlists.
+        """
         q   = quote(term)
         url = (
-            f"https://api.music.apple.com/v1/catalog/{self._am_storefront}"
-            f"/search?types=songs&term={q}&limit=5"
+            f"https://itunes.apple.com/search?term={q}"
+            f"&entity=song&country={self._am_storefront}&limit=5"
         )
         r = self._http_session.get(url, timeout=10)
-        if r.status_code == 429:
-            raise RateLimitError("Apple Music", int(r.headers.get("Retry-After", 60)))
+        self._am_check_status(r)
         print(f"[AM-SEARCH] {r.status_code} · {url[:110]}")
-        songs = r.json().get("results", {}).get("songs", {}).get("data", [])
+        songs = r.json().get("results", [])
         print(f"[AM-SEARCH] {len(songs)} resultados para '{term[:40]}'")
         return [
             (
-                f"{s['attributes'].get('name','')} - {s['attributes'].get('artistName','')}",
-                s["id"],
-                (s['attributes'].get('name', ''), s['attributes'].get('artistName', '')),
+                f"{s.get('trackName', '')} - {s.get('artistName', '')}",
+                str(s["trackId"]),
+                (s.get('trackName', ''), s.get('artistName', '')),
             )
             for s in songs
+            if s.get("trackId")
         ]
 
     def _am_pick_catalog_best(self, song_title, artist_name, candidates) -> SearchResult:
@@ -650,7 +671,6 @@ class MusicApiService:
             "https://amp-api.music.apple.com/v1/me/library/playlists",
             json=payload, timeout=15,
         )
-        if r.status_code == 429:
-            raise RateLimitError("Apple Music", int(r.headers.get("Retry-After", 60)))
+        self._am_check_status(r)
         r.raise_for_status()
         return True, "Playlist creada", len(ids), []
