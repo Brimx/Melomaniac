@@ -1,133 +1,103 @@
 # MelomaniacPass v5.0 — Arquitectura Técnica
 
-Aplicación de escritorio para transferir playlists entre **YouTube Music** y **Apple Music** —con soporte de fuentes locales (CSV, M3U, XSPF, WPL, iTunes XML, texto plano)— usando matching inteligente de canciones mediante el motor **Hunter Recovery**.
+Aplicación de escritorio para transferir playlists entre **YouTube Music** y **Apple Music**, con fuentes locales (CSV, M3U/M3U8, PLS, XSPF, WPL, iTunes XML y texto plano) y matching inteligente mediante el motor **Hunter Recovery**.
 
-> **Nota:** Spotify fue eliminado del proyecto (API inviable). La rama `deprecated` conserva la versión con Spotify.
+> **Nota:** Spotify fue eliminado del proyecto por la inviabilidad de su API en esta implementación. La documentación refleja el código actual, no la rama histórica `deprecated`.
 
 ---
 
 ## Estructura del Proyecto
 
-```
+```text
 melomaniacpass/
-├── app.py                    # Entry point (~310 líneas)
-├── auth_manager.py           # Autenticación (credenciales, wizard UI, pre-flight)
-├── .env                      # Credenciales Apple Music
-├── browser.json              # Headers de sesión YouTube Music
+├── app.py                    # Entry point, composición y hard cleanup
+├── auth_manager.py           # Credenciales, wizard UI y pre-flight
+├── .env                      # Credenciales Apple Music (runtime, no se versiona)
+├── browser.json              # Headers YouTube Music (runtime, no se versiona)
 │
 ├── core/
-│   ├── models.py             # Dataclasses: Track, SearchResult, LoadState, TransferState
-│   └── state.py              # AppState — ViewModel central (patrón BLoC)
+│   ├── models.py             # Track, SearchResult, LoadState, TransferState
+│   └── state.py              # AppState: estado central y coordinación BLoC-inspired
 │
 ├── services/
-│   └── api_service.py        # MusicApiService — Facade unificado YTM + Apple Music
+│   └── api_service.py        # MusicApiService: fachada YTM + Apple Music
 │
 ├── engine/
-│   ├── normalizer.py         # Limpieza y normalización de metadatos (Unicode, regex)
-│   ├── match.py              # Sistema Hunter Recovery: validar_match, scoring fuzzy
-│   ├── parsers.py            # Parsers de playlists locales (CSV, M3U, XSPF, WPL, iTunes XML)
-│   └── organizer.py          # Ordenamiento y segmentación de listas en memoria
+│   ├── normalizer.py         # Limpieza y normalización de metadatos
+│   ├── match.py              # Hunter Recovery y scoring fuzzy
+│   ├── parsers.py            # Parsers de playlists locales
+│   └── organizer.py          # Ordenamiento y segmentación en memoria
 │
 ├── ui/
-│   ├── main_ui.py            # PlaylistManagerUI — interfaz principal
-│   ├── song_row.py           # SongRow, SkeletonRow
-│   ├── telemetry.py          # TelemetryDrawer — panel Monitor / Consola / Post-Mortem
-│   └── widgets.py            # Botones y componentes reutilizables
+│   ├── main_ui.py            # PlaylistManagerUI: interfaz principal
+│   ├── song_row.py           # SongRow y SkeletonRow
+│   ├── telemetry.py          # Monitor, consola y Post-Mortem
+│   └── widgets.py            # Botones, iconos y componentes reutilizables
 │
-└── utils/
-    └── circuit_breaker.py    # CircuitBreaker + RateLimitError
+├── utils/
+│   └── circuit_breaker.py    # CircuitBreaker y RateLimitError
+│
+└── resources/fonts/         # IBM Plex Sans local
 ```
-
----
 
 ## Plataformas Soportadas
 
 | Plataforma | Tipo | Autenticación |
 |---|---|---|
-| **YouTube Music** | Streaming | Headers de sesión (`browser.json`) |
-| **Apple Music** | Streaming | Bearer + User Token (`.env`) |
+| **YouTube Music** | Streaming | Headers de sesión en `browser.json` |
+| **Apple Music** | Streaming | Bearer token + user token en `.env` |
 | **Archivo Local** | Fuente local | Sin autenticación |
 | **Pegar Texto** | Fuente local | Sin autenticación |
 
-Las fuentes locales (Archivo Local, Pegar Texto) permiten cargar playlists desde archivos CSV, M3U, M3U8, PLS, WPL, XSPF, XML (iTunes) o texto plano, y transferirlas a YouTube Music o Apple Music.
-
----
+Las fuentes locales se convierten a objetos `Track` y pueden transferirse a cualquiera de las dos plataformas de streaming.
 
 ## Flujo de Dependencias
 
-```
-auth_manager.py
-        ↓
-utils/circuit_breaker.py
-        ↓
-engine/  (normalizer → match → parsers → organizer)
-        ↓
-core/models.py
-        ↓
-services/api_service.py
-        ↓
-core/state.py
-        ↓
-ui/  (widgets → song_row → telemetry → main_ui)
-        ↓
+```text
 app.py
+  ├── CircuitBreaker (por plataforma)
+  ├── MusicApiService ── APIs, sesiones HTTP y caché
+  ├── AppState ───────── modelos, progreso y coordinación
+  ├── PlaylistManagerUI ─ filas, controles y telemetría
+  └── AuthManager ─────── wizard, credenciales y pre-flight
+
+engine/normalizer → engine/match / engine/parsers / engine/organizer
+                         ↓
+                    core/models
+                         ↓
+                    core/state ↔ services/api_service
+                         ↓
+                         ui
 ```
 
----
+La inicialización concreta en `app.py` sigue `CircuitBreakers → Service → State → UI`; `AuthManager` se conecta después mediante referencias inyectadas para coordinar la recarga de credenciales y la UI.
 
 ## Librerías Utilizadas
 
-| Librería | Módulos que la usan | Propósito |
-|---|---|---|
-| `flet` | app.py, ui/*, auth_manager.py | Framework de UI |
-| `asyncio` | app.py, ui/main_ui.py, services/, core/state.py | Operaciones asíncronas |
-| `requests` | services/api_service.py, auth_manager.py | Llamadas HTTP a APIs |
-| `ytmusicapi` | services/api_service.py, auth_manager.py | SDK de YouTube Music |
-| `python-dotenv` | app.py, services/api_service.py, auth_manager.py | Lectura/escritura de `.env` |
-| `rapidfuzz` | engine/match.py, engine/normalizer.py, services/api_service.py | Matching fuzzy de alto rendimiento |
-| `re` + `unicodedata` | engine/normalizer.py, engine/parsers.py, engine/match.py | Normalización de texto |
-| `csv` | engine/parsers.py | Parseo de playlists CSV |
-| `xml.etree.ElementTree` | engine/parsers.py | Parseo de iTunes XML, XSPF, WPL |
-| `json` | auth_manager.py | Lectura/escritura de `browser.json` |
-| `pathlib` | auth_manager.py | Rutas de archivos |
-| `collections.defaultdict` | engine/organizer.py | Agrupación de segmentos |
+| Librería / módulo | Uso principal |
+|---|---|
+| `flet` | Ventana, controles, diálogos y tema visual |
+| `asyncio` | Operaciones asíncronas, concurrencia y ciclo de vida |
+| `requests` | Sesiones HTTP para Apple Music, iTunes Search y pre-flight |
+| `ytmusicapi` | Cliente de YouTube Music |
+| `python-dotenv` | Lectura y escritura de `.env` |
+| `rapidfuzz` | Scoring fuzzy de títulos y artistas |
+| `csv`, `xml.etree.ElementTree` | Parsers CSV, iTunes XML, XSPF y WPL |
+| `json`, `pathlib`, `re`, `unicodedata` | Configuración, rutas y normalización |
+| `collections.defaultdict` | Agrupación de segmentos |
 
----
+El repositorio no incluye todavía un manifiesto de dependencias (`requirements.txt` o `pyproject.toml`); la instalación está documentada en el README.
 
 ## Autenticación y Acceso a Archivos de Configuración
 
 ### `.env` — Apple Music
 
 ```env
-APPLE_AUTH_BEARER='Bearer eyJhbGc...'
-APPLE_MUSIC_USER_TOKEN='0.AsH5+9...'
+APPLE_AUTH_BEARER="Bearer eyJ..."
+APPLE_MUSIC_USER_TOKEN="0.AsH5..."
 ```
 
-**Quién accede y cómo:**
-
-```python
-# auth_manager.py — lectura y escritura
-from pathlib import Path
-from dotenv import dotenv_values, load_dotenv, set_key
-
-ENV_FILE = Path(__file__).parent / ".env"
-
-env = dotenv_values(str(ENV_FILE))
-bearer = env.get("APPLE_AUTH_BEARER", "")
-set_key(str(ENV_FILE), "APPLE_AUTH_BEARER", nuevo_valor, quote_mode="always")
-
-# services/api_service.py — solo lectura
-from dotenv import load_dotenv
-load_dotenv()
-raw  = os.getenv("APPLE_AUTH_BEARER", "").strip()
-utok = os.getenv("APPLE_MUSIC_USER_TOKEN", "").strip()
-
-# app.py — carga inicial
-from dotenv import load_dotenv
-load_dotenv()
-```
-
----
+`auth_manager.py` centraliza la lectura y escritura mediante `dotenv_values`, `set_key` y `load_dotenv`. `services/api_service.py` consume los valores para construir headers y llamar al storefront y endpoints autenticados de Apple Music.
 
 ### `browser.json` — YouTube Music
 
@@ -142,60 +112,21 @@ load_dotenv()
 }
 ```
 
-**Quién accede y cómo:**
-
-```python
-# auth_manager.py — lectura y escritura, exporta la ruta
-import json
-from pathlib import Path
-
-BROWSER_JSON = Path(__file__).parent / "browser.json"
-
-# lectura
-def read_browser_json() -> dict:
-    return json.loads(BROWSER_JSON.read_text(encoding="utf-8"))
-
-# escritura desde ConfigWizard
-def write_browser_json(authorization: str, cookie: str) -> None:
-    ...
-
-# services/api_service.py — importa la ruta desde auth_manager
-from auth_manager import BROWSER_JSON
-
-self._ytm = YTMusic(auth=str(BROWSER_JSON), requests_session=self._yt_http_session)
-```
-
----
+`auth_manager.py` es el único módulo que escribe este archivo. `MusicApiService` importa su ruta y construye el cliente `YTMusic` con esos headers.
 
 ### Flujo de Autenticación por Plataforma
 
-**YouTube Music (Headers de sesión):**
-```
-Usuario copia headers del navegador (F12 → Network)
-    → ConfigWizard los guarda en browser.json via write_browser_json()
-    → services/api_service.py los carga al iniciar con YTMusic(auth=...)
-    → se incluyen en cada request a la API
+```text
+YouTube Music:
+browser headers → ConfigWizard → browser.json → YTMusic → requests
+
+Apple Music:
+tokens del navegador → ConfigWizard → .env → headers HTTP → API Apple Music
 ```
 
-**Apple Music (Bearer + User Token):**
-```
-Usuario obtiene tokens desde Apple Music Web
-    → ConfigWizard los guarda en .env con set_key()
-    → services/api_service.py los lee con os.getenv()
-    → se incluyen en headers de cada request
-```
+**Pre-flight al iniciar:** `AuthManager` ejecuta en paralelo las comprobaciones de ambas plataformas. YouTube Music valida el archivo y realiza una llamada real; Apple Music valida tokens, storefront y catálogo. Los resultados actualizan los indicadores de sesión y abren el wizard en la pestaña que falle.
 
-**Pre-flight checks (auth_manager.py):**
-```
-Al iniciar la app → run_preflight() ejecuta en paralelo:
-    _preflight_youtube()  → valida browser.json + llamada real a YTMusic (get_history)
-    _preflight_apple()    → valida .env + GET /v1/me/storefront + catálogo
-    → resultados → AuthManager.ingest_preflight_results()
-    → iconos de estado en la UI actualizados
-    → si una plataforma falla, abre el ConfigWizard en su tab
-```
-
----
+Durante el matching, Apple Music usa la iTunes Search API pública (`itunes.apple.com/search`) para obtener candidatos y sus `trackId`. Esto evita consumir innecesariamente el endpoint de búsqueda autenticado y reduce bloqueos temporales. La API autenticada de Apple Music se mantiene para consultar playlists, storefront y crear la playlist destino.
 
 ## Comunicación entre Módulos
 
@@ -203,180 +134,117 @@ Al iniciar la app → run_preflight() ejecuta en paralelo:
 
 ```python
 circuit_breakers = {p: CircuitBreaker(p) for p in AppState.PLATFORMS}
-service      = MusicApiService(circuit_breakers)
-state        = AppState(service)
-ui           = PlaylistManagerUI(page, state)
+service = MusicApiService(circuit_breakers)
+state = AppState(service)
+ui = PlaylistManagerUI(page, state)
 auth_manager = AuthManager(page, service, state)
 
-# Referencias bidireccionales
+ui.auth_manager = auth_manager
 service.auth_manager = auth_manager
-ui.auth_manager      = auth_manager
 ```
 
 ### Patrón Observer (estado → UI)
 
-```python
-# core/state.py
-class AppState:
-    PLATFORMS = ["Apple Music", "YouTube Music"]
-    LOCAL_SOURCES = frozenset({"Archivo Local", "Pegar Texto"})
-    SOURCE_OPTIONS = ["Apple Music", "YouTube Music", "Archivo Local", "Pegar Texto"]
-
-    def notify(self):
-        for callback in self._listeners:
-            callback()
-
-# ui/main_ui.py
-class PlaylistManagerUI:
-    def __init__(self, page, state: AppState):
-        state.subscribe(self._on_state_changed)
-        for platform, cb in state.cb.items():
-            cb.subscribe(lambda is_open, rem, p=platform: self._on_circuit_change(p, is_open, rem))
-```
+`AppState` mantiene listeners. Cada mutación relevante actualiza el estado y llama `notify()`, y `PlaylistManagerUI` reconstruye la lista, progreso, botones, estados de autenticación y telemetría.
 
 ### Ejemplo: Búsqueda de canción
 
-```
-ui/main_ui.py         → state.load_playlist(playlist_id)
-core/state.py         → service.fetch_playlist(source, id, progress_cb)
-services/api_service  → request a plataforma origen (YTM o Apple Music)
-                      → retorna (name, list[Track])
-core/state.py         → self.tracks = tracks → notify()
-ui/main_ui.py         → _on_state_changed() → actualiza lista
-```
-
-### Ejemplo: Transferencia de playlist
-
-```
-ui/main_ui.py         → state.transfer_playlist()
-core/state.py         → para cada Track seleccionado (concurrente):
-engine/normalizer     →   clean_metadata(title, artist)
-services/api_service  →   search_with_fallback(platform, name, artist)
-engine/match.py       →   validar_match() + _fuzzy_scores_triple() + _fuzzy_flags_elastic()
-core/state.py         →   SearchResult → track_id o needs_review
-services/api_service  →   create_playlist(platform, name, ids)
-core/state.py         →   TransferState.DONE → notify()
-ui/main_ui.py         → _on_state_changed() → muestra post-mortem
+```text
+ui → state.transfer_playlist()
+state → clean_metadata() y búsqueda concurrente con backoff
+service → search_with_fallback() en la plataforma destino
+engine.match → validación, scores y clasificación de confianza
+state → SearchResult y estado de Track
+service → create_playlist() con IDs confirmados
+ui → progreso y Post-Mortem
 ```
 
 ### Ejemplo: Carga desde fuente local
 
-```
-ui/main_ui.py         → _do_local_pick() o _open_paste_dialog()
-engine/parsers.py     → parse_local_playlist(text, filename) → [(artist, title), ...]
-                      → build_local_tracks(pairs) → list[Track]
-core/state.py         → load_local_tracks(tracks, playlist_name)
-                      → self.tracks = tracks → notify()
-ui/main_ui.py         → _on_state_changed() → actualiza lista
+```text
+ui → selección de archivo o diálogo de texto
+engine.parsers → parse_local_playlist() → pares (artista, título)
+engine.parsers → build_local_tracks() → list[Track]
+state → load_local_tracks() → notify()
+ui → renderiza la playlist
 ```
 
 ### Ejemplo: Organizar / Dividir lista
 
+```text
+ui → state.organize_sort(keys) o state.organize_split(key)
+state → engine.organizer.sort_tracks() / split_tracks()
+state → actualiza tracks o segments → notify()
+ui → actualiza lista y selector de segmentos
 ```
-ui/main_ui.py         → state.organize_sort(["artist"], reverse=False)
-core/state.py         → engine/organizer.sort_tracks(tracks, keys, reverse)
-                      → self.tracks = sorted_tracks → notify()
-
-ui/main_ui.py         → state.organize_split("artist")
-core/state.py         → engine/organizer.split_tracks(tracks, "artist")
-                      → self.segments = {"Queen": [...], "Beatles": [...]}
-                      → notify()
-```
-
----
 
 ## Módulos Clave — Resumen de Responsabilidades
 
 ### `engine/organizer.py`
-Transformaciones de datos en memoria sin I/O:
-- `sort_tracks(tracks, keys, reverse)` — ordena por artista, álbum, título, duración o plataforma
-- `split_tracks(tracks, key)` — segmenta la lista maestra en grupos por atributo
+
+Transformaciones en memoria sin I/O: `sort_tracks()` ordena por artista, álbum, título, duración o plataforma; `split_tracks()` agrupa por un atributo.
 
 ### `engine/match.py` — Sistema Hunter Recovery
-- `validar_match()` — validación multi-capa L0→L3 para YouTube Music
-  - L0: Bypass asiático (CJK/Hangul → match inmediato)
-  - L1: Prueba de ácido (substring + solapamiento de artista)
-  - L2: Filtro letal (cover, karaoke, tribute → reject)
-  - L3: Fuzzy safety net (SequenceMatcher ≥ 0.65)
-- `_fuzzy_scores_triple()` — scores desglosados: combinado, título, artista
-- `_ideal_pass_hunter()` — criterios de aceptación automática (≥85% o artista exacto + título ≥60%)
-- `_fuzzy_flags_elastic()` — clasifica en needs_review / low_confidence
-- `_yt_select_best()` — selección del mejor resultado con tie-breaker por duración (±5s)
+
+- `validar_match()` aplica validación por capas: bypass para CJK/Hangul, substring y artista, filtro de cover/karaoke/tribute y fallback fuzzy.
+- `_fuzzy_scores_triple()` calcula scores combinado, de título y de artista.
+- `_ideal_pass_hunter()` acepta coincidencias de alta confianza.
+- `_fuzzy_flags_elastic()` clasifica resultados en revisión o baja confianza.
+- `_yt_select_best()` usa la duración como desempate cuando está disponible.
 
 ### `engine/normalizer.py`
-- `clean_metadata(title, artist)` — limpieza agresiva: Unicode NFC, purga de paréntesis, eliminación de ruido
-- `build_search_query(title, artist)` — query optimizado (Prioridad de Obra)
-- Umbrales: `FUZZY_IDEAL=85`, `FUZZY_LOG_BAND_LOW=70`, `FUZZY_REVISION_THRESHOLD=40`
+
+`clean_metadata()` normaliza Unicode, elimina ruido y limpia paréntesis/corchetes. `build_search_query()` construye queries priorizando la obra. Umbrales documentados en el código: `FUZZY_IDEAL=85`, banda baja de log `70` y revisión `40`.
 
 ### `engine/parsers.py`
-- `parse_local_playlist(text, filename)` — detección automática de formato
-- `build_local_tracks(pairs)` — convierte pares (artista, título) en objetos Track
-- Formatos soportados: CSV, M3U/M3U8, PLS, WPL, XSPF, iTunes XML, texto plano
+
+`parse_local_playlist()` detecta por extensión y contenido CSV, M3U/M3U8, PLS, WPL, XSPF, iTunes XML o texto plano. `build_local_tracks()` convierte los pares extraídos en `Track` con IDs locales.
 
 ### `utils/circuit_breaker.py`
-- `CircuitBreaker` — patrón circuit breaker con auto-reset y notificaciones a UI
-- `RateLimitError` — excepción para HTTP 429 con tiempo de espera
+
+`CircuitBreaker` abre un cooldown por plataforma y notifica a la UI; `RateLimitError` representa respuestas HTTP 429 con tiempo de espera.
 
 ### `services/api_service.py`
-- `MusicApiService` — fachada unificada para YouTube Music y Apple Music
-- `search_with_fallback()` — búsqueda con múltiples passes (metadata limpia → original → normalizada)
-- `_yt_hunter_async()` — Hunter Recovery para YouTube Music (strict queries → raw queries)
-- `_am_hunter_async()` — Hunter Recovery para Apple Music (múltiples términos + fuzzy pick)
-- `create_playlist()` — creación de playlist con confirmación de tracks insertados
-- Semáforo global (`NETWORK_CONCURRENCY=2`) para limitar concurrencia
-- Caché de búsquedas para evitar peticiones duplicadas
 
-### `auth_manager.py`
-- `AuthManager` — coordinador de autenticación a nivel de servicio
-- `ConfigWizard` — diálogo Flet con 2 tabs editables (YouTube Music + Apple Music)
-- `run_preflight()` — validación paralela de credenciales al iniciar
-- `reload_credentials()` — hot-reload sin reiniciar el proceso
-- Pre-flight: `_preflight_youtube()` (browser.json + get_history) y `_preflight_apple()` (.env + storefront + catálogo)
+`MusicApiService` unifica carga, búsqueda y creación de playlists. Mantiene sesiones HTTP, caché de búsquedas, clientes autenticados, semáforo global de red (`NETWORK_CONCURRENCY=2`) y reintentos ante rate limiting (`RATE_LIMIT_BACKOFF_STEPS=10`). Convierte las respuestas HTTP 429 y 423 de Apple Music en `RateLimitError`; un 423 recibe un cooldown mínimo de 120 segundos.
 
----
+### `core/state.py` y `core/models.py`
+
+`Track` y `SearchResult` son los contratos de datos. `LoadState` y `TransferState` representan el ciclo de vida. `AppState` coordina carga, filtrado, selección, transferencia, progreso, segmentos, errores y notificaciones.
 
 ## ConfigWizard — Gestión de Credenciales
 
-El ConfigWizard es un diálogo modal con dos pestañas:
+El wizard modal tiene dos pestañas:
 
-| Tab | Plataforma | Campos editables | Archivo |
+| Tab | Plataforma | Campos | Archivo |
 |---|---|---|---|
-| 0 | YouTube Music | Authorization (SAPISIDHASH), Cookie | `browser.json` |
-| 1 | Apple Music | `APPLE_AUTH_BEARER`, `APPLE_MUSIC_USER_TOKEN` | `.env` |
+| 0 | YouTube Music | Authorization, Cookie | `browser.json` |
+| 1 | Apple Music | Bearer, User Token | `.env` |
 
-Ambas pestañas incluyen instrucciones paso a paso para extraer las credenciales desde DevTools del navegador. El botón "Guardar y Aplicar" escribe los cambios y recarga las credenciales en caliente.
-
----
+Incluye instrucciones para DevTools y el botón **Guardar y Aplicar**. Después de guardar, `reload_credentials()` actualiza los clientes del servicio sin reiniciar el proceso.
 
 ## Ciclo de Vida y Limpieza
 
-`app.py` implementa un protocolo de limpieza profunda (`hard_cleanup`) que garantiza:
-1. Cancelación de circuit breakers (tareas de auto-reset)
-2. Detención de la instancia de UI
-3. Cancelación de tareas de escaneo lazy
-4. Cancelación de tareas de recarga de autenticación
-5. Cancelación de todas las tareas asyncio pendientes
-6. Recolección de basura forzada (`gc.collect`)
-7. Limpieza de sesiones HTTP
-8. `os._exit(0)` como último recurso si threads bloqueados siguen vivos
+`app.py` registra el pre-flight inicial, un sondeo de sesiones cada 90 segundos y un cierre profundo que:
 
-Además, un bucle de sondeo (`_auth_poll_loop`) refresca los iconos de sesión cada 90 segundos.
-
----
+1. Cancela circuit breakers y tareas de UI.
+2. Detiene búsquedas y escaneos lazy pendientes.
+3. Cancela tareas `asyncio` de autenticación y transferencia.
+4. Limpia las sesiones HTTP reutilizables del servicio.
+5. Ejecuta recolección de basura y aplica la salida de emergencia si quedan hilos bloqueados.
 
 ## Métricas de Refactorización
 
-| | Antes | Después |
-|---|---|---|
-| Archivos | 1 monolito | 15 módulos |
-| Líneas entry point | ~5000 | ~310 |
-| Tamaño entry point | 218 KB | ~12 KB |
-| Módulos de engine | 0 | 4 (normalizer, match, parsers, organizer) |
-| Plataformas streaming | 3 (Spotify, YTM, Apple) | 2 (YTM, Apple) |
-| Fuentes locales | 0 | 2 (Archivo Local, Pegar Texto) |
+El estado actual conserva la separación del monolito original en módulos de core, services, engine, UI y utils. Las cifras históricas de tamaño y líneas no están automatizadas ni se mantienen como métrica de build; por eso no se presentan como valores exactos aquí.
 
----
+| Área | Estado actual |
+|---|---|
+| Plataformas streaming | 2: YouTube Music y Apple Music |
+| Fuentes locales | Archivo y texto pegado |
+| Módulos de engine | 4: normalizer, match, parsers, organizer |
+| Estado compartido | `AppState` observable |
+| Resiliencia | Circuit breaker, backoff y caché |
 
 ## Respaldo
 
-El monolito original está en `v. 0.1/refactor_backup/app.py` (218 KB). La versión con Spotify se conserva en la rama `deprecated`.
+La documentación histórica menciona un monolito y una rama `deprecated` con Spotify. Esos elementos no forman parte del árbol actual inspeccionado; deben considerarse respaldo histórico y no dependencias del runtime actual.

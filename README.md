@@ -1,52 +1,48 @@
 # 🎵 MelomaniacPass
 
-**Transfiere tus playlists entre YouTube Music y Apple Music — con matching inteligente de canciones.**
+**Transfiere playlists entre YouTube Music y Apple Music mediante matching inteligente de canciones.**
 
-MelomaniacPass es una aplicación de escritorio que te permite mover tus playlists de una plataforma de streaming a otra. Encuentra cada canción en la plataforma destino usando matching fuzzy, así no pierdes canciones por diferencias de nombres, remasterizaciones o versiones en vivo.
+MelomaniacPass es una aplicación de escritorio para cargar una playlist desde YouTube Music, Apple Music o una fuente local, encontrar sus canciones en la plataforma destino y crear allí una nueva playlist. El matching fuzzy tolera diferencias de títulos, artistas, remasterizaciones y versiones en vivo.
 
-> **¿Por qué existe?** Las plataformas de streaming no te dejan exportar ni importar playlists entre ellas. Si quieres pasar de YouTube Music a Apple Music (o viceversa), tendrías que reconstruir cada playlist a mano. MelomaniacPass automatiza eso.
+> **¿Por qué existe?** Las plataformas de streaming no ofrecen una forma universal de exportar e importar playlists entre sí. MelomaniacPass automatiza la reconstrucción y deja un reporte de las coincidencias, fallos y casos que requieren revisión.
 
 ---
 
 ## ✨ Características
 
-- **Transferencia entre plataformas** — Mueve playlists entre YouTube Music y Apple Music
-- **Archivos locales** — Importa playlists desde CSV, M3U, XSPF, WPL, iTunes XML o texto plano
-- **Matching inteligente** — El motor Hunter Recovery usa matching fuzzy para encontrar la canción correcta incluso cuando títulos/artistas difieren
-- **Transferencia en lote** — Transfiere cientos de canciones concurrentemente con seguimiento de progreso
-- **Reporte post-mortem** — Ve exactamente qué canciones coincidieron, cuáles fallaron y por qué
-- **Gestor de credenciales integrado** — Wizard de configuración con instrucciones paso a paso para extraer tokens desde tu navegador
-- **Protección contra rate-limit** — Circuit breakers que previenen baneos de API y muestran temporizadores
-- **Organizar y dividir** — Ordena y segmenta tus playlists por artista, álbum o plataforma antes de transferir
-
----
+- **Transferencia entre plataformas** — YouTube Music ↔ Apple Music.
+- **Fuentes locales** — CSV, M3U/M3U8, PLS, XSPF, WPL, iTunes XML y texto plano.
+- **Hunter Recovery** — búsqueda con queries alternativas, normalización y scoring fuzzy.
+- **Transferencia concurrente** — procesa varias canciones con límite de concurrencia para cuidar las APIs.
+- **Post-mortem** — muestra coincidencias, canciones no encontradas, errores y razones de fallo; permite exportar el reporte.
+- **Configuración guiada** — wizard para guardar y recargar credenciales sin reiniciar la aplicación.
+- **Protección contra rate limits** — circuit breakers, reintentos con backoff y temporizadores visibles.
+- **Organizar y dividir** — ordena o agrupa canciones por artista, álbum, título, duración o plataforma.
+- **Interfaz de escritorio** — UI en Flet con búsqueda, selección, progreso, telemetría y estados por canción.
 
 ## 📋 Requisitos
 
-| Requisito | Versión |
+| Requisito | Versión / detalle |
 |---|---|
 | Python | 3.10+ |
-| SO | Linux, macOS, Windows |
+| Sistema operativo | Linux, macOS o Windows |
+| Dependencias | `flet`, `ytmusicapi`, `requests`, `python-dotenv`, `rapidfuzz` |
+| Credenciales | Sesión de YouTube Music y/o tokens de Apple Music para fuentes remotas |
 
----
+El repositorio todavía no incluye `requirements.txt` ni `pyproject.toml`; las dependencias se instalan manualmente por ahora.
 
 ## 📦 Instalación
 
 ```bash
-# Clonar el repositorio
 git clone https://github.com/Brimx/MelomaniacPass.git
 cd MelomaniacPass
 
-# Crear y activar entorno virtual
 python -m venv .venv
 source .venv/bin/activate        # Linux/macOS
 # .venv\Scripts\activate         # Windows
 
-# Instalar dependencias
 pip install flet ytmusicapi requests python-dotenv rapidfuzz
 ```
-
----
 
 ## 🚀 Uso
 
@@ -54,88 +50,75 @@ pip install flet ytmusicapi requests python-dotenv rapidfuzz
 python app.py
 ```
 
-Se abrirá la ventana de la aplicación. Así se usa:
-
 ### 1. Configurar credenciales
 
-En el primer arranque, la app verifica las credenciales de ambas plataformas. Si faltan o están expiradas, se abre el **Wizard de Configuración** automáticamente.
+En el primer arranque, el pre-flight check valida las sesiones disponibles. Si falta una credencial o expiró, abre el **Configuration Wizard** en la pestaña de la plataforma correspondiente.
 
-**YouTube Music:**
-1. Abre [music.youtube.com](https://music.youtube.com) en tu navegador
-2. Pulsa `F12` → ve a la pestaña **Network**
-3. Filtra por `browse` y busca una petición POST
-4. Copia el header `Authorization` (empieza con `SAPISIDHASH...`)
-5. Copia el header `Cookie`
-6. Pega ambos en el wizard → **Guardar y Aplicar**
+**YouTube Music**
 
-**Apple Music:**
-1. Abre [music.apple.com](https://music.apple.com) en tu navegador
-2. Pulsa `F12` → ve a la pestaña **Network**
-3. Filtra por `catalog` y busca una petición GET
-4. Copia el header `Authorization` (empieza con `Bearer eyJ...`)
-5. Copia el header `media-user-token`
-6. Pega ambos en el wizard → **Guardar y Aplicar**
+1. Abre [music.youtube.com](https://music.youtube.com) e inicia sesión.
+2. Abre DevTools (`F12`) → **Network** y localiza una petición de API, por ejemplo `browse`.
+3. Copia los headers `Authorization` y `Cookie`.
+4. Pégalos en el wizard y pulsa **Guardar y Aplicar**.
+
+**Apple Music**
+
+1. Abre [music.apple.com](https://music.apple.com) e inicia sesión.
+2. En DevTools → **Network**, localiza una petición de catálogo.
+3. Copia `Authorization` y `media-user-token`.
+4. Pégalos en el wizard y pulsa **Guardar y Aplicar**.
+
+Las credenciales son datos de sesión sensibles. No las compartas ni las confirmes en Git.
 
 ### 2. Cargar una playlist
 
-- **Desde una plataforma de streaming:** Selecciona la plataforma origen, pega un ID de playlist y pulsa **Cargar**
-- **Desde un archivo local:** Selecciona "Archivo Local" como origen, pulsa **Cargar** y elige un archivo (`.csv`, `.m3u`, `.xspf`, `.wpl`, `.xml`, `.txt`)
-- **Desde texto pegado:** Selecciona "Pegar Texto" como origen, pulsa **Cargar** y pega tu lista de canciones (una por línea, formato: `Título - Artista`)
+- **Streaming:** selecciona YouTube Music o Apple Music, introduce el ID de playlist y pulsa **Cargar**.
+- **Archivo local:** selecciona **Archivo Local**, elige un archivo compatible y asigna un nombre.
+- **Texto pegado:** selecciona **Pegar Texto** y pega una canción por línea, preferiblemente en formato `Título - Artista` o `Artista - Título`.
 
 ### 3. Revisar y transferir
 
-- Usa los checkboxes para seleccionar qué canciones transferir
-- Usa **Organizar** para ordenar por artista/álbum/título, o **Dividir** para agrupar por atributo
-- Selecciona la plataforma destino
-- Pulsa **Transferir**
+Selecciona las canciones, usa **Organizar** o **Dividir** si lo necesitas, elige la plataforma destino y pulsa **Transferir**. Para fuentes locales es obligatorio seleccionar el destino antes de transferir.
 
 ### 4. Revisar resultados
 
-- Observa la barra de progreso y el log en vivo en el panel de telemetría
-- Al completar, un snackbar muestra cuántas canciones se transfirieron correctamente
-- Pulsa **Ver Detalles** para abrir la pestaña Post-Mortem y ver qué canciones fallaron y por qué
-- Exporta el reporte a un archivo de texto si lo necesitas
-
----
+La UI muestra progreso y telemetría en vivo. Al terminar, **Ver Detalles** abre el panel Post-Mortem con coincidencias, elementos no encontrados, errores y casos de baja confianza. El reporte puede exportarse como `transfer_failed_report.txt`.
 
 ## 🔧 Archivos de configuración
 
-MelomaniacPass usa dos archivos de configuración (ambos están en `.gitignore`):
+Ambos archivos están excluidos por `.gitignore` y se gestionan desde el wizard:
 
-| Archivo | Plataforma | Propósito |
+| Archivo | Plataforma | Contenido |
 |---|---|---|
-| `.env` | Apple Music | Guarda `APPLE_AUTH_BEARER` y `APPLE_MUSIC_USER_TOKEN` |
-| `browser.json` | YouTube Music | Guarda los headers de sesión (`Authorization` + `Cookie`) |
-
-Ambos se gestionan desde el Wizard de Configuración de la app — no necesitas editarlos manualmente.
-
----
+| `.env` | Apple Music | `APPLE_AUTH_BEARER` y `APPLE_MUSIC_USER_TOKEN` |
+| `browser.json` | YouTube Music | Headers de sesión, incluidos `Authorization` y `Cookie` |
 
 ## 📁 Estructura del proyecto
 
-```
+```text
 melomaniacpass/
-├── app.py              # Punto de entrada
-├── auth_manager.py     # Gestión de credenciales y Wizard de configuración
-├── core/               # Gestión de estado y modelos de datos
-├── services/           # Fachada de APIs (YouTube Music + Apple Music)
-├── engine/             # Matching, normalización, parsers, organizador
-├── ui/                 # Componentes de interfaz (Flet)
-└── utils/              # Circuit breaker
+├── app.py              # Punto de entrada, composición y limpieza
+├── auth_manager.py     # Credenciales, pre-flight y wizard
+├── core/               # Modelos y estado observable de la aplicación
+├── services/           # Fachada de APIs de YouTube Music y Apple Music
+├── engine/             # Normalización, matching, parsers y organización
+├── ui/                 # Interfaz Flet, filas, widgets y telemetría
+├── utils/              # Circuit breaker y errores de rate limit
+└── resources/fonts/    # Fuentes IBM Plex Sans incluidas
 ```
 
-Para un desglose detallado de la arquitectura, responsabilidades de cada módulo y flujo de datos, ver **[ARCHITECTURE.md](ARCHITECTURE.md)**.
+Para el desglose de responsabilidades, dependencias y flujos de datos, consulta **[ARCHITECTURE.md](ARCHITECTURE.md)**. La versión en inglés está en **[ARCHITECTURE.en.md](ARCHITECTURE.en.md)**.
 
----
+## Estado actual
+
+La rama actual es `beta`. La base está organizada en módulos y cuenta con el flujo principal de carga, matching, transferencia, autenticación, telemetría y limpieza de recursos. La búsqueda de candidatos de Apple Music usa iTunes Search API para reducir bloqueos 423/429; las operaciones autenticadas continúan usando Apple Music. No se observan tests automatizados ni configuración de empaquetado en el repositorio; la validación actual se realiza ejecutando la aplicación y revisando los flujos de UI/API.
 
 ## 📜 Licencia
 
-Este proyecto es para uso personal. El matching de canciones depende de las APIs de YouTube Music y Apple Music, que pueden tener sus propios términos de servicio.
-
----
+Proyecto para uso personal. El acceso a YouTube Music y Apple Music depende de sus APIs, sesiones y términos de servicio respectivos.
 
 ## 🙏 Agradecimientos
 
-- [Flet](https://flet.dev) — Framework de UI para Python
-- [ytmusicapi](https://github.com/sigma67/ytmusicapi) — Wrapper de la API de YouTube Music
-- [RapidFuzz](https://github.com/maxbachmann/RapidFuzz) — Matching fuzzy de alto rendimiento
+- [Flet](https://flet.dev) — framework de UI para Python.
+- [ytmusicapi](https://github.com/sigma67/ytmusicapi) — wrapper de YouTube Music.
+- [RapidFuzz](https://github.com/maxbachmann/RapidFuzz) — matching fuzzy de alto rendimiento.
