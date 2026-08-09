@@ -56,7 +56,6 @@ import asyncio
 import os
 import random
 from typing import Callable, Optional
-from urllib.parse import quote
 
 import requests
 from dotenv import load_dotenv
@@ -70,7 +69,7 @@ from engine.normalizer import (
 from engine.match import (
     _fuzzy_scores_triple, _fuzzy_flags_elastic, _ideal_pass_hunter,
     _joji_trikeyword_query, _duration_to_seconds,
-    validar_match, _yt_select_best,
+    _yt_select_best,
 )
 
 load_dotenv()
@@ -389,14 +388,12 @@ class MusicApiService:
         ct, ca = clean_metadata(name, artist)
         self._cb[platform].check_or_raise()
         print(f"[SEARCH] {platform} · '{name[:40]}' · breaker_ok")
-        if platform == "Apple Music":
-            await asyncio.sleep(random.uniform(2.0, 4.0))
-        else:
-            await asyncio.sleep(random.uniform(0.5, 1.5))
         if platform == "YouTube Music":
+            await asyncio.sleep(random.uniform(0.3, 0.8))
             return await self._yt_hunter_async(ct, ca, name, artist, local_duration_s)
         if platform == "Apple Music":
-            return await self._am_hunter_async(ct, ca, name, artist)
+            await asyncio.sleep(random.uniform(0.5, 1.0))
+            return await self._am_hunter_async(ct, ca, name, artist, local_duration_s)
         return SearchResult(None, False)
 
     async def search_with_fallback(
@@ -446,27 +443,21 @@ class MusicApiService:
         return SearchResult(chosen.get("videoId"), needs, low_confidence=low)
 
     def _yt_sync_search_round(self, query, orig_name, orig_artist, local_duration_s, cached_results=None):
-        results = cached_results if cached_results is not None else self._ytm.search(query, filter="songs", limit=8)
+        results = cached_results if cached_results is not None else self._yt_search_songs_sync(query)
         if not results:
-            return None
-        vid = _yt_select_best(orig_name, orig_artist, results, local_duration_s)
-        if not vid:
-            return None
-        chosen = next(
-            (r for r in results[:8] if r.get("videoId") == vid and validar_match(orig_name, orig_artist, r, local_duration_s)),
-            next((r for r in results if r.get("videoId") == vid), None)
-        )
+            return False, None
+        chosen = _yt_select_best(orig_name, orig_artist, results, local_duration_s)
         if not chosen:
-            return None
+            return True, None
         found_title = chosen.get("title", "")
         farts = ", ".join(a.get("name", "") for a in (chosen.get("artists") or []) if isinstance(a, dict))
         comb, tit, art = _fuzzy_scores_triple(orig_name, orig_artist, found_title, farts)
-        return chosen, comb, tit, art
+        return True, (chosen, comb, tit, art)
 
     def _yt_search_songs_sync(self, query: str) -> list:
         if not self._ytm:
             return []
-        r = self._ytm.search(query, filter="songs", limit=8)
+        r = self._ytm.search(query, filter="songs", limit=5)
         return list(r) if r else []
 
     async def _yt_hunter_async(self, ct, ca, orig_name, orig_artist, local_duration_s) -> SearchResult:
@@ -500,45 +491,45 @@ class MusicApiService:
         for query in strict_q:
             async with GLOBAL_API_SEMAPHORE:
                 try:
-                    results = await asyncio.to_thread(self._yt_search_songs_sync, query)
+                    had_results, pack = await asyncio.to_thread(
+                        self._yt_sync_search_round, query, orig_name, orig_artist, local_duration_s
+                    )
                 except Exception as exc:  # pylint: disable=broad-exception-caught
                     self.youtube_auth_error = str(exc)
                     if _is_ytm_unauthorized(exc):
                         raise RuntimeError("Sesion YouTube Music expirada (401).") from exc
                     raise
-            if results:
+            if had_results:
                 strict_empty_api = False
-            if not results:
+            if not pack:
                 continue
-            pack = await asyncio.to_thread(self._yt_sync_search_round, query, orig_name, orig_artist, local_duration_s, results)
             ideal = _process_pack(pack)
             if ideal is not None:
                 return ideal
-            if pack:
-                chosen, comb, _, _ = pack
-                if comb > best_comb:
-                    best_comb, best = comb, chosen
+            chosen, comb, _, _ = pack
+            if comb > best_comb:
+                best_comb, best = comb, chosen
 
         if strict_empty_api and raw_q:
             for query in raw_q:
                 async with GLOBAL_API_SEMAPHORE:
                     try:
-                        results = await asyncio.to_thread(self._yt_search_songs_sync, query)
+                        had_results, pack = await asyncio.to_thread(
+                            self._yt_sync_search_round, query, orig_name, orig_artist, local_duration_s
+                        )
                     except Exception as exc:  # pylint: disable=broad-exception-caught
                         self.youtube_auth_error = str(exc)
                         if _is_ytm_unauthorized(exc):
                             raise RuntimeError("Sesion YouTube Music expirada (401).") from exc
                         raise
-                if not results:
+                if not pack:
                     continue
-                pack = await asyncio.to_thread(self._yt_sync_search_round, query, orig_name, orig_artist, local_duration_s, results)
                 ideal = _process_pack(pack)
                 if ideal is not None:
                     return ideal
-                if pack:
-                    chosen, comb, _, _ = pack
-                    if comb > best_comb:
-                        best_comb, best = comb, chosen
+                chosen, comb, _, _ = pack
+                if comb > best_comb:
+                    best_comb, best = comb, chosen
 
         if best is None:
             return SearchResult(None, False)
@@ -563,57 +554,81 @@ class MusicApiService:
                 retry = max(retry, 120)
             raise RateLimitError("Apple Music", retry)
 
-    def _am_candidates_for_term(self, term: str) -> list[tuple[str, str, tuple[str, str]]]:
+    def _am_candidates_for_term(self, term: str) -> list[tuple[str, str, tuple[str, str, int, str]]]:
         """
-        Busca canciones en el catálogo vía iTunes Search API pública.
+        Busca canciones en el catálogo vía la API oficial de Apple Music
+        (api.music.apple.com), usando la sesión web (JWS + media-user-token).
 
-        No requiere autenticación ni consume el token web de sesión, lo que
-        evita los bloqueos 423/429 de amp-api. El trackId devuelto es el mismo
-        song ID del catálogo que usa la API de Apple Music para crear playlists.
+        A diferencia de iTunes Search API, no tiene el límite de ~20 llamadas/min
+        y devuelve el ISRC, que se incluye en la meta para poder cachear
+        búsquedas exactas por ISRC en el futuro. El trackId devuelto es el mismo
+        song ID del catálogo que usa la API para crear playlists.
         """
-        q   = quote(term)
-        url = (
-            f"https://itunes.apple.com/search?term={q}"
-            f"&entity=song&country={self._am_storefront}&limit=5"
+        r = self._http_session.get(
+            f"https://api.music.apple.com/v1/catalog/{self._am_storefront}/search",
+            params={"term": term, "types": "songs", "limit": 5},
+            timeout=10,
         )
-        r = self._http_session.get(url, timeout=10)
         self._am_check_status(r)
-        print(f"[AM-SEARCH] {r.status_code} · {url[:110]}")
-        songs = r.json().get("results", [])
+        print(f"[AM-SEARCH] {r.status_code} · term='{term[:40]}'")
+        songs = r.json().get("results", {}).get("songs", {}).get("data", [])
         print(f"[AM-SEARCH] {len(songs)} resultados para '{term[:40]}'")
         return [
             (
-                f"{s.get('trackName', '')} - {s.get('artistName', '')}",
-                str(s["trackId"]),
-                (s.get('trackName', ''), s.get('artistName', '')),
+                f"{a.get('name', '')} - {a.get('artistName', '')}",
+                str(s["id"]),
+                (
+                    a.get('name', ''),
+                    a.get('artistName', ''),
+                    int(a.get('durationInMillis') or 0),
+                    a.get('isrc', ''),
+                ),
             )
             for s in songs
-            if s.get("trackId")
+            if (a := s.get("attributes", {})) and s.get("id")
         ]
 
-    def _am_pick_catalog_best(self, song_title, artist_name, candidates) -> SearchResult:
+    def _am_select_best(self, song_title, artist_name, candidates, local_duration_s=None):
+        """Devuelve (tid, meta) del mejor candidato. Tie-break: duración más cercana."""
         if not candidates:
-            return SearchResult(None, False)
+            return None
         try:
             from rapidfuzz import fuzz as _fuzz  # pylint: disable=import-outside-toplevel
             ct, ca = clean_metadata(song_title, artist_name)
             ref = f"{ct} {ca}".lower()
-            best_id, best_score, best_meta = None, -1, ("", "")
-            for cand_str, tid, meta in candidates:
-                sc = int(_fuzz.token_sort_ratio(ref, cand_str.lower()))
-                if sc > best_score:
-                    best_score, best_id, best_meta = sc, tid, meta
+            scored = [
+                (int(_fuzz.token_sort_ratio(ref, cand_str.lower())), tid, meta)
+                for cand_str, tid, meta in candidates
+            ]
+            best_score = max(s[0] for s in scored)
+            pool = [s for s in scored if s[0] >= best_score - 5]  # margen como _yt_select_best
+            if local_duration_s is not None and len(pool) > 1:
+                local_ms = local_duration_s * 1000
+                def _delta(s):
+                    ms = s[2][2] if len(s[2]) >= 3 else 0
+                    return abs(ms - local_ms) if ms else float("inf")
+                pool = [min(pool, key=_delta)]
+            _, best_id, best_meta = pool[0]
         except ImportError:
             best_id   = candidates[0][1]
             best_meta = candidates[0][2]
-        if not best_id:
-            return SearchResult(None, False)
-        found_t, fa = best_meta
-        comb, tit, art = _fuzzy_scores_triple(song_title, artist_name, found_t, fa)
-        needs, low = _fuzzy_flags_elastic(comb, tit, art)
-        return SearchResult(best_id, needs, low_confidence=low)
+        if best_id is None:
+            return None
+        return best_id, best_meta
 
-    async def _am_hunter_async(self, ct, ca, orig_name, orig_artist) -> SearchResult:
+    def _am_pack_result(self, tid, meta, orig_name, orig_artist) -> SearchResult:
+        found_t, fa = meta[0], meta[1]
+        comb, tit, art = _fuzzy_scores_triple(orig_name, orig_artist, found_t, fa)
+        needs, low = _fuzzy_flags_elastic(comb, tit, art)
+        return SearchResult(tid, needs, low_confidence=low)
+
+    def _am_pick_catalog_best(self, song_title, artist_name, candidates, local_duration_s=None) -> SearchResult:
+        sel = self._am_select_best(song_title, artist_name, candidates, local_duration_s)
+        if not sel:
+            return SearchResult(None, False)
+        return self._am_pack_result(sel[0], sel[1], song_title, artist_name)
+
+    async def _am_hunter_async(self, ct, ca, orig_name, orig_artist, local_duration_s=None) -> SearchResult:
         terms: list[str] = []
         for t in (
             build_search_query(ct, ca),
@@ -623,18 +638,28 @@ class MusicApiService:
             t = t.strip()
             if t and t not in terms:
                 terms.append(t)
-        merged: list[tuple[str, str, tuple[str, str]]] = []
-        seen: set[str] = set()
+
+        best: Optional[tuple] = None
+        best_comb = -1
         for i, term in enumerate(terms):
             if i > 0:
-                await asyncio.sleep(random.uniform(1.5, 3.0))
+                await asyncio.sleep(random.uniform(0.3, 0.8))
             async with GLOBAL_API_SEMAPHORE:
                 chunk = await asyncio.to_thread(self._am_candidates_for_term, term)
-            for c in chunk:
-                if c[1] not in seen:
-                    seen.add(c[1])
-                    merged.append(c)
-        return self._am_pick_catalog_best(orig_name, orig_artist, merged)
+            if not chunk:
+                continue
+            sel = self._am_select_best(orig_name, orig_artist, chunk, local_duration_s)
+            if not sel:
+                continue
+            tid, meta = sel
+            comb, tit, art = _fuzzy_scores_triple(orig_name, orig_artist, meta[0], meta[1])
+            if _ideal_pass_hunter(comb, tit, art):
+                return self._am_pack_result(tid, meta, orig_name, orig_artist)
+            if comb > best_comb:
+                best_comb, best = comb, (tid, meta)
+        if best is None:
+            return SearchResult(None, False)
+        return self._am_pack_result(best[0], best[1], orig_name, orig_artist)
 
     # ── Playlist Creation ──────────────────────────────────────────────
 

@@ -312,11 +312,12 @@ def _yt_select_best(
     artist: str,
     results: list[dict],
     local_duration_s: Optional[int],
-) -> Optional[str]:
+) -> Optional[dict]:
     """
     Evalúa los primeros 3 resultados de ytmusicapi.search() y elige el mejor.
     Tie-breaker A: preferir resultType == 'song'.
     Tie-breaker B: duración más cercana al original (±5s).
+    Devuelve el dict elegido (ya validado) para evitar re-validar en el caller.
     """
     DURATION_MARGIN_S = 5
 
@@ -345,4 +346,4 @@ def _yt_select_best(
         if within_margin:
             pool = within_margin
 
-    return pool[0].get('videoId')
+    return pool[0]
