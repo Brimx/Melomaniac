@@ -556,7 +556,11 @@ class PlaylistManagerUI:
                                       tooltip="Apple Music · clic = validar sesión ahora",
                                       on_click=lambda _: asyncio.create_task(self._on_auth_probe("Apple Music")),
                                       **_ib_style)
-        self._auth_strip = ft.Row(controls=[self._auth_yt, self._auth_am],
+        self._auth_sp = ft.IconButton(icon=ft.Icons.MUSIC_NOTE, icon_color=TEXT_DIM,
+                                      tooltip="Spotify · clic = validar sesión ahora",
+                                      on_click=lambda _: asyncio.create_task(self._on_auth_probe("Spotify")),
+                                      **_ib_style)
+        self._auth_strip = ft.Row(controls=[self._auth_yt, self._auth_am, self._auth_sp],
                                   spacing=2, vertical_alignment=ft.CrossAxisAlignment.CENTER)
 
         self._select_all_chk = ft.Checkbox(
@@ -692,7 +696,7 @@ class PlaylistManagerUI:
             f"{n} canciones" if not s.search_query else f"{n} de {total} coincidencias"
         )
 
-        for plat, ic in (("YouTube Music", self._auth_yt), ("Apple Music", self._auth_am)):
+        for plat, ic in (("YouTube Music", self._auth_yt), ("Apple Music", self._auth_am), ("Spotify", self._auth_sp)):
             ok = s.auth_session_ok.get(plat, True)
             ic.icon_color = SUCCESS if ok else ERROR_COL
             hint = s.auth_session_hint.get(plat) or ""

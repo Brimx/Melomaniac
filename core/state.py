@@ -204,13 +204,13 @@ class AppState:
     """
 
     # Plataformas de streaming soportadas
-    PLATFORMS = ["Apple Music", "YouTube Music"]
+    PLATFORMS = ["Apple Music", "YouTube Music", "Spotify"]
     
     # Fuentes locales (no requieren autenticación)
     LOCAL_SOURCES: frozenset = frozenset({"Archivo Local", "Pegar Texto"})
     
     # Todas las opciones de fuente disponibles en la UI
-    SOURCE_OPTIONS = ["Apple Music", "YouTube Music", "Archivo Local", "Pegar Texto"]
+    SOURCE_OPTIONS = ["Apple Music", "YouTube Music", "Spotify", "Archivo Local", "Pegar Texto"]
 
     def __init__(self, service) -> None:
         """
@@ -689,6 +689,8 @@ class AppState:
             return await self.service.init_youtube()
         elif platform == "Apple Music":
             return await self.service.init_apple()
+        elif platform == "Spotify":
+            return await self.service.init_spotify()
         return False
 
     def toggle_select_all(self) -> None:

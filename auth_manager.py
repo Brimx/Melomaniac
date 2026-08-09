@@ -40,6 +40,7 @@ from dotenv import dotenv_values, load_dotenv, set_key
 BASE_DIR     = Path(__file__).parent
 BROWSER_JSON = BASE_DIR / "browser.json"
 ENV_FILE     = BASE_DIR / ".env"
+SPOTIFY_COOKIES_JSON = BASE_DIR / "spotify_cookies.json"
 
 # ── Fixed keys in browser.json ─────────────────────────────────────────
 BROWSER_JSON_FIXED: dict[str, str] = {
@@ -111,6 +112,33 @@ def read_env_values() -> dict[str, str]:
     return {k: raw.get(k, "") for k in ENV_KEYS_ALL}
 
 
+def read_spotify_cookies() -> dict:
+    """Return parsed spotify_cookies.json, or {} if missing/invalid."""
+    if not SPOTIFY_COOKIES_JSON.exists():
+        return {}
+    try:
+        return json.loads(SPOTIFY_COOKIES_JSON.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return {}
+
+
+def write_spotify_cookies(identifier: str, sp_dc: str, sp_key: str) -> None:
+    """
+    Write spotify_cookies.json with the dump format expected by
+    spotapi Login.from_cookies: {"identifier": ..., "cookies": {sp_dc, sp_key}}.
+    """
+    data = {
+        "identifier": identifier.strip(),
+        "cookies": {
+            "sp_dc":  sp_dc.strip(),
+            "sp_key": sp_key.strip(),
+        },
+    }
+    SPOTIFY_COOKIES_JSON.write_text(
+        json.dumps(data, indent=4, ensure_ascii=False), encoding="utf-8"
+    )
+
+
 def write_env_values(values: dict[str, str]) -> None:
     """
     Upsert keys in .env, maintaining the required comment headers and order.
@@ -138,6 +166,7 @@ class AuthFailureCode:
     """Códigos de sesión para UI / diagnóstico (Global Auth Check)."""
     YT_EXPIRED      = "YT_EXPIRED"
     APPLE_EXPIRED   = "APPLE_EXPIRED"
+    SPOTIFY_EXPIRED = "SPOTIFY_EXPIRED"
 
 
 class PreFlightResult:
@@ -237,6 +266,38 @@ def _preflight_apple() -> PreFlightResult:
     return r
 
 
+def _preflight_spotify() -> PreFlightResult:
+    r = PreFlightResult("Spotify")
+    sc = read_spotify_cookies()
+    cookies = sc.get("cookies", {})
+    if isinstance(cookies, str):
+        cookies = {}
+    if not sc.get("identifier") or not cookies.get("sp_dc") or not cookies.get("sp_key"):
+        r.error   = "spotify_cookies.json: falta identifier, sp_dc o sp_key"
+        r.expired = True
+        return r
+    try:
+        from spotapi import Login, Config  # pylint: disable=import-outside-toplevel
+        from spotapi.utils.logger import NoopLogger  # pylint: disable=import-outside-toplevel
+        cfg   = Config(logger=NoopLogger())
+        login = Login.from_cookies(sc, cfg)
+        if not login.logged_in:
+            r.error   = "cookies inválidas (login falló)"
+            r.expired = True
+            return r
+        r.ok = True
+    except Exception as exc:  # pylint: disable=broad-exception-caught
+        msg    = str(exc).lower()
+        r.code = AuthFailureCode.SPOTIFY_EXPIRED
+        r.expired = True
+        r.error = (
+            "401 — cookies expiradas o inválidas"
+            if any(k in msg for k in ("401", "unauthorized", "invalid", "cookie", "login"))
+            else str(exc)[:200]
+        )
+    return r
+
+
 def auth_failure_tooltip(r: PreFlightResult) -> str:
     """Texto para Tooltip en la barra superior (sesión caída)."""
     if r.ok:
@@ -244,6 +305,7 @@ def auth_failure_tooltip(r: PreFlightResult) -> str:
     hints = {
         "YouTube Music": "browser.json: Cookie + Authorization (SAPISIDHASH)",
         "Apple Music":   ".env: APPLE_AUTH_BEARER + APPLE_MUSIC_USER_TOKEN",
+        "Spotify":       "spotify_cookies.json: identifier + sp_dc + sp_key",
     }
     tag = f"[{r.code}] " if r.code else ""
     return f"{tag}{hints.get(r.platform, r.platform)} · {r.error}"[:500]
@@ -252,15 +314,16 @@ def auth_failure_tooltip(r: PreFlightResult) -> str:
 async def run_preflight() -> list[PreFlightResult]:
     """
     Run all pre-flight checks in parallel using asyncio.gather().
-    Returns [yt_result, am_result].
+    Returns [yt_result, am_result, sp_result].
     """
     results = await asyncio.gather(
         asyncio.to_thread(_preflight_youtube),
         asyncio.to_thread(_preflight_apple),
+        asyncio.to_thread(_preflight_spotify),
         return_exceptions=True,
     )
     out: list[PreFlightResult] = []
-    platforms = ["YouTube Music", "Apple Music"]
+    platforms = ["YouTube Music", "Apple Music", "Spotify"]
     for plat, res in zip(platforms, results):
         if isinstance(res, Exception):
             r       = PreFlightResult(plat)
@@ -290,6 +353,7 @@ class ConfigWizard:
     _PLATFORM_INDEX = {
         "YouTube Music": 0,
         "Apple Music":   1,
+        "Spotify":       2,
     }
 
     def __init__(
@@ -316,6 +380,11 @@ class ConfigWizard:
 
         # Apple Music field refs (editable)
         self._am_fields: dict[str, ft.TextField] = {}
+
+        # Spotify field refs (editable)
+        self._sp_identifier: Optional[ft.TextField] = None
+        self._sp_dc:         Optional[ft.TextField] = None
+        self._sp_key:        Optional[ft.TextField] = None
 
     # ── Dialog lifecycle ───────────────────────────────────────────────
 
@@ -346,7 +415,7 @@ class ConfigWizard:
         if initial_platform and initial_platform in self._PLATFORM_INDEX:
             return self._PLATFORM_INDEX[initial_platform]
         if failed_platforms:
-            order = ["YouTube Music", "Apple Music"]
+            order = ["YouTube Music", "Apple Music", "Spotify"]
             return next(
                 (self._PLATFORM_INDEX[p] for p in order if p in failed_platforms), 0
             )
@@ -359,7 +428,7 @@ class ConfigWizard:
         self._active_tab_idx = idx
         if self._panel_holder is not None:
             self._panel_holder.content = self._tab_panels[idx]
-        tab_order = ["YouTube Music", "Apple Music"]
+        tab_order = ["YouTube Music", "Apple Music", "Spotify"]
         for i, btn in enumerate(self._tab_buttons):
             is_warn      = tab_order[i] in self._failed_platforms
             col_active   = _WARNING if is_warn else _TEXT_PRIMARY
@@ -483,6 +552,7 @@ class ConfigWizard:
         panels = [
             self._panel_youtube(warn="YouTube Music" in self._failed_platforms),
             self._panel_apple(warn="Apple Music" in self._failed_platforms),
+            self._panel_spotify(warn="Spotify" in self._failed_platforms),
         ]
         self._tab_panels   = panels
         self._panel_holder = ft.Container(content=panels[_initial_idx], expand=True)
@@ -490,6 +560,7 @@ class ConfigWizard:
         TAB_LABELS = [
             ("YouTube Music", ft.Icons.MUSIC_VIDEO,  ft.Icons.WARNING_AMBER_ROUNDED, "YouTube Music"),
             ("Apple Music",   ft.Icons.APPLE,        ft.Icons.WARNING_AMBER_ROUNDED, "Apple Music"),
+            ("Spotify",       ft.Icons.MUSIC_NOTE,   ft.Icons.WARNING_AMBER_ROUNDED, "Spotify"),
         ]
         self._tab_buttons = [
             self._make_tab_btn(i, lbl, ico_ok, ico_warn, plat)
@@ -722,7 +793,70 @@ class ConfigWizard:
             expand=True,
         )
 
-    # ── Save logic (YouTube Music + Apple Music only) ──────────────────
+    # ── Tab 2: Spotify (editable) ─────────────────────────────────────
+
+    def _panel_spotify(self, warn: bool = False) -> ft.Container:
+        sc = read_spotify_cookies()
+        cookies = sc.get("cookies", {})
+        if isinstance(cookies, str):
+            cookies = {}
+        self._sp_identifier = ft.TextField(
+            label="Identifier (email o username)",
+            value=sc.get("identifier", ""),
+            **self._field_style(),
+        )
+        self._sp_dc = ft.TextField(
+            label="sp_dc",
+            value=cookies.get("sp_dc", ""),
+            password=True, can_reveal_password=True,
+            **self._field_style(),
+        )
+        self._sp_key = ft.TextField(
+            label="sp_key",
+            value=cookies.get("sp_key", ""),
+            password=True, can_reveal_password=True,
+            **self._field_style(),
+        )
+        hint = (
+            self._warn_banner(
+                "Cookies expiradas. Actualiza identifier, sp_dc y sp_key desde "
+                "open.spotify.com → DevTools → Application."
+            ) if warn else ft.Container(height=0)
+        )
+        instructions = self._instructions_box([
+            ("Abre Spotify Web y pulsa F12",
+             "Ve a open.spotify.com e inicia sesión."),
+            ("Ve a Application → Cookies",
+             "En DevTools abre la pestaña Application → Storage → Cookies "
+             "→ https://open.spotify.com."),
+            ("Copia sp_dc y sp_key",
+             "Busca las cookies sp_dc y sp_key y copia sus valores en los "
+             "campos correspondientes."),
+            ("Pega el identifier",
+             "Escribe tu email o username de Spotify en el campo identifier."),
+        ])
+        return ft.Container(
+            content=ft.Column(
+                controls=[
+                    hint,
+                    instructions,
+                    self._section("SPOTIFY_COOKIES.JSON — CAMPOS VARIABLES"),
+                    self._sp_identifier,
+                    self._sp_dc,
+                    self._sp_key,
+                    self._fixed_note(
+                        "Solo se necesitan cookies para crear playlists; "
+                        "la búsqueda y el fetch de playlists públicas funcionan sin login."
+                    ),
+                ],
+                spacing=10,
+                scroll=ft.ScrollMode.AUTO,
+            ),
+            padding=ft.Padding.all(12),
+            expand=True,
+        )
+
+    # ── Save logic (YouTube Music + Apple Music + Spotify) ─────────────
 
     def _apply_save(self) -> None:
         # browser.json — YouTube Music
@@ -735,6 +869,14 @@ class ConfigWizard:
         am_vals = {k: tf.value or "" for k, tf in self._am_fields.items()}
         if am_vals:
             write_env_values(am_vals)
+        # spotify_cookies.json — Spotify
+        if getattr(self, "_sp_identifier", None) and getattr(self, "_sp_dc", None) \
+                and getattr(self, "_sp_key", None):
+            write_spotify_cookies(
+                self._sp_identifier.value or "",
+                self._sp_dc.value  or "",
+                self._sp_key.value or "",
+            )
 
     # ── UI helpers ─────────────────────────────────────────────────────
 
@@ -894,6 +1036,8 @@ class AuthManager:
                     tasks.append(self.service.init_youtube())
                 elif r.platform == "Apple Music":
                     tasks.append(self.service.init_apple())
+                elif r.platform == "Spotify":
+                    tasks.append(self.service.init_spotify())
         if tasks:
             await asyncio.gather(*tasks, return_exceptions=True)
 
@@ -932,9 +1076,10 @@ class AuthManager:
         init_results = await asyncio.gather(
             self.service.init_youtube(),
             self.service.init_apple(),
+            self.service.init_spotify(),
             return_exceptions=True,
         )
-        for plat, res in zip(["YouTube Music", "Apple Music"], init_results):
+        for plat, res in zip(["YouTube Music", "Apple Music", "Spotify"], init_results):
             if res is True:
                 self.state_log_fn(f"[SUCCESS] ✓ {plat}: reconectado")
             else:

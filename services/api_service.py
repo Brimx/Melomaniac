@@ -69,7 +69,7 @@ from engine.normalizer import (
 from engine.match import (
     _fuzzy_scores_triple, _fuzzy_flags_elastic, _ideal_pass_hunter,
     _joji_trikeyword_query, _duration_to_seconds,
-    _yt_select_best,
+    _yt_select_best, score_spotify_match,
 )
 
 load_dotenv()
@@ -83,6 +83,13 @@ try:
     HAS_YTMUSIC = True
 except ImportError:
     HAS_YTMUSIC = False
+
+try:
+    from spotapi import Song, Login, PublicPlaylist, PrivatePlaylist, Config
+    from spotapi.utils.logger import NoopLogger
+    HAS_SPOTIFY = True
+except ImportError:
+    HAS_SPOTIFY = False
 
 # ══════════════════════════════════════════════════════════════════════
 # CONSTANTES DE CONFIGURACIÓN
@@ -103,6 +110,9 @@ _YTM_401_MSG = (
     "[ERROR] YouTube Music: la sesion de browser.json ha expirado (401). "
     "Renueva Cookie + Authorization desde el navegador."
 )
+
+# Archivo de cookies de Spotify (patrón browser.json)
+SPOTIFY_COOKIES_JSON = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "spotify_cookies.json")
 
 
 def _is_ytm_unauthorized(exc: BaseException) -> bool:
@@ -182,9 +192,12 @@ class MusicApiService:
         self._ytm = None
         self._am_headers:    dict = {}
         self._am_storefront: str  = "us"
+        self._sp_login = None
+        self._sp_cfg   = None
         self._search_cache: dict[str, SearchResult] = {}
         self._shutdown_cleaned: bool = False
         self.youtube_auth_error: str = ""
+        self.spotify_auth_error: str = ""
         self.auth_manager = None
 
         # ──────────────────────────────────────────────────────────────
@@ -285,6 +298,41 @@ class MusicApiService:
             return False
 
 
+    # ── Spotify Auth ───────────────────────────────────────────────────
+
+    async def init_spotify(self) -> bool:
+        return await asyncio.to_thread(self._sync_init_spotify)
+
+    def _sync_init_spotify(self) -> bool:
+        if not HAS_SPOTIFY:
+            self.spotify_auth_error = "spotapi no instalado"
+            return False
+        path = os.path.normpath(SPOTIFY_COOKIES_JSON)
+        if not os.path.exists(path):
+            self.spotify_auth_error = "missing spotify_cookies.json"
+            return False
+        try:
+            import json  # pylint: disable=import-outside-toplevel
+            dump = json.loads(open(path, encoding="utf-8").read())
+            if not dump.get("identifier") or not dump.get("cookies"):
+                self.spotify_auth_error = "spotify_cookies.json: falta identifier o cookies"
+                return False
+            cfg = Config(logger=NoopLogger())
+            login = Login.from_cookies(dump, cfg)
+            if not login.logged_in:
+                self.spotify_auth_error = "cookies inválidas (login falló)"
+                return False
+            self._sp_login = login
+            self._sp_cfg   = cfg
+            self.spotify_auth_error = ""
+            return True
+        except Exception as exc:  # pylint: disable=broad-exception-caught
+            self.spotify_auth_error = str(exc)
+            print(f"[Spotify] init failed: {exc}")
+            self._sp_login = None
+            return False
+
+
     # ── Playlist Fetching ──────────────────────────────────────────────
 
     async def fetch_playlist(
@@ -298,6 +346,8 @@ class MusicApiService:
             return await asyncio.to_thread(self._sync_fetch_youtube, playlist_id, progress_cb)
         elif platform == "Apple Music":
             return await asyncio.to_thread(self._sync_fetch_apple, playlist_id, progress_cb)
+        elif platform == "Spotify":
+            return await asyncio.to_thread(self._sync_fetch_spotify, playlist_id, progress_cb)
         raise ValueError(f"Unknown platform: {platform}")
 
     def _sync_fetch_youtube(self, pid: str, cb) -> tuple[str, list[Track]]:
@@ -373,6 +423,55 @@ class MusicApiService:
                 cb(len(tracks), 0, name)
         return name, tracks
 
+    def _sync_fetch_spotify(self, pid: str, cb) -> tuple[str, list[Track]]:
+        if not HAS_SPOTIFY:
+            raise RuntimeError("SpotAPI no disponible. Instala spotapi.")
+        if not self._sp_cfg:
+            self._sync_init_spotify()
+        if not self._sp_cfg:
+            self._sp_cfg = Config(logger=NoopLogger())
+        pl = PublicPlaylist(pid, client=self._sp_cfg.client)
+        r  = pl.get_playlist_info(limit=100)
+        d  = r["data"]["playlistV2"]
+        name = d.get("name", "Spotify Playlist")
+        total = d.get("content", {}).get("totalCount", 0)
+        tracks: list[Track] = []
+        offset = 0
+        while True:
+            items = d.get("content", {}).get("items", [])
+            for it in items:
+                t = it.get("itemV2", {}).get("data", {})
+                if not t or t.get("__typename") != "Track":
+                    continue
+                uri = t.get("uri", "")
+                tid = uri.split(":")[-1] if uri else ""
+                if not tid:
+                    continue
+                ms = (t.get("trackDuration") or {}).get("totalMilliseconds", 0)
+                artists = ", ".join(
+                    a["profile"]["name"] for a in (t.get("artists") or {}).get("items", [])
+                    if a.get("profile", {}).get("name")
+                )
+                art_sources = ((t.get("albumOfTrack") or {}).get("coverArt") or {}).get("sources", [])
+                img_url = ""
+                if art_sources:
+                    img_url = min(art_sources, key=lambda s: s.get("width", 9999)).get("url", "")
+                tracks.append(Track(
+                    id=tid, name=t.get("name", "Unknown"),
+                    artist=artists or "Unknown",
+                    album=(t.get("albumOfTrack") or {}).get("name", "Unknown"),
+                    duration=f"{int(ms/60000)}:{int((ms/1000)%60):02d}" if ms else "0:00",
+                    img_url=img_url, platform="Spotify",
+                ))
+            offset += len(items)
+            if offset >= total or not items:
+                break
+            r = pl.get_playlist_info(limit=100, offset=offset)
+            d = r["data"]["playlistV2"]
+            if cb:
+                cb(len(tracks), total, name)
+        return name, tracks
+
 
     # ── Search ─────────────────────────────────────────────────────────
 
@@ -394,6 +493,13 @@ class MusicApiService:
         if platform == "Apple Music":
             await asyncio.sleep(random.uniform(0.5, 1.0))
             return await self._am_hunter_async(ct, ca, name, artist, local_duration_s)
+        if platform == "Spotify":
+            await asyncio.sleep(random.uniform(0.5, 1.0))
+            return await self._sp_hunter_async(
+                ct, ca, name, artist,
+                local_duration_ms=local_duration_ms,
+                local_is_explicit=local_is_explicit,
+            )
         return SearchResult(None, False)
 
     async def search_with_fallback(
@@ -661,6 +767,108 @@ class MusicApiService:
             return SearchResult(None, False)
         return self._am_pack_result(best[0], best[1], orig_name, orig_artist)
 
+    # ── Spotify Hunter ─────────────────────────────────────────────────
+
+    def _sp_search_items(self, q: str, limit: int = 5) -> list:
+        if not HAS_SPOTIFY or not self._sp_cfg:
+            return []
+        r = Song(client=self._sp_cfg.client).query_songs(q, limit=limit)
+        try:
+            return r["data"]["searchV2"]["tracksV2"]["items"]
+        except (KeyError, TypeError):
+            return []
+
+    def _sp_pick_best_item(self, items, orig_name, orig_artist,
+                           local_duration_ms=0, local_is_explicit=False):
+        """Devuelve (item, comb, tit, art) del mejor candidato por score."""
+        if not items:
+            return None, 0, 0, 0
+        scored = []
+        for it in items:
+            d = it.get("item", {}).get("data", {})
+            if not d or not d.get("id"):
+                continue
+            found_title = d.get("name", "")
+            fa = ", ".join(
+                a["profile"]["name"] for a in (d.get("artists") or {}).get("items", [])
+                if a.get("profile", {}).get("name")
+            )
+            sp_dur_ms   = (d.get("duration") or {}).get("totalMilliseconds", 0) or 0
+            sp_explicit = bool(d.get("explicit")) if d.get("explicit") is not None else False
+            sc = score_spotify_match(
+                orig_name, orig_artist, local_duration_ms, local_is_explicit,
+                found_title, fa, sp_dur_ms, sp_explicit,
+            )
+            comb, tit, art = _fuzzy_scores_triple(orig_name, orig_artist, found_title, fa)
+            scored.append((d, sc, comb, tit, art))
+        if not scored:
+            return None, 0, 0, 0
+        scored.sort(key=lambda x: -x[1])
+        best_d, _sc, comb, tit, art = scored[0]
+        return best_d, comb, tit, art
+
+    def _sp_build_result(self, d, comb, tit, art) -> SearchResult:
+        needs, low = _fuzzy_flags_elastic(comb, tit, art)
+        return SearchResult(d.get("id"), needs, low_confidence=low)
+
+    async def _sp_hunter_async(self, ct, ca, orig_name, orig_artist,
+                               local_duration_ms=0, local_is_explicit=False) -> SearchResult:
+        if not HAS_SPOTIFY:
+            return SearchResult(None, False)
+        if not self._sp_cfg:
+            await asyncio.to_thread(self._sync_init_spotify)
+        if not self._sp_cfg:
+            self._sp_cfg = Config(logger=NoopLogger())
+
+        nt = _normalize_title(orig_name)
+        na = _normalize_title(orig_artist)
+        queries_structured: list[str] = []
+        for q in (build_search_query(ct, ca), build_search_query(nt, na), nt or ct):
+            q = (q or "").strip()
+            if q and q not in queries_structured:
+                queries_structured.append(q)
+
+        best: Optional[tuple] = None
+        best_comb = -1
+
+        for q in queries_structured:
+            async with GLOBAL_API_SEMAPHORE:
+                try:
+                    items = await asyncio.to_thread(self._sp_search_items, q)
+                except Exception as exc:  # pylint: disable=broad-exception-caught
+                    self.spotify_auth_error = str(exc)
+                    raise
+            if not items:
+                continue
+            picked, comb, tit, art = self._sp_pick_best_item(
+                items, orig_name, orig_artist, local_duration_ms, local_is_explicit
+            )
+            if picked is None:
+                continue
+            if comb >= FUZZY_IDEAL or _ideal_pass_hunter(comb, tit, art):
+                return self._sp_build_result(picked, comb, tit, art)
+            if comb > best_comb:
+                best_comb, best = comb, (picked, comb, tit, art)
+
+        if best_comb < 60:
+            query_plain = build_search_query(orig_name.strip(), orig_artist.strip())
+            if query_plain and query_plain not in queries_structured:
+                async with GLOBAL_API_SEMAPHORE:
+                    items = await asyncio.to_thread(self._sp_search_items, query_plain)
+                if items:
+                    picked, comb, tit, art = self._sp_pick_best_item(
+                        items, orig_name, orig_artist, local_duration_ms, local_is_explicit
+                    )
+                    if picked is not None:
+                        if comb >= FUZZY_IDEAL or _ideal_pass_hunter(comb, tit, art):
+                            return self._sp_build_result(picked, comb, tit, art)
+                        if comb > best_comb:
+                            best = (picked, comb, tit, art)
+
+        if best is None:
+            return SearchResult(None, False)
+        return self._sp_build_result(*best)
+
     # ── Playlist Creation ──────────────────────────────────────────────
 
     async def create_playlist(self, platform: str, title: str, track_ids: list[str]) -> tuple[bool, str, int, list[str]]:
@@ -669,6 +877,8 @@ class MusicApiService:
             return await asyncio.to_thread(self._yt_create, title, track_ids)
         elif platform == "Apple Music":
             return await asyncio.to_thread(self._am_create, title, track_ids)
+        elif platform == "Spotify":
+            return await asyncio.to_thread(self._sp_create, title, track_ids)
         return False, "Platform not supported", 0, []
 
     def _yt_create(self, title: str, ids: list[str]) -> tuple[bool, str, int, list[str]]:
@@ -699,3 +909,19 @@ class MusicApiService:
         self._am_check_status(r)
         r.raise_for_status()
         return True, "Playlist creada", len(ids), []
+
+    def _sp_create(self, title: str, ids: list[str]) -> tuple[bool, str, int, list[str]]:
+        if not HAS_SPOTIFY:
+            return False, "SpotAPI no disponible", 0, []
+        if not self._sp_login:
+            self._sync_init_spotify()
+        if not self._sp_login:
+            return False, "Spotify no disponible. Comprueba spotify_cookies.json.", 0, []
+        try:
+            pl = PrivatePlaylist(self._sp_login)
+            pl_id = pl.create_playlist(title)
+            Song(pl).add_songs_to_playlist(ids)
+            return True, pl_id, len(ids), []
+        except Exception as exc:  # pylint: disable=broad-exception-caught
+            self.spotify_auth_error = str(exc)
+            raise

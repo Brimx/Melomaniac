@@ -229,7 +229,50 @@ def _fuzzy_flags(score: int) -> tuple[bool, bool]:
     return _fuzzy_flags_elastic(score, score, score)
 
 
+def score_spotify_match(
+    local_title: str,
+    local_artist: str,
+    local_duration_ms: int,
+    local_is_explicit: bool,
+    sp_title: str,
+    sp_artist: str,
+    sp_duration_ms: int,
+    sp_is_explicit: bool,
+) -> int:
+    """
+    Sistema de puntuacion base 100 para evaluar un resultado de Spotify
+    contra un track local.
 
+    Distribucion de pesos:
+        60 pts - Fuzzy matching (40 titulo + 20 artista)
+        30 pts - Delta de duracion
+        10 pts - Bonus de metadata (explicit flag)
+
+    Returns:
+        Score entero 0-100. Valores negativos se clampean a 0.
+    """
+    if HAS_RAPIDFUZZ:
+        ct, ca = clean_metadata(local_title, local_artist)
+        ft, fa = clean_metadata(sp_title, sp_artist)
+        title_ratio  = _fuzz.token_sort_ratio(ct.lower(), ft.lower())
+        artist_ratio = _fuzz.token_sort_ratio(ca.lower(), fa.lower())
+    else:
+        title_ratio  = SequenceMatcher(None, local_title.lower(), sp_title.lower()).ratio() * 100
+        artist_ratio = SequenceMatcher(None, local_artist.lower(), sp_artist.lower()).ratio() * 100
+
+    fuzzy_pts = (title_ratio / 100.0) * 40 + (artist_ratio / 100.0) * 20
+
+    delta_ms = abs(local_duration_ms - sp_duration_ms)
+    if delta_ms <= 2000:
+        duration_pts = 30
+    elif delta_ms <= 5000:
+        duration_pts = 15
+    else:
+        duration_pts = -20
+
+    metadata_pts = 10 if (local_is_explicit == sp_is_explicit) else 0
+
+    return max(0, int(fuzzy_pts + duration_pts + metadata_pts))
 
 
 def _joji_trikeyword_query(title: str, artist: str) -> str:
