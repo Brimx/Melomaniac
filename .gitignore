@@ -8,6 +8,7 @@ __pycache__/
 # Secretos y Configuración (CRÍTICO)
 .env
 browser.json
+spotify_cookies.json
 
 # Logs y temporales
 *.log
