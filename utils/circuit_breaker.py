@@ -146,7 +146,12 @@ class CircuitBreaker:
             que cierra el circuito automáticamente tras el cooldown,
             sin requerir intervención manual del usuario.
         """
-        wait         = retry_after or self.default_cooldown
+        wait = retry_after or self.default_cooldown
+        # Si el circuito ya está abierto con una espera mayor o igual,
+        # no reiniciar el temporizador (evita que un 429 posterior con
+        # Retry-After más corto acorte la ventana de cooldown).
+        if self.is_open and wait <= self.remaining:
+            return
         self.is_open = True
         self._until  = time.monotonic() + wait
         self._notify(True, wait)

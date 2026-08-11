@@ -86,42 +86,36 @@ async def _search_with_exponential_rl_backoff(
     local_duration_ms: int = 0,
     local_is_explicit: bool = False,
     log: Optional[Callable[[str], None]] = None,
-    backoff_steps: int = 10,
+    backoff_steps: int = 1,
 ) -> SearchResult:
     """
-    Reintenta búsqueda con backoff exponencial ante rate limiting (HTTP 429).
-    
-    Implementa estrategia de reintento resiliente que duplica el tiempo de
-    espera en cada intento, permitiendo que la API se recupere del throttling
-    sin bombardearla con peticiones inmediatas.
-    
+    Búsqueda con manejo de rate limiting: abre el breaker y falla rápido.
+
+    Estrategia (fail-fast):
+        - Ante un 429 se dispara el circuit breaker de la plataforma
+          (con su ventana de espera) y la búsqueda se aborta de inmediato.
+        - No se martillea la API con reintentos exponenciales: el breaker
+          ya serializa el "silencio" posterior a través de check_or_raise()
+          en llamadas subsiguientes.
+
     Args:
         service: Instancia de MusicApiService.
         platform: Plataforma destino ("YouTube Music", "Apple Music").
         name: Título de la canción.
         artist: Nombre del artista.
         local_duration_s: Duración en segundos para matching (opcional).
-        log: Función de logging para registrar reintentos (opcional).
-        backoff_steps: Número máximo de reintentos (default: 10).
-    
+        log: Función de logging para registrar eventos (opcional).
+        backoff_steps: Pasos de reintento (default: 1 = fail-fast).
+
     Returns:
         SearchResult con el track encontrado o flags de revisión.
-    
+
     Raises:
-        RateLimitError: Si se agotan todos los reintentos.
-    
-    Example:
-        >>> result = await _search_with_exponential_rl_backoff(
-        ...     service, "Apple Music", "Bohemian Rhapsody", "Queen",
-        ...     log=lambda msg: print(msg)
-        ... )
-    
+        RateLimitError: Si un 429 ocurre (breaker abierto).
+
     Note:
-        El backoff exponencial es crítico para evitar ban permanente de APIs.
-        Secuencia típica: 1s → 2s → 4s → 8s → 16s → 32s → 64s → 128s → 256s → 512s
-        
-        Esto da tiempo suficiente para que el rate limit se resetee sin
-        desperdiciar reintentos en ventanas de throttling activo.
+        El breaker abierto hace que search_track()/check_or_raise() fallen
+        inmediatamente sin peticiones extra hasta que expire su ventana.
     """
     rl_backoff: Optional[float] = None
     for step in range(backoff_steps):
@@ -135,15 +129,17 @@ async def _search_with_exponential_rl_backoff(
             ra = max(1, int(e.retry_after))
             if rl_backoff is None:
                 rl_backoff = float(ra)
+            cb = getattr(service, "_cb", {}).get(platform)
+            if cb is not None:
+                cb.trip(ra)
             if log:
                 log(
-                    f"[WARN] 429 {platform}: esperando {int(rl_backoff)}s "
-                    f"(backoff · {step + 1}/{backoff_steps})"
+                    f"[WARN] 429 {platform}: abriendo breaker ~{ra}s · "
+                    f"búsqueda abortada para '{name}'"
                 )
-            await asyncio.sleep(rl_backoff)
-            rl_backoff *= 2.0
+            raise
     if log:
-        log(f"[ERROR] 429: agotados reintentos en {platform}")
+        log(f"[ERROR] 429: reintentos agotados en {platform}")
     raise RateLimitError(platform, int(rl_backoff or 60))
 
 
@@ -373,6 +369,11 @@ class AppState:
         self.playlist_name = "Cargando metadatos…"
         self.lazy_scan_running = False
         self.lazy_scan_done    = False
+        # Nueva carga: descarta el estado de transferencia anterior para
+        # que la barra de progreso desaparezca al ingresar otra playlist
+        self.transfer_state    = TransferState.IDLE
+        self.transfer_progress = 0
+        self.transfer_total    = 0
         self.notify()
 
         def _progress(_fetched: int, total: int, name: str) -> None:
@@ -472,7 +473,7 @@ class AppState:
         completed_count = 0
         BATCH_SIZE      = 10
         batch_pending   = 0
-        TRANSFER_CONCURRENCY = 3
+        TRANSFER_CONCURRENCY = 2 if self.destination == "Apple Music" else 3
         transfer_sem = asyncio.Semaphore(TRANSFER_CONCURRENCY)
 
         async def _transfer_one(track: Track) -> Optional[str]:

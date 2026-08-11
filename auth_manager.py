@@ -241,6 +241,13 @@ def _preflight_apple() -> PreFlightResult:
             r.code    = AuthFailureCode.APPLE_EXPIRED
             r.error   = "401 — Apple Music token expired"
             return r
+
+        # ── Diagnóstico detallado de ban (403) ────────────────────────
+        if resp.status_code == 403:
+            r.code  = AuthFailureCode.APPLE_EXPIRED
+            r.error = _apple_403_diagnostic(resp, hdrs)
+            return r
+
         if resp.status_code != 200:
             r.error = f"Unexpected HTTP {resp.status_code}"
             return r
@@ -264,6 +271,85 @@ def _preflight_apple() -> PreFlightResult:
     except requests.RequestException as exc:
         r.error = str(exc)
     return r
+
+
+def _apple_403_diagnostic(resp, hdrs: dict) -> str:
+    """
+    Diagnóstico completo de un 403 de amp-api: identifica si el token
+    está marcado (ban a nivel cuenta/token) o si la IP está bloqueada.
+
+    Pruebas de contraste:
+        1. Cuerpo del error (code/title) + Retry-After.
+        2. Catálogo público (api.music.apple.com) con el MISMO token:
+           si responde 200, el token es válido y el ban es solo de amp-api.
+        3. Storefront con token FALSO: si responde 401 (no 403), la IP
+           está limpia (el 403 es específico del token real).
+    """
+    err_code = err_title = ""
+    try:
+        errs = resp.json().get("errors", [])
+        if errs:
+            err_code, err_title = errs[0].get("code", ""), errs[0].get("title", "")
+    except Exception:  # pylint: disable=broad-exception-caught
+        pass
+    ra = (resp.headers.get("Retry-After") or "").strip()
+    lines = [
+        f"403 — amp-api bloquea este token",
+        f"Error: {err_code} {err_title}".strip(),
+        f"Retry-After: {ra}" if ra else "Retry-After: ausente (sin ETA de desban)",
+    ]
+    try:
+        cat = requests.get(
+            "https://api.music.apple.com/v1/catalog/us/search",
+            params={"term": "a", "types": "songs", "limit": 1},
+            headers=hdrs, timeout=8,
+        )
+        lines.append(
+            f"Contraste catálogo (mismo token): HTTP {cat.status_code}"
+            " → token válido, ban solo en amp-api"
+            if cat.status_code == 200 else
+            f"Contraste catálogo (mismo token): HTTP {cat.status_code}"
+        )
+    except Exception as exc:  # pylint: disable=broad-exception-caught
+        lines.append(f"Contraste catálogo: error {str(exc)[:80]}")
+    try:
+        fake_hdrs = dict(hdrs)
+        fake_hdrs["media-user-token"] = "FAKE"
+        fake = requests.get(
+            "https://amp-api.music.apple.com/v1/me/storefront",
+            headers=fake_hdrs, timeout=8,
+        )
+        if fake.status_code == 401:
+            lines.append(
+                f"Storefront con token falso: HTTP {fake.status_code}"
+                " → IP limpia (ban es del token, no de la IP)"
+            )
+            ip_blocked = False
+        elif fake.status_code == 403:
+            lines.append(
+                f"Storefront con token falso: HTTP {fake.status_code}"
+                " → IP TAMBIÉN bloqueada en amp-api (ban escalado a IP)"
+            )
+            ip_blocked = True
+        else:
+            lines.append(f"Storefront con token falso: HTTP {fake.status_code}")
+            ip_blocked = fake.status_code == 403
+    except Exception as exc:  # pylint: disable=broad-exception-caught
+        lines.append(f"Token falso: error {str(exc)[:80]}")
+        ip_blocked = False
+    if ip_blocked:
+        lines.append(
+            "Conclusión: token Y IP marcados en amp-api. Un Apple ID nuevo "
+            "no bastará: hay que cambiar de IP (VPN o hotspot móvil) y "
+            "generar un media-user-token nuevo desde esa red."
+        )
+    else:
+        lines.append(
+            "Conclusión: media-user-token marcado en amp-api. "
+            "El JWT es determinístico por cuenta: reloguear/cookies/incógnito "
+            "dan el mismo valor. Probar otro Apple ID o IP distinta (hotspot)."
+        )
+    return " | ".join(lines)
 
 
 def _preflight_spotify() -> PreFlightResult:

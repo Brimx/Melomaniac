@@ -259,7 +259,7 @@ class PlaylistManagerUI:
             if r.platform != platform:
                 continue
             if not r.ok:
-                self.state.log(f"[ERROR] ⚠ {platform} falló la validación. Abriendo wizard.")
+                self.state.log(f"[ERROR] ⚠ {platform} falló la validación: {r.error[:400]}")
                 am.open_wizard(platform)
             else:
                 self.state.log(f"[SUCCESS] ✓ {platform} validada correctamente.")
@@ -355,6 +355,18 @@ class PlaylistManagerUI:
             self._dest_session_warn,
         ], spacing=8)
 
+        self._id_clear_btn = ft.IconButton(
+            icon=ft.Icons.CLEAR, icon_color=TEXT_DIM, icon_size=10,
+            width=24, height=24, padding=0,
+            tooltip="Limpiar ID", visible=False,
+            on_click=self._on_clear_id,
+            style=ft.ButtonStyle(bgcolor={ft.ControlState.DEFAULT: ft.Colors.TRANSPARENT}),
+        )
+
+        def _on_id_change(_):
+            self._id_clear_btn.visible = bool(self._id_field.value)
+            self._id_clear_btn.update()
+
         self._id_field = ft.TextField(
             label="ID de la Playlist",
             hint_text="pl.u-xxxx  /  PLxxxx  /  37i9dQ…",
@@ -363,7 +375,8 @@ class PlaylistManagerUI:
             text_style=ft.TextStyle(color=TEXT_PRIMARY, size=12, font_family="IBM Plex Sans"),
             hint_style=ft.TextStyle(color=TEXT_DIM, size=11),
             border_radius=10, focused_border_color=ACCENT,
-            on_change=lambda _: None,
+            suffix=self._id_clear_btn,
+            on_change=_on_id_change,
             on_submit=lambda e: asyncio.create_task(self._do_cloud_load(e)),
         )
         self._playlist_section = ft.Column([
@@ -585,10 +598,18 @@ class PlaylistManagerUI:
             padding=ft.Padding.symmetric(horizontal=8, vertical=6),
         )
 
+        self._clear_session_btn = ft.IconButton(
+            icon=ft.Icons.DELETE_SWEEP, icon_color=TEXT_DIM, icon_size=17,
+            tooltip="Limpiar playlist cargada",
+            on_click=self._on_clear_session,
+            style=ft.ButtonStyle(padding=4, bgcolor={ft.ControlState.DEFAULT: ft.Colors.TRANSPARENT}),
+        )
+
         header_bar = ft.Row(controls=[
             ft.Column([self._playlist_title, self._track_count], spacing=2),
             ft.Container(expand=True),
             self._segment_dd, self._auth_strip, self._search_field, self._select_all_chk,
+            self._clear_session_btn,
         ], vertical_alignment=ft.CrossAxisAlignment.CENTER)
 
         def _col_header(text, width=None, expand=False, center=False):
@@ -861,6 +882,8 @@ class PlaylistManagerUI:
         rule4_blocked = is_local_src and not s.destination_confirmed
         self._load_btn.disabled     = net_blocked or is_loading
         self._transfer_btn.disabled = net_blocked or is_transferring or not is_ready or not dest_ok or rule4_blocked
+        self._clear_session_btn.disabled = is_loading or is_transferring
+        self._id_clear_btn.visible = bool(self._id_field.value)
         if rule4_blocked:
             self._transfer_btn.tooltip = "⚠ Elige un destino antes de transferir"
         elif not dest_ok:
@@ -913,6 +936,20 @@ class PlaylistManagerUI:
             return
         self._completion_snack_shown = False
         await self.state.load_playlist(pid)
+
+    def _on_clear_id(self, _) -> None:
+        """Limpia solo el campo de ID pegado."""
+        self._id_field.value = ""
+        self._id_clear_btn.visible = False
+        self._id_field.update()
+
+    def _on_clear_session(self, _) -> None:
+        """Limpia el ID, la lista cargada y el estado de transferencia."""
+        self._id_field.value = ""
+        self._id_clear_btn.visible = False
+        self._search_field.value = ""
+        self.state.reset_session()
+        self._snack("Sesión limpiada")
 
     def _open_paste_dialog(self) -> None:
         self._paste_field.value = ""

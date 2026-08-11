@@ -53,8 +53,10 @@ Fecha: 2026
 from __future__ import annotations
 
 import asyncio
+import json
 import os
 import random
+import time
 from typing import Callable, Optional
 
 import requests
@@ -113,6 +115,18 @@ _YTM_401_MSG = (
 
 # Archivo de cookies de Spotify (patrón browser.json)
 SPOTIFY_COOKIES_JSON = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "spotify_cookies.json")
+
+# Tamaño de lote al añadir canciones a una playlist de Spotify. El cliente
+# web parte las adiciones en peticiones pequeñas; mandar cientos de tracks
+# de golpe al pathfinder (addToPlaylist) puede ser rechazado o generar
+# rate-limiting, tumbando la transferencia completa.
+SPOTIFY_ADD_CHUNK = 50
+
+# Caché de búsquedas persistida a disco: permite reanudar una transferencia
+# interrumpida (p.ej. por un 429) sin volver a buscar los tracks ya resueltos.
+SEARCH_CACHE_JSON = os.path.join(
+    os.path.dirname(os.path.abspath(__file__)), "..", "resources", "search_cache.json"
+)
 
 
 def _is_ytm_unauthorized(exc: BaseException) -> bool:
@@ -194,7 +208,7 @@ class MusicApiService:
         self._am_storefront: str  = "us"
         self._sp_login = None
         self._sp_cfg   = None
-        self._search_cache: dict[str, SearchResult] = {}
+        self._search_cache: dict[str, SearchResult] = self._load_search_cache()
         self._shutdown_cleaned: bool = False
         self.youtube_auth_error: str = ""
         self.spotify_auth_error: str = ""
@@ -237,6 +251,56 @@ class MusicApiService:
     @property
     def search_cache(self) -> dict:
         return self._search_cache
+
+    def _load_search_cache(self) -> dict:
+        """
+        Carga la caché de búsquedas persistida en disco.
+
+        Permite reanudar una transferencia interrumpida (por 429, cierre
+        de la app, etc.) sin re-buscar canciones ya resueltas.
+        """
+        try:
+            with open(SEARCH_CACHE_JSON, encoding="utf-8") as f:
+                raw = json.load(f)
+        except Exception:  # pylint: disable=broad-exception-caught
+            return {}
+        cache: dict[str, SearchResult] = {}
+        for key, val in raw.items():
+            if isinstance(val, dict):
+                cache[key] = SearchResult(
+                    track_id=val.get("track_id"),
+                    needs_review=bool(val.get("needs_review", False)),
+                    low_confidence=bool(val.get("low_confidence", False)),
+                    isrc=val.get("isrc"),
+                )
+            elif isinstance(val, str):  # Legacy: solo track_id
+                cache[key] = SearchResult(val, False)
+        return cache
+
+    def save_search_cache(self) -> None:
+        """
+        Persiste la caché de búsquedas a disco (resources/search_cache.json).
+
+        Se invoca tras cada búsqueda que escribe en la caché para que el
+        progreso sobreviva reinicios y la transferencia sea reanudable.
+        """
+        try:
+            payload = {
+                key: {
+                    "track_id":         val.track_id,
+                    "needs_review":     bool(val.needs_review),
+                    "low_confidence":   bool(val.low_confidence),
+                    "isrc":             val.isrc,
+                }
+                for key, val in self._search_cache.items()
+                if isinstance(val, SearchResult)
+            }
+            tmp = f"{SEARCH_CACHE_JSON}.tmp"
+            with open(tmp, "w", encoding="utf-8") as f:
+                json.dump(payload, f, ensure_ascii=False)
+            os.replace(tmp, SEARCH_CACHE_JSON)
+        except Exception:  # pylint: disable=broad-exception-caught
+            pass
 
     # ── YouTube Music Auth ─────────────────────────────────────────────
 
@@ -491,7 +555,7 @@ class MusicApiService:
             await asyncio.sleep(random.uniform(0.3, 0.8))
             return await self._yt_hunter_async(ct, ca, name, artist, local_duration_s)
         if platform == "Apple Music":
-            await asyncio.sleep(random.uniform(0.5, 1.0))
+            await asyncio.sleep(random.uniform(1.0, 1.5))
             return await self._am_hunter_async(ct, ca, name, artist, local_duration_s)
         if platform == "Spotify":
             await asyncio.sleep(random.uniform(0.5, 1.0))
@@ -749,7 +813,7 @@ class MusicApiService:
         best_comb = -1
         for i, term in enumerate(terms):
             if i > 0:
-                await asyncio.sleep(random.uniform(0.3, 0.8))
+                await asyncio.sleep(random.uniform(0.8, 1.3))
             async with GLOBAL_API_SEMAPHORE:
                 chunk = await asyncio.to_thread(self._am_candidates_for_term, term)
             if not chunk:
@@ -917,11 +981,70 @@ class MusicApiService:
             self._sync_init_spotify()
         if not self._sp_login:
             return False, "Spotify no disponible. Comprueba spotify_cookies.json.", 0, []
+        pl = PrivatePlaylist(self._sp_login)
         try:
-            pl = PrivatePlaylist(self._sp_login)
             pl_id = pl.create_playlist(title)
-            Song(pl).add_songs_to_playlist(ids)
-            return True, pl_id, len(ids), []
+            # SpotAPI no asigna playlist_id al crear; sin set_playlist, un
+            # Song(pl).add_songs_to_playlist() revienta con
+            # ValueError("Playlist not set") y mata la transferencia entera.
+            pl.set_playlist(pl_id)
         except Exception as exc:  # pylint: disable=broad-exception-caught
             self.spotify_auth_error = str(exc)
+            if self._sp_is_rate_limited(exc):
+                raise RateLimitError("Spotify", 60) from exc
             raise
+        rejected = self._sp_add_tracks(pl, ids)
+        return True, pl_id, len(ids) - len(rejected), rejected
+
+    @staticmethod
+    def _sp_is_rate_limited(exc: BaseException) -> bool:
+        """
+        Detección de rate-limiting (HTTP 429/423) en errores de SpotAPI
+        para que el circuit breaker los tramite como el resto de plataformas.
+        """
+        msg = str(exc)
+        if "Status Code: 429" in msg or "Status Code: 423" in msg:
+            return True
+        payload = getattr(exc, "error", None)
+        return bool(payload and ("429" in str(payload) or "423" in str(payload)))
+
+    @staticmethod
+    def _sp_add_tracks(pl, ids: list[str]) -> list[str]:
+        """
+        Añade las canciones a la playlist por lotes de SPOTIFY_ADD_CHUNK.
+
+        Fraccionar imita al cliente web: evita que una ráfaga de cientos de
+        tracks sea rechazada o rate-limiteada, y aísla un ID problemático
+        para que no tumbe la transferencia completa.
+
+        Args:
+            pl: PrivatePlaylist con playlist_id ya asignado.
+            ids: Track IDs de Spotify a insertar.
+
+        Returns:
+            Lista de track_ids que NO se pudieron insertar.
+        """
+        if not ids:
+            return []
+        song = Song(pl)
+        rejected: list[str] = []
+        for start in range(0, len(ids), SPOTIFY_ADD_CHUNK):
+            chunk = ids[start:start + SPOTIFY_ADD_CHUNK]
+            wait = 1.5
+            for attempt in range(4):
+                try:
+                    song.add_songs_to_playlist(chunk)
+                    break
+                except Exception as exc:  # pylint: disable=broad-exception-caught
+                    rl = MusicApiService._sp_is_rate_limited(exc)
+                    if attempt >= 3:
+                        if rl:
+                            raise RateLimitError("Spotify", 60) from exc
+                        rejected.extend(ids[start:])
+                        return rejected
+                    time.sleep(wait)
+                    wait *= 2
+                    if rl:
+                        wait = max(wait, 3.0)
+            time.sleep(random.uniform(0.4, 0.8))
+        return rejected
