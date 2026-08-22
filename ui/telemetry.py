@@ -112,8 +112,7 @@ class TelemetryDrawer:
 
     def _mk_cnts(self) -> dict:
         def _t(color):
-            return ft.Text("—", size=11, color=color, font_family="IBM Plex Sans",
-                           weight=ft.FontWeight.W_600, opacity=1.0)
+            return ft.Text("—", size=11, color=color, font_family="IBM Plex Sans SemiBold", opacity=1.0)
         return {
             "detected":   _t(TEXT_MUTED),
             "candidates": _t(TEXT_MUTED),
@@ -180,8 +179,7 @@ class TelemetryDrawer:
                 content=ft.Text(
                     label, size=10,
                     color=TEXT_PRIMARY if active else TEXT_DIM,
-                    font_family="IBM Plex Sans",
-                    weight=ft.FontWeight.W_600 if active else ft.FontWeight.W_400,
+                    font_family=("IBM Plex Sans SemiBold" if active else "IBM Plex Sans"),
                     opacity=1.0,
                 ),
                 padding=ft.Padding.symmetric(horizontal=8, vertical=5),
@@ -217,7 +215,7 @@ class TelemetryDrawer:
             p.visible        = is_sel
             b.bgcolor        = BG_HOVER if is_sel else ft.Colors.TRANSPARENT
             b.content.color  = TEXT_PRIMARY if is_sel else TEXT_DIM
-            b.content.weight = ft.FontWeight.W_600 if is_sel else ft.FontWeight.W_400
+            b.content.font_family = "IBM Plex Sans SemiBold" if is_sel else "IBM Plex Sans"
             b.border = ft.Border(bottom=ft.BorderSide(
                 1.5 if is_sel else 0, ACCENT if is_sel else ft.Colors.TRANSPARENT
             ))
@@ -225,7 +223,7 @@ class TelemetryDrawer:
     def show_postmortem(self) -> None:
         self._switch_to_tab(2, self._d_panels, self._d_tab_btns)
         self._switch_to_tab(2, self._o_panels, self._o_tab_btns)
-        h = self.page.height or self.page.window.height or 720
+        h = self.page.height or 720
         if h < _TELE_DOCKED_MIN and not self._open:
             self._open_overlay()
         else:
@@ -270,7 +268,7 @@ class TelemetryDrawer:
             self._snack(f"Error al exportar: {exc}")
 
     def sync_mode(self) -> None:
-        h      = self.page.height or self.page.window.height or 720
+        h      = self.page.height or 720
         docked = h >= _TELE_DOCKED_MIN
         if docked:
             self.container.visible = True
@@ -289,7 +287,7 @@ class TelemetryDrawer:
 
     def _open_overlay(self) -> None:
         self._open = True
-        target_w   = max(400, int((self.page.window.width or 1200) * 0.4))
+        target_w   = max(400, int((self.page.width or 1200) * 0.4))
         if self._overlay_panel not in self.page.overlay:
             self.page.overlay.append(self._overlay_panel)
         self._overlay_panel.width = target_w

@@ -6,7 +6,7 @@
 
 Paquete: services
 Descripción: Fachadas sobre APIs externas de plataformas de streaming.
-            Abstrae la comunicación con Spotify, YouTube Music y Apple Music
+            Abstrae la comunicación con YouTube Music y Apple Music
             proporcionando una interfaz unificada.
 
 Módulos:

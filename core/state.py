@@ -56,44 +56,22 @@ import uuid
 from typing import Callable, Optional
 
 from core.models import Track, SearchResult, LoadState, TransferState
-from utils.circuit_breaker import CircuitBreaker, RateLimitError, SpotifyBanException
+from utils.circuit_breaker import CircuitBreaker, RateLimitError
 from engine.normalizer import clean_metadata
 from engine.match import _duration_to_seconds, FUZZY_REVISION_THRESHOLD, FUZZY_IDEAL
+from engine.organizer import sort_tracks, split_tracks
 
 
 def _failure_reason_from_exc(exc: BaseException) -> str:
     """
     Extrae razón legible de una excepción para post-mortem de fallos.
     
-    Proporciona mensajes de error amigables para el usuario, especialmente
-    para errores HTTP de Spotify que incluyen códigos de estado específicos.
-    
     Args:
         exc: Excepción capturada durante operación de API.
     
     Returns:
         String descriptivo del error, truncado a 300 caracteres.
-    
-    Example:
-        >>> try:
-        ...     # Llamada a API que falla
-        ... except Exception as e:
-        ...     reason = _failure_reason_from_exc(e)
-        ...     # reason = "Spotify HTTP 429" o "Connection timeout"
-    
-    Note:
-        Intenta importar SpotifyException dinámicamente para evitar
-        dependencia hard de spotipy. Si no está disponible, usa el
-        mensaje genérico de la excepción.
     """
-    try:
-        from spotipy.exceptions import SpotifyException  # pylint: disable=import-outside-toplevel
-        if isinstance(exc, SpotifyException):
-            hs = getattr(exc, "http_status", None)
-            if hs is not None:
-                return f"Spotify HTTP {hs}"
-    except ImportError:
-        pass
     msg = str(exc)
     return msg[:300] + ("…" if len(msg) > 300 else "")
 
@@ -108,42 +86,36 @@ async def _search_with_exponential_rl_backoff(
     local_duration_ms: int = 0,
     local_is_explicit: bool = False,
     log: Optional[Callable[[str], None]] = None,
-    backoff_steps: int = 10,
+    backoff_steps: int = 1,
 ) -> SearchResult:
     """
-    Reintenta búsqueda con backoff exponencial ante rate limiting (HTTP 429).
-    
-    Implementa estrategia de reintento resiliente que duplica el tiempo de
-    espera en cada intento, permitiendo que la API se recupere del throttling
-    sin bombardearla con peticiones inmediatas.
-    
+    Búsqueda con manejo de rate limiting: abre el breaker y falla rápido.
+
+    Estrategia (fail-fast):
+        - Ante un 429 se dispara el circuit breaker de la plataforma
+          (con su ventana de espera) y la búsqueda se aborta de inmediato.
+        - No se martillea la API con reintentos exponenciales: el breaker
+          ya serializa el "silencio" posterior a través de check_or_raise()
+          en llamadas subsiguientes.
+
     Args:
         service: Instancia de MusicApiService.
-        platform: Plataforma destino ("Spotify", "YouTube Music", "Apple Music").
+        platform: Plataforma destino ("YouTube Music", "Apple Music").
         name: Título de la canción.
         artist: Nombre del artista.
         local_duration_s: Duración en segundos para matching (opcional).
-        log: Función de logging para registrar reintentos (opcional).
-        backoff_steps: Número máximo de reintentos (default: 10).
-    
+        log: Función de logging para registrar eventos (opcional).
+        backoff_steps: Pasos de reintento (default: 1 = fail-fast).
+
     Returns:
         SearchResult con el track encontrado o flags de revisión.
-    
+
     Raises:
-        RateLimitError: Si se agotan todos los reintentos.
-    
-    Example:
-        >>> result = await _search_with_exponential_rl_backoff(
-        ...     service, "Spotify", "Bohemian Rhapsody", "Queen",
-        ...     log=lambda msg: print(msg)
-        ... )
-    
+        RateLimitError: Si un 429 ocurre (breaker abierto).
+
     Note:
-        El backoff exponencial es crítico para evitar ban permanente de APIs.
-        Secuencia típica: 1s → 2s → 4s → 8s → 16s → 32s → 64s → 128s → 256s → 512s
-        
-        Esto da tiempo suficiente para que el rate limit se resetee sin
-        desperdiciar reintentos en ventanas de throttling activo.
+        El breaker abierto hace que search_track()/check_or_raise() fallen
+        inmediatamente sin peticiones extra hasta que expire su ventana.
     """
     rl_backoff: Optional[float] = None
     for step in range(backoff_steps):
@@ -157,15 +129,17 @@ async def _search_with_exponential_rl_backoff(
             ra = max(1, int(e.retry_after))
             if rl_backoff is None:
                 rl_backoff = float(ra)
+            cb = getattr(service, "_cb", {}).get(platform)
+            if cb is not None:
+                cb.trip(ra)
             if log:
                 log(
-                    f"[WARN] 429 {platform}: esperando {int(rl_backoff)}s "
-                    f"(backoff · {step + 1}/{backoff_steps})"
+                    f"[WARN] 429 {platform}: abriendo breaker ~{ra}s · "
+                    f"búsqueda abortada para '{name}'"
                 )
-            await asyncio.sleep(rl_backoff)
-            rl_backoff *= 2.0
+            raise
     if log:
-        log(f"[ERROR] 429: agotados reintentos en {platform}")
+        log(f"[ERROR] 429: reintentos agotados en {platform}")
     raise RateLimitError(platform, int(rl_backoff or 60))
 
 
@@ -187,7 +161,7 @@ class AppState:
     
     Attributes:
         service: Instancia de MusicApiService para comunicación con APIs.
-        source: Plataforma de origen ("Spotify", "YouTube Music", etc).
+        source: Plataforma de origen ("YouTube Music", "Apple Music", etc).
         destination: Plataforma destino.
         playlist_id: ID de la playlist cargada.
         playlist_name: Nombre de la playlist.
@@ -216,7 +190,7 @@ class AppState:
     Example:
         >>> state = AppState(service)
         >>> state.subscribe(lambda: print("Estado cambió"))
-        >>> await state.load_playlist("spotify", "playlist_id")
+        >>> await state.load_playlist("youtube", "playlist_id")
         Estado cambió
     
     Note:
@@ -226,13 +200,13 @@ class AppState:
     """
 
     # Plataformas de streaming soportadas
-    PLATFORMS = ["Apple Music", "Spotify", "YouTube Music"]
+    PLATFORMS = ["Apple Music", "YouTube Music", "Spotify"]
     
     # Fuentes locales (no requieren autenticación)
     LOCAL_SOURCES: frozenset = frozenset({"Archivo Local", "Pegar Texto"})
     
     # Todas las opciones de fuente disponibles en la UI
-    SOURCE_OPTIONS = ["Apple Music", "Spotify", "YouTube Music", "Archivo Local", "Pegar Texto"]
+    SOURCE_OPTIONS = ["Apple Music", "YouTube Music", "Spotify", "Archivo Local", "Pegar Texto"]
 
     def __init__(self, service) -> None:
         """
@@ -264,6 +238,8 @@ class AppState:
         self.playlist_name: str         = "Cargar una playlist"
         self.tracks:        list[Track] = []
         self.filtered:      list[Track] = []
+        self.segments:      dict[str, list[Track]] = {}
+        self.active_segment_key: Optional[str]     = None
         self.load_state:    LoadState   = LoadState.IDLE
         self.load_error:    str         = ""
 
@@ -376,7 +352,8 @@ class AppState:
 
     @property
     def display_tracks(self) -> list[Track]:
-        return self.filtered if self.search_query else self.tracks
+        base_list = self.segments[self.active_segment_key] if self.active_segment_key and self.active_segment_key in self.segments else self.tracks
+        return self.filtered if self.search_query else base_list
 
     # ── Actions ────────────────────────────────────────────────────────
 
@@ -392,6 +369,11 @@ class AppState:
         self.playlist_name = "Cargando metadatos…"
         self.lazy_scan_running = False
         self.lazy_scan_done    = False
+        # Nueva carga: descarta el estado de transferencia anterior para
+        # que la barra de progreso desaparezca al ingresar otra playlist
+        self.transfer_state    = TransferState.IDLE
+        self.transfer_progress = 0
+        self.transfer_total    = 0
         self.notify()
 
         def _progress(_fetched: int, total: int, name: str) -> None:
@@ -442,6 +424,8 @@ class AppState:
         self.playlist_name = "Cargar una playlist"
         self.tracks        = []
         self.filtered      = []
+        self.segments      = {}
+        self.active_segment_key = None
         self.search_query  = ""
         self.load_state    = LoadState.IDLE
         self.load_error    = ""
@@ -489,6 +473,8 @@ class AppState:
         completed_count = 0
         BATCH_SIZE      = 10
         batch_pending   = 0
+        TRANSFER_CONCURRENCY = 2 if self.destination == "Apple Music" else 3
+        transfer_sem = asyncio.Semaphore(TRANSFER_CONCURRENCY)
 
         async def _transfer_one(track: Track) -> Optional[str]:
             nonlocal completed_count, batch_pending
@@ -560,8 +546,6 @@ class AppState:
                     break
                 except RateLimitError:
                     raise
-                except SpotifyBanException:
-                    raise
                 except Exception as exc:  # pylint: disable=broad-exception-caught
                     last_exc = exc
                     wait_s = 2 ** attempt
@@ -616,20 +600,14 @@ class AppState:
             if not init_ok:
                 raise RuntimeError(f"No se pudo autenticar en {self.destination}")
 
+            async def _bounded(track: Track):
+                async with transfer_sem:
+                    return await _transfer_one(track)
+
             results = list(await asyncio.gather(
-                *(_transfer_one(t) for t in selected),
+                *(_bounded(t) for t in selected),
                 return_exceptions=True,
             ))
-
-            ban = next((r for r in results if isinstance(r, SpotifyBanException)), None)
-            if ban:
-                self._log(
-                    f"[FATAL] Bloqueo de Spotify. Baneo por {int(ban.retry_after)} segundos. "
-                    "Operaci\u00f3n abortada."
-                )
-                self.transfer_state = TransferState.ERROR
-                self.notify()
-                return
 
             for track, result in zip(selected, results):
                 if isinstance(result, RateLimitError):
@@ -708,12 +686,12 @@ class AppState:
             self.notify()
 
     async def _ensure_auth(self, platform: str) -> bool:
-        if platform == "Spotify":
-            return await self.service.init_spotify()
-        elif platform == "YouTube Music":
+        if platform == "YouTube Music":
             return await self.service.init_youtube()
         elif platform == "Apple Music":
             return await self.service.init_apple()
+        elif platform == "Spotify":
+            return await self.service.init_spotify()
         return False
 
     def toggle_select_all(self) -> None:
@@ -731,15 +709,42 @@ class AppState:
 
     def apply_search(self, query: str) -> None:
         self.search_query = query
+        base_list = self.segments[self.active_segment_key] if self.active_segment_key and self.active_segment_key in self.segments else self.tracks
         if not query:
             self.filtered = []
         else:
             q = query.lower()
             self.filtered = [
-                t for t in self.tracks
+                t for t in base_list
                 if q in t.name.lower() or q in t.artist.lower() or q in t.album.lower()
             ]
         self.notify()
+
+    def organize_sort(self, keys: list[str], reverse: bool = False) -> None:
+        self.tracks = sort_tracks(self.tracks, keys, reverse)
+        if self.segments:
+            for k in self.segments:
+                self.segments[k] = sort_tracks(self.segments[k], keys, reverse)
+        self.apply_search(self.search_query)  # Re-aplica filtro y notifica
+
+    def organize_split(self, key: str) -> None:
+        self.segments = split_tracks(self.tracks, key)
+        if self.segments:
+            # Selecciona el primer segmento por defecto (ordenado alfabéticamente)
+            self.active_segment_key = sorted(list(self.segments.keys()))[0]
+        else:
+            self.active_segment_key = None
+        self.apply_search(self.search_query)
+
+    def clear_split(self) -> None:
+        self.segments = {}
+        self.active_segment_key = None
+        self.apply_search(self.search_query)
+
+    def set_active_segment(self, key: str) -> None:
+        if key in self.segments:
+            self.active_segment_key = key
+            self.apply_search(self.search_query)
 
     def set_source(self, val: str) -> None:
         self.source = val

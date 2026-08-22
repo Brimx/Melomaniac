@@ -75,8 +75,7 @@ def _section_label(text: str) -> ft.Text:
     """
     return ft.Text(
         text, size=9, color=TEXT_DIM,
-        font_family="IBM Plex Sans",
-        weight=ft.FontWeight.W_700,
+        font_family="IBM Plex Sans Bold",
         style=ft.TextStyle(letter_spacing=1.4),
         opacity=1.0,
     )

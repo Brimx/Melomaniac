@@ -252,7 +252,7 @@ def build_search_query(title: str, artist: str) -> str:
     Note:
         La REGLA 2 (Prioridad de Obra) es resultado de análisis empírico
         que demostró que este orden produce mejores resultados en las tres
-        plataformas soportadas (Spotify, YouTube Music, Apple Music) comparado
+        plataformas soportadas (YouTube Music, Apple Music, etc.) comparado
         con el orden inverso o queries más complejas.
     """
     t = title.strip() if title else ""

@@ -1,14 +1,15 @@
 # Entorno de desarrollo
 .vscode/
+.kiro/
 
 # Archivos de sistema y Python
 __pycache__/
 
 # Secretos y Configuración (CRÍTICO)
 .env
-.spotify_cache
 browser.json
+spotify_cookies.json
 
 # Logs y temporales
 *.log
-.DS_Store
+.DS_Storespotify_cookies.json

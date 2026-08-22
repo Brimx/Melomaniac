@@ -37,22 +37,6 @@ import time
 from typing import Callable, Optional
 
 
-class SpotifyBanException(Exception):
-    """
-    Baneo activo de Spotify (HTTP 429). Aborta la transferencia inmediatamente.
-
-    Se lanza cuando Spotify devuelve un 429 a pesar de las protecciones del
-    SpotifyRateLimiter. Es un error fatal: no se reintenta, se cancela la
-    operación y se informa al usuario con un mensaje [FATAL].
-
-    Attributes:
-        retry_after: Segundos indicados por Spotify en el header Retry-After.
-    """
-    def __init__(self, retry_after: float):
-        self.retry_after = retry_after
-        super().__init__(f"Spotify ban activo. Retry-After: {int(retry_after)}s")
-
-
 class RateLimitError(Exception):
     """
     Excepción lanzada cuando una plataforma está en estado de rate limiting.
@@ -62,7 +46,7 @@ class RateLimitError(Exception):
     
     Attributes:
         platform: Nombre de la plataforma que impuso el rate limit
-                 ("spotify", "youtube", "apple").
+                 ("youtube", "apple").
         retry_after: Segundos que deben transcurrir antes de reintentar.
     
     Note:
@@ -100,11 +84,11 @@ class CircuitBreaker:
         remaining: Propiedad que retorna segundos restantes hasta el reset.
     
     Example:
-        >>> breaker = CircuitBreaker("spotify", default_cooldown=60)
+        >>> breaker = CircuitBreaker("youtube", default_cooldown=60)
         >>> breaker.subscribe(lambda is_open, remaining: print(f"Open: {is_open}"))
         >>> breaker.trip(retry_after=120)  # Abre por 120 segundos
         >>> breaker.check_or_raise()  # Lanza RateLimitError
-        RateLimitError: Rate-limited by spotify. Retry in 120s.
+        RateLimitError: Rate-limited by youtube. Retry in 120s.
     
     Note:
         El patrón Circuit Breaker es esencial para aplicaciones que consumen
@@ -162,7 +146,12 @@ class CircuitBreaker:
             que cierra el circuito automáticamente tras el cooldown,
             sin requerir intervención manual del usuario.
         """
-        wait         = retry_after or self.default_cooldown
+        wait = retry_after or self.default_cooldown
+        # Si el circuito ya está abierto con una espera mayor o igual,
+        # no reiniciar el temporizador (evita que un 429 posterior con
+        # Retry-After más corto acorte la ventana de cooldown).
+        if self.is_open and wait <= self.remaining:
+            return
         self.is_open = True
         self._until  = time.monotonic() + wait
         self._notify(True, wait)

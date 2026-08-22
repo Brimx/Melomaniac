@@ -21,14 +21,15 @@ Fecha: 2026
 
 import asyncio
 import os
+from pathlib import Path
 
 import flet as ft
 from dotenv import load_dotenv
 
 from core.state import AppState
 from services.api_service import MusicApiService
-from ui.main_ui import PlaylistManagerUI
 from auth_manager import AuthManager
+from ui.main_ui import PlaylistManagerUI
 from utils.circuit_breaker import CircuitBreaker
 
 load_dotenv()
@@ -43,6 +44,10 @@ BG_LIST  = "#FF161622"      # Fondo principal de listas
 ACCENT   = "#FF4F8BFF"      # Color de acento para elementos interactivos
 BG_SURFACE = "#FF111118"    # Fondo de superficies elevadas
 TEXT_PRIMARY = "#FFF2F6FF"  # Texto principal de alta legibilidad
+
+# Fuentes locales (IBM Plex Sans variable)
+ASSETS_DIR = Path(__file__).resolve().parent / "resources"
+FONTS_DIR  = ASSETS_DIR / "fonts"
 
 
 async def main(page: ft.Page) -> None:
@@ -75,12 +80,9 @@ async def main(page: ft.Page) -> None:
         # ventana principal de la aplicación.
         
         page.title             = "MelomaniacPass"
-        page.window.bgcolor    = BG_LIST
         page.bgcolor           = BG_LIST
-        page.window.width      = 1200
-        page.window.height     = 650
-        page.window.min_width  = 1030
-        page.window.min_height = 600
+        page.width             = 1200
+        page.height            = 650
         page.padding           = 0
         page.spacing           = 0
         page.theme_mode        = ft.ThemeMode.DARK
@@ -114,14 +116,15 @@ async def main(page: ft.Page) -> None:
         # ──────────────────────────────────────────────────────────────
         # CONFIGURACIÓN DE FUENTES Y TEMA
         # ──────────────────────────────────────────────────────────────
-        # Carga la fuente IBM Plex Sans desde Google Fonts y configura
-        # el esquema de colores del tema oscuro.
+        # Carga la fuente IBM Plex Sans (estáticos por peso) desde recursos
+        # locales y configura el esquema de colores del tema oscuro.
         
         page.fonts = {
-            "IBM Plex Sans": (
-                "https://fonts.gstatic.com/s/ibmplexsans/v19/"
-                "zYXgKVElMYYaJe8bpLHnCwDKjR7_MIZs.woff2"
-            ),
+            "IBM Plex Sans":           str(FONTS_DIR / "IBMPlexSans_w400.ttf"),
+            "IBM Plex Sans Light":     str(FONTS_DIR / "IBMPlexSans_w300.ttf"),
+            "IBM Plex Sans Medium":    str(FONTS_DIR / "IBMPlexSans_w500.ttf"),
+            "IBM Plex Sans SemiBold":  str(FONTS_DIR / "IBMPlexSans_w600.ttf"),
+            "IBM Plex Sans Bold":      str(FONTS_DIR / "IBMPlexSans_w700.ttf"),
         }
         page.theme = ft.Theme(
             font_family="IBM Plex Sans",
@@ -173,7 +176,7 @@ async def main(page: ft.Page) -> None:
             
             Refresca los iconos de estado de autenticación cada 90 segundos
             para detectar expiraciones de tokens o cambios en las sesiones
-            de las plataformas (Spotify, YouTube Music, Apple Music).
+            de las plataformas (YouTube Music, Apple Music).
             
             Note:
                 Intervalo de 90 segundos balanceado para detectar cambios
@@ -297,11 +300,8 @@ async def main(page: ft.Page) -> None:
         # Cierre normal de la aplicación, no requiere acción
         pass
     finally:
-        # Último recurso: destruir ventana o forzar salida del proceso
-        try:
-            await page.window.destroy()
-        except Exception:  # pylint: disable=broad-exception-caught
-            os._exit(0)
+        # Último recurso: forzar salida del proceso
+        os._exit(0)
 
 
 if __name__ == "__main__":

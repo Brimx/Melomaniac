@@ -91,13 +91,6 @@ TEXT_MUTED   = "#FF7A8499"  # Texto secundario
 TEXT_DIM     = "#FF3D4455"  # Texto terciario
 SKELETON_DARK = "#FF0E1016" # Color de skeleton placeholders
 
-# Detección de disponibilidad de Spotipy
-try:
-    import spotipy
-    HAS_SPOTIFY = True
-except ImportError:
-    HAS_SPOTIFY = False
-
 
 class PlaylistManagerUI:
     """
@@ -145,6 +138,13 @@ class PlaylistManagerUI:
     # Número de filas skeleton mostradas durante carga
     SKELETON_COUNT = 14
 
+    def _close_dlg(self, dlg) -> None:
+        try:
+            dlg.open = False
+            self.page.update()
+        except Exception:
+            pass      
+                                  
     def __init__(self, page: ft.Page, state: AppState):
         """
         Inicializa la interfaz principal con todos sus componentes.
@@ -259,100 +259,12 @@ class PlaylistManagerUI:
             if r.platform != platform:
                 continue
             if not r.ok:
-                self.state.log(f"[ERROR] ⚠ {platform} falló la validación. Abriendo wizard.")
+                self.state.log(f"[ERROR] ⚠ {platform} falló la validación: {r.error[:400]}")
                 am.open_wizard(platform)
             else:
                 self.state.log(f"[SUCCESS] ✓ {platform} validada correctamente.")
                 self._snack(f"Sesión de {platform} válida y activa.")
             break
-
-    # ── Spotify OAuth ──────────────────────────────────────────────────
-
-    def _on_connect_spotify(self, _e: ft.ControlEvent) -> None:
-        svc      = self.state.service
-        auth_url = svc.get_spotify_auth_url()
-        if not auth_url:
-            self._snack("No se puede generar la URL de Spotify. Verifica .env", error=True)
-            return
-        self.page.launch_url(auth_url)
-        self._open_spotify_oauth_dialog()
-
-    def _open_spotify_oauth_dialog(self) -> None:
-        _redirect_field = ft.TextField(
-            label="URL de redirección",
-            hint_text="http://127.0.0.1:8888/callback?code=…",
-            bgcolor=BG_INPUT, border_color=BORDER_LIGHT, focused_border_color=ACCENT,
-            label_style=ft.TextStyle(color=TEXT_MUTED, size=10, font_family="IBM Plex Sans"),
-            text_style=ft.TextStyle(color=TEXT_PRIMARY, size=12, font_family="IBM Plex Sans"),
-            hint_style=ft.TextStyle(color=TEXT_DIM, size=11),
-            border_radius=10, multiline=False, expand=True,
-        )
-        _status_text = ft.Text("", size=10, color=TEXT_MUTED, font_family="IBM Plex Sans", visible=False)
-
-        async def _do_exchange(_e: ft.ControlEvent) -> None:
-            code_or_url = (_redirect_field.value or "").strip()
-            if not code_or_url:
-                _status_text.value   = "Pega la URL completa o solo el código."
-                _status_text.color   = WARNING
-                _status_text.visible = True
-                _status_text.update()
-                return
-            _status_text.value   = "Intercambiando token…"
-            _status_text.color   = TEXT_MUTED
-            _status_text.visible = True
-            _status_text.update()
-            ok = await self.state.service.handle_spotify_redirect(code_or_url)
-            if ok:
-                self.state.auth_session_ok["Spotify"]   = True
-                self.state.auth_session_hint["Spotify"] = "Conectado"
-                self._sync_spotify_connect_ui(connected=True)
-                self.state.notify()
-                self.page.close_dialog()
-                self._snack("✓ Spotify conectado correctamente")
-            else:
-                _status_text.value = "No se pudo completar la autorización. Comprueba la URL."
-                _status_text.color = ERROR_COL
-                _status_text.update()
-
-        dlg = ft.AlertDialog(
-            modal=True,
-            title=ft.Text("Autorizar Spotify", size=15, weight=ft.FontWeight.W_600,
-                          color=TEXT_PRIMARY, font_family="IBM Plex Sans"),
-            content=ft.Container(
-                width=400,
-                content=ft.Column(controls=[
-                    ft.Text("El navegador se ha abierto con la página de Spotify.\n"
-                            "Autoriza la aplicación y copia la URL completa de la barra de dirección:",
-                            size=12, color=TEXT_MUTED, font_family="IBM Plex Sans"),
-                    ft.Container(height=8),
-                    _redirect_field, _status_text,
-                ], spacing=4, tight=True),
-            ),
-            actions=[
-                ft.TextButton("Cancelar", style=ft.ButtonStyle(color={ft.ControlState.DEFAULT: TEXT_MUTED}),
-                              on_click=lambda _: self.page.close_dialog()),
-                ft.TextButton("Autorizar", style=ft.ButtonStyle(color={ft.ControlState.DEFAULT: ACCENT}),
-                              on_click=lambda e: asyncio.create_task(_do_exchange(e))),
-            ],
-            actions_alignment=ft.MainAxisAlignment.END,
-            bgcolor=BG_SURFACE,
-            surface_tint_color=ft.Colors.TRANSPARENT,
-            shape=ft.RoundedRectangleBorder(radius=14),
-        )
-        self.page.open(dlg)
-
-    def _sync_spotify_connect_ui(self, connected: bool) -> None:
-        dot_color  = SUCCESS     if connected else TEXT_DIM
-        label_val  = "Conectado" if connected else "Desconectado"
-        label_col  = SUCCESS     if connected else TEXT_MUTED
-        try:
-            self._sp_status_dot.color    = dot_color
-            self._sp_status_label.value  = label_val
-            self._sp_status_label.color  = label_col
-            self._sp_connect_btn.visible = not connected
-            self._sp_connect_row.update()
-        except Exception:  # pylint: disable=broad-exception-caught
-            pass
 
     def _on_open_wizard(self, _e: ft.ControlEvent) -> None:
         am = getattr(self, "auth_manager", None)
@@ -362,16 +274,13 @@ class PlaylistManagerUI:
         am.open_wizard()
 
     def _close_postmortem_dialog(self) -> None:
+        """Limpia el estado de post-mortem sin cerrar diálogos (manejado por telemetry)."""
         s = self.state
         s.pending_review_tracks.clear()
         s.failed_tracks.clear()
         s.api_rejected_tracks.clear()
         s.transfer_error_tracks.clear()
         self._failed_dialog_shown = False
-        try:
-            self.page.pop_dialog()
-        except Exception:  # pylint: disable=broad-exception-caught
-            pass
 
 
     # ── BUILD SIDEBAR ──────────────────────────────────────────────────
@@ -393,10 +302,10 @@ class PlaylistManagerUI:
                 ),
                 ft.Column([
                     ft.Text(spans=[
-                        ft.TextSpan("Melomaniac", ft.TextStyle(size=16, weight=ft.FontWeight.W_300,
-                                                               color=TEXT_PRIMARY, font_family="IBM Plex Sans")),
-                        ft.TextSpan("Pass",       ft.TextStyle(size=16, weight=ft.FontWeight.W_700,
-                                                               color=TEXT_PRIMARY, font_family="IBM Plex Sans")),
+                        ft.TextSpan("Melomaniac", ft.TextStyle(size=16,
+                                                               color=TEXT_PRIMARY, font_family="IBM Plex Sans Light")),
+                        ft.TextSpan("Pass",       ft.TextStyle(size=16,
+                                                               color=TEXT_PRIMARY, font_family="IBM Plex Sans Bold")),
                     ], opacity=1.0),
                     ft.Text("v5.0", size=9, color=TEXT_DIM, font_family="IBM Plex Sans",
                             style=ft.TextStyle(letter_spacing=0.8), opacity=1.0),
@@ -428,12 +337,12 @@ class PlaylistManagerUI:
 
         self._src_dd = ft.Dropdown(
             label="Origen", value=s.source,
-            options=[ft.DropdownOption(key=p, text=p) for p in AppState.SOURCE_OPTIONS],
+            options=[ft.dropdown.Option(key=p, text=p) for p in AppState.SOURCE_OPTIONS],
             on_select=_on_src_select, **_dd_style,
         )
         self._dst_dd = ft.Dropdown(
             label="Destino", value=s.destination,
-            options=[ft.DropdownOption(key=p, text=p) for p in AppState.PLATFORMS],
+            options=[ft.dropdown.Option(key=p, text=p) for p in AppState.PLATFORMS],
             on_select=_on_dst_select, **_dd_style,
         )
         self._status_badge      = ft.Text("", size=10, color=SUCCESS, font_family="IBM Plex Sans", opacity=1.0)
@@ -446,34 +355,17 @@ class PlaylistManagerUI:
             self._dest_session_warn,
         ], spacing=8)
 
-        _sp_connected_init = HAS_SPOTIFY and bool(s.service._sp)
-        self._sp_status_dot   = ft.Icon(ft.Icons.CIRCLE, size=8,
-                                        color=SUCCESS if _sp_connected_init else TEXT_DIM)
-        self._sp_status_label = ft.Text(
-            "Conectado" if _sp_connected_init else "Desconectado",
-            size=10, color=SUCCESS if _sp_connected_init else TEXT_MUTED, font_family="IBM Plex Sans",
+        self._id_clear_btn = ft.IconButton(
+            icon=ft.Icons.CLEAR, icon_color=TEXT_DIM, icon_size=10,
+            width=24, height=24, padding=0,
+            tooltip="Limpiar ID", visible=False,
+            on_click=self._on_clear_id,
+            style=ft.ButtonStyle(bgcolor={ft.ControlState.DEFAULT: ft.Colors.TRANSPARENT}),
         )
-        self._sp_connect_btn = ft.TextButton(
-            "Conectar", icon=ft.Icons.OPEN_IN_BROWSER_OUTLINED,
-            on_click=self._on_connect_spotify,
-            visible=not _sp_connected_init,
-            style=ft.ButtonStyle(
-                color={ft.ControlState.DEFAULT: ACCENT, ft.ControlState.HOVERED: TEXT_PRIMARY},
-                padding=ft.Padding.symmetric(horizontal=8, vertical=4),
-                text_style=ft.TextStyle(size=10, font_family="IBM Plex Sans"),
-            ),
-        )
-        self._sp_connect_row = ft.Container(
-            content=ft.Row(controls=[
-                self._sp_status_dot, self._sp_status_label,
-                ft.Container(expand=True), self._sp_connect_btn,
-            ], spacing=6, vertical_alignment=ft.CrossAxisAlignment.CENTER),
-            bgcolor=BG_INPUT,
-            border=ft.Border.all(0.8, SUCCESS if _sp_connected_init else BORDER_LIGHT),
-            border_radius=8,
-            padding=ft.Padding.symmetric(horizontal=10, vertical=6),
-            visible=(s.source == "Spotify" or s.destination == "Spotify"),
-        )
+
+        def _on_id_change(_):
+            self._id_clear_btn.visible = bool(self._id_field.value)
+            self._id_clear_btn.update()
 
         self._id_field = ft.TextField(
             label="ID de la Playlist",
@@ -483,7 +375,9 @@ class PlaylistManagerUI:
             text_style=ft.TextStyle(color=TEXT_PRIMARY, size=12, font_family="IBM Plex Sans"),
             hint_style=ft.TextStyle(color=TEXT_DIM, size=11),
             border_radius=10, focused_border_color=ACCENT,
-            on_submit=self._do_cloud_load,
+            suffix=self._id_clear_btn,
+            on_change=_on_id_change,
+            on_submit=lambda e: asyncio.create_task(self._do_cloud_load(e)),
         )
         self._playlist_section = ft.Column([
             _section_label("PLAYLIST"), self._id_field,
@@ -496,12 +390,12 @@ class PlaylistManagerUI:
         _BTN_W, _BTN_H = 129, 44
         self._load_btn     = _primary_btn("Cargar",      ft.Icons.DOWNLOAD,   self._on_load,     width=_BTN_W, height=_BTN_H)
         self._transfer_btn = _ghost_btn(  "Transferir",  ft.Icons.SWAP_HORIZ, self._on_transfer, width=_BTN_W, height=_BTN_H)
-        self._sync_btn     = _ghost_btn(  "Sincronizar", ft.Icons.SYNC,       lambda _: None,    width=_BTN_W, height=_BTN_H, disabled=True)
-        self._split_btn    = _ghost_btn(  "Dividir",     ft.Icons.CALL_SPLIT, lambda _: None,    width=_BTN_W, height=_BTN_H, disabled=True)
+        self._organize_btn = _ghost_btn(  "Organizar",   ft.Icons.SORT,       self._on_organize, width=_BTN_W, height=_BTN_H, disabled=True)
+        self._split_btn    = _ghost_btn(  "Dividir",     ft.Icons.CALL_SPLIT, self._on_split,    width=_BTN_W, height=_BTN_H, disabled=True)
 
         actions = ft.Column([
             ft.Row([self._load_btn,  self._transfer_btn], spacing=6),
-            ft.Row([self._sync_btn, self._split_btn],     spacing=6),
+            ft.Row([self._organize_btn, self._split_btn], spacing=6),
         ], spacing=6)
 
         self._rl_banner = ft.Container(
@@ -532,7 +426,6 @@ class PlaylistManagerUI:
             logo,
             ft.Divider(height=1, color=BORDER_MUTED, thickness=0.5),
             platform_section,
-            self._sp_connect_row,
             ft.Divider(height=1, color=BORDER_MUTED, thickness=0.5),
             self._playlist_section,
             self._playlist_divider,
@@ -556,13 +449,94 @@ class PlaylistManagerUI:
             content=sidebar_stack,
         )
 
+    # ── MÉTODOS DE ORGANIZACIÓN Y DIVISIÓN ────────────────────────────
+
+    def _on_organize(self, _e: ft.ControlEvent) -> None:
+        """Abre el diálogo para organizar la lista de canciones."""
+        _dd_field = ft.Dropdown(
+            options=[
+                ft.dropdown.Option(key="artist", text="Artista"),
+                ft.dropdown.Option(key="album", text="Álbum"),
+                ft.dropdown.Option(key="name", text="Título"),
+                ft.dropdown.Option(key="duration_ms", text="Duración"),
+                ft.dropdown.Option(key="platform", text="Plataforma")
+            ],
+            value="artist", label="Ordenar por", width=200,
+            bgcolor=BG_INPUT, border_color=BORDER_LIGHT, focused_border_color=ACCENT,
+            label_style=ft.TextStyle(color=TEXT_MUTED, size=11, font_family="IBM Plex Sans"),
+            text_style=ft.TextStyle(color=TEXT_PRIMARY, size=12, font_family="IBM Plex Sans"),
+        )
+        _switch_rev = ft.Switch(label="Descendente", value=False, active_color=ACCENT)
+
+        def _apply(_e):
+            self.state.organize_sort([_dd_field.value], _switch_rev.value)
+            self._close_dlg(dlg)
+
+        dlg = ft.AlertDialog(
+            modal=True,
+            title=ft.Text("Organizar lista", size=15, font_family="IBM Plex Sans SemiBold", color=TEXT_PRIMARY),
+            content=ft.Column([_dd_field, _switch_rev], tight=True, spacing=15),
+            actions=[
+                ft.TextButton("Cancelar", on_click=lambda _: self._close_dlg(dlg),
+                              style=ft.ButtonStyle(color={ft.ControlState.DEFAULT: TEXT_MUTED})),
+                ft.TextButton("Aplicar", on_click=_apply,
+                              style=ft.ButtonStyle(color={ft.ControlState.DEFAULT: ACCENT}))
+            ],
+            actions_alignment=ft.MainAxisAlignment.END,
+            bgcolor=BG_SURFACE, shape=ft.RoundedRectangleBorder(radius=10)
+        )
+        self.page.show_dialog(dlg)
+
+    def _on_split(self, _e: ft.ControlEvent) -> None:
+        """Abre el diálogo para dividir la lista maestra en segmentos."""
+        _dd_field = ft.Dropdown(
+            options=[
+                ft.dropdown.Option(key="artist", text="Artista"),
+                ft.dropdown.Option(key="album", text="Álbum"),
+                ft.dropdown.Option(key="platform", text="Plataforma")
+            ],
+            value="artist", label="Agrupar por", width=200,
+            bgcolor=BG_INPUT, border_color=BORDER_LIGHT, focused_border_color=ACCENT,
+            label_style=ft.TextStyle(color=TEXT_MUTED, size=11, font_family="IBM Plex Sans"),
+            text_style=ft.TextStyle(color=TEXT_PRIMARY, size=12, font_family="IBM Plex Sans"),
+        )
+
+        def _apply(_e):
+            self.state.organize_split(_dd_field.value)
+            self._close_dlg(dlg)
+            
+        def _clear(_e):
+            self.state.clear_split()
+            self._close_dlg(dlg)
+
+        dlg = ft.AlertDialog(
+            modal=True,
+            title=ft.Text("Dividir lista", size=15, font_family="IBM Plex Sans SemiBold", color=TEXT_PRIMARY),
+            content=ft.Column([
+                ft.Text("Agrupa tu playlist en segmentos independientes.", size=12, color=TEXT_MUTED),
+                _dd_field
+            ], tight=True, spacing=15),
+            actions=[
+                ft.TextButton("Limpiar División", on_click=_clear,
+                              style=ft.ButtonStyle(color={ft.ControlState.DEFAULT: WARNING}),
+                              visible=bool(self.state.segments)),
+                ft.TextButton("Cancelar", on_click=lambda _: self._close_dlg(dlg),
+                              style=ft.ButtonStyle(color={ft.ControlState.DEFAULT: TEXT_MUTED})),
+                ft.TextButton("Agrupar", on_click=_apply,
+                              style=ft.ButtonStyle(color={ft.ControlState.DEFAULT: ACCENT}))
+            ],
+            actions_alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
+            bgcolor=BG_SURFACE, shape=ft.RoundedRectangleBorder(radius=10)
+        )
+        self.page.show_dialog(dlg)
+
 
     # ── BUILD CONTENT ──────────────────────────────────────────────────
 
     def _build_content(self) -> None:
         self._playlist_title = ft.Text(
-            "Cargar una playlist", size=22, weight=ft.FontWeight.W_700,
-            color=TEXT_PRIMARY, font_family="IBM Plex Sans", opacity=1.0,
+            "Cargar una playlist", size=22,
+            color=TEXT_PRIMARY, font_family="IBM Plex Sans Bold", opacity=1.0,
         )
         self._track_count = ft.Text("", size=12, color=TEXT_MUTED, font_family="IBM Plex Sans", opacity=1.0)
         self._search_field = ft.TextField(
@@ -575,6 +549,15 @@ class PlaylistManagerUI:
             content_padding=ft.Padding.symmetric(horizontal=10, vertical=6),
             on_change=self._on_search_change,
         )
+        self._segment_dd = ft.Dropdown(
+            width=160, height=38,
+            bgcolor=BG_INPUT, border_color=BORDER_LIGHT, focused_border_color=ACCENT,
+            text_style=ft.TextStyle(color=TEXT_PRIMARY, size=12, font_family="IBM Plex Sans"),
+            content_padding=ft.Padding.symmetric(horizontal=10, vertical=0),
+            on_select=lambda e: self.state.set_active_segment(e.control.value),
+            visible=False,
+            hint_text="Segmento..."
+        )
 
         _ib_style = dict(icon_size=17, style=ft.ButtonStyle(
             padding=4, bgcolor={ft.ControlState.DEFAULT: ft.Colors.TRANSPARENT}))
@@ -582,15 +565,15 @@ class PlaylistManagerUI:
                                       tooltip="YouTube Music · clic = validar sesión ahora",
                                       on_click=lambda _: asyncio.create_task(self._on_auth_probe("YouTube Music")),
                                       **_ib_style)
-        self._auth_sp = ft.IconButton(icon=ft.Icons.MUSIC_NOTE, icon_color=TEXT_DIM,
-                                      tooltip="Spotify · clic = validar sesión ahora",
-                                      on_click=lambda _: asyncio.create_task(self._on_auth_probe("Spotify")),
-                                      **_ib_style)
         self._auth_am = ft.IconButton(icon=ft.Icons.APPLE, icon_color=TEXT_DIM,
                                       tooltip="Apple Music · clic = validar sesión ahora",
                                       on_click=lambda _: asyncio.create_task(self._on_auth_probe("Apple Music")),
                                       **_ib_style)
-        self._auth_strip = ft.Row(controls=[self._auth_yt, self._auth_sp, self._auth_am],
+        self._auth_sp = ft.IconButton(icon=ft.Icons.MUSIC_NOTE, icon_color=TEXT_DIM,
+                                      tooltip="Spotify · clic = validar sesión ahora",
+                                      on_click=lambda _: asyncio.create_task(self._on_auth_probe("Spotify")),
+                                      **_ib_style)
+        self._auth_strip = ft.Row(controls=[self._auth_yt, self._auth_am, self._auth_sp],
                                   spacing=2, vertical_alignment=ft.CrossAxisAlignment.CENTER)
 
         self._select_all_chk = ft.Checkbox(
@@ -615,16 +598,24 @@ class PlaylistManagerUI:
             padding=ft.Padding.symmetric(horizontal=8, vertical=6),
         )
 
+        self._clear_session_btn = ft.IconButton(
+            icon=ft.Icons.DELETE_SWEEP, icon_color=TEXT_DIM, icon_size=17,
+            tooltip="Limpiar playlist cargada",
+            on_click=self._on_clear_session,
+            style=ft.ButtonStyle(padding=4, bgcolor={ft.ControlState.DEFAULT: ft.Colors.TRANSPARENT}),
+        )
+
         header_bar = ft.Row(controls=[
             ft.Column([self._playlist_title, self._track_count], spacing=2),
             ft.Container(expand=True),
-            self._auth_strip, self._search_field, self._select_all_chk,
+            self._segment_dd, self._auth_strip, self._search_field, self._select_all_chk,
+            self._clear_session_btn,
         ], vertical_alignment=ft.CrossAxisAlignment.CENTER)
 
         def _col_header(text, width=None, expand=False, center=False):
             align = ft.Alignment.CENTER if center else ft.Alignment.CENTER_LEFT
-            ctrl  = ft.Text(text, size=9, color=TEXT_DIM, weight=ft.FontWeight.W_700,
-                            font_family="IBM Plex Sans", style=ft.TextStyle(letter_spacing=0.8),
+            ctrl  = ft.Text(text, size=9, color=TEXT_DIM, font_family="IBM Plex Sans Bold",
+                            style=ft.TextStyle(letter_spacing=0.8),
                             text_align=ft.TextAlign.CENTER if center else ft.TextAlign.LEFT, opacity=1.0)
             return ft.Container(content=ctrl, width=width, expand=expand, alignment=align)
 
@@ -662,10 +653,10 @@ class PlaylistManagerUI:
                 ft.Container(content=ft.Icon(ft.Icons.LIBRARY_MUSIC, size=52, color=TEXT_DIM),
                              bgcolor=CHIP_BG, border=ft.Border.all(0.8, BORDER_LIGHT),
                              border_radius=20, padding=ft.Padding.all(20)),
-                ft.Text("Carga una playlist", size=20, color=TEXT_PRIMARY, font_family="IBM Plex Sans",
-                        weight=ft.FontWeight.W_700, opacity=1.0),
-                ft.Text("Sin playlist cargada", size=14, color=TEXT_MUTED, font_family="IBM Plex Sans",
-                        weight=ft.FontWeight.W_500, opacity=1.0),
+                ft.Text("Carga una playlist", size=20, color=TEXT_PRIMARY, font_family="IBM Plex Sans Bold",
+                        opacity=1.0),
+                ft.Text("Sin playlist cargada", size=14, color=TEXT_MUTED, font_family="IBM Plex Sans Medium",
+                        opacity=1.0),
                 self._empty_hint_text,
             ], horizontal_alignment=ft.CrossAxisAlignment.CENTER,
                alignment=ft.CrossAxisAlignment.CENTER, spacing=8),
@@ -726,7 +717,7 @@ class PlaylistManagerUI:
             f"{n} canciones" if not s.search_query else f"{n} de {total} coincidencias"
         )
 
-        for plat, ic in (("YouTube Music", self._auth_yt), ("Spotify", self._auth_sp), ("Apple Music", self._auth_am)):
+        for plat, ic in (("YouTube Music", self._auth_yt), ("Apple Music", self._auth_am), ("Spotify", self._auth_sp)):
             ok = s.auth_session_ok.get(plat, True)
             ic.icon_color = SUCCESS if ok else ERROR_COL
             hint = s.auth_session_hint.get(plat) or ""
@@ -736,19 +727,6 @@ class PlaylistManagerUI:
         dest_ok = s.auth_session_ok.get(s.destination, True)
         self._dest_session_warn.visible = not dest_ok
         self._dest_session_warn.value   = "" if dest_ok else f"Sesión expirada en {s.destination}"
-
-        sp_in_use = (s.source == "Spotify" or s.destination == "Spotify")
-        if self._sp_connect_row.visible != sp_in_use:
-            self._sp_connect_row.visible = sp_in_use
-            self._sp_connect_row.update()
-        if sp_in_use:
-            sp_ok = bool(s.service._sp) and s.auth_session_ok.get("Spotify", False)
-            self._sync_spotify_connect_ui(connected=sp_ok)
-            new_border_col = SUCCESS if sp_ok else BORDER_LIGHT
-            if getattr(self._sp_connect_row, "_border_col_cache", None) != new_border_col:
-                self._sp_connect_row._border_col_cache = new_border_col  # pylint: disable=protected-access
-                self._sp_connect_row.border = ft.Border.all(0.8, new_border_col)
-                self._sp_connect_row.update()
 
         if s.source == s.destination:
             self._status_badge.value = "⚠ Origen y destino iguales"
@@ -776,6 +754,21 @@ class PlaylistManagerUI:
         if is_ready:
             self._stop_skeleton_pulse()
             self._sync_list_view(s.display_tracks)
+
+        has_tracks = len(s.tracks) > 0
+        self._organize_btn.disabled = not has_tracks
+        self._split_btn.disabled    = not has_tracks
+        
+        if s.segments:
+            # Recrea opciones solo si cambiaron para no perder el foco
+            current_options = [opt.key for opt in self._segment_dd.options] if self._segment_dd.options else []
+            new_options = list(s.segments.keys())
+            if current_options != new_options:
+                self._segment_dd.options = [ft.dropdown.Option(k) for k in new_options]
+            self._segment_dd.value = s.active_segment_key
+            self._segment_dd.visible = True
+        else:
+            self._segment_dd.visible = False
 
         is_transferring  = s.transfer_state == TransferState.RUNNING
         is_transfer_done = s.transfer_state == TransferState.DONE
@@ -889,6 +882,8 @@ class PlaylistManagerUI:
         rule4_blocked = is_local_src and not s.destination_confirmed
         self._load_btn.disabled     = net_blocked or is_loading
         self._transfer_btn.disabled = net_blocked or is_transferring or not is_ready or not dest_ok or rule4_blocked
+        self._clear_session_btn.disabled = is_loading or is_transferring
+        self._id_clear_btn.visible = bool(self._id_field.value)
         if rule4_blocked:
             self._transfer_btn.tooltip = "⚠ Elige un destino antes de transferir"
         elif not dest_ok:
@@ -942,11 +937,25 @@ class PlaylistManagerUI:
         self._completion_snack_shown = False
         await self.state.load_playlist(pid)
 
+    def _on_clear_id(self, _) -> None:
+        """Limpia solo el campo de ID pegado."""
+        self._id_field.value = ""
+        self._id_clear_btn.visible = False
+        self._id_field.update()
+
+    def _on_clear_session(self, _) -> None:
+        """Limpia el ID, la lista cargada y el estado de transferencia."""
+        self._id_field.value = ""
+        self._id_clear_btn.visible = False
+        self._search_field.value = ""
+        self.state.reset_session()
+        self._snack("Sesión limpiada")
+
     def _open_paste_dialog(self) -> None:
         self._paste_field.value = ""
 
         def _close_paste():
-            self.page.pop_dialog()
+            self._close_dlg(paste_dlg)
 
         def _process(_):
             text = self._paste_field.value or ""
@@ -959,10 +968,10 @@ class PlaylistManagerUI:
             self._ask_playlist_name_then_ingest(text=text, filename="",
                                                 suggested_name=f"Local_Import_{default_ts}")
 
-        dlg = ft.AlertDialog(
+        paste_dlg = ft.AlertDialog(
             modal=True,
-            title=ft.Text("Pegar Texto", color=TEXT_PRIMARY, font_family="IBM Plex Sans",
-                          size=14, weight=ft.FontWeight.W_700),
+            title=ft.Text("Pegar Texto", color=TEXT_PRIMARY, font_family="IBM Plex Sans Bold",
+                          size=14),
             content=ft.Container(content=self._paste_field, width=480, height=220),
             actions=[
                 ft.TextButton("Procesar", icon=ft.Icons.PLAY_ARROW_OUTLINED, on_click=_process,
@@ -973,7 +982,7 @@ class PlaylistManagerUI:
             actions_alignment=ft.MainAxisAlignment.END,
             bgcolor=BG_PANEL, shape=ft.RoundedRectangleBorder(radius=14),
         )
-        self.page.show_dialog(dlg)
+        self.page.show_dialog(paste_dlg)
 
     def _ask_playlist_name_then_ingest(self, text: str, filename: str, suggested_name: str) -> None:
         import datetime as _dt
@@ -988,7 +997,7 @@ class PlaylistManagerUI:
         )
 
         def _close():
-            self.page.pop_dialog()
+            self._close_dlg(name_dlg)
 
         def _confirm(_):
             raw        = (name_field.value or "").strip()
@@ -996,12 +1005,12 @@ class PlaylistManagerUI:
             _close()
             self._ingest_text(text, label=final_name, filename=filename)
 
-        dlg = ft.AlertDialog(
+        name_dlg = ft.AlertDialog(
             modal=True,
             title=ft.Row([
                 ft.Icon(ft.Icons.DRIVE_FILE_RENAME_OUTLINE, color=ACCENT, size=18),
-                ft.Text("Nombra esta playlist", size=14, weight=ft.FontWeight.W_700,
-                        color=TEXT_PRIMARY, font_family="IBM Plex Sans"),
+                ft.Text("Nombra esta playlist", size=14, font_family="IBM Plex Sans Bold",
+                        color=TEXT_PRIMARY),
             ], spacing=8),
             content=ft.Container(
                 content=ft.Column([
@@ -1020,7 +1029,7 @@ class PlaylistManagerUI:
             actions_alignment=ft.MainAxisAlignment.END,
             bgcolor=BG_PANEL, shape=ft.RoundedRectangleBorder(radius=14),
         )
-        self.page.show_dialog(dlg)
+        self.page.show_dialog(name_dlg)
 
     async def _do_local_pick(self) -> None:
         files = await self._file_picker.pick_files(

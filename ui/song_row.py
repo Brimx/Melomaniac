@@ -237,16 +237,14 @@ class SongRow(ft.Container):
         
         num_label = ft.Text(
             str(index), size=11, color=TEXT_MUTED,
-            font_family="IBM Plex Sans",
-            weight=ft.FontWeight.W_500,
+            font_family="IBM Plex Sans Medium",
             text_align=ft.TextAlign.CENTER,
             opacity=1.0,
         )
 
         title_text = ft.Text(
             track.name, size=13, color=TEXT_PRIMARY,
-            font_family="IBM Plex Sans",
-            weight=ft.FontWeight.W_600,
+            font_family="IBM Plex Sans SemiBold",
             overflow=ft.TextOverflow.ELLIPSIS,
             max_lines=1,
             opacity=1.0,
@@ -260,8 +258,7 @@ class SongRow(ft.Container):
         )
         dur_text = ft.Text(
             track.duration, size=11, color=TEXT_DIM,
-            font_family="IBM Plex Sans",
-            weight=ft.FontWeight.W_500,
+            font_family="IBM Plex Sans Medium",
             opacity=1.0,
         )
 

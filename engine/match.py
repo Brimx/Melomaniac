@@ -240,27 +240,17 @@ def score_spotify_match(
     sp_is_explicit: bool,
 ) -> int:
     """
-    Sistema de puntuación base 100 para evaluar un resultado de Spotify
-    contra un track local. Reemplaza el desempate por popularity (eliminado
-    por Spotify en marzo 2026 para apps en Development Mode).
+    Sistema de puntuacion base 100 para evaluar un resultado de Spotify
+    contra un track local.
 
-    Distribución de pesos:
-        60 pts — Fuzzy matching (40 título + 20 artista)
-        30 pts — Delta de duración
-        10 pts — Bonus de metadata (explicit flag)
-
-    Args:
-        local_title / local_artist: metadatos del track local (ya limpios).
-        local_duration_ms: duración local en milisegundos.
-        local_is_explicit: flag explicit del track local.
-        sp_title / sp_artist: metadatos del resultado de Spotify.
-        sp_duration_ms: duración del resultado en milisegundos.
-        sp_is_explicit: flag explicit del resultado de Spotify.
+    Distribucion de pesos:
+        60 pts - Fuzzy matching (40 titulo + 20 artista)
+        30 pts - Delta de duracion
+        10 pts - Bonus de metadata (explicit flag)
 
     Returns:
-        Score entero 0-100.  Valores negativos se clampean a 0.
+        Score entero 0-100. Valores negativos se clampean a 0.
     """
-    # ── 60 pts: Fuzzy (40 título + 20 artista) ──────────────────────
     if HAS_RAPIDFUZZ:
         ct, ca = clean_metadata(local_title, local_artist)
         ft, fa = clean_metadata(sp_title, sp_artist)
@@ -272,7 +262,6 @@ def score_spotify_match(
 
     fuzzy_pts = (title_ratio / 100.0) * 40 + (artist_ratio / 100.0) * 20
 
-    # ── 30 pts: Delta de duración ────────────────────────────────────
     delta_ms = abs(local_duration_ms - sp_duration_ms)
     if delta_ms <= 2000:
         duration_pts = 30
@@ -281,7 +270,6 @@ def score_spotify_match(
     else:
         duration_pts = -20
 
-    # ── 10 pts: Bonus de metadata (explicit) ─────────────────────────
     metadata_pts = 10 if (local_is_explicit == sp_is_explicit) else 0
 
     return max(0, int(fuzzy_pts + duration_pts + metadata_pts))
@@ -367,11 +355,12 @@ def _yt_select_best(
     artist: str,
     results: list[dict],
     local_duration_s: Optional[int],
-) -> Optional[str]:
+) -> Optional[dict]:
     """
     Evalúa los primeros 3 resultados de ytmusicapi.search() y elige el mejor.
     Tie-breaker A: preferir resultType == 'song'.
     Tie-breaker B: duración más cercana al original (±5s).
+    Devuelve el dict elegido (ya validado) para evitar re-validar en el caller.
     """
     DURATION_MARGIN_S = 5
 
@@ -400,4 +389,4 @@ def _yt_select_best(
         if within_margin:
             pool = within_margin
 
-    return pool[0].get('videoId')
+    return pool[0]
