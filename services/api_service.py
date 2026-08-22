@@ -208,6 +208,10 @@ class MusicApiService:
         self._am_storefront: str  = "us"
         self._sp_login = None
         self._sp_cfg   = None
+        # Instancia Song reutilizable: SpotAPI re-fetchea sesión, client token
+        # y hashes JS (~5-8 requests) cada vez que se construye un BaseClient.
+        # Reutilizarla reduce cada búsqueda a 1 solo request.
+        self._sp_song  = None
         self._search_cache: dict[str, SearchResult] = self._load_search_cache()
         self._shutdown_cleaned: bool = False
         self.youtube_auth_error: str = ""
@@ -388,12 +392,16 @@ class MusicApiService:
                 return False
             self._sp_login = login
             self._sp_cfg   = cfg
+            # Song cacheado sobre el MISMO TLSClient del login: el setup de
+            # sesión/token/hashes se paga una sola vez, no por búsqueda.
+            self._sp_song  = Song(client=cfg.client)
             self.spotify_auth_error = ""
             return True
         except Exception as exc:  # pylint: disable=broad-exception-caught
             self.spotify_auth_error = str(exc)
             print(f"[Spotify] init failed: {exc}")
             self._sp_login = None
+            self._sp_song  = None
             return False
 
 
@@ -836,7 +844,10 @@ class MusicApiService:
     def _sp_search_items(self, q: str, limit: int = 5) -> list:
         if not HAS_SPOTIFY or not self._sp_cfg:
             return []
-        r = Song(client=self._sp_cfg.client).query_songs(q, limit=limit)
+        if self._sp_song is None:
+            # Fallback anónimo (login falló pero el catálogo público sirve)
+            self._sp_song = Song(client=self._sp_cfg.client)
+        r = self._sp_song.query_songs(q, limit=limit)
         try:
             return r["data"]["searchV2"]["tracksV2"]["items"]
         except (KeyError, TypeError):
@@ -877,6 +888,13 @@ class MusicApiService:
 
     async def _sp_hunter_async(self, ct, ca, orig_name, orig_artist,
                                local_duration_ms=0, local_is_explicit=False) -> SearchResult:
+        """
+        Hunter de Spotify con 1-2 queries por canción.
+
+        Con "Título Artista" la canción suele aparecer en los primeros
+        resultados, así que basta la query primaria; solo si no hay match
+        ideal se prueba 1 fallback con el título normalizado.
+        """
         if not HAS_SPOTIFY:
             return SearchResult(None, False)
         if not self._sp_cfg:
@@ -886,16 +904,20 @@ class MusicApiService:
 
         nt = _normalize_title(orig_name)
         na = _normalize_title(orig_artist)
-        queries_structured: list[str] = []
-        for q in (build_search_query(ct, ca), build_search_query(nt, na), nt or ct):
+        queries: list[str] = []
+        seen: set[str] = set()
+        for q in (build_search_query(ct, ca), build_search_query(nt, na)):
             q = (q or "").strip()
-            if q and q not in queries_structured:
-                queries_structured.append(q)
+            # Dedup insensible a mayúsculas: para Spotify ambas variantes
+            # son la misma búsqueda; evita gastar un request extra.
+            if q and q.lower() not in seen:
+                seen.add(q.lower())
+                queries.append(q)
 
         best: Optional[tuple] = None
         best_comb = -1
 
-        for q in queries_structured:
+        for q in queries:
             async with GLOBAL_API_SEMAPHORE:
                 try:
                     items = await asyncio.to_thread(self._sp_search_items, q)
@@ -913,21 +935,6 @@ class MusicApiService:
                 return self._sp_build_result(picked, comb, tit, art)
             if comb > best_comb:
                 best_comb, best = comb, (picked, comb, tit, art)
-
-        if best_comb < 60:
-            query_plain = build_search_query(orig_name.strip(), orig_artist.strip())
-            if query_plain and query_plain not in queries_structured:
-                async with GLOBAL_API_SEMAPHORE:
-                    items = await asyncio.to_thread(self._sp_search_items, query_plain)
-                if items:
-                    picked, comb, tit, art = self._sp_pick_best_item(
-                        items, orig_name, orig_artist, local_duration_ms, local_is_explicit
-                    )
-                    if picked is not None:
-                        if comb >= FUZZY_IDEAL or _ideal_pass_hunter(comb, tit, art):
-                            return self._sp_build_result(picked, comb, tit, art)
-                        if comb > best_comb:
-                            best = (picked, comb, tit, art)
 
         if best is None:
             return SearchResult(None, False)
