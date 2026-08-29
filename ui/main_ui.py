@@ -669,66 +669,84 @@ class PlaylistManagerUI:
     def _on_state_changed(self) -> None:
         s = self.state
         is_local_src = s.source in AppState.LOCAL_SOURCES
+        # Delegacion SRP - pasa datos simples (regla 10), metodos <50L (regla 6)
+        self._sync_platform_ui(s, is_local_src)
+        self._sync_titles(s)
+        dest_ok = self._sync_auth_icons(s)
+        is_loading = s.load_state in (LoadState.LOADING_META, LoadState.LOADING_TRACKS)
+        is_ready = s.load_state == LoadState.READY
+        is_error = s.load_state == LoadState.ERROR
+        is_idle = s.load_state == LoadState.IDLE
+        self._sync_list_state(s, is_loading, is_ready, is_error, is_idle)
+        is_transferring = s.transfer_state == TransferState.RUNNING
+        is_transfer_done = s.transfer_state == TransferState.DONE
+        is_transfer_err = s.transfer_state == TransferState.ERROR
+        xfer_active = is_transferring or is_transfer_done or is_transfer_err
+        is_scan_run = getattr(s, "lazy_scan_running", False)
+        is_scan_done = getattr(s, "lazy_scan_done", False)
+        idle_xfer = s.transfer_state == TransferState.IDLE
+        show_progress = xfer_active or is_scan_run or (is_scan_done and idle_xfer)
+        self._sync_progress(s, is_transferring, xfer_active, is_scan_run, is_scan_done, idle_xfer, show_progress)
+        self._sync_telemetry(s, xfer_active, is_loading)
+        net_blocked = any(cb.is_open for cb in s.cb.values())
+        rule4_blocked = is_local_src and not s.destination_confirmed
+        self._sync_action_buttons(s, is_local_src, dest_ok, is_loading, is_transferring, is_ready, net_blocked, rule4_blocked)
+        self.page.update()
 
+    def _sync_platform_ui(self, s, is_local_src: bool) -> None:
+        """Actualiza selectores y hint segun fuente (regla 6 SRP)."""
         if self._playlist_section.visible != (not is_local_src):
             self._playlist_section.visible = not is_local_src
             self._playlist_divider.visible = not is_local_src
             self._playlist_section.update()
             self._playlist_divider.update()
-
         _hint_map = {
-            "Archivo Local": "Pulsa «Cargar» para abrir el explorador de archivos.",
-            "Pegar Texto":   "Pulsa «Cargar» para pegar tu lista de canciones.",
+            "Archivo Local": "Pulsa \u00abCargar\u00bb para abrir el explorador de archivos.",
+            "Pegar Texto": "Pulsa \u00abCargar\u00bb para pegar tu lista de canciones.",
         }
-        new_hint = _hint_map.get(s.source, "Introduce el ID en el panel izquierdo y pulsa «Cargar».")
+        new_hint = _hint_map.get(s.source, "Introduce el ID en el panel izquierdo y pulsa \u00abCargar\u00bb.")
         if self._empty_hint_text.value != new_hint:
             self._empty_hint_text.value = new_hint
             self._empty_hint_text.update()
-
         dest_needs_confirm = is_local_src and not s.destination_confirmed
         new_dst_border = WARNING if dest_needs_confirm else BORDER_LIGHT
         if self._dst_dd.border_color != new_dst_border:
-            self._dst_dd.border_color         = new_dst_border
+            self._dst_dd.border_color = new_dst_border
             self._dst_dd.focused_border_color = ACCENT if not dest_needs_confirm else WARNING
             self._dst_dd.update()
 
+    def _sync_titles(self, s) -> None:
         self._playlist_title.value = s.playlist_name
-        n     = len(s.display_tracks)
+        n = len(s.display_tracks)
         total = len(s.tracks)
         self._track_count.value = (
             f"{n} canciones" if not s.search_query else f"{n} de {total} coincidencias"
         )
 
+    def _sync_auth_icons(self, s) -> bool:
         for plat, ic in (("YouTube Music", self._auth_yt), ("Apple Music", self._auth_am), ("Spotify", self._auth_sp)):
             ok = s.auth_session_ok.get(plat, True)
             ic.icon_color = SUCCESS if ok else ERROR_COL
             hint = s.auth_session_hint.get(plat) or ""
             base = f"{plat}: clic para revalidar ahora"
-            ic.tooltip = f"{base} · {hint}" if hint else f"{base} · {'OK' if ok else 'fallo'}"
-
+            ic.tooltip = f"{base} \u00b7 {hint}" if hint else f"{base} \u00b7 {'OK' if ok else 'fallo'}"
         dest_ok = s.auth_session_ok.get(s.destination, True)
         self._dest_session_warn.visible = not dest_ok
-        self._dest_session_warn.value   = "" if dest_ok else f"Sesión expirada en {s.destination}"
-
+        self._dest_session_warn.value = "" if dest_ok else f"Sesi\u00f3n expirada en {s.destination}"
         if s.source == s.destination:
-            self._status_badge.value = "⚠ Origen y destino iguales"
+            self._status_badge.value = "\u26a0 Origen y destino iguales"
             self._status_badge.color = WARNING
         else:
-            self._status_badge.value = f"✓ {s.source} → {s.destination}"
+            self._status_badge.value = f"\u2713 {s.source} \u2192 {s.destination}"
             self._status_badge.color = SUCCESS
-
         self._select_all_chk.value = s.select_all
+        return dest_ok
 
-        is_loading = s.load_state in (LoadState.LOADING_META, LoadState.LOADING_TRACKS)
-        is_ready   = s.load_state == LoadState.READY
-        is_error   = s.load_state == LoadState.ERROR
-        is_idle    = s.load_state == LoadState.IDLE
-
-        self._empty_state.visible        = is_idle
+    def _sync_list_state(self, s, is_loading: bool, is_ready: bool, is_error: bool, is_idle: bool) -> None:
+        self._empty_state.visible = is_idle
         self._skeleton_view_wrap.visible = is_loading
-        self._list_view_wrap.visible     = is_ready and not is_error
-        self._error_state.visible        = is_error
-
+        self._list_view_wrap.visible = is_ready and not is_error
+        self._error_state.visible = is_error
         if is_error:
             self._error_text.value = s.load_error
         if is_loading:
@@ -736,110 +754,98 @@ class PlaylistManagerUI:
         if is_ready:
             self._stop_skeleton_pulse()
             self._sync_list_view(s.display_tracks)
-
         has_tracks = len(s.tracks) > 0
         self._organize_btn.disabled = not has_tracks
-        self._split_btn.disabled    = not has_tracks
-        
+        self._split_btn.disabled = not has_tracks
         if s.segments:
-            # Recrea opciones solo si cambiaron para no perder el foco
             current_options = [opt.key for opt in self._segment_dd.options] if self._segment_dd.options else []
             new_options = list(s.segments.keys())
             if current_options != new_options:
-                self._segment_dd.options = [ft.dropdown.Option(k) for k in new_options]
+                self._segment_dd.options = [opt.key for opt in new_options]
             self._segment_dd.value = s.active_segment_key
             self._segment_dd.visible = True
         else:
             self._segment_dd.visible = False
 
-        is_transferring  = s.transfer_state == TransferState.RUNNING
-        is_transfer_done = s.transfer_state == TransferState.DONE
-        is_transfer_err  = s.transfer_state == TransferState.ERROR
-        xfer_active      = is_transferring or is_transfer_done or is_transfer_err
-        is_scan_run      = getattr(s, "lazy_scan_running", False)
-        is_scan_done     = getattr(s, "lazy_scan_done", False)
-        idle_xfer        = s.transfer_state == TransferState.IDLE
-        show_progress    = xfer_active or is_scan_run or (is_scan_done and idle_xfer)
-
+    def _sync_progress(self, s, is_transferring: bool, xfer_active: bool, is_scan_run: bool, is_scan_done: bool, idle_xfer: bool, show_progress: bool) -> None:
         if is_transferring:
             if self._transfer_start == 0.0:
-                self._transfer_start         = time.monotonic()
+                self._transfer_start = time.monotonic()
                 self._completion_snack_shown = False
         elif not xfer_active:
             self._transfer_start = 0.0
-
         self._content_progress.visible = show_progress
-
         _accent_ok = ft.Colors.GREEN_ACCENT
-        if show_progress and s.transfer_total:
-            if (is_scan_run or is_scan_done) and idle_xfer and not xfer_active:
-                frac = min(1.0, s.transfer_progress / max(s.transfer_total, 1))
-                self._content_progress_bar.value = frac
-                if is_scan_done:
-                    ok_n   = sum(1 for t in s.tracks if getattr(t, "transfer_status", "") == "found")
-                    fail_n = sum(1 for t in s.tracks if getattr(t, "transfer_status", "") in ("not_found", "error"))
-                    self._content_prog_label.value  = f"Búsqueda finalizada: {ok_n} Éxitos / {fail_n} Fallos"
-                    self._content_prog_label.color  = _accent_ok
-                    self._content_eta_label.value   = ""
-                    self._content_progress.border   = ft.Border.all(0.9, _accent_ok)
-                else:
-                    self._content_prog_label.value  = f"Búsqueda en destino… {int(frac * 100)}%"
-                    self._content_prog_label.color  = TEXT_MUTED
-                    self._content_eta_label.value   = ""
-                    self._content_progress.border   = ft.Border.all(0.8, BORDER_LIGHT)
-            elif xfer_active:
-                frac = (
-                    s.count_confirmed / s.count_detected
-                    if s.transfer_state == TransferState.DONE and s.count_detected
-                    else s.transfer_progress / s.transfer_total
+        if not (show_progress and s.transfer_total):
+            return
+        if (is_scan_run or is_scan_done) and idle_xfer and not xfer_active:
+            frac = min(1.0, s.transfer_progress / max(s.transfer_total, 1))
+            self._content_progress_bar.value = frac
+            if is_scan_done:
+                ok_n = sum(1 for t in s.tracks if getattr(t, "transfer_status", "") == "found")
+                fail_n = sum(1 for t in s.tracks if getattr(t, "transfer_status", "") in ("not_found", "error"))
+                self._content_prog_label.value = f"B\u00fasqueda finalizada: {ok_n} \u00c9xitos / {fail_n} Fallos"
+                self._content_prog_label.color = _accent_ok
+                self._content_eta_label.value = ""
+                self._content_progress.border = ft.Border.all(0.9, _accent_ok)
+            else:
+                self._content_prog_label.value = f"B\u00fasqueda en destino\u2026 {int(frac * 100)}%"
+                self._content_prog_label.color = TEXT_MUTED
+                self._content_eta_label.value = ""
+                self._content_progress.border = ft.Border.all(0.8, BORDER_LIGHT)
+            return
+        if not xfer_active:
+            return
+        frac = (
+            s.count_confirmed / s.count_detected
+            if s.transfer_state == TransferState.DONE and s.count_detected
+            else s.transfer_progress / s.transfer_total
+        )
+        self._content_progress_bar.value = min(1.0, frac)
+        fallidas = len(s.failed_tracks)
+        rechazadas = len(s.api_rejected_tracks)
+        ejec = len(s.transfer_error_tracks)
+        porcentaje = int(frac * 100)
+        if s.transfer_state == TransferState.DONE:
+            self._content_prog_label.value = f"Completado \u00b7 {porcentaje}%"
+            self._content_prog_label.color = _accent_ok
+            self._content_eta_label.value = ""
+            self._content_progress.border = ft.Border.all(0.9, _accent_ok)
+            if not self._completion_snack_shown:
+                self._completion_snack_shown = True
+                fail_n = fallidas + rechazadas + ejec
+                _snack = ft.SnackBar(
+                    content=ft.Text(
+                        f"Transferencia completada: {s.count_confirmed} exitosas, {fail_n} errores",
+                        color=ft.Colors.WHITE, font_family="IBM Plex Sans", size=12, opacity=1.0,
+                    ),
+                    action="Ver Detalles" if fail_n > 0 else None,
+                    on_action=(lambda _: self._telemetry.show_postmortem()) if fail_n > 0 else None,
+                    bgcolor=BG_PANEL, duration=6000,
+                    behavior=ft.SnackBarBehavior.FLOATING, width=440,
+                    show_close_icon=True, close_icon_color=ACCENT,
                 )
-                self._content_progress_bar.value = min(1.0, frac)
-                fallidas   = len(s.failed_tracks)
-                rechazadas = len(s.api_rejected_tracks)
-                ejec       = len(s.transfer_error_tracks)
-                porcentaje = int(frac * 100)
-                if s.transfer_state == TransferState.DONE:
-                    self._content_prog_label.value = f"Completado · {porcentaje}%"
-                    self._content_prog_label.color = _accent_ok
-                    self._content_eta_label.value  = ""
-                    self._content_progress.border  = ft.Border.all(0.9, _accent_ok)
-                    if not self._completion_snack_shown:
-                        self._completion_snack_shown = True
-                        fail_n = fallidas + rechazadas + ejec
-                        _snack = ft.SnackBar(
-                            content=ft.Text(
-                                f"Transferencia completada: {s.count_confirmed} exitosas, {fail_n} errores",
-                                color=ft.Colors.WHITE, font_family="IBM Plex Sans", size=12, opacity=1.0,
-                            ),
-                            action="Ver Detalles" if fail_n > 0 else None,
-                            on_action=(lambda _: self._telemetry.show_postmortem()) if fail_n > 0 else None,
-                            bgcolor=BG_PANEL, duration=6000,
-                            behavior=ft.SnackBarBehavior.FLOATING, width=440,
-                            show_close_icon=True, close_icon_color=ACCENT,
-                        )
-                        self.page.overlay.append(_snack)
-                        _snack.open = True
-                elif s.transfer_state == TransferState.ERROR:
-                    self._content_prog_label.value = f"{porcentaje}%  ·  error · {fallidas + rechazadas} incidencias"
-                    self._content_prog_label.color = WARNING
-                    self._content_eta_label.value  = ""
-                    self._content_progress.border  = ft.Border.all(0.8, WARNING)
-                else:
-                    eta_text = ""
-                    if self._transfer_start > 0 and s.transfer_progress > 0:
-                        elapsed   = time.monotonic() - self._transfer_start
-                        remaining = s.transfer_total - s.transfer_progress
-                        eta_s     = (elapsed / s.transfer_progress) * remaining
-                        if 0 < eta_s < 3600:
-                            eta_text = (f"~{int(eta_s)}s restantes" if eta_s < 60
-                                        else f"~{int(eta_s // 60)}m {int(eta_s % 60)}s restantes")
-                    self._content_prog_label.value = (
-                        f"{porcentaje}%  ·  {s.count_processed} ok  /  {fallidas + rechazadas} errores"
-                    )
-                    self._content_prog_label.color = TEXT_MUTED
-                    self._content_eta_label.value  = eta_text
-                    self._content_progress.border  = ft.Border.all(0.8, BORDER_LIGHT)
+                self.page.overlay.append(_snack)
+                _snack.open = True
+        elif s.transfer_state == TransferState.ERROR:
+            self._content_prog_label.value = f"{porcentaje}%  \u00b7  error \u00b7 {fallidas + rechazadas} incidencias"
+            self._content_prog_label.color = WARNING
+            self._content_eta_label.value = ""
+            self._content_progress.border = ft.Border.all(0.8, WARNING)
+        else:
+            eta_text = ""
+            if self._transfer_start > 0 and s.transfer_progress > 0:
+                elapsed = time.monotonic() - self._transfer_start
+                remaining = s.transfer_total - s.transfer_progress
+                eta_s = (elapsed / s.transfer_progress) * remaining
+                if 0 < eta_s < 3600:
+                    eta_text = (f"~{int(eta_s)}s restantes" if eta_s < 60 else f"~{int(eta_s // 60)}m {int(eta_s % 60)}s restantes")
+            self._content_prog_label.value = f"{porcentaje}%  \u00b7  {s.count_processed} ok  /  {fallidas + rechazadas} errores"
+            self._content_prog_label.color = TEXT_MUTED
+            self._content_eta_label.value = eta_text
+            self._content_progress.border = ft.Border.all(0.8, BORDER_LIGHT)
 
+    def _sync_telemetry(self, s, xfer_active: bool, is_loading: bool) -> None:
         if xfer_active:
             self._telemetry.update_counters(
                 s.count_detected, s.count_candidates, s.count_processed,
@@ -860,20 +866,18 @@ class PlaylistManagerUI:
             self._pm_cleared_for_load = False
         self._telemetry.sync_mode()
 
-        net_blocked  = any(cb.is_open for cb in s.cb.values())
-        rule4_blocked = is_local_src and not s.destination_confirmed
-        self._load_btn.disabled     = net_blocked or is_loading
+    def _sync_action_buttons(self, s, is_local_src: bool, dest_ok: bool, is_loading: bool, is_transferring: bool, is_ready: bool, net_blocked: bool, rule4_blocked: bool) -> None:
+        self._load_btn.disabled = net_blocked or is_loading
         self._transfer_btn.disabled = net_blocked or is_transferring or not is_ready or not dest_ok or rule4_blocked
         self._clear_session_btn.disabled = is_loading or is_transferring
         self._id_clear_btn.visible = bool(self._id_field.value)
         if rule4_blocked:
-            self._transfer_btn.tooltip = "⚠ Elige un destino antes de transferir"
+            self._transfer_btn.tooltip = "\u26a0 Elige un destino antes de transferir"
         elif not dest_ok:
-            self._transfer_btn.tooltip = f"Sesión expirada en {s.destination}"
+            self._transfer_btn.tooltip = f"Sesi\u00f3n expirada en {s.destination}"
         else:
-            self._transfer_btn.tooltip = "Transferir selección al destino"
+            self._transfer_btn.tooltip = "Transferir selecci\u00f3n al destino"
 
-        self.page.update()
 
     def _sync_list_view(self, tracks: list[Track]) -> None:
         lv           = self._list_view

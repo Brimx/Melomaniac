@@ -98,7 +98,7 @@ class CircuitBreaker:
         - Consumo innecesario de cuota de API durante períodos de throttling
     """
     
-    def __init__(self, platform: str, default_cooldown: int = 60):
+    def __init__(self, platform: str, default_cooldown: int | None = None):
         """
         Inicializa un nuevo Circuit Breaker para una plataforma específica.
         
@@ -106,6 +106,13 @@ class CircuitBreaker:
             platform: Nombre de la plataforma a proteger.
             default_cooldown: Tiempo de espera por defecto en segundos.
         """
+        # Single source: core/config.DEFAULT_COOLDOWN (regla 1), permite override configurable (regla 7)
+        if default_cooldown is None:
+            try:
+                from core.config import DEFAULT_COOLDOWN as _CFG_COOLDOWN
+                default_cooldown = _CFG_COOLDOWN
+            except ImportError:
+                default_cooldown = 60
         self.platform         = platform
         self.default_cooldown = default_cooldown
         self.is_open: bool    = False
