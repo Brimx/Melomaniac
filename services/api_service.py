@@ -479,8 +479,10 @@ class MusicApiService:
                     id=item["id"], name=attrs.get("name", "Unknown"),
                     artist=attrs.get("artistName", "Unknown"),
                     album=attrs.get("albumName", "Unknown"),
-                    duration=f"{int(ms/60000)}:{int((ms/1000)%60):02d}",
+                    duration=f"{int(ms/60000)}:{int((ms/1000)%60):02d}" if ms else "0:00",
                     img_url=arturl, platform="Apple Music",
+                    duration_ms=int(ms) if ms else 0,
+                    is_explicit=bool(attrs.get("contentRating") == "explicit"),
                 ))
             url = data.get("next")
             if cb:
@@ -550,15 +552,13 @@ class MusicApiService:
     ) -> SearchResult:
         ct, ca = clean_metadata(name, artist)
         self._cb[platform].check_or_raise()
-        print(f"[SEARCH] {platform} · '{name[:40]}' · breaker_ok")
+        # Pacing ya gestionado en cada hunter (ver _am_hunter sleep 0.8-1.3).
+        # No sleep aquí para evitar doble espera (regla 6 SRP).
         if platform == "YouTube Music":
-            await asyncio.sleep(random.uniform(0.3, 0.8))
             return await self._yt_hunter_async(ct, ca, name, artist, local_duration_s)
         if platform == "Apple Music":
-            await asyncio.sleep(random.uniform(1.0, 1.5))
             return await self._am_hunter_async(ct, ca, name, artist, local_duration_s)
         if platform == "Spotify":
-            await asyncio.sleep(random.uniform(0.5, 1.0))
             return await self._sp_hunter_async(
                 ct, ca, name, artist,
                 local_duration_ms=local_duration_ms,
@@ -604,13 +604,15 @@ class MusicApiService:
     # ── YouTube Music Hunter ───────────────────────────────────────────
 
     def _yt_pack_result(self, chosen: dict, orig_name: str, orig_artist: str) -> SearchResult:
+        from engine.match import pack_search_result
+
         found_title = chosen.get("title", "")
         farts = ", ".join(
             a.get("name", "") for a in (chosen.get("artists") or []) if isinstance(a, dict)
         )
-        comb, tit, art = _fuzzy_scores_triple(orig_name, orig_artist, found_title, farts)
-        needs, low = _fuzzy_flags_elastic(comb, tit, art)
-        return SearchResult(chosen.get("videoId"), needs, low_confidence=low)
+        return pack_search_result(
+            chosen.get("videoId"), found_title, farts, orig_name, orig_artist
+        )
 
     def _yt_sync_search_round(self, query, orig_name, orig_artist, local_duration_s, cached_results=None):
         results = cached_results if cached_results is not None else self._yt_search_songs_sync(query)
@@ -787,10 +789,10 @@ class MusicApiService:
         return best_id, best_meta
 
     def _am_pack_result(self, tid, meta, orig_name, orig_artist) -> SearchResult:
+        from engine.match import pack_search_result
+
         found_t, fa = meta[0], meta[1]
-        comb, tit, art = _fuzzy_scores_triple(orig_name, orig_artist, found_t, fa)
-        needs, low = _fuzzy_flags_elastic(comb, tit, art)
-        return SearchResult(tid, needs, low_confidence=low)
+        return pack_search_result(tid, found_t, fa, orig_name, orig_artist)
 
     def _am_pick_catalog_best(self, song_title, artist_name, candidates, local_duration_s=None) -> SearchResult:
         sel = self._am_select_best(song_title, artist_name, candidates, local_duration_s)
@@ -875,6 +877,8 @@ class MusicApiService:
         return best_d, comb, tit, art
 
     def _sp_build_result(self, d, comb, tit, art) -> SearchResult:
+        # Spotify ya trae comb/tit/art de _sp_pick_best_item (scoring con
+        # duración/explicit). Fuente única de flags es _fuzzy_flags_elastic.
         needs, low = _fuzzy_flags_elastic(comb, tit, art)
         return SearchResult(d.get("id"), needs, low_confidence=low)
 
@@ -892,7 +896,10 @@ class MusicApiService:
         if not self._sp_cfg:
             await asyncio.to_thread(self._sync_init_spotify)
         if not self._sp_cfg:
-            self._sp_cfg = Config(logger=NoopLogger())
+            # No recrear Config (coste 5-8 req de setup TLS/hashes). Si falla
+            # el login, el fallback anónimo en _sp_search_items ya cubre
+            # búsquedas públicas sin sesión. Evita gasto extra (regla 7).
+            return SearchResult(None, False)
 
         nt = _normalize_title(orig_name)
         na = _normalize_title(orig_artist)

@@ -55,8 +55,15 @@ import traceback
 import uuid
 from typing import Callable, Optional
 
+from core.cache import make_cache_key, unwrap_search_result
+from core.config import (
+    PLATFORM_ORDER,
+    PLATFORMS as CFG_PLATFORMS,
+    LOCAL_SOURCES as CFG_LOCAL_SOURCES,
+    SOURCE_OPTIONS as CFG_SOURCE_OPTIONS,
+    get_transfer_concurrency,
+)
 from core.models import Track, SearchResult, LoadState, TransferState
-from core.config import PLATFORM_ORDER, PLATFORMS as CFG_PLATFORMS, LOCAL_SOURCES as CFG_LOCAL_SOURCES, SOURCE_OPTIONS as CFG_SOURCE_OPTIONS
 from utils.circuit_breaker import CircuitBreaker, RateLimitError
 from engine.normalizer import clean_metadata
 from engine.match import _duration_to_seconds, FUZZY_REVISION_THRESHOLD, FUZZY_IDEAL
@@ -354,9 +361,15 @@ class AppState:
     def select_all(self) -> bool:
         return all(t.selected for t in self.tracks) if self.tracks else False
 
+    def _base_list(self) -> list[Track]:
+        """Fuente única para lista base considerando segmentos (regla 1)."""
+        if self.active_segment_key and self.active_segment_key in self.segments:
+            return self.segments[self.active_segment_key]
+        return self.tracks
+
     @property
     def display_tracks(self) -> list[Track]:
-        base_list = self.segments[self.active_segment_key] if self.active_segment_key and self.active_segment_key in self.segments else self.tracks
+        base_list = self._base_list()
         return self.filtered if self.search_query else base_list
 
     # ── Actions ────────────────────────────────────────────────────────
@@ -475,10 +488,17 @@ class AppState:
         dest_ids: list[str]          = []
         dest_id_to_track: dict[str, Track] = {}
         completed_count = 0
-        BATCH_SIZE      = 10
-        batch_pending   = 0
-        TRANSFER_CONCURRENCY = 2 if self.destination == "Apple Music" else 3
-        transfer_sem = asyncio.Semaphore(TRANSFER_CONCURRENCY)
+        # BatchedNotifier: notifica cada 10 items para no saturar UI (regla 6)
+        BATCH_SIZE = 10
+        batch_pending = [0]  # lista para mutar en closure
+
+        def _batched_notify() -> None:
+            batch_pending[0] += 1
+            if batch_pending[0] >= BATCH_SIZE:
+                batch_pending[0] = 0
+                self.notify()
+
+        transfer_sem = asyncio.Semaphore(get_transfer_concurrency(self.destination))
 
         async def _transfer_one(track: Track) -> Optional[str]:
             nonlocal completed_count, batch_pending
@@ -486,29 +506,22 @@ class AppState:
             cn, ca = clean_metadata(track.name, track.artist)
             if not cn.strip():
                 track.transfer_status = "error"
-                track.failure_reason  = "Metadatos vacíos tras The Purge"
+                track.failure_reason = "Metadatos vacíos tras The Purge"
                 self._log(f"[ERROR] Metadatos vacíos, saltando: '{track.name[:42]}'")
                 if track not in self.failed_tracks:
                     self.failed_tracks.append(track)
                 completed_count += 1
                 self.transfer_progress = completed_count
-                batch_pending += 1
-                if batch_pending >= BATCH_SIZE:
-                    batch_pending = 0
-                    self.notify()
+                _batched_notify()
                 return None
 
             self.count_candidates += 1
-            cache_key   = f"{cn.lower()}|||{ca.lower()}|||{self.destination}"
-            local_dur_s = _duration_to_seconds(track.duration)
+            cache_key = make_cache_key(track.name, track.artist, self.destination)
+            # Preferir duration_ms (ms exacto) si existe, fallback a parsing string
+            local_dur_s = (track.duration_ms // 1000) if getattr(track, "duration_ms", 0) else _duration_to_seconds(track.duration)
 
             if cache_key in self.service.search_cache:
-                raw = self.service.search_cache[cache_key]
-                cached = (
-                    raw if isinstance(raw, SearchResult)
-                    else SearchResult(raw, False) if isinstance(raw, str) and raw
-                    else SearchResult(None, False)
-                )
+                cached = unwrap_search_result(self.service.search_cache[cache_key])
                 if not cached.track_id:
                     track.transfer_status = "not_found"
                     track.failure_reason  = track.failure_reason or "Sin resultados (caché)"
@@ -526,10 +539,7 @@ class AppState:
                 self._log(f"[INFO]  ⚡ Caché: {track.name[:42]}")
                 completed_count += 1
                 self.transfer_progress = completed_count
-                batch_pending += 1
-                if batch_pending >= BATCH_SIZE:
-                    batch_pending = 0
-                    self.notify()
+                _batched_notify()
                 return cached.track_id if cached.track_id and not cached.needs_review else None
 
             track.transfer_status = "searching"
@@ -592,10 +602,7 @@ class AppState:
 
             completed_count += 1
             self.transfer_progress = completed_count
-            batch_pending += 1
-            if batch_pending >= BATCH_SIZE:
-                batch_pending = 0
-                self.notify()
+            _batched_notify()
 
             return match.track_id if match.track_id and not match.needs_review else None
 
@@ -713,7 +720,7 @@ class AppState:
 
     def apply_search(self, query: str) -> None:
         self.search_query = query
-        base_list = self.segments[self.active_segment_key] if self.active_segment_key and self.active_segment_key in self.segments else self.tracks
+        base_list = self._base_list()
         if not query:
             self.filtered = []
         else:
@@ -789,17 +796,11 @@ class AppState:
 
         async def _check_one(track: Track) -> None:
             nonlocal done_count
-            cn, ca    = clean_metadata(track.name, track.artist)
-            cache_key = f"{cn.lower()}|||{ca.lower()}|||{self.destination}"
-            local_dur_s = _duration_to_seconds(track.duration)
+            cache_key = make_cache_key(track.name, track.artist, self.destination)
+            local_dur_s = (track.duration_ms // 1000) if getattr(track, "duration_ms", 0) else _duration_to_seconds(track.duration)
 
             if cache_key in self.service.search_cache:
-                raw = self.service.search_cache[cache_key]
-                res = (
-                    raw if isinstance(raw, SearchResult)
-                    else SearchResult(raw, False) if isinstance(raw, str) and raw
-                    else SearchResult(None, False)
-                )
+                res = unwrap_search_result(self.service.search_cache[cache_key])
                 track.transfer_status = (
                     "not_found" if not res.track_id
                     else "revision_necesaria" if res.needs_review

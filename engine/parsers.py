@@ -61,11 +61,13 @@ import xml.etree.ElementTree as ET
 from typing import Optional
 
 from core.models import Track
+from engine.normalizer import _PURGE_BRACKETS_RE as _NORMALIZER_BRACKETS_RE
 
 # ══════════════════════════════════════════════════════════════════════
 # EXPRESIONES REGULARES PARA LIMPIEZA DE METADATOS LOCALES
 # ══════════════════════════════════════════════════════════════════════
-# Precompiladas para máximo rendimiento en operaciones repetitivas.
+# Precompiladas para máximo rendimiento. BRACKETS centralizado en
+# engine/normalizer.py (fuente única, regla 1); aquí se reutiliza.
 
 # Detecta y remueve números de track al inicio (01., 02-, 03_, etc)
 _LOCAL_TRACK_NUM_RE = re.compile(r'^\d{1,3}[\s.\-_]+')
@@ -73,8 +75,8 @@ _LOCAL_TRACK_NUM_RE = re.compile(r'^\d{1,3}[\s.\-_]+')
 # Detecta y remueve extensiones de archivo de audio
 _LOCAL_FILE_EXT_RE  = re.compile(r'\.(mp3|flac|aac|ogg|wav|m4a|wma|opus|aiff?)$', re.IGNORECASE)
 
-# Detecta y remueve paréntesis/corchetes con contenido (máx 60 chars)
-_LOCAL_BRACKETS_RE  = re.compile(r'\s*[\(\[][^\)\]]{1,60}[\)\]]')
+# Re-uso de normalizer para brackets (60 chars limitado para parsers locales)
+_LOCAL_BRACKETS_RE  = _NORMALIZER_BRACKETS_RE
 
 # Detecta directivas #EXTINF de playlists M3U
 _LOCAL_EXTINF_RE    = re.compile(r'^#EXTINF\s*:\s*-?\d+\s*,\s*', re.IGNORECASE)

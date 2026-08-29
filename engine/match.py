@@ -71,38 +71,13 @@ def _fuzzy_score_pair(
     found_artist: str,
 ) -> int:
     """
-    Calcula score fuzzy combinado entre metadatos originales y encontrados.
-    
-    Utiliza RapidFuzz token_sort_ratio sobre núcleos limpios de título y artista.
-    Este algoritmo es robusto ante reordenamiento de palabras y variaciones
-    de formato, ideal para comparar metadatos entre plataformas.
-    
-    Args:
-        orig_title: Título original de la canción.
-        orig_artist: Artista original.
-        found_title: Título encontrado en la búsqueda.
-        found_artist: Artista encontrado en la búsqueda.
-    
-    Returns:
-        Score de similitud 0-100. 100 = match perfecto, 0 = completamente diferente.
-        Retorna 100 si RapidFuzz no está disponible (fallback optimista).
-    
-    Note:
-        token_sort_ratio ordena alfabéticamente los tokens antes de comparar,
-        lo que lo hace robusto ante variaciones como:
-        - "The Beatles" vs "Beatles The"
-        - "Bohemian Rhapsody Queen" vs "Queen Bohemian Rhapsody"
+    Legacy wrapper monocanal — conservado por compatibilidad (regla 11).
+
+    Preferir `_fuzzy_scores_triple` o `pack_search_result` para scoring
+    desglosado `comb/tit/art` con salvamento elástico.
     """
-    if not HAS_RAPIDFUZZ:
-        return 100
-    ct, ca = clean_metadata(orig_title, orig_artist)
-    found_t, fa = clean_metadata(found_title, found_artist)
-    return int(
-        _fuzz.token_sort_ratio(
-            f"{ct} {ca}".lower(),
-            f"{found_t} {fa}".lower(),
-        )
-    )
+    comb, _, _ = _fuzzy_scores_triple(orig_title, orig_artist, found_title, found_artist)
+    return comb
 
 
 def _fuzzy_scores_triple(
@@ -224,9 +199,28 @@ def _fuzzy_flags_elastic(comb: int, tit: int, art: int) -> tuple[bool, bool]:
     return needs_review, low_conf
 
 
-def _fuzzy_flags(score: int) -> tuple[bool, bool]:
-    """Fallback monocanal (sin triple)."""
-    return _fuzzy_flags_elastic(score, score, score)
+def pack_search_result(
+    track_id: str | None,
+    found_title: str,
+    found_artist: str,
+    orig_title: str,
+    orig_artist: str,
+    isrc: str | None = None,
+) -> "SearchResult":
+    """
+    Helper DRY para los 3 hunters (regla 3).
+
+    Evita duplicar `comb,tit,art = _fuzzy_scores_triple(...) -> _fuzzy_flags_elastic`
+    en `_yt_pack_result`, `_am_pack_result`, `_sp_build_result`.
+    Pasa datos simples, no controles UI (regla 10).
+    """
+    from core.models import SearchResult as _SR  # evitar ciclo
+
+    if not track_id:
+        return _SR(None, False)
+    comb, tit, art = _fuzzy_scores_triple(orig_title, orig_artist, found_title, found_artist)
+    needs, low = _fuzzy_flags_elastic(comb, tit, art)
+    return _SR(track_id, needs, low_confidence=low, isrc=isrc)
 
 
 def score_spotify_match(
