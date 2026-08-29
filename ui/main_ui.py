@@ -65,31 +65,13 @@ from ui.song_row import SongRow, SkeletonRow, ITEM_H
 from ui.telemetry import TelemetryDrawer
 from ui.widgets import _primary_btn, _ghost_btn, _section_label, _status_icon
 
-# ══════════════════════════════════════════════════════════════════════
-# TOKENS DE DISEÑO
-# ══════════════════════════════════════════════════════════════════════
-# Sistema de colores completo para la interfaz principal
-
-BG_DEEP      = "#FF000000"  # Negro absoluto para fondos profundos
-BG_PANEL     = "#FF080808"  # Fondo de paneles principales
-BG_SURFACE   = "#FF111118"  # Superficies elevadas
-BG_HOVER     = "#FF1E1E28"  # Fondo de hover
-BG_INPUT     = "#FF16161F"  # Fondo de campos de entrada
-SIDEBAR_BG   = "#FF0E0E15"  # Fondo de sidebar
-BG_LIST      = "#FF161622"  # Fondo de listas
-CHIP_BG      = "#FF1A1A22"  # Fondo de chips y badges
-BORDER_LIGHT = "#FF3D4455"  # Bordes visibles
-BORDER_MUTED = "#FF2A3040"  # Bordes sutiles
-ACCENT       = "#FF4F8BFF"  # Color de acento principal
-ACCENT_DIM   = "#FF2D5FCC"  # Acento atenuado
-ACCENT_HALO  = "#FF2A3F5C"  # Halo de sombra de acento
-SUCCESS      = "#FF00D084"  # Verde para éxito
-WARNING      = "#FFFFA500"  # Naranja para advertencias
-ERROR_COL    = "#FFFF4444"  # Rojo para errores
-TEXT_PRIMARY = "#FFF2F6FF"  # Texto principal
-TEXT_MUTED   = "#FF7A8499"  # Texto secundario
-TEXT_DIM     = "#FF3D4455"  # Texto terciario
-SKELETON_DARK = "#FF0E1016" # Color de skeleton placeholders
+from ui.tokens import (
+    BG_DEEP, BG_PANEL, BG_SURFACE, BG_HOVER, BG_INPUT, SIDEBAR_BG,
+    BG_LIST, CHIP_BG, BORDER_LIGHT, BORDER_MUTED,
+    ACCENT, ACCENT_DIM, ACCENT_HALO,
+    SUCCESS, WARNING, ERROR_COL,
+    TEXT_PRIMARY, TEXT_MUTED, TEXT_DIM, SKELETON_DARK,
+)
 
 
 class PlaylistManagerUI:

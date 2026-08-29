@@ -38,20 +38,12 @@ from typing import Callable, Optional
 import flet as ft
 
 from core.models import Track
+from ui.tokens import (
+    BG_LIST, BG_HOVER, SKELETON_DARK,
+    TEXT_PRIMARY, TEXT_MUTED, TEXT_DIM,
+    ACCENT, BG_SURFACE,
+)
 from ui.widgets import _status_icon
-
-# ══════════════════════════════════════════════════════════════════════
-# TOKENS DE DISEÑO
-# ══════════════════════════════════════════════════════════════════════
-
-BG_LIST       = "#FF161622"  # Fondo de lista por defecto
-BG_HOVER      = "#FF1E1E28"  # Fondo de hover para filas
-SKELETON_DARK = "#FF0E1016"  # Color de placeholders skeleton
-TEXT_PRIMARY  = "#FFF2F6FF"  # Texto principal
-TEXT_MUTED    = "#FF7A8499"  # Texto secundario
-TEXT_DIM      = "#FF3D4455"  # Texto terciario
-ACCENT        = "#FF4F8BFF"  # Color de acento
-BG_SURFACE    = "#FF111118"  # Fondo de superficies
 
 # Altura fija de fila para cálculos de virtualización
 ITEM_H = 64

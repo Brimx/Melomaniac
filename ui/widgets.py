@@ -32,22 +32,11 @@ from __future__ import annotations
 
 import flet as ft
 
-# ══════════════════════════════════════════════════════════════════════
-# TOKENS DE DISEÑO
-# ══════════════════════════════════════════════════════════════════════
-# Sistema de colores optimizado para pantallas OLED con alto contraste
-# y reducción de fatiga visual en sesiones prolongadas.
-
-TEXT_PRIMARY = "#FFF2F6FF"  # Texto principal de alta legibilidad
-TEXT_MUTED   = "#FF7A8499"  # Texto secundario con opacidad reducida
-TEXT_DIM     = "#FF3D4455"  # Texto terciario para labels y metadatos
-ACCENT       = "#FF4F8BFF"  # Color de acento para elementos interactivos
-ACCENT_DIM   = "#FF2D5FCC"  # Acento atenuado para estado pressed
-ACCENT_HALO  = "#FF2A3F5C"  # Halo de sombra para elevación de acento
-BG_HOVER     = "#FF1E1E28"  # Fondo de hover para elementos interactivos
-SUCCESS      = "#FF00D084"  # Verde para estados exitosos
-ERROR_COL    = "#FFFF4444"  # Rojo para estados de error
-WARNING      = "#FFFFA500"  # Naranja para advertencias y revisiones
+from ui.tokens import (
+    TEXT_PRIMARY, TEXT_MUTED, TEXT_DIM,
+    ACCENT, ACCENT_DIM, ACCENT_HALO, BG_HOVER,
+    SUCCESS, ERROR_COL, WARNING,
+)
 
 
 def _section_label(text: str) -> ft.Text:

@@ -64,6 +64,13 @@ from dotenv import load_dotenv
 
 from auth_manager import BROWSER_JSON
 from core.models import Track, SearchResult
+from core.config import (
+    NETWORK_CONCURRENCY as CFG_NETWORK_CONCURRENCY,
+    RATE_LIMIT_BACKOFF_STEPS as CFG_RATE_LIMIT_BACKOFF_STEPS,
+    SEARCH_CACHE_JSON as CFG_SEARCH_CACHE_JSON,
+    SPOTIFY_ADD_CHUNK as CFG_SPOTIFY_ADD_CHUNK,
+    SPOTIFY_COOKIES_JSON as CFG_SPOTIFY_COOKIES_JSON,
+)
 from utils.circuit_breaker import CircuitBreaker, RateLimitError
 from engine.normalizer import (
     clean_metadata, build_search_query, _normalize_title, FUZZY_IDEAL,
@@ -94,16 +101,11 @@ except ImportError:
     HAS_SPOTIFY = False
 
 # ══════════════════════════════════════════════════════════════════════
-# CONSTANTES DE CONFIGURACIÓN
+# CONSTANTES DE CONFIGURACIÓN — single source: core/config.py
 # ══════════════════════════════════════════════════════════════════════
 
-# Límite de peticiones HTTP concurrentes para evitar sobrecarga
-NETWORK_CONCURRENCY = 2
-
-# Número de reintentos ante rate limiting (HTTP 429)
-RATE_LIMIT_BACKOFF_STEPS = 10
-
-# Semáforo global para limitar concurrencia de peticiones
+NETWORK_CONCURRENCY = CFG_NETWORK_CONCURRENCY
+RATE_LIMIT_BACKOFF_STEPS = CFG_RATE_LIMIT_BACKOFF_STEPS
 GLOBAL_API_SEMAPHORE = asyncio.Semaphore(NETWORK_CONCURRENCY)
 
 
@@ -113,20 +115,10 @@ _YTM_401_MSG = (
     "Renueva Cookie + Authorization desde el navegador."
 )
 
-# Archivo de cookies de Spotify (patrón browser.json)
-SPOTIFY_COOKIES_JSON = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "spotify_cookies.json")
-
-# Tamaño de lote al añadir canciones a una playlist de Spotify. El cliente
-# web parte las adiciones en peticiones pequeñas; mandar cientos de tracks
-# de golpe al pathfinder (addToPlaylist) puede ser rechazado o generar
-# rate-limiting, tumbando la transferencia completa.
-SPOTIFY_ADD_CHUNK = 50
-
-# Caché de búsquedas persistida a disco: permite reanudar una transferencia
-# interrumpida (p.ej. por un 429) sin volver a buscar los tracks ya resueltos.
-SEARCH_CACHE_JSON = os.path.join(
-    os.path.dirname(os.path.abspath(__file__)), "..", "resources", "search_cache.json"
-)
+# Re-exports para compatibilidad (single source: core/config.py)
+SPOTIFY_COOKIES_JSON = CFG_SPOTIFY_COOKIES_JSON
+SPOTIFY_ADD_CHUNK = CFG_SPOTIFY_ADD_CHUNK
+SEARCH_CACHE_JSON = CFG_SEARCH_CACHE_JSON
 
 
 def _is_ytm_unauthorized(exc: BaseException) -> bool:

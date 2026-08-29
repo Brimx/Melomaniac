@@ -3,17 +3,11 @@ from __future__ import annotations
 
 import flet as ft
 
-# Design tokens
-BG_PANEL     = "#FF080808"
-BG_HOVER     = "#FF1E1E28"
-BORDER_LIGHT = "#FF3D4455"
-BORDER_MUTED = "#FF2A3040"
-ACCENT       = "#FF4F8BFF"
-SUCCESS      = "#FF00D084"
-ERROR_COL    = "#FFFF4444"
-TEXT_PRIMARY = "#FFF2F6FF"
-TEXT_MUTED   = "#FF7A8499"
-TEXT_DIM     = "#FF3D4455"
+from ui.tokens import (
+    BG_PANEL, BG_HOVER, BORDER_LIGHT, BORDER_MUTED,
+    ACCENT, SUCCESS, ERROR_COL,
+    TEXT_PRIMARY, TEXT_MUTED, TEXT_DIM,
+)
 
 _TELE_HANDLE_H   = 35
 _TELE_PANEL_H    = 300

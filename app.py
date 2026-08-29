@@ -27,23 +27,14 @@ import flet as ft
 from dotenv import load_dotenv
 
 from core.state import AppState
+from core.config import PLATFORM_ORDER
 from services.api_service import MusicApiService
 from auth_manager import AuthManager
 from ui.main_ui import PlaylistManagerUI
+from ui.tokens import BG_LIST, ACCENT, BG_SURFACE, TEXT_PRIMARY
 from utils.circuit_breaker import CircuitBreaker
 
 load_dotenv()
-
-# ══════════════════════════════════════════════════════════════════════
-# TOKENS DE DISEÑO
-# ══════════════════════════════════════════════════════════════════════
-# Paleta de colores optimizada para interfaces OLED con alto contraste
-# y reducción de fatiga visual en sesiones prolongadas.
-
-BG_LIST  = "#FF161622"      # Fondo principal de listas
-ACCENT   = "#FF4F8BFF"      # Color de acento para elementos interactivos
-BG_SURFACE = "#FF111118"    # Fondo de superficies elevadas
-TEXT_PRIMARY = "#FFF2F6FF"  # Texto principal de alta legibilidad
 
 # Fuentes locales (IBM Plex Sans variable)
 ASSETS_DIR = Path(__file__).resolve().parent / "resources"
@@ -137,12 +128,15 @@ async def main(page: ft.Page) -> None:
         # ──────────────────────────────────────────────────────────────
         # INICIALIZACIÓN DE COMPONENTES DEL SISTEMA
         # ──────────────────────────────────────────────────────────────
-        # Instancia los componentes principales siguiendo el patrón de
-        # inyección de dependencias: CircuitBreakers → Service → State → UI
-        
-        circuit_breakers = {p: CircuitBreaker(p) for p in AppState.PLATFORMS}
-        service      = MusicApiService(circuit_breakers)
-        state        = AppState(service)
+        # Fuente única: PLATFORM_ORDER viene de core/config (que re-exporta auth_manager).
+        # AppState es quien crea los CircuitBreakers (single source) y
+        # MusicApiService reutiliza la misma instancia para evitar Task leaks
+        # de breakers huérfanos (regla 1). Se crea State primero con service
+        # temporal None y luego se inyecta el Service.
+
+        state   = AppState(service=None)  # type: ignore[arg-type]
+        service = MusicApiService(state.cb)
+        state.service = service
         ui           = PlaylistManagerUI(page, state)
         auth_manager = AuthManager(page, service, state)
 

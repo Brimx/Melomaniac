@@ -56,6 +56,7 @@ import uuid
 from typing import Callable, Optional
 
 from core.models import Track, SearchResult, LoadState, TransferState
+from core.config import PLATFORM_ORDER, PLATFORMS as CFG_PLATFORMS, LOCAL_SOURCES as CFG_LOCAL_SOURCES, SOURCE_OPTIONS as CFG_SOURCE_OPTIONS
 from utils.circuit_breaker import CircuitBreaker, RateLimitError
 from engine.normalizer import clean_metadata
 from engine.match import _duration_to_seconds, FUZZY_REVISION_THRESHOLD, FUZZY_IDEAL
@@ -199,14 +200,14 @@ class AppState:
         el estado directamente, solo leerlo y llamar métodos de AppState.
     """
 
-    # Plataformas de streaming soportadas
-    PLATFORMS = ["Apple Music", "YouTube Music", "Spotify"]
-    
+    # Plataformas de streaming soportadas — single source: core/config (re-exporta auth_manager)
+    PLATFORMS = CFG_PLATFORMS
+
     # Fuentes locales (no requieren autenticación)
-    LOCAL_SOURCES: frozenset = frozenset({"Archivo Local", "Pegar Texto"})
-    
+    LOCAL_SOURCES: frozenset = CFG_LOCAL_SOURCES
+
     # Todas las opciones de fuente disponibles en la UI
-    SOURCE_OPTIONS = ["Apple Music", "YouTube Music", "Spotify", "Archivo Local", "Pegar Texto"]
+    SOURCE_OPTIONS = CFG_SOURCE_OPTIONS
 
     def __init__(self, service) -> None:
         """
@@ -277,7 +278,10 @@ class AppState:
         self.cb: dict[str, CircuitBreaker] = {
             p: CircuitBreaker(p) for p in self.PLATFORMS
         }
-        self.service._cb = self.cb
+        if self.service is not None:
+            self.service._cb = self.cb
+        # Si service es None (init en app.py), el caller debe inyectar
+        # state.service = service y service._cb = state.cb manualmente.
 
         # ──────────────────────────────────────────────────────────────
         # ESTADO DE AUTENTICACIÓN
