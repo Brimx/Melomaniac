@@ -60,7 +60,7 @@ import flet as ft
 
 from core.models import Track, LoadState, TransferState
 from core.state import AppState
-from engine.parsers import parse_local_playlist, build_local_tracks
+from engine.parsers import parse_local_playlist_with_paths, build_local_tracks
 from ui.song_row import SongRow, SkeletonRow, ITEM_H
 from ui.telemetry import TelemetryDrawer
 from ui.widgets import _primary_btn, _ghost_btn, _section_label, _status_icon
@@ -1018,11 +1018,19 @@ class PlaylistManagerUI:
     async def _do_local_pick(self) -> None:
         files = await self._file_picker.pick_files(
             dialog_title="Seleccionar playlist",
-            allowed_extensions=["txt", "csv", "m3u", "m3u8", "pls", "wpl", "xspf", "xml"],
+            allowed_extensions=[
+                "txt", "csv", "m3u", "m3u8", "pls", "wpl", "xspf", "xml",
+                "mp3", "flac", "aac", "ogg", "wav", "m4a", "wma", "opus", "aiff", "aif",
+            ],
         )
         if not files:
             return
         f = files[0]
+        if os.path.splitext(f.name)[1].lower() in {
+            ".mp3", ".flac", ".aac", ".ogg", ".wav", ".m4a", ".wma", ".opus", ".aiff", ".aif",
+        }:
+            self._ingest_audio_file(f.path, os.path.splitext(os.path.basename(f.name))[0])
+            return
         try:
             with open(f.path, encoding="utf-8", errors="replace") as fh:
                 text = fh.read()
@@ -1031,11 +1039,11 @@ class PlaylistManagerUI:
             self._snack(f"Error leyendo archivo: {exc}", error=True)
             return
         base_name = os.path.splitext(os.path.basename(f.name))[0] or "Playlist Local"
-        self._ask_playlist_name_then_ingest(text=text, filename=f.name, suggested_name=base_name)
+        self._ask_playlist_name_then_ingest(text=text, filename=f.path, suggested_name=base_name)
 
     def _ingest_text(self, text: str, label: str = "", filename: str = "") -> None:
         try:
-            pairs = parse_local_playlist(text, filename=filename or label)
+            pairs = parse_local_playlist_with_paths(text, filename=filename or label)
         except Exception as exc:  # pylint: disable=broad-exception-caught
             self.state.log(f"[ERROR] Parser ingesta: {exc}")
             self._snack(f"Error en el parser: {exc}", error=True)
@@ -1052,6 +1060,25 @@ class PlaylistManagerUI:
         self.state.load_local_tracks(tracks, playlist_name=name)
         self._snack(f"{len(tracks)} canciones importadas de '{name}'")
         self.state.log(f"[INFO] Ingesta completa · {len(tracks)} pistas desde '{label}'")
+
+    def _ingest_audio_file(self, path: str, label: str) -> None:
+        """Importa un archivo de audio leyendo sus tags con Mutagen."""
+        try:
+            tracks = build_local_tracks([("", os.path.basename(path), path)])
+        except Exception as exc:  # Mutagen no debe tumbar la UI
+            self.state.log(f"[ERROR] Metadatos de audio: {exc}")
+            self._snack(f"Error leyendo metadatos: {exc}", error=True)
+            return
+        if not tracks:
+            self._snack("No se pudieron leer los metadatos del audio", error=True)
+            return
+        name = label.strip() or "Archivo de audio"
+        self._completion_snack_shown = False
+        self._pm_cleared_for_load = True
+        self._telemetry.clear_postmortem()
+        self.state.load_local_tracks(tracks, playlist_name=name)
+        self._snack(f"Audio importado: '{name}'")
+        self.state.log(f"[INFO] Audio local importado · {path}")
 
     async def _on_transfer(self, _) -> None:
         if self.state.source == self.state.destination:

@@ -49,6 +49,9 @@ class Track:
                                 "transferred", "error", "revision_necesaria"
         failure_reason: Descripción del error en caso de fallo (post-mortem).
                        Ejemplos: "Zero Results", "HTTP 429", "Timeout"
+        isrc: Código ISRC de la grabación, cuando la fuente lo proporciona.
+        source_path: Ruta local del archivo de audio, si el track proviene
+                     de una playlist local con rutas de archivos.
     
     Note:
         El campo transfer_status sigue un flujo de estados que permite
@@ -67,6 +70,11 @@ class Track:
     failure_reason: str = ""
     duration_ms: int = 0
     is_explicit: bool = False
+    isrc: Optional[str] = None
+    source_path: str = ""
+    album_artist: str = ""
+    track_number: int = 0
+    release_date: str = ""
 
 
 @dataclass

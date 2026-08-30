@@ -56,6 +56,7 @@ import asyncio
 import json
 import os
 import random
+import threading
 import time
 from typing import Callable, Optional
 
@@ -70,10 +71,15 @@ from core.config import (
     SEARCH_CACHE_JSON as CFG_SEARCH_CACHE_JSON,
     SPOTIFY_ADD_CHUNK as CFG_SPOTIFY_ADD_CHUNK,
     SPOTIFY_COOKIES_JSON as CFG_SPOTIFY_COOKIES_JSON,
+    APPLE_API_BASE,
+    APPLE_ISRC_BATCH,
+    APPLE_TRANSFER_BATCH,
+    APPLE_REQUEST_BURST,
+    APPLE_REQUEST_PAUSE,
 )
 from utils.circuit_breaker import CircuitBreaker, RateLimitError
 from engine.normalizer import (
-    clean_metadata, build_search_query, _normalize_title, FUZZY_IDEAL,
+    clean_metadata, build_search_query, _normalize_title, normalize_isrc, FUZZY_IDEAL,
 )
 from engine.match import (
     _fuzzy_scores_triple, _fuzzy_flags_elastic, _ideal_pass_hunter,
@@ -107,6 +113,45 @@ except ImportError:
 NETWORK_CONCURRENCY = CFG_NETWORK_CONCURRENCY
 RATE_LIMIT_BACKOFF_STEPS = CFG_RATE_LIMIT_BACKOFF_STEPS
 GLOBAL_API_SEMAPHORE = asyncio.Semaphore(NETWORK_CONCURRENCY)
+
+
+class AppleAuthError(RuntimeError):
+    """Error no reintentable de la sesión web de Apple Music."""
+
+    def __init__(self, status_code: int, message: str = ""):
+        self.status_code = status_code
+        super().__init__(message or f"Apple Music HTTP {status_code}")
+
+
+class AppleRequestLimiter:
+    """Limitador compartido entre búsquedas, lectura y escritura Apple.
+
+    El contador se aplica a peticiones salientes, no a canciones encontradas.
+    Es síncrono porque las peticiones requests se ejecutan en threads; así
+    también protege llamadas que no pasan por un hunter async.
+    """
+
+    def __init__(self, burst: int = APPLE_REQUEST_BURST, pause: int = APPLE_REQUEST_PAUSE):
+        self.burst = burst
+        self.pause = pause
+        self.count = 0
+        self._next_allowed = 0.0
+        self._lock = threading.Lock()
+
+    def wait_turn(self) -> None:
+        with self._lock:
+            delay = max(0.0, self._next_allowed - time.monotonic())
+            if self.count >= self.burst:
+                delay = max(delay, float(self.pause))
+            if delay:
+                time.sleep(delay)
+            if self.count >= self.burst:
+                self.count = 0
+            self.count += 1
+
+    def penalize(self, seconds: int) -> None:
+        with self._lock:
+            self._next_allowed = max(self._next_allowed, time.monotonic() + max(1, seconds))
 
 
 # Mensaje de error para sesión expirada de YouTube Music
@@ -205,6 +250,7 @@ class MusicApiService:
         # Reutilizarla reduce cada búsqueda a 1 solo request.
         self._sp_song  = None
         self._search_cache: dict[str, SearchResult] = self._load_search_cache()
+        self._am_rate_limiter = AppleRequestLimiter()
         self._shutdown_cleaned: bool = False
         self.youtube_auth_error: str = ""
         self.spotify_auth_error: str = ""
@@ -325,6 +371,27 @@ class MusicApiService:
 
     # ── Apple Music Auth ───────────────────────────────────────────────
 
+    def _am_request(self, method: str, url: str, **kwargs):
+        """Ejecuta una petición Apple con pausa preventiva y retry limitado."""
+        request = getattr(self._http_session, method.lower())
+        for attempt in range(2):
+            self._am_rate_limiter.wait_turn()
+            response = request(url, **kwargs)
+            if response.status_code == 429 and attempt == 0:
+                retry = self._retry_after_seconds(response)
+                self._am_rate_limiter.penalize(retry)
+                continue
+            self._am_check_status(response)
+            return response
+        raise RateLimitError("Apple Music", APPLE_REQUEST_PAUSE)
+
+    @staticmethod
+    def _retry_after_seconds(response) -> int:
+        try:
+            return max(1, int(response.headers.get("Retry-After", APPLE_REQUEST_PAUSE)))
+        except (TypeError, ValueError, AttributeError):
+            return APPLE_REQUEST_PAUSE
+
     async def init_apple(self) -> bool:
         return await asyncio.to_thread(self._sync_init_apple)
 
@@ -343,8 +410,9 @@ class MusicApiService:
             "Accept":  "application/json",
         }
         try:
-            resp = self._http_session.get(
-                "https://amp-api.music.apple.com/v1/me/storefront",
+            resp = self._am_request(
+                "get",
+                f"{APPLE_API_BASE}/me/storefront",
                 headers=am_headers, timeout=10,
             )
             if resp.status_code == 200:
@@ -352,6 +420,9 @@ class MusicApiService:
                 self._http_session.headers.update(am_headers)
                 self._am_storefront = resp.json().get("data", [{}])[0].get("id", "us")
                 return True
+            return False
+        except (AppleAuthError, RateLimitError) as exc:
+            print(f"[Apple Music] init failed: {exc}")
             return False
         except Exception as exc:  # pylint: disable=broad-exception-caught
             print(f"[Apple Music] init failed: {exc}")
@@ -439,13 +510,14 @@ class MusicApiService:
                 duration=t.get("duration", "0:00"),
                 img_url=thumbs[-1]["url"] if thumbs else "",
                 platform="YouTube Music",
+                isrc=normalize_isrc(t.get("isrc")),
             ))
             if cb and i % 50 == 0:
                 cb(i, total, name)
         return name, tracks
 
     def _sync_fetch_apple(self, pid: str, cb) -> tuple[str, list[Track]]:
-        base     = "https://amp-api.music.apple.com/v1"
+        base     = APPLE_API_BASE
         is_lib   = pid.startswith("p.")
         info_url = (
             f"{base}/me/library/playlists/{pid}" if is_lib
@@ -453,7 +525,7 @@ class MusicApiService:
         )
         name = "Apple Music Playlist"
         try:
-            r = self._http_session.get(info_url, timeout=10)
+            r = self._am_request("get", info_url, timeout=10)
             self._am_check_status(r)
             if r.ok:
                 name = r.json()["data"][0]["attributes"].get("name", name)
@@ -465,7 +537,7 @@ class MusicApiService:
         tracks, url = [], f"{info_url}/tracks"
         while url:
             full = url if url.startswith("http") else f"https://amp-api.music.apple.com{url}"
-            r    = self._http_session.get(full, timeout=10)
+            r    = self._am_request("get", full, timeout=10)
             self._am_check_status(r)
             r.raise_for_status()
             data = r.json()
@@ -483,6 +555,7 @@ class MusicApiService:
                     img_url=arturl, platform="Apple Music",
                     duration_ms=int(ms) if ms else 0,
                     is_explicit=bool(attrs.get("contentRating") == "explicit"),
+                    isrc=normalize_isrc(attrs.get("isrc")),
                 ))
             url = data.get("next")
             if cb:
@@ -528,6 +601,7 @@ class MusicApiService:
                     album=(t.get("albumOfTrack") or {}).get("name", "Unknown"),
                     duration=f"{int(ms/60000)}:{int((ms/1000)%60):02d}" if ms else "0:00",
                     img_url=img_url, platform="Spotify",
+                    isrc=self._extract_spotify_isrc(t),
                 ))
             offset += len(items)
             if offset >= total or not items:
@@ -549,6 +623,7 @@ class MusicApiService:
         local_duration_s: Optional[int] = None,
         local_duration_ms: int = 0,
         local_is_explicit: bool = False,
+        local_isrc: str | None = None,
     ) -> SearchResult:
         ct, ca = clean_metadata(name, artist)
         self._cb[platform].check_or_raise()
@@ -557,7 +632,9 @@ class MusicApiService:
         if platform == "YouTube Music":
             return await self._yt_hunter_async(ct, ca, name, artist, local_duration_s)
         if platform == "Apple Music":
-            return await self._am_hunter_async(ct, ca, name, artist, local_duration_s)
+            return await self._am_hunter_async(
+                ct, ca, name, artist, local_duration_s, local_isrc=local_isrc
+            )
         if platform == "Spotify":
             return await self._sp_hunter_async(
                 ct, ca, name, artist,
@@ -574,6 +651,7 @@ class MusicApiService:
         local_duration_s: Optional[int] = None,
         local_duration_ms: int = 0,
         local_is_explicit: bool = False,
+        local_isrc: str | None = None,
     ) -> SearchResult:
         base_t, base_a = clean_metadata(name, artist)
         passes = [
@@ -594,6 +672,7 @@ class MusicApiService:
                 platform, t_pass, a_pass, local_duration_s,
                 local_duration_ms=local_duration_ms,
                 local_is_explicit=local_is_explicit,
+                local_isrc=local_isrc,
             )
             if result.track_id:
                 if idx == 0 and not result.needs_review and not result.low_confidence:
@@ -611,7 +690,8 @@ class MusicApiService:
             a.get("name", "") for a in (chosen.get("artists") or []) if isinstance(a, dict)
         )
         return pack_search_result(
-            chosen.get("videoId"), found_title, farts, orig_name, orig_artist
+            chosen.get("videoId"), found_title, farts, orig_name, orig_artist,
+            isrc=normalize_isrc(chosen.get("isrc")),
         )
 
     def _yt_sync_search_round(self, query, orig_name, orig_artist, local_duration_s, cached_results=None):
@@ -720,24 +800,31 @@ class MusicApiService:
         conlleva un cooldown mínimo de 120s por ser típicamente un
         bloqueo temporal del token de sesión web.
         """
+        if r.status_code in (401, 403):
+            raise AppleAuthError(r.status_code, "Sesión web de Apple Music rechazada")
         if r.status_code in (429, 423):
-            retry = int(r.headers.get("Retry-After", 60))
+            try:
+                retry = int(r.headers.get("Retry-After", APPLE_REQUEST_PAUSE))
+            except (TypeError, ValueError, AttributeError):
+                retry = APPLE_REQUEST_PAUSE
             if r.status_code == 423:
                 retry = max(retry, 120)
             raise RateLimitError("Apple Music", retry)
 
     def _am_candidates_for_term(self, term: str) -> list[tuple[str, str, tuple[str, str, int, str]]]:
         """
-        Busca canciones en el catálogo vía la API oficial de Apple Music
-        (api.music.apple.com), usando la sesión web (JWS + media-user-token).
+        Busca canciones en el catálogo web de Apple Music vía
+        amp-api.music.apple.com, usando la sesión web
+        (JWS + media-user-token), sin developer token.
 
         A diferencia de iTunes Search API, no tiene el límite de ~20 llamadas/min
         y devuelve el ISRC, que se incluye en la meta para poder cachear
         búsquedas exactas por ISRC en el futuro. El trackId devuelto es el mismo
         song ID del catálogo que usa la API para crear playlists.
         """
-        r = self._http_session.get(
-            f"https://api.music.apple.com/v1/catalog/{self._am_storefront}/search",
+        r = self._am_request(
+            "get",
+            f"{APPLE_API_BASE}/catalog/{self._am_storefront}/search",
             params={"term": term, "types": "songs", "limit": 5},
             timeout=10,
         )
@@ -759,6 +846,41 @@ class MusicApiService:
             for s in songs
             if (a := s.get("attributes", {})) and s.get("id")
         ]
+
+    def _am_search_isrc_batch(self, isrcs: list[str]) -> dict[str, SearchResult]:
+        """Resuelve hasta 25 ISRC con una llamada de catálogo Apple."""
+        values = [normalize_isrc(value) for value in isrcs]
+        values = [value for value in dict.fromkeys(values) if value]
+        if not values:
+            return {}
+        response = self._am_request(
+            "get",
+            f"{APPLE_API_BASE}/catalog/{self._am_storefront}/songs",
+            params={"filter[isrc]": ",".join(values), "limit": len(values)},
+            timeout=10,
+        )
+        found: dict[str, SearchResult] = {}
+        for item in response.json().get("data", []):
+            attrs = item.get("attributes", {})
+            isrc = normalize_isrc(attrs.get("isrc"))
+            if isrc and item.get("id"):
+                found[isrc] = SearchResult(
+                    track_id=str(item["id"]),
+                    needs_review=False,
+                    isrc=isrc,
+                )
+        return found
+
+    async def search_by_isrcs(self, isrcs: list[str]) -> dict[str, SearchResult]:
+        """Resuelve ISRC en lotes de 25, siempre de forma secuencial."""
+        normalized = [normalize_isrc(value) for value in isrcs]
+        normalized = [value for value in dict.fromkeys(normalized) if value]
+        resolved: dict[str, SearchResult] = {}
+        for start in range(0, len(normalized), APPLE_ISRC_BATCH):
+            batch = normalized[start:start + APPLE_ISRC_BATCH]
+            async with GLOBAL_API_SEMAPHORE:
+                resolved.update(await asyncio.to_thread(self._am_search_isrc_batch, batch))
+        return resolved
 
     def _am_select_best(self, song_title, artist_name, candidates, local_duration_s=None):
         """Devuelve (tid, meta) del mejor candidato. Tie-break: duración más cercana."""
@@ -792,7 +914,10 @@ class MusicApiService:
         from engine.match import pack_search_result
 
         found_t, fa = meta[0], meta[1]
-        return pack_search_result(tid, found_t, fa, orig_name, orig_artist)
+        return pack_search_result(
+            tid, found_t, fa, orig_name, orig_artist,
+            isrc=normalize_isrc(meta[3] if len(meta) > 3 else None),
+        )
 
     def _am_pick_catalog_best(self, song_title, artist_name, candidates, local_duration_s=None) -> SearchResult:
         sel = self._am_select_best(song_title, artist_name, candidates, local_duration_s)
@@ -800,7 +925,15 @@ class MusicApiService:
             return SearchResult(None, False)
         return self._am_pack_result(sel[0], sel[1], song_title, artist_name)
 
-    async def _am_hunter_async(self, ct, ca, orig_name, orig_artist, local_duration_s=None) -> SearchResult:
+    async def _am_hunter_async(
+        self, ct, ca, orig_name, orig_artist, local_duration_s=None,
+        local_isrc: str | None = None,
+    ) -> SearchResult:
+        exact_isrc = normalize_isrc(local_isrc)
+        if exact_isrc:
+            exact = await self.search_by_isrcs([exact_isrc])
+            if exact_isrc in exact and exact[exact_isrc].track_id:
+                return exact[exact_isrc]
         terms: list[str] = []
         for t in (
             build_search_query(ct, ca),
@@ -847,6 +980,18 @@ class MusicApiService:
         except (KeyError, TypeError):
             return []
 
+    @staticmethod
+    def _extract_spotify_isrc(data: dict) -> str | None:
+        """Lee ISRC solo del payload ya recibido de Spotify/SpotAPI."""
+        for key in ("external_ids", "externalIds"):
+            external = data.get(key) or {}
+            if isinstance(external, dict):
+                value = external.get("isrc")
+                result = normalize_isrc(value)
+                if result:
+                    return result
+        return normalize_isrc(data.get("isrc"))
+
     def _sp_pick_best_item(self, items, orig_name, orig_artist,
                            local_duration_ms=0, local_is_explicit=False):
         """Devuelve (item, comb, tit, art) del mejor candidato por score."""
@@ -880,7 +1025,10 @@ class MusicApiService:
         # Spotify ya trae comb/tit/art de _sp_pick_best_item (scoring con
         # duración/explicit). Fuente única de flags es _fuzzy_flags_elastic.
         needs, low = _fuzzy_flags_elastic(comb, tit, art)
-        return SearchResult(d.get("id"), needs, low_confidence=low)
+        return SearchResult(
+            d.get("id"), needs, low_confidence=low,
+            isrc=self._extract_spotify_isrc(d),
+        )
 
     async def _sp_hunter_async(self, ct, ca, orig_name, orig_artist,
                                local_duration_ms=0, local_is_explicit=False) -> SearchResult:
@@ -968,17 +1116,35 @@ class MusicApiService:
             return True, pl_id, len(ids), []
 
     def _am_create(self, title: str, ids: list[str]) -> tuple[bool, str, int, list[str]]:
+        if not ids:
+            return False, "No hay canciones para insertar", 0, []
+        chunks = [ids[start:start + APPLE_TRANSFER_BATCH]
+                  for start in range(0, len(ids), APPLE_TRANSFER_BATCH)]
+        first = chunks[0]
         payload = {
             "attributes": {"name": title, "description": "Transferida por MelomaniacPass"},
-            "relationships": {"tracks": {"data": [{"id": i, "type": "songs"} for i in ids]}},
+            "relationships": {"tracks": {"data": [{"id": i, "type": "songs"} for i in first]}},
         }
-        r = self._http_session.post(
-            "https://amp-api.music.apple.com/v1/me/library/playlists",
+        response = self._am_request(
+            "post", f"{APPLE_API_BASE}/me/library/playlists",
             json=payload, timeout=15,
         )
-        self._am_check_status(r)
-        r.raise_for_status()
-        return True, "Playlist creada", len(ids), []
+        response.raise_for_status()
+        body = response.json() if response.content else {}
+        playlist_id = ((body.get("data") or [{}])[0]).get("id", "")
+        if len(chunks) > 1 and not playlist_id:
+            raise RuntimeError("Apple Music no devolvió el ID de la playlist para continuar los lotes")
+
+        confirmed = len(first)
+        for chunk in chunks[1:]:
+            response = self._am_request(
+                "post", f"{APPLE_API_BASE}/me/library/playlists/{playlist_id}/tracks",
+                json={"data": [{"id": i, "type": "songs"} for i in chunk]},
+                timeout=15,
+            )
+            response.raise_for_status()
+            confirmed += len(chunk)
+        return True, playlist_id or "Playlist creada", confirmed, []
 
     def _sp_create(self, title: str, ids: list[str]) -> tuple[bool, str, int, list[str]]:
         if not HAS_SPOTIFY:

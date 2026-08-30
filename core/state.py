@@ -93,6 +93,7 @@ async def _search_with_exponential_rl_backoff(
     local_duration_s: Optional[int] = None,
     local_duration_ms: int = 0,
     local_is_explicit: bool = False,
+    local_isrc: str | None = None,
     log: Optional[Callable[[str], None]] = None,
     backoff_steps: int = 1,
 ) -> SearchResult:
@@ -132,6 +133,7 @@ async def _search_with_exponential_rl_backoff(
                 platform, name, artist, local_duration_s=local_duration_s,
                 local_duration_ms=local_duration_ms,
                 local_is_explicit=local_is_explicit,
+                local_isrc=local_isrc,
             )
         except RateLimitError as e:
             ra = max(1, int(e.retry_after))
@@ -522,6 +524,8 @@ class AppState:
 
             if cache_key in self.service.search_cache:
                 cached = unwrap_search_result(self.service.search_cache[cache_key])
+                if cached.isrc:
+                    track.isrc = cached.isrc
                 if not cached.track_id:
                     track.transfer_status = "not_found"
                     track.failure_reason  = track.failure_reason or "Sin resultados (caché)"
@@ -555,12 +559,15 @@ class AppState:
                         local_duration_s=local_dur_s,
                         local_duration_ms=track.duration_ms,
                         local_is_explicit=track.is_explicit,
+                        local_isrc=track.isrc,
                         log=self._log,
                     )
                     break
                 except RateLimitError:
                     raise
                 except Exception as exc:  # pylint: disable=broad-exception-caught
+                    if getattr(exc, "status_code", None) in (401, 403):
+                        raise
                     last_exc = exc
                     wait_s = 2 ** attempt
                     if attempt < 2:
@@ -571,6 +578,9 @@ class AppState:
                         await asyncio.sleep(wait_s)
 
             self.service.search_cache[cache_key] = match
+            if match.isrc:
+                track.isrc = match.isrc
+            self.service.save_search_cache()
 
             if match.track_id and match.needs_review:
                 track.transfer_status = "revision_necesaria"
@@ -611,14 +621,45 @@ class AppState:
             if not init_ok:
                 raise RuntimeError(f"No se pudo autenticar en {self.destination}")
 
+            # Resuelve primero los ISRC disponibles en lotes de 25. Los
+            # faltantes no se cachean para que sigan al fallback fuzzy.
+            if self.destination == "Apple Music":
+                exact_matches = await self.service.search_by_isrcs(
+                    [track.isrc for track in selected if track.isrc]
+                )
+                for track in selected:
+                    if not track.isrc:
+                        continue
+                    exact = exact_matches.get(track.isrc)
+                    if exact and exact.track_id:
+                        self.service.search_cache[make_cache_key(
+                            track.name, track.artist, self.destination
+                        )] = exact
+                if exact_matches:
+                    self.service.save_search_cache()
+
             async def _bounded(track: Track):
                 async with transfer_sem:
                     return await _transfer_one(track)
 
-            results = list(await asyncio.gather(
-                *(_bounded(t) for t in selected),
-                return_exceptions=True,
-            ))
+            if self.destination == "Apple Music":
+                # Una búsqueda termina antes de iniciar la siguiente: el
+                # semáforo global por sí solo no evita ráfagas entre tasks.
+                results = []
+                for track in selected:
+                    try:
+                        results.append(await _transfer_one(track))
+                    except RateLimitError:
+                        raise
+                    except Exception as exc:  # se procesa en el resumen común
+                        if getattr(exc, "status_code", None) in (401, 403):
+                            raise
+                        results.append(exc)
+            else:
+                results = list(await asyncio.gather(
+                    *(_bounded(t) for t in selected),
+                    return_exceptions=True,
+                ))
 
             for track, result in zip(selected, results):
                 if isinstance(result, RateLimitError):
@@ -794,6 +835,21 @@ class AppState:
         BATCH_SIZE = 5
         done_count = 0
 
+        if self.destination == "Apple Music":
+            exact_matches = await self.service.search_by_isrcs(
+                [track.isrc for track in tracks if track.isrc]
+            )
+            for track in tracks:
+                if not track.isrc:
+                    continue
+                exact = exact_matches.get(track.isrc)
+                if exact and exact.track_id:
+                    self.service.search_cache[make_cache_key(
+                        track.name, track.artist, self.destination
+                    )] = exact
+            if exact_matches:
+                self.service.save_search_cache()
+
         async def _check_one(track: Track) -> None:
             nonlocal done_count
             cache_key = make_cache_key(track.name, track.artist, self.destination)
@@ -814,6 +870,7 @@ class AppState:
                         local_duration_s=local_dur_s,
                         local_duration_ms=track.duration_ms,
                         local_is_explicit=track.is_explicit,
+                        local_isrc=track.isrc,
                         log=self._log,
                     )
                 except Exception:  # pylint: disable=broad-exception-caught
@@ -831,7 +888,11 @@ class AppState:
                 self.notify()
 
         try:
-            await asyncio.gather(*[_check_one(t) for t in tracks], return_exceptions=True)
+            if self.destination == "Apple Music":
+                for track in tracks:
+                    await _check_one(track)
+            else:
+                await asyncio.gather(*[_check_one(t) for t in tracks], return_exceptions=True)
         except asyncio.CancelledError:
             self.lazy_scan_running = False
             self.notify()

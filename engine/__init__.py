@@ -20,11 +20,12 @@ Fecha: 2026
 """
 
 from engine.normalizer import clean_metadata, build_search_query
-from engine.parsers import parse_local_playlist, build_local_tracks
+from engine.parsers import parse_local_playlist, parse_local_playlist_with_paths, build_local_tracks
 
 __all__ = [
     'clean_metadata',
     'build_search_query',
     'parse_local_playlist',
+    'parse_local_playlist_with_paths',
     'build_local_tracks',
 ]

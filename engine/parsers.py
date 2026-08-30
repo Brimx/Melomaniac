@@ -62,6 +62,7 @@ from typing import Optional
 
 from core.models import Track
 from engine.normalizer import _PURGE_BRACKETS_RE as _NORMALIZER_BRACKETS_RE
+from utils.audio_metadata import read_audio_metadata
 
 # ══════════════════════════════════════════════════════════════════════
 # EXPRESIONES REGULARES PARA LIMPIEZA DE METADATOS LOCALES
@@ -350,22 +351,103 @@ def parse_local_playlist(text: str, filename: str = "") -> list[tuple[str, str]]
     return pairs
 
 
-def build_local_tracks(pairs: list[tuple[str, str]]) -> list[Track]:
-    """Convert (artist, title) pairs into Track objects with platform='local'."""
+_LOCAL_AUDIO_EXTENSIONS = frozenset({
+    ".mp3", ".flac", ".aac", ".ogg", ".wav", ".m4a", ".wma", ".opus", ".aiff", ".aif",
+})
+
+
+def _resolve_audio_path(raw: str, playlist_filename: str = "") -> str:
+    """Resuelve una ruta de audio de una playlist sin aceptar URLs remotas."""
+    raw = (raw or "").strip().strip('"').strip("'")
+    if not raw or "://" in raw:
+        return ""
+    candidate = os.path.expanduser(raw.replace("\\", os.sep))
+    if not os.path.isabs(candidate) and playlist_filename:
+        candidate = os.path.join(os.path.dirname(os.path.abspath(playlist_filename)), candidate)
+    if os.path.splitext(candidate)[1].lower() not in _LOCAL_AUDIO_EXTENSIONS:
+        return ""
+    return os.path.normpath(candidate)
+
+
+def _playlist_audio_paths(text: str, filename: str = "") -> list[str]:
+    """Extrae rutas de audio para poder leer sus tags sin romper el parser."""
+    ext = os.path.splitext(filename)[1].lower() if filename else ""
+    raw_paths: list[str] = []
+    try:
+        if ext == ".wpl":
+            root = ET.fromstring(text)
+            raw_paths = [m.get("src", "") for m in root.findall(".//media")]
+        elif ext in (".xspf", ".xml"):
+            root = ET.fromstring(text)
+            raw_paths = [el.text or "" for el in root.iter() if el.tag.rsplit("}", 1)[-1] == "location"]
+        elif ext == ".pls" or any(l.strip().lower() == "[playlist]" for l in text.splitlines()[:5]):
+            raw_paths = [m.group(1) for line in text.splitlines()
+                         if (m := re.match(r"^File\d+=(.+)$", line.strip(), re.IGNORECASE))]
+        else:
+            pending_extinf = False
+            for line in text.splitlines():
+                line = line.strip()
+                if not line:
+                    continue
+                if re.match(r"^#EXTINF\s*:", line, re.IGNORECASE):
+                    pending_extinf = True
+                    continue
+                if line.startswith("#"):
+                    continue
+                # En M3U, la ruta sigue a #EXTINF; en texto plano solo se
+                # considera ruta si tiene una extensión de audio.
+                if pending_extinf or os.path.splitext(line)[1].lower() in _LOCAL_AUDIO_EXTENSIONS:
+                    raw_paths.append(line)
+                pending_extinf = False
+    except ET.ParseError:
+        return []
+    return [_resolve_audio_path(path, filename) for path in raw_paths]
+
+
+def parse_local_playlist_with_paths(
+    text: str, filename: str = ""
+) -> list[tuple[str, str, str]]:
+    """Parsea una playlist y conserva la ruta local cuando está disponible."""
+    pairs = parse_local_playlist(text, filename=filename)
+    paths = _playlist_audio_paths(text, filename=filename)
+    if len(paths) != len(pairs):
+        paths = [""] * len(pairs)
+    return [(artist, title, path) for (artist, title), path in zip(pairs, paths)]
+
+
+def build_local_tracks(pairs: list[tuple[str, str] | tuple[str, str, str]]) -> list[Track]:
+    """Convierte pares locales en Track y lee metadatos si hay ruta de audio."""
     tracks = []
-    for artist, title in pairs:
+    for item in pairs:
+        artist, title = item[:2]
+        source_path = item[2] if len(item) >= 3 else ""
         if not title.strip():
             continue
+        metadata = read_audio_metadata(source_path) if source_path else {}
+        name = metadata.get("title") or title.strip()
+        track_artist = metadata.get("artist") or artist.strip()
+        album = metadata.get("album", "")
+        duration_ms = int(metadata.get("duration_ms", 0) or 0)
+        try:
+            track_number = int(str(metadata.get("track_number", "0")).split("/", 1)[0] or 0)
+        except ValueError:
+            track_number = 0
         tracks.append(Track(
             id=f"local_{uuid.uuid4().hex[:12]}",
-            name=title.strip(),
-            artist=artist.strip(),
-            album="",
-            duration="",
+            name=name,
+            artist=track_artist,
+            album=album,
+            duration=f"{duration_ms // 60000}:{(duration_ms // 1000) % 60:02d}" if duration_ms else "",
             img_url="",
             platform="local",
             selected=True,
             transfer_status="local_pending",
             failure_reason="",
+            duration_ms=duration_ms,
+            isrc=metadata.get("isrc"),
+            source_path=source_path,
+            album_artist=metadata.get("album_artist", ""),
+            track_number=track_number,
+            release_date=metadata.get("date", ""),
         ))
     return tracks

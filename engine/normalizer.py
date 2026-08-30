@@ -101,6 +101,19 @@ ARTIST_EXACT_MIN = 99                       # Umbral para artista exacto (≥99%
 ARTIST_PERFECT = 100                        # Artista perfectamente idéntico
 
 
+def normalize_isrc(value: object) -> str | None:
+    """Normaliza un ISRC para compararlo entre proveedores.
+
+    Apple y Spotify pueden devolver el código con o sin guiones. Se conserva
+    una representación compacta en mayúsculas para caché y búsquedas exactas.
+    Valores que no tienen la longitud de un ISRC se descartan.
+    """
+    if value is None:
+        return None
+    compact = re.sub(r"[^A-Za-z0-9]", "", str(value)).upper()
+    return compact if len(compact) == 12 else None
+
+
 def _normalize_title(text: str) -> str:
     """
     Normaliza un título de canción para comparación fuzzy.

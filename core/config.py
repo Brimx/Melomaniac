@@ -44,6 +44,13 @@ SPOTIFY_COOKIES_JSON: str = str(BASE_DIR / "spotify_cookies.json")
 # ── Spotify chunks ───────────────────────────────────────────────────
 SPOTIFY_ADD_CHUNK: int = 50
 
+# ── Apple Music web endpoint / protección de ráfagas ────────────────
+APPLE_API_BASE: str = "https://amp-api.music.apple.com/v1"
+APPLE_ISRC_BATCH: int = 25
+APPLE_TRANSFER_BATCH: int = 100
+APPLE_REQUEST_BURST: int = 50
+APPLE_REQUEST_PAUSE: int = 60
+
 # ── Defaults ─────────────────────────────────────────────────────────
 DEFAULT_COOLDOWN: int = 60
 
