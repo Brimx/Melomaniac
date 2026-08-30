@@ -284,12 +284,10 @@ class PlaylistManagerUI:
                 ),
                 ft.Column([
                     ft.Text(spans=[
-                        ft.TextSpan("Melomaniac", ft.TextStyle(size=16,
+                        ft.TextSpan("Melomaniac", ft.TextStyle(size=20,
                                                                color=TEXT_PRIMARY, font_family="IBM Plex Sans Light")),
-                        ft.TextSpan("Pass",       ft.TextStyle(size=16,
-                                                               color=TEXT_PRIMARY, font_family="IBM Plex Sans Bold")),
                     ], opacity=1.0),
-                    ft.Text("v5.0", size=9, color=TEXT_DIM, font_family="IBM Plex Sans",
+                    ft.Text("En desarrollo", size=9, color=TEXT_DIM, font_family="IBM Plex Sans",
                             style=ft.TextStyle(letter_spacing=0.8), opacity=1.0),
                 ], spacing=0, tight=True, expand=True),
                 self.btn_wizard,
