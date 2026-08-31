@@ -1,6 +1,6 @@
 """
 ╔══════════════════════════════════════════════════════════════════════╗
-║                    MelomaniacPass v5.0                               ║
+║                    MelomaniacPass v3.2.0                               ║
 ║                    Paquete Utils                                     ║
 ╚══════════════════════════════════════════════════════════════════════╝
 
@@ -13,7 +13,7 @@ Módulos:
     - circuit_breaker: Patrón Circuit Breaker para protección contra rate limiting
 
 Autor: MelomaniacPass Team
-Versión: 5.0
+Versión: 3.2.0
 Fecha: 2026
 """
 

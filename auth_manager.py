@@ -1,5 +1,5 @@
 """
-auth_manager.py — MelomaniacPass v5.0 — ISRC-Master Auth
+auth_manager.py — MelomaniacPass v3.2.0 — ISRC-Master Auth
 ════════════════════════════════════════════════════════
 Centralises ALL credential I/O, pre-flight validation, and the Flet
 Configuration Wizard.

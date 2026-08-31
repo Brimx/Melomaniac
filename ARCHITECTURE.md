@@ -1,4 +1,4 @@
-# MelomaniacPass v5.0 — Arquitectura Técnica
+# MelomaniacPass v3.2.0 — Arquitectura Técnica
 
 App de escritorio para transferir playlists entre **YouTube Music, Apple Music y Spotify** + fuentes locales (CSV, M3U/M3U8, PLS, XSPF, WPL, iTunes XML, texto) con **Hunter Recovery** en tupla triple `(título, artista, duración_ms, isrc)`.
 

@@ -1,4 +1,4 @@
-# 🎵 MelomaniacPass v5.0
+# 🎵 MelomaniacPass v3.2.0
 
 **Transfiere playlists entre YouTube Music, Apple Music y Spotify mediante matching inteligente con ISRC y duración.**
 

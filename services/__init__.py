@@ -1,6 +1,6 @@
 """
 ╔══════════════════════════════════════════════════════════════════════╗
-║                    MelomaniacPass v5.0                               ║
+║                    MelomaniacPass v3.2.0                               ║
 ║                    Paquete Services                                  ║
 ╚══════════════════════════════════════════════════════════════════════╝
 
@@ -13,7 +13,7 @@ Módulos:
     - api_service: MusicApiService - servicio unificado para todas las plataformas
 
 Autor: MelomaniacPass Team
-Versión: 5.0
+Versión: 3.2.0
 Fecha: 2026
 """
 

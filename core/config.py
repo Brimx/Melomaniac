@@ -1,5 +1,5 @@
 """
-core/config.py — MelomaniacPass v5.1 — Configuración Centralizada
+core/config.py — MelomaniacPass v3.2.0 — Configuración Centralizada
 ══════════════════════════════════════════════════════════════════
 Fuente única para constantes compartidas (regla 1).
 Re-exporta PLATFORM_ORDER de auth_manager para evitar duplicar listas

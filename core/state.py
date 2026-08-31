@@ -1,6 +1,6 @@
 """
 ╔══════════════════════════════════════════════════════════════════════╗
-║                    MelomaniacPass v5.0                               ║
+║                    MelomaniacPass v3.2.0                               ║
 ║                    Estado Global de la Aplicación                    ║
 ╚══════════════════════════════════════════════════════════════════════╝
 
@@ -44,7 +44,7 @@ Funciones Auxiliares:
     - _search_with_exponential_rl_backoff: Reintentos con backoff exponencial
 
 Autor: MelomaniacPass Team
-Versión: 5.0
+Versión: 3.2.0
 Fecha: 2026
 """
 
