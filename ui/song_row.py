@@ -84,20 +84,20 @@ class SkeletonRow(ft.Container):
         # Placeholders con dimensiones idénticas a SongRow
         self._num    = ft.Container(width=28, height=10, border_radius=3, bgcolor=SKELETON_DARK)
         self._thumb  = ft.Container(width=55, height=55, border_radius=8, bgcolor=SKELETON_DARK)
-        self._title  = ft.Container(width=180, height=10, border_radius=3, bgcolor=SKELETON_DARK)
-        self._artist = ft.Container(width=110, height=10, border_radius=3, bgcolor=SKELETON_DARK)
-        self._dur    = ft.Container(width=36,  height=10, border_radius=3, bgcolor=SKELETON_DARK)
-        self._chk    = ft.Container(width=18,  height=18, border_radius=4, bgcolor=SKELETON_DARK)
+        self._title  = ft.Container(expand=3, height=10, border_radius=3, bgcolor=SKELETON_DARK)
+        self._album  = ft.Container(expand=2, height=10, border_radius=3, bgcolor=SKELETON_DARK)
+        self._dur    = ft.Container(width=48,  height=10, border_radius=3, bgcolor=SKELETON_DARK)
+        self._status = ft.Container(width=26,  height=10, border_radius=3, bgcolor=SKELETON_DARK)
+        self._chk    = ft.Container(width=32,  height=18, border_radius=4, bgcolor=SKELETON_DARK)
 
         super().__init__(
             height=ITEM_H,
-            padding=ft.Padding.symmetric(horizontal=20, vertical=12),
+            padding=ft.Padding.symmetric(horizontal=16, vertical=12),
             border=ft.Border.only(bottom=ft.BorderSide(0.5, "#FF252530")),
             content=ft.Row(
                 controls=[self._num, self._thumb, self._title,
-                           ft.Container(expand=True),
-                           self._artist, self._dur, self._chk],
-                spacing=14,
+                           self._album, self._dur, self._status, self._chk],
+                spacing=16,
                 vertical_alignment=ft.CrossAxisAlignment.CENTER,
             ),
             opacity=1.0,
@@ -253,12 +253,20 @@ class SongRow(ft.Container):
             font_family="IBM Plex Sans Medium",
             opacity=1.0,
         )
+        album_text = ft.Text(
+            track.album or "—", size=11, color=TEXT_MUTED,
+            font_family="IBM Plex Sans",
+            overflow=ft.TextOverflow.ELLIPSIS,
+            max_lines=1,
+            opacity=1.0,
+        )
+        self._album_text = album_text
 
         # ──────────────────────────────────────────────────────────────
         # LAYOUT DE FILA
         # ──────────────────────────────────────────────────────────────
-        # Estructura: [#] [Thumb] [Título/Artista] [Duración] [Estado] [✓]
-        
+        # Estructura: [#] [Thumb] [Título/Artista] [Álbum] [Duración] [Estado] [✓]
+
         row_content = ft.Row(
             controls=[
                 ft.Container(content=num_label, width=32, alignment=ft.Alignment.CENTER),
@@ -267,9 +275,10 @@ class SongRow(ft.Container):
                     controls=[title_text, artist_text],
                     spacing=1,
                     tight=True,
-                    expand=True,
+                    expand=3,
                     alignment=ft.MainAxisAlignment.CENTER,
                 ),
+                ft.Container(content=album_text,         expand=2, alignment=ft.Alignment.CENTER_LEFT),
                 ft.Container(content=dur_text,          width=48, alignment=ft.Alignment.CENTER),
                 ft.Container(content=self._status_icon, width=26, alignment=ft.Alignment.CENTER),
                 ft.Container(content=self._chk,         width=32, alignment=ft.Alignment.CENTER),
@@ -319,6 +328,7 @@ class SongRow(ft.Container):
         """
         self.track       = track
         self._chk.value  = track.selected
-        status_cell      = self.content.controls[4]
+        self._album_text.value = track.album or "—"
+        status_cell      = self.content.controls[5]
         status_cell.content = _status_icon(track.transfer_status)
         self.update()

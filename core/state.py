@@ -63,7 +63,7 @@ from core.config import (
     SOURCE_OPTIONS as CFG_SOURCE_OPTIONS,
     get_transfer_concurrency,
 )
-from core.models import Track, SearchResult, LoadState, TransferState
+from core.models import Track, SearchResult, LoadState, TransferState, PlaylistMeta
 from utils.circuit_breaker import CircuitBreaker, RateLimitError
 from engine.normalizer import clean_metadata
 from engine.match import _duration_to_seconds, FUZZY_REVISION_THRESHOLD, FUZZY_IDEAL
@@ -246,6 +246,7 @@ class AppState:
         
         self.playlist_id:   str         = ""
         self.playlist_name: str         = "Cargar una playlist"
+        self.playlist_description: str  = ""
         self.tracks:        list[Track] = []
         self.filtered:      list[Track] = []
         self.segments:      dict[str, list[Track]] = {}
@@ -386,6 +387,7 @@ class AppState:
         self.load_state    = LoadState.LOADING_META
         self.load_error    = ""
         self.playlist_name = "Cargando metadatos…"
+        self.playlist_description = ""
         self.lazy_scan_running = False
         self.lazy_scan_done    = False
         # Nueva carga: descarta el estado de transferencia anterior para
@@ -406,10 +408,15 @@ class AppState:
             self._lazy_task = None
 
         try:
-            name, tracks = await self.service.fetch_playlist(
+            meta, tracks = await self.service.fetch_playlist(
                 self.source, self.playlist_id, _progress
             )
-            self.playlist_name = name
+            if isinstance(meta, PlaylistMeta):
+                self.playlist_name = meta.name
+                self.playlist_description = meta.description or ""
+            else:  # compat: servicios/tests que aún retornan (name, tracks)
+                self.playlist_name = meta  # type: ignore[assignment]
+                self.playlist_description = ""
             self.tracks        = tracks
             self.load_state    = LoadState.READY
         except RateLimitError as e:
@@ -422,10 +429,12 @@ class AppState:
         finally:
             self.notify()
 
-    def load_local_tracks(self, tracks: list, playlist_name: str = "Playlist Local") -> None:
+    def load_local_tracks(self, tracks: list, playlist_name: str = "Playlist Local",
+                            playlist_description: str = "") -> None:
         self.cancel_lazy_scan()
         self.playlist_id   = f"local_{uuid.uuid4().hex[:8]}"
         self.playlist_name = playlist_name
+        self.playlist_description = playlist_description or ""
         self.tracks        = list(tracks)
         self.filtered      = []
         self.search_query  = ""
@@ -441,6 +450,7 @@ class AppState:
         self.cancel_lazy_scan()
         self.playlist_id   = ""
         self.playlist_name = "Cargar una playlist"
+        self.playlist_description = ""
         self.tracks        = []
         self.filtered      = []
         self.segments      = {}
@@ -461,9 +471,20 @@ class AppState:
         self.destination_confirmed = True
         self.notify()
 
-    async def transfer_playlist(self) -> None:
+    async def transfer_playlist(self, title_override: Optional[str] = None,
+                                  description_override: Optional[str] = None) -> None:
         selected = [t for t in self.tracks if t.selected]
         if not selected:
+            return
+
+        eff_title = (title_override if title_override is not None
+                     else self.playlist_name).strip()
+        eff_description = (description_override if description_override is not None
+                           else self.playlist_description)
+        if not eff_title:
+            self._log("[ERROR] Título de playlist vacío; se cancela la transferencia.")
+            self.transfer_state = TransferState.ERROR
+            self.notify()
             return
 
         self.cancel_lazy_scan()
@@ -695,10 +716,12 @@ class AppState:
                 self._log(f"[INFO]  📋 Pendientes de revisión ({len(self.pending_review_tracks)}): {names}")
 
             if dest_ids:
-                self._log(f"[INFO]  📁 Creando playlist con {len(dest_ids)} canciones…")
+                self._log(f"[INFO]  📁 Creando '{eff_title[:60]}' con {len(dest_ids)} canciones…")
+                if self.destination == "Spotify" and eff_description.strip():
+                    self._log("[WARN]  Spotify (SpotAPI) no soporta descripción; se crea solo con título.")
                 self.notify()
                 ok, msg, confirmed_count, rejected_ids = await self.service.create_playlist(
-                    self.destination, self.playlist_name, dest_ids
+                    self.destination, eff_title, dest_ids, eff_description
                 )
                 if ok:
                     self.count_confirmed   = confirmed_count

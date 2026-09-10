@@ -78,6 +78,20 @@ class Track:
 
 
 @dataclass
+class PlaylistMeta:
+    """
+    Metadatos de playlist a nivel colección (no por canción).
+
+    Attributes:
+        name: Título de la playlist en la plataforma de origen.
+        description: Descripción tal cual la expone la API origen
+                     ("" si la plataforma no la provee).
+    """
+    name: str
+    description: str = ""
+
+
+@dataclass
 class SearchResult:
     """
     Resultado de búsqueda universal con sistema ISRC-Master v3.2.0.

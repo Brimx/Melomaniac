@@ -603,7 +603,8 @@ class PlaylistManagerUI:
             content=ft.Row(controls=[
                 _col_header("#",               width=32, center=True),
                 _col_header("PORTADA",         width=55, center=True),
-                _col_header("TÍTULO / ARTISTA", expand=True),
+                _col_header("TÍTULO / ARTISTA", expand=3),
+                _col_header("ÁLBUM",           expand=2),
                 _col_header("DUR.",            width=48, center=True),
                 _col_header("",                width=26, center=True),
                 _col_header("SEL.",            width=32, center=True),
@@ -1093,7 +1094,21 @@ class PlaylistManagerUI:
         if self.state.selected_count == 0:
             self._snack("Selecciona al menos una canción", error=True)
             return
-        await self.state.transfer_playlist()
+        from ui.playlist_meta_dialog import PlaylistMetaDialog
+        meta = await PlaylistMetaDialog(
+            self.page,
+            default_title=self.state.playlist_name,
+            default_description=self.state.playlist_description,
+        ).show()
+        if not meta.confirmed:
+            return
+        if not meta.title.strip():
+            self._snack("El nombre de la playlist no puede estar vacío", error=True)
+            return
+        await self.state.transfer_playlist(
+            title_override=meta.title,
+            description_override=meta.description,
+        )
 
     async def _on_search_change(self, e: ft.ControlEvent) -> None:
         if self._search_task and not self._search_task.done():

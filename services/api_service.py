@@ -64,7 +64,7 @@ import requests
 from dotenv import load_dotenv
 
 from auth_manager import BROWSER_JSON
-from core.models import Track, SearchResult
+from core.models import Track, SearchResult, PlaylistMeta
 from core.config import (
     NETWORK_CONCURRENCY as CFG_NETWORK_CONCURRENCY,
     RATE_LIMIT_BACKOFF_STEPS as CFG_RATE_LIMIT_BACKOFF_STEPS,
@@ -113,6 +113,25 @@ except ImportError:
 NETWORK_CONCURRENCY = CFG_NETWORK_CONCURRENCY
 RATE_LIMIT_BACKOFF_STEPS = CFG_RATE_LIMIT_BACKOFF_STEPS
 GLOBAL_API_SEMAPHORE = asyncio.Semaphore(NETWORK_CONCURRENCY)
+
+
+def _as_text(value) -> str:
+    """Normaliza la descripción de playlist según la forma de cada API.
+
+    YouTube la expone como str, Apple como {"standard": ...} o str,
+    Spotify como str. Ausente/None → "".
+    """
+    if value is None:
+        return ""
+    if isinstance(value, dict):
+        for key in ("standard", "short", "text"):
+            text = value.get(key)
+            if isinstance(text, str) and text.strip():
+                return text.strip()
+        return ""
+    if isinstance(value, str):
+        return value.strip()
+    return str(value).strip()
 
 
 class AppleAuthError(RuntimeError):
@@ -475,7 +494,7 @@ class MusicApiService:
         platform: str,
         playlist_id: str,
         progress_cb: Optional[Callable[[int, int, str], None]] = None,
-    ) -> tuple[str, list[Track]]:
+    ) -> tuple[PlaylistMeta, list[Track]]:
         self._cb[platform].check_or_raise()
         if platform == "YouTube Music":
             return await asyncio.to_thread(self._sync_fetch_youtube, playlist_id, progress_cb)
@@ -485,7 +504,7 @@ class MusicApiService:
             return await asyncio.to_thread(self._sync_fetch_spotify, playlist_id, progress_cb)
         raise ValueError(f"Unknown platform: {platform}")
 
-    def _sync_fetch_youtube(self, pid: str, cb) -> tuple[str, list[Track]]:
+    def _sync_fetch_youtube(self, pid: str, cb) -> tuple[PlaylistMeta, list[Track]]:
         if not self._ytm:
             self._sync_init_youtube()
         if not self._ytm:
@@ -498,6 +517,7 @@ class MusicApiService:
                 raise RuntimeError("Sesion YouTube Music expirada (401). Renueva browser.json.") from exc
             raise
         name  = pl.get("title", "YouTube Playlist")
+        description = _as_text(pl.get("description"))
         raw   = pl.get("tracks", [])
         total = len(raw)
         tracks = []
@@ -514,9 +534,9 @@ class MusicApiService:
             ))
             if cb and i % 50 == 0:
                 cb(i, total, name)
-        return name, tracks
+        return PlaylistMeta(name=name, description=description), tracks
 
-    def _sync_fetch_apple(self, pid: str, cb) -> tuple[str, list[Track]]:
+    def _sync_fetch_apple(self, pid: str, cb) -> tuple[PlaylistMeta, list[Track]]:
         base     = APPLE_API_BASE
         is_lib   = pid.startswith("p.")
         info_url = (
@@ -524,11 +544,14 @@ class MusicApiService:
             else f"{base}/catalog/{self._am_storefront}/playlists/{pid}"
         )
         name = "Apple Music Playlist"
+        description = ""
         try:
             r = self._am_request("get", info_url, timeout=10)
             self._am_check_status(r)
             if r.ok:
-                name = r.json()["data"][0]["attributes"].get("name", name)
+                attrs = (r.json()["data"][0].get("attributes") or {})
+                name = attrs.get("name", name)
+                description = _as_text(attrs.get("description"))
         except RateLimitError:
             raise
         except Exception:  # pylint: disable=broad-exception-caught
@@ -560,9 +583,9 @@ class MusicApiService:
             url = data.get("next")
             if cb:
                 cb(len(tracks), 0, name)
-        return name, tracks
+        return PlaylistMeta(name=name, description=description), tracks
 
-    def _sync_fetch_spotify(self, pid: str, cb) -> tuple[str, list[Track]]:
+    def _sync_fetch_spotify(self, pid: str, cb) -> tuple[PlaylistMeta, list[Track]]:
         if not HAS_SPOTIFY:
             raise RuntimeError("SpotAPI no disponible. Instala spotapi.")
         if not self._sp_cfg:
@@ -573,6 +596,7 @@ class MusicApiService:
         r  = pl.get_playlist_info(limit=100)
         d  = r["data"]["playlistV2"]
         name = d.get("name", "Spotify Playlist")
+        description = _as_text(d.get("description"))
         total = d.get("content", {}).get("totalCount", 0)
         tracks: list[Track] = []
         offset = 0
@@ -610,7 +634,7 @@ class MusicApiService:
             d = r["data"]["playlistV2"]
             if cb:
                 cb(len(tracks), total, name)
-        return name, tracks
+        return PlaylistMeta(name=name, description=description), tracks
 
 
     # ── Search ─────────────────────────────────────────────────────────
@@ -1089,19 +1113,20 @@ class MusicApiService:
 
     # ── Playlist Creation ──────────────────────────────────────────────
 
-    async def create_playlist(self, platform: str, title: str, track_ids: list[str]) -> tuple[bool, str, int, list[str]]:
+    async def create_playlist(self, platform: str, title: str, track_ids: list[str],
+                              description: str = "") -> tuple[bool, str, int, list[str]]:
         self._cb[platform].check_or_raise()
         if platform == "YouTube Music":
-            return await asyncio.to_thread(self._yt_create, title, track_ids)
+            return await asyncio.to_thread(self._yt_create, title, track_ids, description)
         elif platform == "Apple Music":
-            return await asyncio.to_thread(self._am_create, title, track_ids)
+            return await asyncio.to_thread(self._am_create, title, track_ids, description)
         elif platform == "Spotify":
-            return await asyncio.to_thread(self._sp_create, title, track_ids)
+            return await asyncio.to_thread(self._sp_create, title, track_ids, description)
         return False, "Platform not supported", 0, []
 
-    def _yt_create(self, title: str, ids: list[str]) -> tuple[bool, str, int, list[str]]:
+    def _yt_create(self, title: str, ids: list[str], description: str = "") -> tuple[bool, str, int, list[str]]:
         try:
-            pl_id = self._ytm.create_playlist(title, "Transferida por MelomaniacPass", video_ids=ids)
+            pl_id = self._ytm.create_playlist(title, description or "", video_ids=ids)
         except Exception as exc:  # pylint: disable=broad-exception-caught
             self.youtube_auth_error = str(exc)
             if _is_ytm_unauthorized(exc):
@@ -1115,14 +1140,14 @@ class MusicApiService:
         except Exception:  # pylint: disable=broad-exception-caught
             return True, pl_id, len(ids), []
 
-    def _am_create(self, title: str, ids: list[str]) -> tuple[bool, str, int, list[str]]:
+    def _am_create(self, title: str, ids: list[str], description: str = "") -> tuple[bool, str, int, list[str]]:
         if not ids:
             return False, "No hay canciones para insertar", 0, []
         chunks = [ids[start:start + APPLE_TRANSFER_BATCH]
                   for start in range(0, len(ids), APPLE_TRANSFER_BATCH)]
         first = chunks[0]
         payload = {
-            "attributes": {"name": title, "description": "Transferida por MelomaniacPass"},
+            "attributes": {"name": title, "description": description or ""},
             "relationships": {"tracks": {"data": [{"id": i, "type": "songs"} for i in first]}},
         }
         response = self._am_request(
@@ -1146,7 +1171,11 @@ class MusicApiService:
             confirmed += len(chunk)
         return True, playlist_id or "Playlist creada", confirmed, []
 
-    def _sp_create(self, title: str, ids: list[str]) -> tuple[bool, str, int, list[str]]:
+    def _sp_create(self, title: str, ids: list[str], description: str = "") -> tuple[bool, str, int, list[str]]:
+        # SpotAPI (PrivatePlaylist.create_playlist) solo acepta título:
+        # la descripción se ignora y se documenta con un warn en el log
+        # del caller. Requeriría migrar a la Web API oficial con OAuth
+        # (PUT /playlists/{id} + scope playlist-modify-*) para soportarla.
         if not HAS_SPOTIFY:
             return False, "SpotAPI no disponible", 0, []
         if not self._sp_login:
