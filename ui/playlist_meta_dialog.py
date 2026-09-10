@@ -1,5 +1,5 @@
 """
-ui/playlist_meta_dialog.py — MelomaniacPass v3.2.0
+ui/playlist_meta_dialog.py — MelomaniacPass v3.3.1
 
 Diálogo de personalización de playlist (nombre + descripción).
 
@@ -195,6 +195,8 @@ class PlaylistMetaDialog:
             bgcolor="#FF000000",
             opacity=0.0,
             animate_opacity=150,
+            ink=False,
+            on_click=self._on_cancel,
         )
         self._card = ft.Container(
             width=DIALOG_W, height=DIALOG_H,
@@ -212,11 +214,11 @@ class PlaylistMetaDialog:
         )
         self._stack = ft.Stack(
             controls=[
-                ft.GestureDetector(
-                    left=0, top=0, right=0, bottom=0,
-                    content=self._backdrop,
-                    on_tap=self._on_cancel,
-                ),
+                # Hijo directo del Stack: el posicionamiento absoluto
+                # (left/top/right/bottom) solo es válido aquí o en
+                # page.overlay; dentro de un GestureDetector revienta
+                # con "Error displaying Container".
+                self._backdrop,
                 ft.Container(
                     left=0, top=0, right=0, bottom=0,
                     alignment=ft.Alignment.CENTER,

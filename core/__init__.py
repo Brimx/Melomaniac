@@ -1,6 +1,6 @@
 """
 ╔══════════════════════════════════════════════════════════════════════╗
-║                    MelomaniacPass v3.2.0                               ║
+║                    MelomaniacPass v3.3.1                               ║
 ║                    Paquete Core                                      ║
 ╚══════════════════════════════════════════════════════════════════════╝
 
@@ -14,7 +14,7 @@ Módulos:
     - state: AppState - estado global de la aplicación
 
 Autor: MelomaniacPass Team
-Versión: 3.2.0
+Versión: 3.3.1
 Fecha: 2026
 """
 

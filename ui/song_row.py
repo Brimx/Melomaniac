@@ -1,6 +1,6 @@
 """
 ╔══════════════════════════════════════════════════════════════════════╗
-║                    MelomaniacPass v3.2.0                               ║
+║                    MelomaniacPass v3.3.1                               ║
 ║              Componentes de Fila de Canción                          ║
 ╚══════════════════════════════════════════════════════════════════════╝
 
@@ -26,7 +26,7 @@ Estrategia de Diseño:
     precisos en listas largas (1000+ canciones).
 
 Autor: MelomaniacPass Team
-Versión: 3.2.0
+Versión: 3.3.1
 Fecha: 2026
 """
 
