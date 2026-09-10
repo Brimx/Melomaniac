@@ -1,6 +1,6 @@
 # MelomaniacPass v3.3.1 — Arquitectura Técnica
 
-App de escritorio para transferir playlists entre **YouTube Music, Apple Music y Spotify** + fuentes locales (CSV, M3U/M3U8, PLS, XSPF, WPL, iTunes XML, texto) con **Hunter Recovery** en tupla triple `(título, artista, duración_ms, isrc)`.
+App de escritorio para transferir playlists entre **YouTube Music, Apple Music y Spotify** + fuentes locales (CSV, M3U/M3U8, PLS, XSPF, WPL, iTunes XML, texto) con **Hunter Recovery** basado en la tupla triple de búsqueda `(título, artista, duración_ms)`. El ISRC se conserva como identificador auxiliar para búsquedas exactas y caché.
 
 ---
 
@@ -16,7 +16,7 @@ melomaniacpass/
 ├── resources/search_cache.json # Caché persistida {track_id,needs_review,low_confidence,isrc}
 │
 ├── core/
-│   ├── models.py             # Track(duration_ms,is_explicit), SearchResult(isrc), LoadState/TransferState
+│   ├── models.py             # Track(album,duration_ms,is_explicit), SearchResult(isrc), LoadState/TransferState
 │   └── state.py              # AppState BLoC, transfer, segments, lazy_scan, cache_key
 │
 ├── services/
@@ -24,12 +24,13 @@ melomaniacpass/
 │
 ├── engine/
 │   ├── normalizer.py         # clean_metadata, _normalize_title, FUZZY_IDEAL 85, ARTIST_EXACT 99
-│   ├── match.py              # triple scores, _ideal_pass_hunter, score_spotify_match, validar_match, _yt_select_best
+│   ├── match.py              # title/artist scores, _ideal_pass_hunter, score_spotify_match, validar_match, _yt_select_best
 │   ├── parsers.py            # parse_local_playlist (detección por contenido) + build_local_tracks
 │   └── organizer.py          # sort_tracks / split_tracks (memoria)
 │
 ├── ui/
 │   ├── main_ui.py            # PlaylistManagerUI, organize/split dialogs, _on_state_changed
+│   ├── playlist_meta_dialog.py # diálogo modal animado para nombre/descripción de playlist
 │   ├── song_row.py           # SongRow/SkeletonRow ITEM_H=64, hover, _status_icon
 │   ├── telemetry.py          # TelemetryDrawer docked>=700 / overlay handle, Monitor/Consola/Post-Mortem
 │   └── widgets.py            # _primary_btn/_ghost_btn/_section_label/_status_icon
@@ -77,7 +78,7 @@ Init `app.py:143-147` `CircuitBreakers → Service(state.cb) → State(service) 
 | `spotapi==1.2.8` | Spotify `Song.query_songs`, `Public/PrivatePlaylist`, `Login.from_cookies` |
 | `ytmusicapi==1.12.1` | YouTube Music `search`/`get_playlist` |
 | `requests` | Apple Music `amp-api/music.apple.com`, storefront, pre-flight |
-| `rapidfuzz` | `token_sort_ratio` para triple scores |
+| `rapidfuzz` | `token_sort_ratio` para scores de título/artista |
 | `python-dotenv` | `.env` read/write |
 | `asyncio` | hunters, transfer, lifecycle |
 
@@ -105,7 +106,7 @@ APPLE_MUSIC_USER_TOKEN="0.As..."
 
 **Pre-flight paralelo** `AuthManager.run_startup_check()` valida YT (`YTMusic.get_history`), Apple (`/v1/me/storefront` + `/v1/catalog/.../search`) y Spotify (`Login.logged_in`). Actualiza `AppState.auth_session_ok/hint` y abre wizard en tab fallida.
 
-Durante matching, Apple usa `api.music.apple.com/v1/catalog/{storefront}/search?types=songs` oficial (devuelve `durationInMillis` + `isrc` para tupla triple y tie-break). Spotify usa `searchV2/tracksV2` con `duration.totalMilliseconds` + `explicit`. No se usa iTunes Search.
+Durante matching, Apple usa `api.music.apple.com/v1/catalog/{storefront}/search?types=songs` oficial: `durationInMillis` completa la tupla triple de búsqueda y `isrc` permite resolver coincidencias exactas o desempatar cuando está disponible. Spotify usa `searchV2/tracksV2` con `duration.totalMilliseconds` + `explicit`. No se usa iTunes Search.
 
 ## Comunicación
 
@@ -130,7 +131,7 @@ ui.auth_manager = service.auth_manager = auth_manager
 ui → state.transfer_playlist() → _transfer_one(track) con cache_key `cn|||ca|||dest`
 state → _search_with_exponential_rl_backoff (fail-fast, trip breaker, raise)
 service → search_with_fallback 3 passes (clean, raw, normalized) → search_track → _*_hunter_async
-engine/match → triple scores + _ideal_pass_hunter (85 o artist 99 + title 60) → SearchResult(track_id, needs_review, low_confidence, isrc)
+engine/match → scores de título/artista + _ideal_pass_hunter (85 o artist 99 + title 60) → SearchResult(track_id, needs_review, low_confidence, isrc)
 state → Track.transfer_status
 service → create_playlist chunk 50 + retry 4x exp
 ui → progreso + Post-Mortem
@@ -145,10 +146,10 @@ ui → progreso + Post-Mortem
 Unifica carga/búsqueda/creación. `GLOBAL_API_SEMAPHORE=2`, `SEARCH_CACHE_JSON`, `SPOTIFY_ADD_CHUNK=50`. `_am_check_status` convierte `429/423` en `RateLimitError` (423 → min 120s). `_sp_is_rate_limited` detecta `Status Code: 429/423` de `spotapi`. `_load/save_search_cache` con tmp+replace atómico. Socket reuse `requests.Session`.
 
 ### `core/state.py` / `models.py`
-`Track` con `duration_ms/is_explicit` para scoring exacto. `SearchResult` con `isrc`. `AppState` coordina `load_playlist`, `transfer_playlist` (semáforo 2/3), `apply_search`, `organize_sort/split`, `lazy_scan`.
+`Track` con `album`, `duration_ms` e `is_explicit`; el álbum se conserva para la columna visible de la playlist, mientras que la búsqueda usa título, artista y duración. `SearchResult` conserva `isrc`. `AppState` coordina `load_playlist`, `transfer_playlist` (semáforo 2/3), `apply_search`, `organize_sort/split`, `lazy_scan`.
 
 ### `engine/match.py` Hunter Recovery
-Capas: `validar_match` L0 CJK bypass, L1 substring, L2 lethal `cover/karaoke`, L3 fuzzy 0.65. `_fuzzy_scores_triple` → `comb/tit/art`. `_ideal_pass_hunter` (≥85). `score_spotify_match` 60 fuzzy (40 tit+20 art) +30 duración (≤2s 30, ≤5s 15 else -20) +10 explicit. `_yt_select_best` top3 + `resultType==song` + duración ±5s.
+Capas: `validar_match` L0 CJK bypass, L1 substring, L2 lethal `cover/karaoke`, L3 fuzzy 0.65. `_fuzzy_scores_triple` calcula `comb/tit/art` (tres scores, no la tupla de metadatos). `_ideal_pass_hunter` (≥85). `score_spotify_match` 60 fuzzy (40 tit+20 art) +30 duración (≤2s 30, ≤5s 15 else -20) +10 explicit. `_yt_select_best` top3 + `resultType==song` + duración ±5s.
 
 ### `engine/normalizer.py`
 `clean_metadata` NFC + purga brackets + `PURGE_NOISE_WORDS` + `strip_noise`. `build_search_query` prior. obra. Umbrales `FUZZY_IDEAL 85 / LOG 70 / REVIEW 40`.
@@ -156,8 +157,8 @@ Capas: `validar_match` L0 CJK bypass, L1 substring, L2 lethal `cover/karaoke`, L
 ### `engine/parsers.py` / `organizer.py`
 `parse_local_playlist` detecta por extensión y contenido, `build_local_tracks` → `Track`. `sort_tracks`/`split_tracks` in-memory.
 
-### `ui/main_ui.py` / `telemetry.py` / `widgets.py`
-`main_ui` maneja `DROPDOWN PLATFORMS`, `Organizar/Dividir`, `segment_dd`, skeletons `ITEM_H=64`. `telemetry` docked/overlay con `Monitor/Consola/Post-Mortem`. `widgets` tokens `ACCENT/SUCCESS`.
+### `ui/main_ui.py` / `ui/playlist_meta_dialog.py` / `telemetry.py` / `widgets.py`
+`main_ui` maneja `DROPDOWN PLATFORMS`, `Organizar/Dividir`, `segment_dd`, skeletons `ITEM_H=64`, la columna `ÁLBUM` y abre el diálogo de metadatos antes de transferir. `playlist_meta_dialog` monta el modal animado en `page.overlay`; su backdrop es hijo directo del `Stack` raíz, tiene `on_click` para cancelar y `ink=False` para evitar el error de renderizado que ocurría al envolverlo en `GestureDetector`. `telemetry` usa panel docked/overlay con `Monitor/Consola/Post-Mortem`. `widgets` expone tokens `ACCENT/SUCCESS`.
 
 ## ConfigWizard
 
@@ -177,8 +178,8 @@ Capas: `validar_match` L0 CJK bypass, L1 substring, L2 lethal `cover/karaoke`, L
 
 | Área | Estado |
 |---|---|
-| Plataformas | 3 streaming (YT, Apple, Spotify) +2 locales |
+| Plataformas | 3 streaming (YT, Apple, Spotify) +2 entradas locales |
 | Engine | 4 módulos |
 | Concurrencia | global 2, transfer 2/3 |
 | Resiliencia | breaker 429/423, cache persistida, chunk 50 |
-
+| Versión | 3.3.1 — backdrop del diálogo como hijo directo del `Stack` |

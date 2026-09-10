@@ -5,7 +5,10 @@ Diálogo de personalización de playlist (nombre + descripción).
 
 Patrón tomado de ConfigWizard (auth_manager.py): overlay modal con
 backdrop + tarjeta centrada, pero sin AlertDialog para poder animar
-(scale + opacity + offset) y colocar el layer de marca detrás.
+(scale + opacity + offset) y colocar el layer de marca detrás. El
+backdrop vive como hijo directo del Stack raíz: recibe el clic de
+cancelación sin GestureDetector, porque el posicionamiento absoluto
+debe resolverse en ese nivel en Flet.
 
 Layout (660x250):
     Stack interno capa 0 (fondo, abajo-derecha): icono de marca con

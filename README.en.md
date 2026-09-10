@@ -2,7 +2,7 @@
 
 **Transfiere playlists entre YouTube Music, Apple Music y Spotify mediante matching inteligente con ISRC y duración.**
 
-MelomaniacPass es una app de escritorio que carga una playlist desde YouTube Music, Apple Music, Spotify o fuente local, encuentra sus canciones en la plataforma destino y crea una nueva playlist. El motor **Hunter Recovery** tolera diferencias de títulos, artistas, remasterizaciones y versiones en vivo usando tupla triple `(título, artista, duración_ms, isrc)`.
+MelomaniacPass es una app de escritorio que carga una playlist desde YouTube Music, Apple Music, Spotify o fuente local, encuentra sus canciones en la plataforma destino y crea una nueva playlist. El motor **Hunter Recovery** tolera diferencias de títulos, artistas, remasterizaciones y versiones en vivo mediante la tupla triple de búsqueda `(título, artista, duración_ms)`; el ISRC se conserva como identificador auxiliar para búsquedas exactas y caché.
 
 > **¿Por qué existe?** Las plataformas no ofrecen exportación universal. MelomaniacPass reconstruye con scoring fuzzy + duración + `isrc` y deja reporte post-mortem.
 
@@ -12,13 +12,15 @@ MelomaniacPass es una app de escritorio que carga una playlist desde YouTube Mus
 
 - **Transferencia 3 plataformas** — YouTube Music ↔ Apple Music ↔ Spotify (via `spotapi`).
 - **Fuentes locales** — CSV, M3U/M3U8, PLS, XSPF, WPL, iTunes XML y texto plano.
-- **Hunter Recovery** — queries alternativas (`clean_metadata` + `_normalize_title`), tupla triple `título/artista/duración/isrc` y scoring `score_spotify_match` (60 fuzzy +30 duración +10 explicit).
+- **Hunter Recovery** — queries alternativas (`clean_metadata` + `_normalize_title`), matching triple `título/artista/duración` y scoring `score_spotify_match` (60 fuzzy +30 duración +10 explicit); el ISRC permite resolver coincidencias exactas cuando está disponible.
 - **Concurrencia controlada** — `GLOBAL_API_SEMAPHORE=2` + `transfer_sem` 2 (Apple) /3 (otros) para cuidar APIs.
 - **Post-mortem** — coincidencias, no encontradas, errores y `revision_necesaria` (<40%); exporta `transfer_failed_report.txt`.
 - **Wizard guiado 3 tabs** — YouTube (`browser.json`), Apple (`.env`), Spotify (`spotify_cookies.json` con `sp_dc/sp_key`).
 - **Protección 429/423** — `CircuitBreaker` por plataforma, `_am_check_status` (423 → 120s mínimo) y `_sp_is_rate_limited`, `SPOTIFY_ADD_CHUNK=50` con retry exponencial.
 - **Caché persistida** — `resources/search_cache.json` permite reanudar tras 429/cierre sin re-buscar.
 - **Organizar y dividir** — ordena (`engine/organizer.sort_tracks`) o agrupa (`split_tracks`) por artista/álbum/título/duración/plataforma.
+- **Metadatos visibles** — muestra el álbum junto al título, artista, duración y estado de cada canción.
+- **Personalización de playlist** — antes de transferir, permite editar nombre y descripción en un diálogo modal animado; el backdrop cancela al hacer clic fuera de la tarjeta.
 - **UI Flet** — búsqueda, selección, progreso, telemetría docked/overlay, estados por canción, fuentes IBM Plex Sans locales.
 
 ## 📋 Requisitos
@@ -83,14 +85,15 @@ Progreso y telemetría en vivo. **Ver Detalles** abre Post-Mortem. Exporta TXT.
 melomaniacpass/
 ├── app.py                 # Entry, composición, hard cleanup
 ├── auth_manager.py        # Credenciales, pre-flight y wizard 3 tabs
-├── core/models.py         # Track (duration_ms/is_explicit), SearchResult(isrc)
+├── core/models.py         # Track (album/duration_ms/is_explicit), SearchResult(isrc)
 ├── core/state.py          # AppState BLoC, transfer+segments, cache_key
 ├── services/api_service.py# Facade spotapi/ytmusicapi/amp-api, hunters, chunks
 ├── engine/normalizer.py   # clean_metadata, umbrales FUZZY_IDEAL 85
-├── engine/match.py        # triple scores, score_spotify_match, _yt_select_best
+├── engine/match.py        # matching scores, score_spotify_match, _yt_select_best
 ├── engine/parsers.py      # CSV/M3U/XSPF/WPL/PLS + build_local_tracks
 ├── engine/organizer.py    # sort_tracks / split_tracks
 ├── ui/main_ui.py          # PlaylistManagerUI, organize/split dialogs
+├── ui/playlist_meta_dialog.py # diálogo modal para nombre/descripción antes de transferir
 ├── ui/song_row.py         # SongRow/SkeletonRow ITEM_H=64
 ├── ui/telemetry.py        # Monitor/Consola/Post-Mortem docked/overlay
 ├── ui/widgets.py          # _primary_btn, _ghost_btn, _status_icon
@@ -99,10 +102,17 @@ melomaniacpass/
 ```
 
 Ver [ARCHITECTURE.md](ARCHITECTURE.md) para flujos y responsabilidades.
+Consulta [CHANGELOG.md](CHANGELOG.md) para el historial de versiones.
 
 ## Estado actual
 
-Rama `main` (merge `beta`). 3 plataformas + 2 fuentes locales. Búsqueda Apple usa `amp-api/music.apple.com` oficial (con ISRC), Spotify usa `spotapi` `searchV2/tracksV2` con `totalMilliseconds/explicit`. Sin tests automatizados; validación manual via UI.
+Versión `3.3.1` en la rama `main`. Incluye el diálogo de personalización de playlist, la columna visible de álbum y la corrección de su backdrop como hijo directo del `Stack` raíz para evitar errores de renderizado en Flet. La búsqueda mantiene la tupla triple de título, artista y duración; Apple usa además ISRC cuando está disponible para resolver coincidencias exactas. Spotify usa `spotapi` `searchV2/tracksV2` con `totalMilliseconds/explicit`. Incluye pruebas unitarias para ISRC, Mutagen y Apple Music; la UI se valida manualmente.
+
+Para ejecutar las pruebas unitarias:
+
+```bash
+python -m unittest discover -s tests -p 'test_*.py'
+```
 
 ## 📜 Licencia
 
