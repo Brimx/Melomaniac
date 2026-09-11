@@ -1,6 +1,6 @@
 """
 ╔══════════════════════════════════════════════════════════════════════╗
-║                    MelomaniacPass v3.3.1                               ║
+║                    MelomaniacPass v3.3.4                               ║
 ║              Motor de Matching Fuzzy y Validación                    ║
 ╚══════════════════════════════════════════════════════════════════════╝
 
@@ -39,7 +39,7 @@ Dependencias Opcionales:
       Si no está disponible, retorna scores perfectos (100) como fallback
 
 Autor: MelomaniacPass Team
-Versión: 3.3.1
+Versión: 3.3.4
 Fecha: 2026
 """
 

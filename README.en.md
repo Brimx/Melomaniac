@@ -1,4 +1,4 @@
-# 🎵 MelomaniacPass v3.3.1
+# 🎵 MelomaniacPass v3.3.4
 
 **Transfiere playlists entre YouTube Music, Apple Music y Spotify mediante matching inteligente con ISRC y duración.**
 
@@ -110,7 +110,7 @@ Consulta [CHANGELOG.md](CHANGELOG.md) para el historial de versiones.
 
 ## Estado actual
 
-Versión `3.3.1` en la rama `main`. Incluye el diálogo de personalización de playlist, la columna visible de álbum y la corrección de su backdrop como hijo directo del `Stack` raíz para evitar errores de renderizado en Flet. La búsqueda mantiene la tupla triple de título, artista y duración; Apple usa además ISRC cuando está disponible para resolver coincidencias exactas. Spotify usa `spotapi` `searchV2/tracksV2` con `totalMilliseconds/explicit`. Incluye pruebas unitarias para ISRC, Mutagen y Apple Music; la UI se valida manualmente.
+Versión `3.3.4` en la rama `main`. Incluye el diálogo de personalización de playlist, la columna visible de álbum y la corrección de su backdrop como hijo directo del `Stack` raíz para evitar errores de renderizado en Flet. La búsqueda mantiene la tupla triple de título, artista y duración; Apple usa además ISRC cuando está disponible para resolver coincidencias exactas. Spotify usa `spotapi` `searchV2/tracksV2` con `totalMilliseconds/explicit`. Incluye pruebas unitarias para ISRC, Mutagen y Apple Music; la UI se valida manualmente.
 
 Para ejecutar las pruebas unitarias:
 
