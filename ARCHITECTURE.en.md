@@ -9,34 +9,32 @@ App de escritorio para transferir playlists entre **YouTube Music, Apple Music y
 ```
 melomaniacpass/
 ├── app.py                    # Entry, composición CircuitBreakers→Service→State→UI, hard cleanup
-├── auth_manager.py           # Credenciales, wizard 3 tabs, pre-flight paralelo 3 plataformas
-├── .env                      # Apple Music (runtime)
-├── browser.json              # YouTube Music headers (runtime)
-├── spotify_cookies.json      # Spotify {identifier, cookies:{sp_dc,sp_key}} (runtime)
-├── resources/search_cache.json # Caché persistida {track_id,needs_review,low_confidence,isrc}
+├── config/                   # Runtime ignorado: .env, credenciales JSON y caché
 │
 ├── core/
 │   ├── models.py             # Track(album,duration_ms,is_explicit), SearchResult(isrc), LoadState/TransferState
 │   └── state.py              # AppState BLoC, transfer, segments, lazy_scan, cache_key
 │
 ├── services/
-│   └── api_service.py        # MusicApiService: facade spotapi(Song/Login/PublicPlaylist/PrivatePlaylist) + ytmusicapi + amp-api
+│   ├── api_service.py        # MusicApiService: facade spotapi + ytmusicapi + amp-api
+│   ├── authentication.py     # Rutas, credenciales y pre-flight
+│   └── circuit_breaker.py    # CircuitBreaker + RateLimitError
 │
 ├── engine/
+│   ├── audio_metadata.py     # Lectura/escritura de tags de audio
 │   ├── normalizer.py         # clean_metadata, _normalize_title, FUZZY_IDEAL 85, ARTIST_EXACT 99
 │   ├── match.py              # title/artist scores, _ideal_pass_hunter, score_spotify_match, validar_match, _yt_select_best
 │   ├── parsers.py            # parse_local_playlist (detección por contenido) + build_local_tracks
 │   └── organizer.py          # sort_tracks / split_tracks (memoria)
 │
 ├── ui/
+│   ├── auth_manager.py       # Coordinación de autenticación con la UI
+│   ├── config_wizard.py      # Wizard visual de credenciales
 │   ├── main_ui.py            # PlaylistManagerUI, organize/split dialogs, _on_state_changed
 │   ├── playlist_meta_dialog.py # diálogo modal animado para nombre/descripción de playlist
 │   ├── song_row.py           # SongRow/SkeletonRow ITEM_H=64, hover, _status_icon
 │   ├── telemetry.py          # TelemetryDrawer docked>=700 / overlay handle, Monitor/Consola/Post-Mortem
 │   └── widgets.py            # _primary_btn/_ghost_btn/_section_label/_status_icon
-│
-├── utils/
-│   └── circuit_breaker.py    # CircuitBreaker (trip/check_or_raise/remaining/cancel/_auto_reset) + RateLimitError
 │
 └── resources/fonts/          # IBM Plex Sans w300-700 locales (Flet 0.86.5)
 ```
@@ -45,9 +43,9 @@ melomaniacpass/
 
 | Plataforma | Tipo | Auth | Archivo |
 |---|---|---|---|
-| YouTube Music | Streaming | `SAPISIDHASH` + `Cookie` | `browser.json` |
-| Apple Music | Streaming | `Bearer` + `media-user-token` | `.env` |
-| Spotify | Streaming | `sp_dc` + `sp_key` + `identifier` via `spotapi.Login` | `spotify_cookies.json` |
+| YouTube Music | Streaming | `SAPISIDHASH` + `Cookie` | `config/browser.json` |
+| Apple Music | Streaming | `Bearer` + `media-user-token` | `config/.env` |
+| Spotify | Streaming | `sp_dc` + `sp_key` + `identifier` via `spotapi.Login` | `config/spotify_cookies.json` |
 | Archivo Local / Pegar Texto | Local | — | — |
 
 Local → `Track(platform="local")` → transferible a cualquiera de las 3.
@@ -60,12 +58,12 @@ app.py
   ├── MusicApiService ── spotapi Song/Login, YTMusic, requests.Session, GLOBAL_SEMAPHORE=2, SEARCH_CACHE, SPOTIFY_ADD_CHUNK=50
   ├── AppState ───────── models, progreso, transfer_sem 2/3, segments
   ├── PlaylistManagerUI ─ filas, diálogos, telemetría
-  └── AuthManager ─────── wizard 3 tabs, pre-flight paralelo
+  └── AuthManager ─────── ui/auth_manager + config_wizard, pre-flight paralelo
 
 engine/normalizer → engine/match → core/models
 engine/parsers → core/models
 core/state ↔ services/api_service ↔ ui
-utils/circuit_breaker → core/state, services/api_service
+services/circuit_breaker → core/state, services/api_service
 ```
 
 Init `app.py:143-147` `CircuitBreakers → Service(state.cb) → State(service) → UI(page,state) → AuthManager(page,service,state)` con inyección `ui.auth_manager` / `service.auth_manager`.
@@ -86,23 +84,23 @@ Ver `requirements.txt` completo.
 
 ## Autenticación
 
-### `.env` Apple
+### `config/.env` Apple
 ```env
 APPLE_AUTH_BEARER="Bearer eyJ..."
 APPLE_MUSIC_USER_TOKEN="0.As..."
 ```
 
-### `browser.json` YouTube
+### `config/browser.json` YouTube
 ```json
 {"Accept":"*/*","Authorization":"SAPISIDHASH ...","Content-Type":"application/json","X-Goog-AuthUser":"0","x-origin":"https://music.youtube.com","Cookie":"..."}
 ```
 
-### `spotify_cookies.json` Spotify
+### `config/spotify_cookies.json` Spotify
 ```json
 {"identifier":"user@mail.com","cookies":{"sp_dc":"...","sp_key":"..."}}
 ```
 
-`auth_manager.py` centraliza `read/write` de los 3. `services/api_service.py:374 _sync_init_spotify` hace `Login.from_cookies(dump, Config(NoopLogger()))` y cachea `self._sp_song = Song(client=cfg.client)` para reutilizar `TLSClient` (evita 5-8 req de setup por búsqueda).
+`services/authentication.py` centraliza las rutas y el `read/write` de las credenciales. `ui/auth_manager.py` coordina el wizard y el hot reload. `services/api_service.py:374 _sync_init_spotify` hace `Login.from_cookies(dump, Config(NoopLogger()))` y cachea `self._sp_song = Song(client=cfg.client)` para reutilizar `TLSClient` (evita 5-8 req de setup por búsqueda).
 
 **Pre-flight paralelo** `AuthManager.run_startup_check()` valida YT (`YTMusic.get_history`), Apple (`/v1/me/storefront` + `/v1/catalog/.../search`) y Spotify (`Login.logged_in`). Actualiza `AppState.auth_session_ok/hint` y abre wizard en tab fallida.
 
@@ -139,7 +137,7 @@ ui → progreso + Post-Mortem
 
 ## Módulos Clave
 
-### `utils/circuit_breaker.py`
+### `services/circuit_breaker.py`
 `CircuitBreaker.trip(retry_after)` abre `is_open`, guarda `monotonic+wait`, `notify` y `asyncio.create_task(_auto_reset)`. `check_or_raise` lanza `RateLimitError`. `cancel` limpia task huérfana. `remaining` con `monotonic`.
 
 ### `services/api_service.py`
@@ -164,9 +162,9 @@ Capas: `validar_match` L0 CJK bypass, L1 substring, L2 lethal `cover/karaoke`, L
 
 | Tab | Plataforma | Campos | Archivo |
 |---|---|---|---|
-| 0 | YouTube Music | Authorization, Cookie | `browser.json` |
-| 1 | Apple Music | Bearer, User Token | `.env` |
-| 2 | Spotify | identifier, sp_dc, sp_key | `spotify_cookies.json` |
+| 0 | YouTube Music | Authorization, Cookie | `config/browser.json` |
+| 1 | Apple Music | Bearer, User Token | `config/.env` |
+| 2 | Spotify | identifier, sp_dc, sp_key | `config/spotify_cookies.json` |
 
 `Guardar y Aplicar` → `reload_credentials()` sin reiniciar.
 

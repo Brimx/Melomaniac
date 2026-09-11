@@ -15,9 +15,9 @@ MelomaniacPass es una app de escritorio que carga una playlist desde YouTube Mus
 - **Hunter Recovery** — queries alternativas (`clean_metadata` + `_normalize_title`), matching triple `título/artista/duración` y scoring `score_spotify_match` (60 fuzzy +30 duración +10 explicit); el ISRC permite resolver coincidencias exactas cuando está disponible.
 - **Concurrencia controlada** — `GLOBAL_API_SEMAPHORE=2` + `transfer_sem` 2 (Apple) /3 (otros) para cuidar APIs.
 - **Post-mortem** — coincidencias, no encontradas, errores y `revision_necesaria` (<40%); exporta `transfer_failed_report.txt`.
-- **Wizard guiado 3 tabs** — YouTube (`browser.json`), Apple (`.env`), Spotify (`spotify_cookies.json` con `sp_dc/sp_key`).
+- **Wizard guiado 3 tabs** — YouTube (`config/browser.json`), Apple (`config/.env`), Spotify (`config/spotify_cookies.json` con `sp_dc/sp_key`).
 - **Protección 429/423** — `CircuitBreaker` por plataforma, `_am_check_status` (423 → 120s mínimo) y `_sp_is_rate_limited`, `SPOTIFY_ADD_CHUNK=50` con retry exponencial.
-- **Caché persistida** — `resources/search_cache.json` permite reanudar tras 429/cierre sin re-buscar.
+- **Caché persistida** — `config/search_cache.json` permite reanudar tras 429/cierre sin re-buscar.
 - **Organizar y dividir** — ordena (`engine/organizer.sort_tracks`) o agrupa (`split_tracks`) por artista/álbum/título/duración/plataforma.
 - **Metadatos visibles** — muestra el álbum junto al título, artista, duración y estado de cada canción.
 - **Personalización de playlist** — antes de transferir, permite editar nombre y descripción en un diálogo modal animado; el backdrop cancela al hacer clic fuera de la tarjeta.
@@ -30,7 +30,7 @@ MelomaniacPass es una app de escritorio que carga una playlist desde YouTube Mus
 | Python | 3.10+ |
 | OS | Linux, macOS o Windows |
 | Dependencias | `flet==0.86.5`, `ytmusicapi==1.12.1`, `spotapi==1.2.8`, `requests`, `python-dotenv`, `rapidfuzz` (ver `requirements.txt`) |
-| Credenciales | YouTube `browser.json`, Apple `.env`, Spotify `spotify_cookies.json` |
+| Credenciales | `config/browser.json`, `config/.env`, `config/spotify_cookies.json` |
 
 ## 📦 Instalación
 
@@ -55,9 +55,9 @@ Pre-flight valida en paralelo las 3 plataformas al iniciar. Si falla, abre el wi
 
 **Apple Music:** `music.apple.com` → Network `catalog` → copia `Authorization Bearer` + `media-user-token` → wizard.
 
-**Spotify:** `open.spotify.com` → DevTools Application → Cookies → copia `sp_dc`, `sp_key` e `identifier` → `spotify_cookies.json` via wizard.
+**Spotify:** `open.spotify.com` → DevTools Application → Cookies → copia `sp_dc`, `sp_key` e `identifier` → `config/spotify_cookies.json` via wizard.
 
-No commitees `.env`/`browser.json`/`spotify_cookies.json` (en `.gitignore`).
+No commitees los archivos dentro de `config/`; están protegidos por `.gitignore`.
 
 ### 2. Cargar playlist
 - **Streaming:** elige plataforma, pega ID (`pl.u-...`/`37i9dQ...`/`p.xxx`) y **Cargar**.
@@ -74,17 +74,17 @@ Progreso y telemetría en vivo. **Ver Detalles** abre Post-Mortem. Exporta TXT.
 
 | Archivo | Plataforma | Contenido |
 |---|---|---|
-| `.env` | Apple | `APPLE_AUTH_BEARER`, `APPLE_MUSIC_USER_TOKEN` |
-| `browser.json` | YouTube | `Authorization`, `Cookie`, `x-origin` |
-| `spotify_cookies.json` | Spotify | `{identifier, cookies:{sp_dc, sp_key}}` |
-| `resources/search_cache.json` | Cache | `{key: {track_id, needs_review, low_confidence, isrc}}` |
+| `config/.env` | Apple | `APPLE_AUTH_BEARER`, `APPLE_MUSIC_USER_TOKEN` |
+| `config/browser.json` | YouTube | `Authorization`, `Cookie`, `x-origin` |
+| `config/spotify_cookies.json` | Spotify | `{identifier, cookies:{sp_dc, sp_key}}` |
+| `config/search_cache.json` | Cache | `{key: {track_id, needs_review, low_confidence, isrc}}` |
 
 ## 📁 Estructura
 
 ```
 melomaniacpass/
 ├── app.py                 # Entry, composición, hard cleanup
-├── auth_manager.py        # Credenciales, pre-flight y wizard 3 tabs
+├── config/                # .env, credenciales JSON y caché runtime (ignorado)
 ├── core/models.py         # Track (album/duration_ms/is_explicit), SearchResult(isrc)
 ├── core/state.py          # AppState BLoC, transfer+segments, cache_key
 ├── services/api_service.py# Facade spotapi/ytmusicapi/amp-api, hunters, chunks
@@ -92,12 +92,16 @@ melomaniacpass/
 ├── engine/match.py        # matching scores, score_spotify_match, _yt_select_best
 ├── engine/parsers.py      # CSV/M3U/XSPF/WPL/PLS + build_local_tracks
 ├── engine/organizer.py    # sort_tracks / split_tracks
+├── engine/audio_metadata.py # lectura/escritura de tags de audio
+├── services/authentication.py # credenciales y pre-flight
+├── services/circuit_breaker.py # CircuitBreaker, RateLimitError
 ├── ui/main_ui.py          # PlaylistManagerUI, organize/split dialogs
+├── ui/auth_manager.py     # coordinación de autenticación con la UI
+├── ui/config_wizard.py    # wizard visual de credenciales
 ├── ui/playlist_meta_dialog.py # diálogo modal para nombre/descripción antes de transferir
 ├── ui/song_row.py         # SongRow/SkeletonRow ITEM_H=64
 ├── ui/telemetry.py        # Monitor/Consola/Post-Mortem docked/overlay
 ├── ui/widgets.py          # _primary_btn, _ghost_btn, _status_icon
-├── utils/circuit_breaker.py # CircuitBreaker, RateLimitError
 └── resources/fonts/       # IBM Plex Sans w300-700
 ```
 
