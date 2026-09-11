@@ -3,7 +3,7 @@ ui/playlist_meta_dialog.py — MelomaniacPass v3.3.1
 
 Diálogo de personalización de playlist (nombre + descripción).
 
-Patrón tomado de ConfigWizard (auth_manager.py): overlay modal con
+Patrón tomado de ConfigWizard (ui/config_wizard.py): overlay modal con
 backdrop + tarjeta centrada, pero sin AlertDialog para poder animar
 (scale + opacity + offset) y colocar el layer de marca detrás. El
 backdrop vive como hijo directo del Stack raíz: recibe el clic de

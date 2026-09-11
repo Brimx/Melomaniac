@@ -9,7 +9,9 @@ __pycache__/
 .env
 browser.json
 spotify_cookies.json
+config/*
+!config/.gitkeep
 
 # Logs y temporales
 *.log
-.DS_Storespotify_cookies.json
+.DS_Store

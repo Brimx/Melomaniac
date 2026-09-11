@@ -9,7 +9,7 @@ from unittest.mock import Mock, patch
 
 from engine.normalizer import normalize_isrc
 from services.api_service import AppleAuthError, AppleRequestLimiter, MusicApiService
-from utils.audio_metadata import read_audio_metadata
+from engine.audio_metadata import read_audio_metadata
 
 
 class IsrcTests(unittest.TestCase):

@@ -62,7 +62,7 @@ from typing import Optional
 
 from core.models import Track
 from engine.normalizer import _PURGE_BRACKETS_RE as _NORMALIZER_BRACKETS_RE
-from utils.audio_metadata import read_audio_metadata
+from engine.audio_metadata import read_audio_metadata
 
 # ══════════════════════════════════════════════════════════════════════
 # EXPRESIONES REGULARES PARA LIMPIEZA DE METADATOS LOCALES

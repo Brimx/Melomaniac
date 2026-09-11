@@ -4,7 +4,7 @@
 ║                  Patrón Circuit Breaker                              ║
 ╚══════════════════════════════════════════════════════════════════════╝
 
-Módulo: utils/circuit_breaker.py
+Módulo: services/circuit_breaker.py
 Descripción: Implementa el patrón Circuit Breaker para protección contra
             rate limiting de APIs externas. Detecta errores HTTP 429 y
             desactiva temporalmente las peticiones a la plataforma afectada,

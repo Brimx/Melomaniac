@@ -1,24 +1,20 @@
-"""
-╔══════════════════════════════════════════════════════════════════════╗
-║                    MelomaniacPass v3.3.1                               ║
-║                    Paquete Services                                  ║
-╚══════════════════════════════════════════════════════════════════════╝
-
-Paquete: services
-Descripción: Fachadas sobre APIs externas de plataformas de streaming.
-            Abstrae la comunicación con YouTube Music y Apple Music
-            proporcionando una interfaz unificada.
-
-Módulos:
-    - api_service: MusicApiService - servicio unificado para todas las plataformas
-
-Autor: MelomaniacPass Team
-Versión: 3.3.1
-Fecha: 2026
-"""
-
-from services.api_service import MusicApiService
+"""External API, authentication and resilience services."""
 
 __all__ = [
-    'MusicApiService',
+    "MusicApiService",
+    "CircuitBreaker",
+    "RateLimitError",
 ]
+
+
+def __getattr__(name: str):
+    """Lazily expose services so authentication imports remain acyclic."""
+    if name == "MusicApiService":
+        from services.api_service import MusicApiService
+
+        return MusicApiService
+    if name in {"CircuitBreaker", "RateLimitError"}:
+        from services.circuit_breaker import CircuitBreaker, RateLimitError
+
+        return {"CircuitBreaker": CircuitBreaker, "RateLimitError": RateLimitError}[name]
+    raise AttributeError(f"module 'services' has no attribute {name!r}")

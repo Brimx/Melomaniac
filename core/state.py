@@ -64,7 +64,7 @@ from core.config import (
     get_transfer_concurrency,
 )
 from core.models import Track, SearchResult, LoadState, TransferState, PlaylistMeta
-from utils.circuit_breaker import CircuitBreaker, RateLimitError
+from services.circuit_breaker import CircuitBreaker, RateLimitError
 from engine.normalizer import clean_metadata
 from engine.match import _duration_to_seconds, FUZZY_REVISION_THRESHOLD, FUZZY_IDEAL
 from engine.organizer import sort_tracks, split_tracks
@@ -209,7 +209,7 @@ class AppState:
         el estado directamente, solo leerlo y llamar métodos de AppState.
     """
 
-    # Plataformas de streaming soportadas — single source: core/config (re-exporta auth_manager)
+        # Plataformas de streaming soportadas — single source: core/config
     PLATFORMS = CFG_PLATFORMS
 
     # Fuentes locales (no requieren autenticación)

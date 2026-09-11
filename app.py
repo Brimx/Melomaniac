@@ -24,17 +24,15 @@ import os
 from pathlib import Path
 
 import flet as ft
-from dotenv import load_dotenv
 
 from core.state import AppState
 from core.config import PLATFORM_ORDER
 from services.api_service import MusicApiService
-from auth_manager import AuthManager
+from services.authentication import ensure_config_dir, load_runtime_env
+from services.circuit_breaker import CircuitBreaker
+from ui.auth_manager import AuthManager
 from ui.main_ui import PlaylistManagerUI
 from ui.tokens import BG_LIST, ACCENT, BG_SURFACE, TEXT_PRIMARY
-from utils.circuit_breaker import CircuitBreaker
-
-load_dotenv()
 
 # Fuentes locales (IBM Plex Sans variable)
 ASSETS_DIR = Path(__file__).resolve().parent / "resources"
@@ -64,6 +62,8 @@ async def main(page: ft.Page) -> None:
         previniendo procesos huérfanos y fugas de memoria.
     """
     try:
+        ensure_config_dir()
+        load_runtime_env()
         # ──────────────────────────────────────────────────────────────
         # CONFIGURACIÓN DE VENTANA Y TEMA
         # ──────────────────────────────────────────────────────────────
@@ -128,7 +128,7 @@ async def main(page: ft.Page) -> None:
         # ──────────────────────────────────────────────────────────────
         # INICIALIZACIÓN DE COMPONENTES DEL SISTEMA
         # ──────────────────────────────────────────────────────────────
-        # Fuente única: PLATFORM_ORDER viene de core/config (que re-exporta auth_manager).
+        # Fuente única: PLATFORM_ORDER viene de core/config.
         # AppState es quien crea los CircuitBreakers (single source) y
         # MusicApiService reutiliza la misma instancia para evitar Task leaks
         # de breakers huérfanos (regla 1). Se crea State primero con service

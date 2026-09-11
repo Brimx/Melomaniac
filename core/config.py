@@ -2,21 +2,18 @@
 core/config.py — MelomaniacPass v3.3.1 — Configuración Centralizada
 ══════════════════════════════════════════════════════════════════
 Fuente única para constantes compartidas (regla 1).
-Re-exporta PLATFORM_ORDER de auth_manager para evitar duplicar listas
-y centraliza concurrencia / paths / chunks configurables (regla 7).
+Centraliza el orden de plataformas, concurrencia y parámetros de servicios
+sin depender de la capa de autenticación ni de la UI.
 """
 
 from __future__ import annotations
 
-import os
-from pathlib import Path
-
-# ── Plataformas (single source: auth_manager es la referencia) ──────
-try:
-    from auth_manager import PLATFORM_ORDER as _AUTH_PLATFORM_ORDER
-    PLATFORM_ORDER: tuple[str, ...] = _AUTH_PLATFORM_ORDER
-except ImportError:
-    PLATFORM_ORDER = ("YouTube Music", "Apple Music", "Spotify")
+# ── Plataformas (single source para core, services y UI) ────────────
+PLATFORM_ORDER: tuple[str, ...] = (
+    "YouTube Music",
+    "Apple Music",
+    "Spotify",
+)
 
 PLATFORMS: list[str] = list(PLATFORM_ORDER)
 LOCAL_SOURCES: frozenset[str] = frozenset({"Archivo Local", "Pegar Texto"})
@@ -34,12 +31,6 @@ TRANSFER_CONCURRENCY: dict[str, int] = {
 
 def get_transfer_concurrency(destination: str) -> int:
     return TRANSFER_CONCURRENCY.get(destination, TRANSFER_CONCURRENCY["default"])
-
-# ── Paths ────────────────────────────────────────────────────────────
-BASE_DIR = Path(__file__).resolve().parent.parent
-RESOURCES_DIR = BASE_DIR / "resources"
-SEARCH_CACHE_JSON: str = str(RESOURCES_DIR / "search_cache.json")
-SPOTIFY_COOKIES_JSON: str = str(BASE_DIR / "spotify_cookies.json")
 
 # ── Spotify chunks ───────────────────────────────────────────────────
 SPOTIFY_ADD_CHUNK: int = 50

@@ -1,36 +1,31 @@
-"""
-╔══════════════════════════════════════════════════════════════════════╗
-║                    MelomaniacPass v3.3.1                               ║
-║                    Paquete UI                                        ║
-╚══════════════════════════════════════════════════════════════════════╝
-
-Paquete: ui
-Descripción: Componentes de interfaz de usuario construidos con Flet.
-            Implementa el sistema de diseño OLED con widgets reutilizables
-            y componentes especializados.
-
-Módulos:
-    - widgets: Componentes UI reutilizables (botones, labels, iconos)
-    - song_row: Componentes de fila de canción (SongRow, SkeletonRow)
-    - telemetry: Panel de telemetría y monitoreo
-    - main_ui: Interfaz principal de la aplicación (PlaylistManagerUI)
-
-Autor: MelomaniacPass Team
-Versión: 3.3.1
-Fecha: 2026
-"""
-
-from ui.widgets import _primary_btn, _ghost_btn, _section_label, _status_icon
-from ui.song_row import SongRow, SkeletonRow, ITEM_H
-from ui.main_ui import PlaylistManagerUI
+"""Flet UI components and authentication controls."""
 
 __all__ = [
-    '_primary_btn',
-    '_ghost_btn',
-    '_section_label',
-    '_status_icon',
-    'SongRow',
-    'SkeletonRow',
-    'ITEM_H',
-    'PlaylistManagerUI',
+    "AuthManager",
+    "ConfigWizard",
+    "PlaylistManagerUI",
+    "SongRow",
+    "SkeletonRow",
+    "ITEM_H",
 ]
+
+
+def __getattr__(name: str):
+    """Lazily expose UI components to avoid eager Flet import chains."""
+    if name == "AuthManager":
+        from ui.auth_manager import AuthManager
+
+        return AuthManager
+    if name == "ConfigWizard":
+        from ui.config_wizard import ConfigWizard
+
+        return ConfigWizard
+    if name == "PlaylistManagerUI":
+        from ui.main_ui import PlaylistManagerUI
+
+        return PlaylistManagerUI
+    if name in {"SongRow", "SkeletonRow", "ITEM_H"}:
+        from ui.song_row import ITEM_H, SkeletonRow, SongRow
+
+        return {"SongRow": SongRow, "SkeletonRow": SkeletonRow, "ITEM_H": ITEM_H}[name]
+    raise AttributeError(f"module 'ui' has no attribute {name!r}")

@@ -61,23 +61,25 @@ import time
 from typing import Callable, Optional
 
 import requests
-from dotenv import load_dotenv
-
-from auth_manager import BROWSER_JSON
+from services.authentication import (
+    BROWSER_JSON,
+    SEARCH_CACHE_JSON as AUTH_SEARCH_CACHE_JSON,
+    SPOTIFY_COOKIES_JSON as AUTH_SPOTIFY_COOKIES_JSON,
+    ensure_config_dir,
+    load_runtime_env,
+)
 from core.models import Track, SearchResult, PlaylistMeta
 from core.config import (
     NETWORK_CONCURRENCY as CFG_NETWORK_CONCURRENCY,
     RATE_LIMIT_BACKOFF_STEPS as CFG_RATE_LIMIT_BACKOFF_STEPS,
-    SEARCH_CACHE_JSON as CFG_SEARCH_CACHE_JSON,
     SPOTIFY_ADD_CHUNK as CFG_SPOTIFY_ADD_CHUNK,
-    SPOTIFY_COOKIES_JSON as CFG_SPOTIFY_COOKIES_JSON,
     APPLE_API_BASE,
     APPLE_ISRC_BATCH,
     APPLE_TRANSFER_BATCH,
     APPLE_REQUEST_BURST,
     APPLE_REQUEST_PAUSE,
 )
-from utils.circuit_breaker import CircuitBreaker, RateLimitError
+from services.circuit_breaker import CircuitBreaker, RateLimitError
 from engine.normalizer import (
     clean_metadata, build_search_query, _normalize_title, normalize_isrc, FUZZY_IDEAL,
 )
@@ -87,7 +89,9 @@ from engine.match import (
     _yt_select_best, score_spotify_match,
 )
 
-load_dotenv()
+SEARCH_CACHE_JSON = str(AUTH_SEARCH_CACHE_JSON)
+SPOTIFY_COOKIES_JSON = str(AUTH_SPOTIFY_COOKIES_JSON)
+load_runtime_env()
 
 # ══════════════════════════════════════════════════════════════════════
 # DETECCIÓN DE LIBRERÍAS OPCIONALES
@@ -175,14 +179,12 @@ class AppleRequestLimiter:
 
 # Mensaje de error para sesión expirada de YouTube Music
 _YTM_401_MSG = (
-    "[ERROR] YouTube Music: la sesion de browser.json ha expirado (401). "
+    "[ERROR] YouTube Music: la sesion de config/browser.json ha expirado (401). "
     "Renueva Cookie + Authorization desde el navegador."
 )
 
-# Re-exports para compatibilidad (single source: core/config.py)
-SPOTIFY_COOKIES_JSON = CFG_SPOTIFY_COOKIES_JSON
+# Re-exports para compatibilidad (single source: services.authentication)
 SPOTIFY_ADD_CHUNK = CFG_SPOTIFY_ADD_CHUNK
-SEARCH_CACHE_JSON = CFG_SEARCH_CACHE_JSON
 
 
 def _is_ytm_unauthorized(exc: BaseException) -> bool:
@@ -201,7 +203,7 @@ def _is_ytm_unauthorized(exc: BaseException) -> bool:
         True si es un HTTP 401, False en caso contrario.
     
     Note:
-        Un 401 indica que los headers de browser.json han expirado y
+        Un 401 indica que los headers de config/browser.json han expirado y
         necesitan ser renovados desde el navegador.
     """
     s = str(exc).lower()
@@ -258,6 +260,7 @@ class MusicApiService:
             Los clientes de plataformas se inicializan bajo demanda
             cuando se necesitan, no en el constructor.
         """
+        ensure_config_dir()
         self._cb  = circuit_breakers
         self._ytm = None
         self._am_headers:    dict = {}
@@ -340,7 +343,7 @@ class MusicApiService:
 
     def save_search_cache(self) -> None:
         """
-        Persiste la caché de búsquedas a disco (resources/search_cache.json).
+        Persiste la caché de búsquedas a disco (config/search_cache.json).
 
         Se invoca tras cada búsqueda que escribe en la caché para que el
         progreso sobreviva reinicios y la transferencia sea reanudable.
@@ -372,7 +375,7 @@ class MusicApiService:
         if not HAS_YTMUSIC:
             return False
         if not BROWSER_JSON.exists():
-            self.youtube_auth_error = "missing browser.json"
+            self.youtube_auth_error = "missing config/browser.json"
             return False
         self.youtube_auth_error = ""
         try:
@@ -459,13 +462,13 @@ class MusicApiService:
             return False
         path = os.path.normpath(SPOTIFY_COOKIES_JSON)
         if not os.path.exists(path):
-            self.spotify_auth_error = "missing spotify_cookies.json"
+            self.spotify_auth_error = "missing config/spotify_cookies.json"
             return False
         try:
             import json  # pylint: disable=import-outside-toplevel
             dump = json.loads(open(path, encoding="utf-8").read())
             if not dump.get("identifier") or not dump.get("cookies"):
-                self.spotify_auth_error = "spotify_cookies.json: falta identifier o cookies"
+                self.spotify_auth_error = "config/spotify_cookies.json: falta identifier o cookies"
                 return False
             cfg = Config(logger=NoopLogger())
             login = Login.from_cookies(dump, cfg)
@@ -508,13 +511,13 @@ class MusicApiService:
         if not self._ytm:
             self._sync_init_youtube()
         if not self._ytm:
-            raise RuntimeError("YouTube Music no disponible. Comprueba browser.json.")
+            raise RuntimeError("YouTube Music no disponible. Comprueba config/browser.json.")
         try:
             pl = self._ytm.get_playlist(pid, limit=None)
         except Exception as exc:  # pylint: disable=broad-exception-caught
             self.youtube_auth_error = str(exc)
             if _is_ytm_unauthorized(exc):
-                raise RuntimeError("Sesion YouTube Music expirada (401). Renueva browser.json.") from exc
+                raise RuntimeError("Sesion YouTube Music expirada (401). Renueva config/browser.json.") from exc
             raise
         name  = pl.get("title", "YouTube Playlist")
         description = _as_text(pl.get("description"))
@@ -1181,7 +1184,7 @@ class MusicApiService:
         if not self._sp_login:
             self._sync_init_spotify()
         if not self._sp_login:
-            return False, "Spotify no disponible. Comprueba spotify_cookies.json.", 0, []
+            return False, "Spotify no disponible. Comprueba config/spotify_cookies.json.", 0, []
         pl = PrivatePlaylist(self._sp_login)
         try:
             pl_id = pl.create_playlist(title)

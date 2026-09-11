@@ -1,30 +1,29 @@
-"""
-╔══════════════════════════════════════════════════════════════════════╗
-║                    MelomaniacPass v3.3.1                               ║
-║                    Paquete Core                                      ║
-╚══════════════════════════════════════════════════════════════════════╝
-
-Paquete: core
-Descripción: Núcleo de la aplicación conteniendo modelos de datos y
-            estado global. Define las estructuras fundamentales y la
-            lógica de negocio central.
-
-Módulos:
-    - models: Dataclasses y enums (Track, SearchResult, LoadState, TransferState)
-    - state: AppState - estado global de la aplicación
-
-Autor: MelomaniacPass Team
-Versión: 3.3.1
-Fecha: 2026
-"""
-
-from core.models import Track, SearchResult, LoadState, TransferState
-from core.state import AppState
+"""Core models and application state."""
 
 __all__ = [
-    'Track',
-    'SearchResult',
-    'LoadState',
-    'TransferState',
-    'AppState',
+    "Track",
+    "PlaylistMeta",
+    "SearchResult",
+    "LoadState",
+    "TransferState",
+    "AppState",
 ]
+
+
+def __getattr__(name: str):
+    """Lazily expose public core symbols without creating import cycles."""
+    if name in {"Track", "PlaylistMeta", "SearchResult", "LoadState", "TransferState"}:
+        from core.models import LoadState, PlaylistMeta, SearchResult, Track, TransferState
+
+        return {
+            "Track": Track,
+            "PlaylistMeta": PlaylistMeta,
+            "SearchResult": SearchResult,
+            "LoadState": LoadState,
+            "TransferState": TransferState,
+        }[name]
+    if name == "AppState":
+        from core.state import AppState
+
+        return AppState
+    raise AttributeError(f"module 'core' has no attribute {name!r}")

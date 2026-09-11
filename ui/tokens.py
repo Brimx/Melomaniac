@@ -2,7 +2,7 @@
 ui/tokens.py — MelomaniacPass v3.3.1 — Design Tokens
 ═══════════════════════════════════════════════════
 Fuente única de verdad para colores y tokens OLED.
-Antes duplicados en app.py, auth_manager.py, ui/main_ui.py,
+Antes duplicados en app.py, ui/auth_manager.py, ui/main_ui.py,
 ui/song_row.py, ui/widgets.py, ui/telemetry.py.
 
 Importar desde aquí garantiza consistencia y evita drift.
