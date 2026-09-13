@@ -1,5 +1,5 @@
 """
-ui/tokens.py — MelomaniacPass v3.3.6 — Design Tokens
+ui/tokens.py — MelomaniacPass v3.3.7 — Design Tokens
 ═══════════════════════════════════════════════════
 Fuente única de verdad para colores y tokens OLED.
 Antes duplicados en app.py, ui/auth_manager.py, ui/main_ui.py,

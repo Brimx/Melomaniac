@@ -1,4 +1,4 @@
-# 🎵 MelomaniacPass v3.3.6
+# 🎵 MelomaniacPass v3.3.7
 
 **Transfiere playlists entre YouTube Music, Apple Music y Spotify mediante matching inteligente con ISRC y duración.**
 
@@ -85,8 +85,12 @@ Progreso y telemetría en vivo. **Ver Detalles** abre Post-Mortem. Exporta TXT.
 melomaniacpass/
 ├── app.py                 # Entry, composición, hard cleanup
 ├── config/                # .env, credenciales JSON y caché runtime (ignorado)
+├── core/availability.py   # precarga ISRC y disponibilidad por pista
+├── core/cache.py          # claves y normalización del caché
+├── core/config.py         # constantes compartidas
 ├── core/models.py         # Track (album/duration_ms/is_explicit), SearchResult(isrc)
-├── core/state.py          # AppState BLoC, transfer+segments, cache_key
+├── core/state.py          # AppState BLoC, transfer+segments
+├── core/transfer.py       # búsqueda con rate-limit y errores
 ├── services/api_service.py# Facade spotapi/ytmusicapi/amp-api, hunters, chunks
 ├── engine/normalizer.py   # clean_metadata, umbrales FUZZY_IDEAL 85
 ├── engine/match.py        # matching scores, score_spotify_match, _yt_select_best
@@ -110,7 +114,7 @@ Consulta [CHANGELOG.md](CHANGELOG.md) para el historial de versiones.
 
 ## Estado actual
 
-Versión `3.3.6` en la rama `main`. Incluye el diálogo de personalización de playlist, la columna visible de álbum y la corrección de su backdrop como hijo directo del `Stack` raíz para evitar errores de renderizado en Flet. La búsqueda mantiene la tupla triple de título, artista y duración; Apple usa además ISRC cuando está disponible para resolver coincidencias exactas. Spotify usa `spotapi` `searchV2/tracksV2` con `totalMilliseconds/explicit`. Incluye pruebas unitarias para ISRC, Mutagen y Apple Music; la UI se valida manualmente.
+Versión `3.3.7` en la rama `main`. Incluye el diálogo de personalización de playlist, la columna visible de álbum y la corrección de su backdrop como hijo directo del `Stack` raíz para evitar errores de renderizado en Flet. La búsqueda mantiene la tupla triple de título, artista y duración; Apple usa además ISRC cuando está disponible para resolver coincidencias exactas. Spotify usa `spotapi` `searchV2/tracksV2` con `totalMilliseconds/explicit`. Incluye pruebas unitarias para ISRC, Mutagen y Apple Music; la UI se valida manualmente.
 
 Para ejecutar las pruebas unitarias:
 

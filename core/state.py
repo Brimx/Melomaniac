@@ -1,6 +1,6 @@
 """
 ╔══════════════════════════════════════════════════════════════════════╗
-║                    MelomaniacPass v3.3.6                               ║
+║                    MelomaniacPass v3.3.7                               ║
 ║                    Estado Global de la Aplicación                    ║
 ╚══════════════════════════════════════════════════════════════════════╝
 
@@ -40,11 +40,11 @@ Estrategia de Diseño - Patrón BLoC:
        - Progress tracking granular para feedback visual
 
 Funciones Auxiliares:
-    - _failure_reason_from_exc: Extrae razón legible de excepciones
-    - _search_with_exponential_rl_backoff: Reintentos con backoff exponencial
+    - core.transfer: búsqueda resistente a rate limits y razones de error
+    - core.availability: resolución de disponibilidad por pista
 
 Autor: MelomaniacPass Team
-Versión: 3.3.6
+Versión: 3.3.7
 Fecha: 2026
 """
 
@@ -55,102 +55,24 @@ import traceback
 import uuid
 from typing import Callable, Optional
 
+from core.availability import (
+    apply_availability_status,
+    preload_apple_isrc_matches,
+    scan_track_availability,
+)
 from core.cache import make_cache_key, unwrap_search_result
 from core.config import (
-    PLATFORM_ORDER,
     PLATFORMS as CFG_PLATFORMS,
     LOCAL_SOURCES as CFG_LOCAL_SOURCES,
     SOURCE_OPTIONS as CFG_SOURCE_OPTIONS,
     get_transfer_concurrency,
 )
 from core.models import Track, SearchResult, LoadState, TransferState, PlaylistMeta
-from services.circuit_breaker import CircuitBreaker, RateLimitError
+from core.transfer import failure_reason_from_exc, search_with_rate_limit_backoff
 from engine.normalizer import clean_metadata
 from engine.match import _duration_to_seconds, FUZZY_REVISION_THRESHOLD, FUZZY_IDEAL
 from engine.organizer import sort_tracks, split_tracks
-
-
-def _failure_reason_from_exc(exc: BaseException) -> str:
-    """
-    Extrae razón legible de una excepción para post-mortem de fallos.
-    
-    Args:
-        exc: Excepción capturada durante operación de API.
-    
-    Returns:
-        String descriptivo del error, truncado a 300 caracteres.
-    """
-    msg = str(exc)
-    return msg[:300] + ("…" if len(msg) > 300 else "")
-
-
-async def _search_with_exponential_rl_backoff(
-    service,
-    platform: str,
-    name: str,
-    artist: str,
-    *,
-    local_duration_s: Optional[int] = None,
-    local_duration_ms: int = 0,
-    local_is_explicit: bool = False,
-    local_isrc: str | None = None,
-    log: Optional[Callable[[str], None]] = None,
-    backoff_steps: int = 1,
-) -> SearchResult:
-    """
-    Búsqueda con manejo de rate limiting: abre el breaker y falla rápido.
-
-    Estrategia (fail-fast):
-        - Ante un 429 se dispara el circuit breaker de la plataforma
-          (con su ventana de espera) y la búsqueda se aborta de inmediato.
-        - No se martillea la API con reintentos exponenciales: el breaker
-          ya serializa el "silencio" posterior a través de check_or_raise()
-          en llamadas subsiguientes.
-
-    Args:
-        service: Instancia de MusicApiService.
-        platform: Plataforma destino ("YouTube Music", "Apple Music").
-        name: Título de la canción.
-        artist: Nombre del artista.
-        local_duration_s: Duración en segundos para matching (opcional).
-        log: Función de logging para registrar eventos (opcional).
-        backoff_steps: Pasos de reintento (default: 1 = fail-fast).
-
-    Returns:
-        SearchResult con el track encontrado o flags de revisión.
-
-    Raises:
-        RateLimitError: Si un 429 ocurre (breaker abierto).
-
-    Note:
-        El breaker abierto hace que search_track()/check_or_raise() fallen
-        inmediatamente sin peticiones extra hasta que expire su ventana.
-    """
-    rl_backoff: Optional[float] = None
-    for step in range(backoff_steps):
-        try:
-            return await service.search_with_fallback(
-                platform, name, artist, local_duration_s=local_duration_s,
-                local_duration_ms=local_duration_ms,
-                local_is_explicit=local_is_explicit,
-                local_isrc=local_isrc,
-            )
-        except RateLimitError as e:
-            ra = max(1, int(e.retry_after))
-            if rl_backoff is None:
-                rl_backoff = float(ra)
-            cb = getattr(service, "_cb", {}).get(platform)
-            if cb is not None:
-                cb.trip(ra)
-            if log:
-                log(
-                    f"[WARN] 429 {platform}: abriendo breaker ~{ra}s · "
-                    f"búsqueda abortada para '{name}'"
-                )
-            raise
-    if log:
-        log(f"[ERROR] 429: reintentos agotados en {platform}")
-    raise RateLimitError(platform, int(rl_backoff or 60))
+from services.circuit_breaker import CircuitBreaker, RateLimitError
 
 
 class AppState:
@@ -574,7 +496,7 @@ class AppState:
             last_exc: Optional[BaseException] = None
             for attempt in range(3):
                 try:
-                    match = await _search_with_exponential_rl_backoff(
+                    match = await search_with_rate_limit_backoff(
                         self.service, self.destination,
                         track.name, track.artist,
                         local_duration_s=local_dur_s,
@@ -626,7 +548,7 @@ class AppState:
                 self._log(f"[SUCCESS] ✓ Encontrada: {track.name[:42]}")
             else:
                 track.transfer_status = "not_found"
-                track.failure_reason  = _failure_reason_from_exc(last_exc) if last_exc else "Sin resultados en la API del destino"
+                track.failure_reason  = failure_reason_from_exc(last_exc) if last_exc else "Sin resultados en la API del destino"
                 self._log(f"[ERROR]   ✗ No encontrada: {track.name[:42]}")
                 if track not in self.failed_tracks:
                     self.failed_tracks.append(track)
@@ -693,7 +615,7 @@ class AppState:
                         self.transfer_error_tracks.append(track)
                 elif isinstance(result, Exception):
                     track.transfer_status = "error"
-                    track.failure_reason  = _failure_reason_from_exc(result)
+                    track.failure_reason  = failure_reason_from_exc(result)
                     self._log(f"[ERROR] Excepción en '{track.name[:30]}': {result}")
                     if track not in self.failed_tracks:
                         self.failed_tracks.append(track)
@@ -858,52 +780,17 @@ class AppState:
         BATCH_SIZE = 5
         done_count = 0
 
-        if self.destination == "Apple Music":
-            exact_matches = await self.service.search_by_isrcs(
-                [track.isrc for track in tracks if track.isrc]
-            )
-            for track in tracks:
-                if not track.isrc:
-                    continue
-                exact = exact_matches.get(track.isrc)
-                if exact and exact.track_id:
-                    self.service.search_cache[make_cache_key(
-                        track.name, track.artist, self.destination
-                    )] = exact
-            if exact_matches:
-                self.service.save_search_cache()
+        await preload_apple_isrc_matches(self.service, tracks, self.destination)
 
         async def _check_one(track: Track) -> None:
             nonlocal done_count
-            cache_key = make_cache_key(track.name, track.artist, self.destination)
-            local_dur_s = (track.duration_ms // 1000) if getattr(track, "duration_ms", 0) else _duration_to_seconds(track.duration)
-
-            if cache_key in self.service.search_cache:
-                res = unwrap_search_result(self.service.search_cache[cache_key])
-                track.transfer_status = (
-                    "not_found" if not res.track_id
-                    else "revision_necesaria" if res.needs_review
-                    else "found"
-                )
-            else:
-                try:
-                    result = await _search_with_exponential_rl_backoff(
-                        self.service, self.destination,
-                        track.name, track.artist,
-                        local_duration_s=local_dur_s,
-                        local_duration_ms=track.duration_ms,
-                        local_is_explicit=track.is_explicit,
-                        local_isrc=track.isrc,
-                        log=self._log,
-                    )
-                except Exception:  # pylint: disable=broad-exception-caught
-                    result = SearchResult(None, False)
-                self.service.search_cache[cache_key] = result
-                track.transfer_status = (
-                    "not_found" if not result.track_id
-                    else "revision_necesaria" if result.needs_review
-                    else "found"
-                )
+            result = await scan_track_availability(
+                self.service,
+                self.destination,
+                track,
+                log=self._log,
+            )
+            apply_availability_status(track, result)
 
             done_count += 1
             self.transfer_progress = done_count

@@ -1,6 +1,6 @@
 """
 ╔══════════════════════════════════════════════════════════════════════╗
-║                    MelomaniacPass v3.3.6                             ║
+║                    MelomaniacPass v3.3.7                             ║
 ║              Interfaz Principal de Usuario                           ║
 ╚══════════════════════════════════════════════════════════════════════╝
 
@@ -45,7 +45,7 @@ Componentes Principales:
     - Dialogs: Modales para errores y confirmaciones
 
 Autor: MelomaniacPass Team
-Versión: 3.3.6
+Versión: 3.3.7
 Fecha: 2026
 """
 
@@ -283,7 +283,7 @@ class PlaylistManagerUI(DialogMixin):
                         ft.TextSpan("Melomaniac", ft.TextStyle(size=20,
                                                                color=TEXT_PRIMARY, font_family="IBM Plex Sans Light")),
                     ], opacity=1.0),
-                    ft.Text("v3.3.6", size=9, color=TEXT_DIM, font_family="IBM Plex Sans",
+                    ft.Text("v3.3.7", size=9, color=TEXT_DIM, font_family="IBM Plex Sans",
                             style=ft.TextStyle(letter_spacing=0.8), opacity=1.0),
                 ], spacing=0, tight=True, expand=True),
                 self.btn_wizard,

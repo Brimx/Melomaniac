@@ -1,4 +1,4 @@
-# MelomaniacPass v3.3.6 — Technical Architecture
+# MelomaniacPass v3.3.7 — Technical Architecture
 
 App de escritorio para transferir playlists entre **YouTube Music, Apple Music y Spotify** + fuentes locales (CSV, M3U/M3U8, PLS, XSPF, WPL, iTunes XML, texto) con **Hunter Recovery** basado en la tupla triple de búsqueda `(título, artista, duración_ms)`. El ISRC se conserva como identificador auxiliar para búsquedas exactas y caché.
 
@@ -12,8 +12,12 @@ melomaniacpass/
 ├── config/                   # Runtime ignorado: .env, credenciales JSON y caché
 │
 ├── core/
+│   ├── availability.py     # ISRC preload and per-track availability
+│   ├── cache.py             # Search-cache keys and legacy normalization
+│   ├── config.py            # Shared constants and concurrency
 │   ├── models.py             # Track(album,duration_ms,is_explicit), SearchResult(isrc), LoadState/TransferState
-│   └── state.py              # AppState BLoC, transfer, segments, lazy_scan, cache_key
+│   ├── state.py              # AppState BLoC, transfer, segments and state
+│   └── transfer.py           # Rate-limit aware search and error helpers
 │
 ├── services/
 │   ├── api_service.py        # MusicApiService: facade spotapi + ytmusicapi + amp-api
@@ -60,10 +64,11 @@ app.py
   ├── PlaylistManagerUI ─ filas, diálogos, telemetría
   └── AuthManager ─────── ui/auth_manager + config_wizard, pre-flight paralelo
 
-engine/normalizer → engine/match → core/models
-engine/parsers → core/models
-core/state ↔ services/api_service ↔ ui
-services/circuit_breaker → core/state, services/api_service
+ui → core / engine / services
+services → core / engine
+engine → core
+core/state → services.circuit_breaker + engine helpers
+core/availability → core.cache + engine.match + core.transfer
 ```
 
 Init `app.py:143-147` `CircuitBreakers → Service(state.cb) → State(service) → UI(page,state) → AuthManager(page,service,state)` con inyección `ui.auth_manager` / `service.auth_manager`.
@@ -127,7 +132,8 @@ ui.auth_manager = service.auth_manager = auth_manager
 
 ```
 ui → state.transfer_playlist() → _transfer_one(track) con cache_key `cn|||ca|||dest`
-state → _search_with_exponential_rl_backoff (fail-fast, trip breaker, raise)
+state → core.transfer.search_with_rate_limit_backoff (fail-fast, trip breaker, raise)
+state → core.availability (ISRC preload and lazy availability)
 service → search_with_fallback 3 passes (clean, raw, normalized) → search_track → _*_hunter_async
 engine/match → scores de título/artista + _ideal_pass_hunter (85 o artist 99 + title 60) → SearchResult(track_id, needs_review, low_confidence, isrc)
 state → Track.transfer_status
@@ -180,4 +186,4 @@ Capas: `validar_match` L0 CJK bypass, L1 substring, L2 lethal `cover/karaoke`, L
 | Engine | 4 módulos |
 | Concurrencia | global 2, transfer 2/3 |
 | Resiliencia | breaker 429/423, cache persistida, chunk 50 |
-| Versión | 3.3.6 — backdrop del diálogo como hijo directo del `Stack` |
+| Versión | 3.3.7 — backdrop del diálogo como hijo directo del `Stack` |
