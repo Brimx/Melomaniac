@@ -1,5 +1,5 @@
 """
-ui/playlist_meta_dialog.py — MelomaniacPass v3.3.4
+ui/playlist_meta_dialog.py — MelomaniacPass v3.3.5
 
 Diálogo de personalización de playlist (nombre + descripción).
 

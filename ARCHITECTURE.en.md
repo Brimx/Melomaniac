@@ -1,4 +1,4 @@
-# MelomaniacPass v3.3.4 — Technical Architecture
+# MelomaniacPass v3.3.5 — Technical Architecture
 
 App de escritorio para transferir playlists entre **YouTube Music, Apple Music y Spotify** + fuentes locales (CSV, M3U/M3U8, PLS, XSPF, WPL, iTunes XML, texto) con **Hunter Recovery** basado en la tupla triple de búsqueda `(título, artista, duración_ms)`. El ISRC se conserva como identificador auxiliar para búsquedas exactas y caché.
 
@@ -180,4 +180,4 @@ Capas: `validar_match` L0 CJK bypass, L1 substring, L2 lethal `cover/karaoke`, L
 | Engine | 4 módulos |
 | Concurrencia | global 2, transfer 2/3 |
 | Resiliencia | breaker 429/423, cache persistida, chunk 50 |
-| Versión | 3.3.4 — backdrop del diálogo como hijo directo del `Stack` |
+| Versión | 3.3.5 — backdrop del diálogo como hijo directo del `Stack` |

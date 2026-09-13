@@ -1,6 +1,6 @@
 """
 ╔══════════════════════════════════════════════════════════════════════╗
-║                    MelomaniacPass v3.3.4                               ║
+║                    MelomaniacPass v3.3.5                               ║
 ║                  Patrón Circuit Breaker                              ║
 ╚══════════════════════════════════════════════════════════════════════╝
 
@@ -26,7 +26,7 @@ Estrategia de Diseño:
     con feedback visual del tiempo de espera.
 
 Autor: MelomaniacPass Team
-Versión: 3.3.4
+Versión: 3.3.5
 Fecha: 2026
 """
 

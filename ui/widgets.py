@@ -1,6 +1,6 @@
 """
 ╔══════════════════════════════════════════════════════════════════════╗
-║                    MelomaniacPass v3.3.4                               ║
+║                    MelomaniacPass v3.3.5                               ║
 ║                  Widgets UI Reutilizables                            ║
 ╚══════════════════════════════════════════════════════════════════════╝
 
@@ -24,7 +24,7 @@ Sistema de Diseño:
     - Elevación y sombras para jerarquía visual
 
 Autor: MelomaniacPass Team
-Versión: 3.3.4
+Versión: 3.3.5
 Fecha: 2026
 """
 
