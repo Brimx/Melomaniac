@@ -1,5 +1,5 @@
 """
-core/config.py — MelomaniacPass v3.3.5 — Configuración Centralizada
+core/config.py — MelomaniacPass v3.3.6 — Configuración Centralizada
 ══════════════════════════════════════════════════════════════════
 Fuente única para constantes compartidas (regla 1).
 Centraliza el orden de plataformas, concurrencia y parámetros de servicios

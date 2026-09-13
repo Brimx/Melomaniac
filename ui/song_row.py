@@ -1,6 +1,6 @@
 """
 ╔══════════════════════════════════════════════════════════════════════╗
-║                    MelomaniacPass v3.3.5                               ║
+║                    MelomaniacPass v3.3.6                               ║
 ║              Componentes de Fila de Canción                          ║
 ╚══════════════════════════════════════════════════════════════════════╝
 
@@ -26,7 +26,7 @@ Estrategia de Diseño:
     precisos en listas largas (1000+ canciones).
 
 Autor: MelomaniacPass Team
-Versión: 3.3.5
+Versión: 3.3.6
 Fecha: 2026
 """
 
@@ -41,7 +41,7 @@ from core.models import Track
 from ui.tokens import (
     BG_LIST, BG_HOVER, SKELETON_DARK,
     TEXT_PRIMARY, TEXT_MUTED, TEXT_DIM,
-    ACCENT, BG_SURFACE,
+    ACCENT, BG_SURFACE, BORDER_ROW,
 )
 from ui.widgets import _status_icon
 
@@ -93,7 +93,7 @@ class SkeletonRow(ft.Container):
         super().__init__(
             height=ITEM_H,
             padding=ft.Padding.symmetric(horizontal=16, vertical=12),
-            border=ft.Border.only(bottom=ft.BorderSide(0.5, "#FF252530")),
+            border=ft.Border.only(bottom=ft.BorderSide(0.5, BORDER_ROW)),
             content=ft.Row(
                 controls=[self._num, self._thumb, self._title,
                            self._album, self._dur, self._status, self._chk],
@@ -290,7 +290,7 @@ class SongRow(ft.Container):
         super().__init__(
             height=ITEM_H,
             padding=ft.Padding.symmetric(horizontal=16, vertical=0),
-            border=ft.Border.only(bottom=ft.BorderSide(0.5, "#FF252530")),
+            border=ft.Border.only(bottom=ft.BorderSide(0.5, BORDER_ROW)),
             border_radius=0,
             bgcolor=BG_LIST,
             animate=ft.Animation(100, ft.AnimationCurve.EASE_OUT),

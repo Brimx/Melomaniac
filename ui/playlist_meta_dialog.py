@@ -1,5 +1,5 @@
 """
-ui/playlist_meta_dialog.py — MelomaniacPass v3.3.5
+ui/playlist_meta_dialog.py — MelomaniacPass v3.3.6
 
 Diálogo de personalización de playlist (nombre + descripción).
 
@@ -33,7 +33,7 @@ from ui.tokens import (
     BG_PANEL, BG_INPUT, BORDER_LIGHT,
     ACCENT, TEXT_PRIMARY, TEXT_MUTED, TEXT_DIM,
 )
-from ui.widgets import _section_label
+from ui.widgets import _section_label, app_text_field, dialog_action, app_dialog, DialogMixin
 
 CONTENT_W = 420
 
@@ -45,7 +45,7 @@ class PlaylistMetaResult:
     description: str
 
 
-class PlaylistMetaDialog:
+class PlaylistMetaDialog(DialogMixin):
     """Modal AlertDialog para editar nombre/descripción antes de crear."""
 
     def __init__(self, page: ft.Page, *, default_title: str,
@@ -89,85 +89,59 @@ class PlaylistMetaDialog:
 
     @staticmethod
     def _field_style() -> dict:
+        # Compat: estilo canónico vive en widgets.app_text_field.
+        from ui.widgets import app_text_field
+        probe = app_text_field(label="x")
         return {
-            "bgcolor": BG_INPUT,
-            "border_color": BORDER_LIGHT,
-            "focused_border_color": ACCENT,
-            "hint_style": ft.TextStyle(color=TEXT_DIM, size=11),
-            "label_style": ft.TextStyle(color=TEXT_MUTED, size=10),
-            "text_style": ft.TextStyle(color=TEXT_PRIMARY, size=12),
-            "text_size": 12,
+            "bgcolor": probe.bgcolor,
+            "border_color": probe.border_color,
+            "focused_border_color": probe.focused_border_color,
+            "hint_style": probe.hint_style,
+            "label_style": probe.label_style,
+            "text_style": probe.text_style,
+            "text_size": probe.text_size,
             "dense": True,
-            "border_radius": 10,
-            "content_padding": ft.Padding.symmetric(horizontal=12, vertical=10),
+            "border_radius": probe.border_radius,
+            "content_padding": probe.content_padding,
         }
 
     def _build(self) -> None:
-        self._title_field = ft.TextField(
+        self._title_field = app_text_field(
             value=self._default_title,
             hint_text="Nombre de la playlist",
             autofocus=True,
             multiline=False,
             width=CONTENT_W,
-            **self._field_style(),
             on_submit=lambda _: self._on_confirm(None),
         )
-        self._desc_field = ft.TextField(
+        self._desc_field = app_text_field(
             value=self._default_description,
             hint_text="Descripción (opcional)",
             multiline=True,
             min_lines=2,
             max_lines=3,
             width=CONTENT_W,
-            **self._field_style(),
         )
-        self._dlg = ft.AlertDialog(
-            modal=True,
-            title=ft.Row(
+        self._dlg = app_dialog(
+            "Personalizar playlist",
+            ft.Column(
                 controls=[
-                    ft.Icon(ft.Icons.EDIT, color=ACCENT, size=18),
-                    ft.Text(
-                        "Personalizar playlist",
-                        size=14, color=TEXT_PRIMARY,
-                        font_family="IBM Plex Sans Bold",
-                    ),
+                    _section_label("NOMBRE"),
+                    self._title_field,
+                    _section_label("DESCRIPCIÓN"),
+                    self._desc_field,
                 ],
                 spacing=8,
-            ),
-            content=ft.Container(
-                content=ft.Column(
-                    controls=[
-                        _section_label("NOMBRE"),
-                        self._title_field,
-                        _section_label("DESCRIPCIÓN"),
-                        self._desc_field,
-                    ],
-                    spacing=8,
-                    tight=True,
-                    width=CONTENT_W,
-                    horizontal_alignment=ft.CrossAxisAlignment.STRETCH,
-                ),
+                tight=True,
                 width=CONTENT_W,
-                padding=ft.Padding.symmetric(horizontal=4, vertical=8),
+                horizontal_alignment=ft.CrossAxisAlignment.STRETCH,
             ),
-            actions=[
-                ft.TextButton(
-                    "Crear y transferir",
-                    icon=ft.Icons.SWAP_HORIZ,
-                    on_click=self._on_confirm,
-                    style=ft.ButtonStyle(
-                        color={ft.ControlState.DEFAULT: ACCENT}),
-                ),
-                ft.TextButton(
-                    "Cancelar",
-                    on_click=self._on_cancel,
-                    style=ft.ButtonStyle(
-                        color={ft.ControlState.DEFAULT: TEXT_MUTED}),
-                ),
+            [
+                dialog_action("Crear y transferir", self._on_confirm, kind="primary", icon=ft.Icons.SWAP_HORIZ),
+                dialog_action("Cancelar", self._on_cancel, kind="muted"),
             ],
-            actions_alignment=ft.MainAxisAlignment.END,
-            bgcolor=BG_PANEL,
-            shape=ft.RoundedRectangleBorder(radius=14),
+            width=CONTENT_W,
+            icon=ft.Icons.EDIT,
         )
 
     # ── Eventos ──────────────────────────────────────────────────
@@ -191,9 +165,7 @@ class PlaylistMetaDialog:
 
     def _close(self) -> None:
         try:
-            if self._dlg is not None:
-                self._dlg.open = False
-                self.page.update()
+            self.close_dialog(self.page, self._dlg)
         except Exception:  # pylint: disable=broad-exception-caught
             pass
         finally:

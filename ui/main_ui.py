@@ -1,6 +1,6 @@
 """
 ╔══════════════════════════════════════════════════════════════════════╗
-║                    MelomaniacPass v3.3.5                             ║
+║                    MelomaniacPass v3.3.6                             ║
 ║              Interfaz Principal de Usuario                           ║
 ╚══════════════════════════════════════════════════════════════════════╝
 
@@ -45,7 +45,7 @@ Componentes Principales:
     - Dialogs: Modales para errores y confirmaciones
 
 Autor: MelomaniacPass Team
-Versión: 3.3.5
+Versión: 3.3.6
 Fecha: 2026
 """
 
@@ -63,7 +63,10 @@ from core.state import AppState
 from engine.parsers import parse_local_playlist_with_paths, build_local_tracks
 from ui.song_row import SongRow, SkeletonRow, ITEM_H
 from ui.telemetry import TelemetryDrawer
-from ui.widgets import _primary_btn, _ghost_btn, _section_label, _status_icon
+from ui.widgets import (
+    _primary_btn, _ghost_btn, _section_label, _status_icon,
+    app_text_field, dialog_action, app_dialog, DialogMixin, notify,
+)
 
 from ui.tokens import (
     BG_DEEP, BG_PANEL, BG_SURFACE, BG_HOVER, BG_INPUT, SIDEBAR_BG,
@@ -74,7 +77,7 @@ from ui.tokens import (
 )
 
 
-class PlaylistManagerUI:
+class PlaylistManagerUI(DialogMixin):
     """
     Interfaz principal de usuario para gestión de playlists.
     
@@ -121,11 +124,8 @@ class PlaylistManagerUI:
     SKELETON_COUNT = 14
 
     def _close_dlg(self, dlg) -> None:
-        try:
-            dlg.open = False
-            self.page.update()
-        except Exception:
-            pass      
+        # Compat: ciclo de vida canónico en DialogMixin.
+        self.close_dialog(self.page, dlg)
                                   
     def __init__(self, page: ft.Page, state: AppState):
         """
@@ -170,13 +170,9 @@ class PlaylistManagerUI:
         # CAMPO DE TEXTO PARA PEGAR LISTAS
         # ──────────────────────────────────────────────────────────────
         
-        self._paste_field = ft.TextField(
-            multiline=True, min_lines=10, max_lines=10,
+        self._paste_field = app_text_field(
             hint_text="Pega aquí tu lista  (ej: Título - Artista, una por línea)",
-            hint_style=ft.TextStyle(color=TEXT_DIM, size=11),
-            text_style=ft.TextStyle(color=TEXT_PRIMARY, size=12, font_family="IBM Plex Sans"),
-            bgcolor=BG_INPUT, border_color=BORDER_LIGHT,
-            focused_border_color=ACCENT, border_radius=10, expand=True,
+            multiline=True, min_lines=10, max_lines=10, expand=True,
         )
 
         # ──────────────────────────────────────────────────────────────
@@ -287,7 +283,7 @@ class PlaylistManagerUI:
                         ft.TextSpan("Melomaniac", ft.TextStyle(size=20,
                                                                color=TEXT_PRIMARY, font_family="IBM Plex Sans Light")),
                     ], opacity=1.0),
-                    ft.Text("v3.3.5", size=9, color=TEXT_DIM, font_family="IBM Plex Sans",
+                    ft.Text("v3.3.6", size=9, color=TEXT_DIM, font_family="IBM Plex Sans",
                             style=ft.TextStyle(letter_spacing=0.8), opacity=1.0),
                 ], spacing=0, tight=True, expand=True),
                 self.btn_wizard,
@@ -347,14 +343,9 @@ class PlaylistManagerUI:
             self._id_clear_btn.visible = bool(self._id_field.value)
             self._id_clear_btn.update()
 
-        self._id_field = ft.TextField(
+        self._id_field = app_text_field(
             label="ID de la Playlist",
             hint_text="pl.u-xxxx  /  PLxxxx  /  37i9dQ…",
-            bgcolor=BG_INPUT, border_color=BORDER_LIGHT,
-            label_style=ft.TextStyle(color=TEXT_MUTED, size=10, font_family="IBM Plex Sans"),
-            text_style=ft.TextStyle(color=TEXT_PRIMARY, size=12, font_family="IBM Plex Sans"),
-            hint_style=ft.TextStyle(color=TEXT_DIM, size=11),
-            border_radius=10, focused_border_color=ACCENT,
             suffix=self._id_clear_btn,
             on_change=_on_id_change,
             on_submit=lambda e: asyncio.create_task(self._do_cloud_load(e)),
@@ -433,18 +424,11 @@ class PlaylistManagerUI:
 
     def _on_organize(self, _e: ft.ControlEvent) -> None:
         """Abre el diálogo para organizar la lista de canciones."""
-        _dd_field = ft.Dropdown(
-            options=[
-                ft.dropdown.Option(key="artist", text="Artista"),
-                ft.dropdown.Option(key="album", text="Álbum"),
-                ft.dropdown.Option(key="name", text="Título"),
-                ft.dropdown.Option(key="duration_ms", text="Duración"),
-                ft.dropdown.Option(key="platform", text="Plataforma")
-            ],
-            value="artist", label="Ordenar por", width=200,
-            bgcolor=BG_INPUT, border_color=BORDER_LIGHT, focused_border_color=ACCENT,
-            label_style=ft.TextStyle(color=TEXT_MUTED, size=11, font_family="IBM Plex Sans"),
-            text_style=ft.TextStyle(color=TEXT_PRIMARY, size=12, font_family="IBM Plex Sans"),
+        from ui.widgets import organize_dropdown
+        _dd_field = organize_dropdown(
+            [("artist", "Artista"), ("album", "Álbum"), ("name", "Título"),
+             ("duration_ms", "Duración"), ("platform", "Plataforma")],
+            "artist", "Ordenar por",
         )
         _switch_rev = ft.Switch(label="Descendente", value=False, active_color=ACCENT)
 
@@ -452,61 +436,54 @@ class PlaylistManagerUI:
             self.state.organize_sort([_dd_field.value], _switch_rev.value)
             self._close_dlg(dlg)
 
-        dlg = ft.AlertDialog(
-            modal=True,
-            title=ft.Text("Organizar lista", size=15, font_family="IBM Plex Sans SemiBold", color=TEXT_PRIMARY),
-            content=ft.Column([_dd_field, _switch_rev], tight=True, spacing=15),
-            actions=[
-                ft.TextButton("Cancelar", on_click=lambda _: self._close_dlg(dlg),
-                              style=ft.ButtonStyle(color={ft.ControlState.DEFAULT: TEXT_MUTED})),
-                ft.TextButton("Aplicar", on_click=_apply,
-                              style=ft.ButtonStyle(color={ft.ControlState.DEFAULT: ACCENT}))
+        dlg = app_dialog(
+            "Organizar lista",
+            ft.Column([_dd_field, _switch_rev], tight=True, spacing=15),
+            [
+                dialog_action("Cancelar", lambda _: self._close_dlg(dlg), kind="muted"),
+                dialog_action("Aplicar", _apply, kind="primary"),
             ],
-            actions_alignment=ft.MainAxisAlignment.END,
-            bgcolor=BG_SURFACE, shape=ft.RoundedRectangleBorder(radius=10)
+            width=300,
+            bgcolor=BG_SURFACE, radius=10,
         )
         self.page.show_dialog(dlg)
 
     def _on_split(self, _e: ft.ControlEvent) -> None:
         """Abre el diálogo para dividir la lista maestra en segmentos."""
-        _dd_field = ft.Dropdown(
-            options=[
-                ft.dropdown.Option(key="artist", text="Artista"),
-                ft.dropdown.Option(key="album", text="Álbum"),
-                ft.dropdown.Option(key="platform", text="Plataforma")
-            ],
-            value="artist", label="Agrupar por", width=200,
-            bgcolor=BG_INPUT, border_color=BORDER_LIGHT, focused_border_color=ACCENT,
-            label_style=ft.TextStyle(color=TEXT_MUTED, size=11, font_family="IBM Plex Sans"),
-            text_style=ft.TextStyle(color=TEXT_PRIMARY, size=12, font_family="IBM Plex Sans"),
+        from ui.widgets import organize_dropdown
+        _dd_field = organize_dropdown(
+            [("artist", "Artista"), ("album", "Álbum"), ("platform", "Plataforma")],
+            "artist", "Agrupar por",
         )
 
         def _apply(_e):
             self.state.organize_split(_dd_field.value)
             self._close_dlg(dlg)
-            
+
         def _clear(_e):
             self.state.clear_split()
             self._close_dlg(dlg)
 
-        dlg = ft.AlertDialog(
-            modal=True,
-            title=ft.Text("Dividir lista", size=15, font_family="IBM Plex Sans SemiBold", color=TEXT_PRIMARY),
-            content=ft.Column([
+        actions: list[ft.Control] = []
+        if bool(self.state.segments):
+            actions.append(dialog_action("Limpiar División", _clear, kind="danger"))
+        actions += [
+            dialog_action("Cancelar", lambda _: self._close_dlg(dlg), kind="muted"),
+            dialog_action("Agrupar", _apply, kind="primary"),
+        ]
+        dlg = app_dialog(
+            "Dividir lista",
+            ft.Column([
                 ft.Text("Agrupa tu playlist en segmentos independientes.", size=12, color=TEXT_MUTED),
                 _dd_field
             ], tight=True, spacing=15),
-            actions=[
-                ft.TextButton("Limpiar División", on_click=_clear,
-                              style=ft.ButtonStyle(color={ft.ControlState.DEFAULT: WARNING}),
-                              visible=bool(self.state.segments)),
-                ft.TextButton("Cancelar", on_click=lambda _: self._close_dlg(dlg),
-                              style=ft.ButtonStyle(color={ft.ControlState.DEFAULT: TEXT_MUTED})),
-                ft.TextButton("Agrupar", on_click=_apply,
-                              style=ft.ButtonStyle(color={ft.ControlState.DEFAULT: ACCENT}))
-            ],
-            actions_alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
-            bgcolor=BG_SURFACE, shape=ft.RoundedRectangleBorder(radius=10)
+            actions,
+            width=300,
+            actions_alignment=(
+                ft.MainAxisAlignment.SPACE_BETWEEN if len(actions) == 3
+                else ft.MainAxisAlignment.END
+            ),
+            bgcolor=BG_SURFACE, radius=10,
         )
         self.page.show_dialog(dlg)
 
@@ -519,12 +496,9 @@ class PlaylistManagerUI:
             color=TEXT_PRIMARY, font_family="IBM Plex Sans Bold", opacity=1.0,
         )
         self._track_count = ft.Text("", size=12, color=TEXT_MUTED, font_family="IBM Plex Sans", opacity=1.0)
-        self._search_field = ft.TextField(
-            hint_text="Buscar título, artista…", prefix_icon=ft.Icons.SEARCH,
-            bgcolor=BG_INPUT, border_color=BORDER_LIGHT,
-            hint_style=ft.TextStyle(color=TEXT_DIM, size=11),
-            text_style=ft.TextStyle(color=TEXT_PRIMARY, size=12, font_family="IBM Plex Sans"),
-            border_radius=10, focused_border_color=ACCENT,
+        self._search_field = app_text_field(
+            hint_text="Buscar título, artista…",
+            prefix_icon=ft.Icons.SEARCH,
             width=240, height=38,
             content_padding=ft.Padding.symmetric(horizontal=10, vertical=6),
             on_change=self._on_search_change,
@@ -774,7 +748,7 @@ class PlaylistManagerUI:
         elif not xfer_active:
             self._transfer_start = 0.0
         self._content_progress.visible = show_progress
-        _accent_ok = ft.Colors.GREEN_ACCENT
+        _accent_ok = SUCCESS
         if not (show_progress and s.transfer_total):
             return
         if (is_scan_run or is_scan_done) and idle_xfer and not xfer_active:
@@ -813,19 +787,12 @@ class PlaylistManagerUI:
             if not self._completion_snack_shown:
                 self._completion_snack_shown = True
                 fail_n = fallidas + rechazadas + ejec
-                _snack = ft.SnackBar(
-                    content=ft.Text(
-                        f"Transferencia completada: {s.count_confirmed} exitosas, {fail_n} errores",
-                        color=ft.Colors.WHITE, font_family="IBM Plex Sans", size=12, opacity=1.0,
-                    ),
+                notify(
+                    self.page,
+                    f"Transferencia completada: {s.count_confirmed} exitosas, {fail_n} errores",
                     action="Ver Detalles" if fail_n > 0 else None,
                     on_action=(lambda _: self._telemetry.show_postmortem()) if fail_n > 0 else None,
-                    bgcolor=BG_PANEL, duration=6000,
-                    behavior=ft.SnackBarBehavior.FLOATING, width=440,
-                    show_close_icon=True, close_icon_color=ACCENT,
                 )
-                self.page.overlay.append(_snack)
-                _snack.open = True
         elif s.transfer_state == TransferState.ERROR:
             self._content_prog_label.value = f"{porcentaje}%  \u00b7  error \u00b7 {fallidas + rechazadas} incidencias"
             self._content_prog_label.color = WARNING
@@ -953,32 +920,23 @@ class PlaylistManagerUI:
             self._ask_playlist_name_then_ingest(text=text, filename="",
                                                 suggested_name=f"Local_Import_{default_ts}")
 
-        paste_dlg = ft.AlertDialog(
-            modal=True,
-            title=ft.Text("Pegar Texto", color=TEXT_PRIMARY, font_family="IBM Plex Sans Bold",
-                          size=14),
-            content=ft.Container(content=self._paste_field, width=480, height=220),
-            actions=[
-                ft.TextButton("Procesar", icon=ft.Icons.PLAY_ARROW_OUTLINED, on_click=_process,
-                              style=ft.ButtonStyle(color={ft.ControlState.DEFAULT: ACCENT})),
-                ft.TextButton("Cancelar", on_click=lambda _: _close_paste(),
-                              style=ft.ButtonStyle(color={ft.ControlState.DEFAULT: TEXT_MUTED})),
+        paste_dlg = app_dialog(
+            "Pegar Texto",
+            ft.Container(content=self._paste_field, width=480, height=220),
+            [
+                dialog_action("Procesar", _process, kind="primary", icon=ft.Icons.PLAY_ARROW_OUTLINED),
+                dialog_action("Cancelar", lambda _: _close_paste(), kind="muted"),
             ],
-            actions_alignment=ft.MainAxisAlignment.END,
-            bgcolor=BG_PANEL, shape=ft.RoundedRectangleBorder(radius=14),
+            width=480,
         )
         self.page.show_dialog(paste_dlg)
 
     def _ask_playlist_name_then_ingest(self, text: str, filename: str, suggested_name: str) -> None:
         import datetime as _dt
-        name_field = ft.TextField(
+        name_field = app_text_field(
             value=suggested_name, hint_text=f"Ej. {suggested_name}",
             label="Nombre de la Playlist",
-            hint_style=ft.TextStyle(color=TEXT_DIM, size=11),
-            label_style=ft.TextStyle(color=TEXT_MUTED, size=10, font_family="IBM Plex Sans"),
-            text_style=ft.TextStyle(color=TEXT_PRIMARY, size=13, font_family="IBM Plex Sans"),
-            bgcolor=BG_INPUT, border_color=BORDER_LIGHT, focused_border_color=ACCENT,
-            border_radius=10, autofocus=True, on_submit=lambda _: _confirm(None),
+            autofocus=True, on_submit=lambda _: _confirm(None),
         )
 
         def _close():
@@ -990,29 +948,19 @@ class PlaylistManagerUI:
             _close()
             self._ingest_text(text, label=final_name, filename=filename)
 
-        name_dlg = ft.AlertDialog(
-            modal=True,
-            title=ft.Row([
-                ft.Icon(ft.Icons.DRIVE_FILE_RENAME_OUTLINE, color=ACCENT, size=18),
-                ft.Text("Nombra esta playlist", size=14, font_family="IBM Plex Sans Bold",
-                        color=TEXT_PRIMARY),
-            ], spacing=8),
-            content=ft.Container(
-                content=ft.Column([
-                    ft.Text("Asigna un nombre antes de importar. Si lo dejas vacío se usará el nombre sugerido.",
-                            size=11, color=TEXT_MUTED, font_family="IBM Plex Sans"),
-                    name_field,
-                ], spacing=10, tight=True),
-                width=400, padding=ft.Padding.only(top=6),
-            ),
-            actions=[
-                ft.TextButton("Importar", icon=ft.Icons.CHECK_OUTLINED, on_click=_confirm,
-                              style=ft.ButtonStyle(color={ft.ControlState.DEFAULT: ACCENT})),
-                ft.TextButton("Cancelar", on_click=lambda _: _close(),
-                              style=ft.ButtonStyle(color={ft.ControlState.DEFAULT: TEXT_MUTED})),
+        name_dlg = app_dialog(
+            "Nombra esta playlist",
+            ft.Column([
+                ft.Text("Asigna un nombre antes de importar. Si lo dejas vacío se usará el nombre sugerido.",
+                        size=11, color=TEXT_MUTED, font_family="IBM Plex Sans"),
+                name_field,
+            ], spacing=10, tight=True),
+            [
+                dialog_action("Importar", _confirm, kind="primary", icon=ft.Icons.CHECK_OUTLINED),
+                dialog_action("Cancelar", lambda _: _close(), kind="muted"),
             ],
-            actions_alignment=ft.MainAxisAlignment.END,
-            bgcolor=BG_PANEL, shape=ft.RoundedRectangleBorder(radius=14),
+            width=400,
+            icon=ft.Icons.DRIVE_FILE_RENAME_OUTLINE,
         )
         self.page.show_dialog(name_dlg)
 
@@ -1168,12 +1116,4 @@ class PlaylistManagerUI:
     # ── Helpers ────────────────────────────────────────────────────────
 
     def _snack(self, msg: str, error: bool = False) -> None:
-        snack = ft.SnackBar(
-            content=ft.Text(msg, color=ft.Colors.WHITE, font_family="IBM Plex Sans", size=12, opacity=1.0),
-            bgcolor=ERROR_COL if error else BG_PANEL,
-            duration=3000, behavior=ft.SnackBarBehavior.FLOATING,
-            width=380, show_close_icon=True, close_icon_color=ACCENT,
-        )
-        self.page.overlay.append(snack)
-        snack.open = True
-        self.page.update()
+        notify(self.page, msg, kind="error" if error else "info")

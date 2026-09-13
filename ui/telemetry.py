@@ -34,12 +34,8 @@ class TelemetryDrawer:
         self._o_log   = ft.ListView(spacing=0, expand=True)
         self._d_pm    = ft.ListView(spacing=0, expand=True)
         self._o_pm    = ft.ListView(spacing=0, expand=True)
-        self._d_pm_ph = ft.Text("Sin errores registrados", size=10, color=TEXT_DIM,
-                                font_family="IBM Plex Sans", opacity=0.6,
-                                text_align=ft.TextAlign.CENTER)
-        self._o_pm_ph = ft.Text("Sin errores registrados", size=10, color=TEXT_DIM,
-                                font_family="IBM Plex Sans", opacity=0.6,
-                                text_align=ft.TextAlign.CENTER)
+        self._d_pm_ph = self._mk_placeholder()
+        self._o_pm_ph = self._mk_placeholder()
         self._d_cnts = self._mk_cnts()
         self._o_cnts = self._mk_cnts()
 
@@ -104,6 +100,13 @@ class TelemetryDrawer:
             visible=False,
         )
 
+    @staticmethod
+    def _mk_placeholder() -> ft.Text:
+        """Placeholder único para Post-Mortem vacío. Evita duplicar ft.Text."""
+        return ft.Text("Sin errores registrados", size=10, color=TEXT_DIM,
+                       font_family="IBM Plex Sans", opacity=0.6,
+                       text_align=ft.TextAlign.CENTER)
+
     def _mk_cnts(self) -> dict:
         def _t(color):
             return ft.Text("—", size=11, color=color, font_family="IBM Plex Sans SemiBold", opacity=1.0)
@@ -114,6 +117,17 @@ class TelemetryDrawer:
             "confirmed":  _t(SUCCESS),
             "rejected":   _t(ERROR_COL),
         }
+
+    def _log_pairs(self):
+        """Pares (log_docked, log_overlay). Un solo punto para iterar vistas."""
+        return (self._d_log, self._o_log)
+
+    def _pm_pairs(self):
+        """Pares (lista, placeholder) docked/overlay."""
+        return ((self._d_pm, self._d_pm_ph), (self._o_pm, self._o_pm_ph))
+
+    def _cnt_pairs(self):
+        return (self._d_cnts, self._o_cnts)
 
     def _build_body(self, cnts, log_list, pm_list, pm_ph) -> tuple:
         def _crow(label, val_node):
@@ -226,16 +240,13 @@ class TelemetryDrawer:
     def clear_postmortem(self) -> None:
         self._last_failed = []
         self._pm_meta     = {}
-        for lst, ph in ((self._d_pm, self._d_pm_ph), (self._o_pm, self._o_pm_ph)):
+        for lst, ph in self._pm_pairs():
             lst.controls.clear()
             ph.visible = True
 
     def _snack(self, msg: str) -> None:
-        s = ft.SnackBar(content=ft.Text(msg, font_family="IBM Plex Sans", size=12, opacity=1.0),
-                        bgcolor=BG_PANEL, duration=3500)
-        self.page.overlay.append(s)
-        s.open = True
-        self.page.update()
+        from ui.widgets import notify
+        notify(self.page, msg)
 
     def _do_export(self) -> None:
         import datetime as _dt
@@ -297,7 +308,7 @@ class TelemetryDrawer:
     def update_counters(self, detected: int, candidates: int, processed: int,
                         confirmed: int, rejected: int) -> None:
         def _f(n): return str(n) if n else "—"
-        for c in (self._d_cnts, self._o_cnts):
+        for c in self._cnt_pairs():
             c["detected"].value   = _f(detected)
             c["candidates"].value = _f(candidates)
             c["processed"].value  = _f(processed)
@@ -305,7 +316,7 @@ class TelemetryDrawer:
             c["rejected"].value   = _f(rejected)
 
     def update_log(self, log_lines: list[str]) -> None:
-        for lst in (self._d_log, self._o_log):
+        for lst in self._log_pairs():
             lst.controls.clear()
             for line in log_lines[-80:]:
                 col = (SUCCESS if "[SUCCESS]" in line else ERROR_COL if "[ERROR]" in line else TEXT_MUTED)
@@ -317,7 +328,7 @@ class TelemetryDrawer:
         self._last_failed = list(failed_tracks)
         self._pm_meta     = dict(destination=destination, confirmed=confirmed, detected=detected)
         has = bool(self._last_failed)
-        for lst, ph in ((self._d_pm, self._d_pm_ph), (self._o_pm, self._o_pm_ph)):
+        for lst, ph in self._pm_pairs():
             lst.controls.clear()
             ph.visible = not has
             for t in self._last_failed:

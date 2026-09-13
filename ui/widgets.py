@@ -1,6 +1,6 @@
 """
 ╔══════════════════════════════════════════════════════════════════════╗
-║                    MelomaniacPass v3.3.5                               ║
+║                    MelomaniacPass v3.3.6                               ║
 ║                  Widgets UI Reutilizables                            ║
 ╚══════════════════════════════════════════════════════════════════════╝
 
@@ -24,7 +24,7 @@ Sistema de Diseño:
     - Elevación y sombras para jerarquía visual
 
 Autor: MelomaniacPass Team
-Versión: 3.3.5
+Versión: 3.3.6
 Fecha: 2026
 """
 
@@ -34,9 +34,186 @@ import flet as ft
 
 from ui.tokens import (
     TEXT_PRIMARY, TEXT_MUTED, TEXT_DIM,
-    ACCENT, ACCENT_DIM, ACCENT_HALO, BG_HOVER,
-    SUCCESS, ERROR_COL, WARNING,
+    ACCENT, ACCENT_HOVER, ACCENT_DIM, ACCENT_HALO, BG_HOVER,
+    SUCCESS, ERROR_COL, WARNING, BORDER_MUTED, BORDER_LIGHT,
+    BG_INPUT, BG_PANEL,
 )
+
+FONT = "IBM Plex Sans"
+FONT_BOLD = "IBM Plex Sans Bold"
+FONT_MEDIUM = "IBM Plex Sans Medium"
+FONT_SEMI = "IBM Plex Sans SemiBold"
+
+
+def app_text(
+    text: str,
+    size: int = 12,
+    color: str = TEXT_PRIMARY,
+    font_family: str = FONT,
+    **kwargs,
+) -> ft.Text:
+    """Texto canónico para no repetir font_family/size/color inline."""
+    return ft.Text(text, size=size, color=color, font_family=font_family, **kwargs)
+
+
+def app_text_field(
+    label: str | None = None,
+    hint_text: str | None = None,
+    value: str = "",
+    *,
+    password: bool = False,
+    can_reveal_password: bool = False,
+    multiline: bool = False,
+    min_lines: int | None = None,
+    max_lines: int | None = None,
+    width: float | None = None,
+    expand: bool = False,
+    autofocus: bool = False,
+    on_submit=None,
+    **kwargs,
+) -> ft.TextField:
+    """TextField canónico OLED. Base: playlist_meta (radius 10, dense).
+
+    Unifica playlist_meta._field_style + wizard._field_style/_make_field
+    + main_ui paste/id/name fields.
+    """
+    return ft.TextField(
+        label=label,
+        hint_text=hint_text,
+        value=value,
+        password=password,
+        can_reveal_password=can_reveal_password,
+        multiline=multiline,
+        min_lines=min_lines,
+        max_lines=max_lines,
+        width=width,
+        expand=expand,
+        autofocus=autofocus,
+        on_submit=on_submit,
+        bgcolor=BG_INPUT,
+        border_color=BORDER_LIGHT,
+        focused_border_color=ACCENT,
+        hint_style=ft.TextStyle(color=TEXT_DIM, size=11),
+        label_style=ft.TextStyle(color=TEXT_MUTED, size=10, font_family=FONT),
+        text_style=ft.TextStyle(color=TEXT_PRIMARY, size=12, font_family=FONT),
+        text_size=12,
+        dense=True,
+        border_radius=10,
+        content_padding=ft.Padding.symmetric(horizontal=12, vertical=10),
+        **kwargs,
+    )
+
+
+def dialog_action(
+    text: str,
+    on_click,
+    kind: str = "primary",
+    icon: str | None = None,
+) -> ft.TextButton:
+    """Acción de diálogo canónica. kind: primary/muted/danger."""
+    color = {"primary": ACCENT, "muted": TEXT_MUTED, "danger": WARNING}.get(kind, ACCENT)
+    return ft.TextButton(
+        text,
+        icon=icon,
+        on_click=on_click,
+        style=ft.ButtonStyle(color={ft.ControlState.DEFAULT: color}),
+    )
+
+
+def app_dialog(
+    title: str | ft.Control,
+    content: ft.Control,
+    actions: list[ft.Control],
+    *,
+    width: float = 400,
+    icon: str | None = None,
+    actions_alignment: ft.MainAxisAlignment = ft.MainAxisAlignment.END,
+    bgcolor: str = BG_PANEL,
+    radius: float = 14,
+) -> ft.AlertDialog:
+    """AlertDialog canónico OLED: modal + BG_PANEL + radius 14."""
+    if isinstance(title, str):
+        title_ctrl: ft.Control = ft.Row(
+            controls=[
+                ft.Icon(icon or ft.Icons.INFO_OUTLINED, color=ACCENT, size=18),
+                ft.Text(title, size=14, color=TEXT_PRIMARY, font_family=FONT_BOLD),
+            ],
+            spacing=8,
+        )
+    else:
+        title_ctrl = title
+    return ft.AlertDialog(
+        modal=True,
+        title=title_ctrl,
+        content=ft.Container(content=content, width=width, padding=ft.Padding.only(top=6)),
+        actions=actions,
+        actions_alignment=actions_alignment,
+        bgcolor=bgcolor,
+        shape=ft.RoundedRectangleBorder(radius=radius),
+    )
+
+
+def organize_dropdown(
+    options: list[tuple[str, str]],
+    value: str,
+    label: str,
+    width: float = 200,
+) -> ft.Dropdown:
+    """Dropdown canónico para Organizar/Dividir. Unifica main_ui x2."""
+    from ui.tokens import BG_INPUT as _IN, BORDER_LIGHT as _BL, ACCENT as _AC
+    from ui.tokens import TEXT_PRIMARY as _TP, TEXT_MUTED as _TM
+    return ft.Dropdown(
+        options=[ft.dropdown.Option(key=k, text=t) for k, t in options],
+        value=value, label=label, width=width,
+        bgcolor=_IN, border_color=_BL, focused_border_color=_AC,
+        label_style=ft.TextStyle(color=_TM, size=11, font_family=FONT),
+        text_style=ft.TextStyle(color=_TP, size=12, font_family=FONT),
+    )
+
+
+class DialogMixin:
+    """Ciclo de vida único para diálogos: show/close."""
+
+    def show_dialog(self, page: ft.Page, dlg: ft.AlertDialog) -> None:
+        page.show_dialog(dlg)
+
+    def close_dialog(self, page: ft.Page, dlg: ft.AlertDialog | None) -> None:
+        if dlg is None:
+            return
+        try:
+            dlg.open = False
+            page.update()
+        except Exception:
+            pass
+
+
+def notify(
+    page: ft.Page,
+    msg: str,
+    kind: str = "info",
+    *,
+    action: str | None = None,
+    on_action=None,
+    duration: int | None = None,
+) -> ft.SnackBar:
+    """SnackBar canónico FLOATING. Unifica telemetry + main_ui x3."""
+    from ui.tokens import BG_PANEL as _BG_PANEL, ERROR_COL as _ERR
+    bgcolor = _ERR if kind == "error" else _BG_PANEL
+    snack = ft.SnackBar(
+        content=ft.Text(msg, color=ft.Colors.WHITE, font_family=FONT, size=12, opacity=1.0),
+        bgcolor=bgcolor,
+        duration=duration or (6000 if action else 3500),
+        behavior=ft.SnackBarBehavior.FLOATING,
+        width=440 if action else 380,
+        action=action,
+        on_action=on_action,
+        show_close_icon=True,
+        close_icon_color=ACCENT,
+    )
+    page.overlay.append(snack)
+    snack.open = True
+    page.update()
+    return snack
 
 
 def _section_label(text: str) -> ft.Text:
@@ -68,6 +245,11 @@ def _section_label(text: str) -> ft.Text:
         style=ft.TextStyle(letter_spacing=1.4),
         opacity=1.0,
     )
+
+
+def section_label(text: str) -> ft.Text:
+    """Alias público de _section_label para reutilizar sin guion bajo."""
+    return _section_label(text)
 
 
 def _primary_btn(text: str, icon: str, on_click, width=None, height=None) -> ft.Button:
@@ -108,7 +290,7 @@ def _primary_btn(text: str, icon: str, on_click, width=None, height=None) -> ft.
         style=ft.ButtonStyle(
             bgcolor={
                 ft.ControlState.DEFAULT: ACCENT,
-                ft.ControlState.HOVERED: "#6BA3FF",
+                ft.ControlState.HOVERED: ACCENT_HOVER,
                 ft.ControlState.PRESSED: ACCENT_DIM,
             },
             color=TEXT_PRIMARY,
@@ -168,7 +350,7 @@ def _ghost_btn(text: str, icon: str, on_click, width=None, height=None, disabled
                 ft.ControlState.HOVERED: TEXT_PRIMARY,
             },
             side={
-                ft.ControlState.DEFAULT: ft.BorderSide(0.8, "#2A3040"),
+                ft.ControlState.DEFAULT: ft.BorderSide(0.8, BORDER_MUTED),
                 ft.ControlState.HOVERED: ft.BorderSide(0.8, ACCENT),
             },
             shape=ft.RoundedRectangleBorder(radius=10),

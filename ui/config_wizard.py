@@ -12,6 +12,14 @@ from typing import Callable, Optional
 import flet as ft
 
 from core.config import PLATFORM_ORDER
+from ui.tokens import (
+    BG_PANEL, BG_SURFACE, BG_INPUT, BORDER_LIGHT,
+    ACCENT, SUCCESS, WARNING, ERROR_COL,
+    TEXT_PRIMARY, TEXT_MUTED, TEXT_DIM,
+    OVERLAY_06, OVERLAY_08, OVERLAY_10, OVERLAY_14, OVERLAY_18,
+    WARN_BG, WARN_BORDER,
+)
+from ui.widgets import DialogMixin, dialog_action
 from services.authentication import (
     ENV_KEYS_APPLE,
     PreFlightResult,
@@ -108,24 +116,7 @@ SPOTIFY_INSTRUCTIONS = (
      "Escribe tu email o username de Spotify en el campo identifier."),
 )
 
-# ── Design tokens (mirrored from app.py) ───────────────────────────────
-_BG_DEEP      = "#FF000000"
-_BG_PANEL     = "#FF080808"
-_BG_SURFACE   = "#FF111118"
-_BG_INPUT     = "#FF16161F"
-_CHIP_BG      = "#FF1A1A22"
-_BORDER_LIGHT = "#FF3D4455"
-_ACCENT       = "#FF4F8BFF"
-_ACCENT_HALO  = "#FF2A3F5C"
-_SUCCESS      = "#FF00D084"
-_WARNING      = "#FFFFA500"
-_ERROR_COL    = "#FFFF4444"
-_TEXT_PRIMARY = "#FFF2F6FF"
-_TEXT_MUTED   = "#FF7A8499"
-_TEXT_DIM     = "#FF3D4455"
-
-
-class ConfigWizard:
+class ConfigWizard(DialogMixin):
     """
     Flet overlay dialog for platform credential management.
 
@@ -171,16 +162,12 @@ class ConfigWizard:
     # ── Dialog lifecycle ───────────────────────────────────────────────
 
     def _show_dialog(self, dlg: ft.AlertDialog) -> None:
-        self.page.show_dialog(dlg)
+        # Compat: ciclo de vida canónico en DialogMixin.
+        self.show_dialog(self.page, dlg)
 
     def _dismiss_dialog(self, dlg: ft.AlertDialog) -> None:
-        if dlg is None:
-            return
-        try:
-            dlg.open = False
-            self.page.update()
-        except Exception:
-            pass
+        # Compat: ciclo de vida canónico en DialogMixin.
+        self.close_dialog(self.page, dlg)
 
     def _safe_dialog_update(self) -> None:
         try:
@@ -231,9 +218,9 @@ class ConfigWizard:
             self._panel_holder.content = self._tab_panels[idx]
         for i, btn in enumerate(self._tab_buttons):
             is_warn      = PLATFORM_ORDER[i] in self._failed_platforms
-            col_active   = _WARNING if is_warn else _TEXT_PRIMARY
-            col_inactive = _WARNING if is_warn else _TEXT_MUTED
-            btn.bgcolor  = "#14FFFFFF" if i == idx else "transparent"
+            col_active   = WARNING if is_warn else TEXT_PRIMARY
+            col_inactive = WARNING if is_warn else TEXT_MUTED
+            btn.bgcolor  = OVERLAY_14 if i == idx else "transparent"
             row = btn.content
             row.controls[0].color  = col_active   if i == idx else col_inactive
             row.controls[1].color  = col_active   if i == idx else col_inactive
@@ -260,8 +247,8 @@ class ConfigWizard:
     ) -> ft.Container:
         warn  = platform in self._failed_platforms
         icon  = icon_warn if warn else icon_ok
-        color = _WARNING if warn else (
-            _TEXT_PRIMARY if idx == self._active_tab_idx else _TEXT_MUTED
+        color = WARNING if warn else (
+            TEXT_PRIMARY if idx == self._active_tab_idx else TEXT_MUTED
         )
         return ft.Container(
             content=ft.Row(
@@ -277,7 +264,7 @@ class ConfigWizard:
                 ],
                 spacing=6, tight=True,
             ),
-            bgcolor="#14FFFFFF" if idx == self._active_tab_idx else "transparent",
+            bgcolor=OVERLAY_14 if idx == self._active_tab_idx else "transparent",
             border_radius=8,
             padding=ft.Padding.symmetric(horizontal=10, vertical=6),
             data=str(idx),
@@ -423,15 +410,15 @@ class ConfigWizard:
             controls=[
                 ft.Container(
                     content=ft.Row(controls=self._tab_buttons, spacing=4),
-                    bgcolor="#08FFFFFF",
+                    bgcolor=OVERLAY_08,
                     border_radius=10,
                     padding=ft.Padding.all(4),
-                    border=ft.Border.all(0.8, "#14FFFFFF"),
+                    border=ft.Border.all(0.8, OVERLAY_14),
                 ),
                 ft.Container(
                     content=self._panel_holder,
                     expand=True,
-                    bgcolor=_BG_SURFACE,
+                    bgcolor=BG_SURFACE,
                     border_radius=8,
                     padding=ft.Padding.all(0),
                     clip_behavior=ft.ClipBehavior.ANTI_ALIAS,
@@ -445,17 +432,17 @@ class ConfigWizard:
         self._save_error = ft.Text(
             "",
             size=10,
-            color=_ERROR_COL,
+            color=ERROR_COL,
             font_family="IBM Plex Sans",
             visible=False,
         )
         body.controls.append(self._save_error)
 
-        self._save_button = ft.TextButton(
+        self._save_button = dialog_action(
             "Guardar y Aplicar",
+            self._on_save_click,
+            kind="primary",
             icon=ft.Icons.SAVE_OUTLINED,
-            on_click=self._on_save_click,
-            style=ft.ButtonStyle(color={ft.ControlState.DEFAULT: _ACCENT}),
         )
         return ft.AlertDialog(
             modal=True,
@@ -463,11 +450,11 @@ class ConfigWizard:
             clip_behavior=ft.ClipBehavior.ANTI_ALIAS,
             title=ft.Row(
                 controls=[
-                    ft.Icon(ft.Icons.SETTINGS, color=_ACCENT, size=18),
+                    ft.Icon(ft.Icons.SETTINGS, color=ACCENT, size=18),
                     ft.Text(
                         "Configuración de Credenciales",
                         size=14, font_family="IBM Plex Sans Bold",
-                        color=_TEXT_PRIMARY,
+                        color=TEXT_PRIMARY,
                     ),
                 ],
                 spacing=8,
@@ -476,21 +463,17 @@ class ConfigWizard:
                 content=body,
                 width=620,
                 height=480,
-                bgcolor=_BG_SURFACE,
+                bgcolor=BG_SURFACE,
                 border_radius=10,
                 padding=ft.Padding.all(8),
                 clip_behavior=ft.ClipBehavior.ANTI_ALIAS,
             ),
             actions=[
                 self._save_button,
-                ft.TextButton(
-                    "Cerrar",
-                    on_click=self._on_close_click,
-                    style=ft.ButtonStyle(color={ft.ControlState.DEFAULT: _TEXT_MUTED}),
-                ),
+                dialog_action("Cerrar", self._on_close_click, kind="muted"),
             ],
             actions_alignment=ft.MainAxisAlignment.END,
-            bgcolor=_BG_PANEL,
+            bgcolor=BG_PANEL,
             shape=ft.RoundedRectangleBorder(radius=14),
         )
 
@@ -515,10 +498,10 @@ class ConfigWizard:
                 controls=[
                     ft.Container(
                         content=ft.Text(
-                            str(num), size=10, color=_ACCENT,
+                            str(num), size=10, color=ACCENT,
                             font_family="IBM Plex Sans Bold",
                         ),
-                        bgcolor="#18FFFFFF",
+                        bgcolor=OVERLAY_18,
                         border_radius=20,
                         width=20, height=20,
                         alignment=ft.Alignment.CENTER,
@@ -526,11 +509,11 @@ class ConfigWizard:
                     ft.Column(
                         controls=[
                             ft.Text(
-                                label, size=11, color=_TEXT_PRIMARY,
+                                label, size=11, color=TEXT_PRIMARY,
                                 font_family="IBM Plex Sans Bold",
                             ),
                             ft.Text(
-                                body, size=11, color=_TEXT_MUTED,
+                                body, size=11, color=TEXT_MUTED,
                                 font_family="IBM Plex Sans",
                             ),
                         ],
@@ -544,8 +527,8 @@ class ConfigWizard:
         rows = [_step(i + 1, lbl, txt) for i, (lbl, txt) in enumerate(steps)]
         return ft.Container(
             content=ft.Column(rows, spacing=8),
-            bgcolor="#0AFFFFFF",
-            border=ft.Border.all(0.8, "#14FFFFFF"),
+            bgcolor=OVERLAY_10,
+            border=ft.Border.all(0.8, OVERLAY_14),
             border_radius=10,
             padding=ft.Padding.symmetric(horizontal=12, vertical=10),
         )
@@ -562,8 +545,9 @@ class ConfigWizard:
         max_lines: Optional[int] = None,
         expand: bool = False,
     ) -> ft.TextField:
-        """Create a consistently styled credential field."""
-        return ft.TextField(
+        """Delega en widgets.app_text_field canónico."""
+        from ui.widgets import app_text_field
+        return app_text_field(
             label=label,
             value=value,
             password=password,
@@ -572,7 +556,6 @@ class ConfigWizard:
             min_lines=min_lines,
             max_lines=max_lines,
             expand=expand,
-            **self._field_style(),
         )
 
     def _make_expandable_field(
@@ -609,7 +592,7 @@ class ConfigWizard:
 
         toggle = ft.IconButton(
             icon=ft.Icons.EXPAND_MORE,
-            icon_color=_TEXT_MUTED,
+            icon_color=TEXT_MUTED,
             icon_size=16,
             padding=ft.Padding.all(0),
             tooltip="Expandir campo",
@@ -810,28 +793,29 @@ class ConfigWizard:
 
     @staticmethod
     def _field_style() -> dict:
+        # Compat: ahora canónico en widgets.app_text_field. Se mantiene
+        # para llamadas externas, pero _make_field ya no lo usa.
+        from ui.widgets import app_text_field
+        probe = app_text_field(label="x")
         return {
-            "bgcolor":              "#08FFFFFF",
-            "border_color":        "#18FFFFFF",
-            "focused_border_color": _ACCENT,
-            "label_style":  ft.TextStyle(color=_TEXT_MUTED, size=10, font_family="IBM Plex Sans"),
-            "text_style":   ft.TextStyle(color=_TEXT_PRIMARY, size=11, font_family="IBM Plex Sans"),
-            "border_radius": 8,
+            "bgcolor": probe.bgcolor,
+            "border_color": probe.border_color,
+            "focused_border_color": probe.focused_border_color,
+            "label_style": probe.label_style,
+            "text_style": probe.text_style,
+            "border_radius": probe.border_radius,
         }
 
     @staticmethod
     def _section(text: str) -> ft.Text:
-        return ft.Text(
-            text, size=8, color=_TEXT_DIM,
-            font_family="IBM Plex Sans Bold",
-            style=ft.TextStyle(letter_spacing=1.2),
-        )
+        from ui.widgets import section_label
+        return section_label(text)
 
     @staticmethod
     def _fixed_note(text: str) -> ft.Container:
         return ft.Container(
-            content=ft.Text(text, size=9, color=_TEXT_DIM, font_family="IBM Plex Sans"),
-            bgcolor="#06FFFFFF",
+            content=ft.Text(text, size=9, color=TEXT_DIM, font_family="IBM Plex Sans"),
+            bgcolor=OVERLAY_06,
             border_radius=6,
             padding=ft.Padding.symmetric(horizontal=8, vertical=6),
         )
@@ -841,16 +825,16 @@ class ConfigWizard:
         return ft.Container(
             content=ft.Row(
                 controls=[
-                    ft.Icon(ft.Icons.WARNING_AMBER_ROUNDED, color=_WARNING, size=14),
+                    ft.Icon(ft.Icons.WARNING_AMBER_ROUNDED, color=WARNING, size=14),
                     ft.Text(
-                        text, size=10, color=_WARNING,
+                        text, size=10, color=WARNING,
                         font_family="IBM Plex Sans", expand=True,
                     ),
                 ],
                 spacing=6,
             ),
-            bgcolor="#120C0000",
-            border=ft.Border.all(0.8, "#30FFA500"),
+            bgcolor=WARN_BG,
+            border=ft.Border.all(0.8, WARN_BORDER),
             border_radius=8,
             padding=ft.Padding.symmetric(horizontal=10, vertical=8),
         )
