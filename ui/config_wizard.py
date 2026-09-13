@@ -7,7 +7,10 @@ authentication checks are provided by services.authentication.
 from __future__ import annotations
 
 import asyncio
-from typing import Callable, Optional
+from typing import Callable, Optional, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from ui.auth_manager import AuthManager
 
 import flet as ft
 
