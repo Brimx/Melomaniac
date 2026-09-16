@@ -7,14 +7,15 @@
 Módulo: engine/parsers.py
 Descripción: Motor de parseo multi-formato para playlists locales.
             Soporta detección automática y extracción de metadatos desde
-            archivos CSV, M3U, XSPF, WPL, iTunes XML y listas de texto plano.
+            archivos CSV, M3U, XSPF, WPL, XML compatible con XSPF y listas de
+            texto plano.
 
 Estrategia de Diseño:
     El parser implementa un sistema de detección automática de formato
     que analiza el contenido del archivo para determinar el parser apropiado:
     
-    1. Detección por contenido (no por extensión):
-       - XML: Busca tags específicos (plist, smil, playlist)
+    1. Detección por extensión y contenido:
+       - XML: Busca estructuras XSPF/SMIL compatibles
        - CSV: Detecta delimitadores y estructura tabular
        - M3U: Identifica directivas #EXTINF
        - Texto plano: Fallback para listas simples
@@ -41,7 +42,7 @@ Formatos Soportados:
     - M3U/M3U8: Playlists con directivas #EXTINF
     - XSPF: XML Shareable Playlist Format
     - WPL: Windows Media Player Playlist
-    - iTunes XML: Formato plist de iTunes
+    - XML: XML compatible con XSPF (no es un parser plist de iTunes)
     - Texto plano: Listas simples línea por línea
 
 Autor: MelomaniacPass Team

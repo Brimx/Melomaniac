@@ -1,131 +1,179 @@
 # 🎵 MelomaniacPass v3.3.7
 
-**Transfiere playlists entre YouTube Music, Apple Music y Spotify mediante matching inteligente con ISRC y duración.**
+MelomaniacPass es una aplicación de escritorio para reconstruir playlists entre **YouTube Music, Apple Music y Spotify**. También permite importar una lista local o una canción individual, buscar cada pista en el destino y crear una nueva playlist.
 
-MelomaniacPass es una app de escritorio que carga una playlist desde YouTube Music, Apple Music, Spotify o fuente local, encuentra sus canciones en la plataforma destino y crea una nueva playlist. El motor **Hunter Recovery** tolera diferencias de títulos, artistas, remasterizaciones y versiones en vivo mediante la tupla triple de búsqueda `(título, artista, duración_ms)`; el ISRC se conserva como identificador auxiliar para búsquedas exactas y caché.
+El matching combina normalización de metadatos, RapidFuzz, artista/título, duración, contenido explícito e ISRC cuando está disponible. Los resultados dudosos se conservan en el Post-Mortem para revisión.
 
-> **¿Por qué existe?** Las plataformas no ofrecen exportación universal. MelomaniacPass reconstruye con scoring fuzzy + duración + `isrc` y deja reporte post-mortem.
+## Funcionalidades
 
----
+- Carga playlists de YouTube Music, Apple Music y Spotify.
+- Importa `TXT`, `CSV`, `M3U/M3U8`, `PLS`, `WPL`, `XSPF` y XML compatible con XSPF.
+- Importa archivos de audio (`MP3`, `FLAC`, `AAC`, `OGG`, `WAV`, `M4A`, `WMA`, `OPUS`, `AIFF/AIF`) y lee sus tags con Mutagen.
+- Busca con Hunter Recovery y tres pasadas de consulta: metadatos limpios, valores originales y título normalizado.
+- Usa ISRC para coincidencias exactas en Apple Music y conserva el valor en la caché.
+- Compara la duración; Spotify añade el indicador `explicit` al scoring.
+- Permite buscar, seleccionar, ordenar y dividir la lista por artista, álbum, título, duración o plataforma.
+- Muestra título, artista, álbum, duración, portada y estado de cada pista.
+- Permite editar nombre y descripción antes de crear la playlist. En Spotify, SpotAPI solo permite guardar el nombre; la descripción se informa como no soportada.
+- Incluye precarga/escaneo de disponibilidad del destino, progreso, consola y reporte Post-Mortem exportable a `transfer_failed_report.txt`.
+- Protege las APIs con semáforos, circuit breakers, caché persistida y control de lotes.
 
-## ✨ Características
-
-- **Transferencia 3 plataformas** — YouTube Music ↔ Apple Music ↔ Spotify (via `spotapi`).
-- **Fuentes locales** — CSV, M3U/M3U8, PLS, XSPF, WPL, iTunes XML y texto plano.
-- **Hunter Recovery** — queries alternativas (`clean_metadata` + `_normalize_title`), matching triple `título/artista/duración` y scoring `score_spotify_match` (60 fuzzy +30 duración +10 explicit); el ISRC permite resolver coincidencias exactas cuando está disponible.
-- **Concurrencia controlada** — `GLOBAL_API_SEMAPHORE=2` + `transfer_sem` 2 (Apple) /3 (otros) para cuidar APIs.
-- **Post-mortem** — coincidencias, no encontradas, errores y `revision_necesaria` (<40%); exporta `transfer_failed_report.txt`.
-- **Wizard guiado 3 tabs** — YouTube (`config/browser.json`), Apple (`config/.env`), Spotify (`config/spotify_cookies.json` con `sp_dc/sp_key`).
-- **Protección 429/423** — `CircuitBreaker` por plataforma, `_am_check_status` (423 → 120s mínimo) y `_sp_is_rate_limited`, `SPOTIFY_ADD_CHUNK=50` con retry exponencial.
-- **Caché persistida** — `config/search_cache.json` permite reanudar tras 429/cierre sin re-buscar.
-- **Organizar y dividir** — ordena (`engine/organizer.sort_tracks`) o agrupa (`split_tracks`) por artista/álbum/título/duración/plataforma.
-- **Metadatos visibles** — muestra el álbum junto al título, artista, duración y estado de cada canción.
-- **Personalización de playlist** — antes de transferir, permite editar nombre y descripción en un diálogo modal animado; el backdrop cancela al hacer clic fuera de la tarjeta.
-- **UI Flet** — búsqueda, selección, progreso, telemetría docked/overlay, estados por canción, fuentes IBM Plex Sans locales.
-
-## 📋 Requisitos
+## Requisitos
 
 | Requisito | Detalle |
 |---|---|
-| Python | 3.10+ |
-| OS | Linux, macOS o Windows |
-| Dependencias | `flet==0.86.5`, `ytmusicapi==1.12.1`, `spotapi==1.2.8`, `requests`, `python-dotenv`, `rapidfuzz` (ver `requirements.txt`) |
-| Credenciales | `config/browser.json`, `config/.env`, `config/spotify_cookies.json` |
+| Python | 3.10 o superior |
+| Dependencias | Versiones fijadas en [`requirements.txt`](requirements.txt) |
+| Credenciales | `config/browser.json`, `config/.env` y `config/spotify_cookies.json` según el destino |
+| Interfaz | Flet Desktop; la aplicación configura tema oscuro y fuentes IBM Plex Sans locales |
 
-## 📦 Instalación
+## Instalación
 
 ```bash
 git clone https://github.com/Brimx/MelomaniacPass.git
 cd MelomaniacPass
 python -m venv .venv
-source .venv/bin/activate  # Linux/macOS
-pip install -r requirements.txt
+source .venv/bin/activate                 # Linux/macOS
+# .venv\Scripts\activate                 # Windows PowerShell
+python -m pip install -r requirements.txt
 ```
 
-## 🚀 Uso
+## Ejecución
 
 ```bash
 python app.py
 ```
 
-### 1. Configurar credenciales
-Pre-flight valida en paralelo las 3 plataformas al iniciar. Si falla, abre el wizard en la pestaña correspondiente.
+La pantalla inicial permite elegir un origen y un destino. El origen puede ser una de las tres plataformas o una fuente local; el destino siempre es una plataforma de streaming.
 
-**YouTube Music:** `music.youtube.com` → DevTools Network `browse` → copia `Authorization` (SAPISIDHASH) + `Cookie` → wizard.
+### Configurar credenciales
 
-**Apple Music:** `music.apple.com` → Network `catalog` → copia `Authorization Bearer` + `media-user-token` → wizard.
+El asistente de configuración tiene una pestaña por plataforma. Al iniciar, `AuthManager` ejecuta las comprobaciones de sesión en paralelo y muestra qué plataforma necesita atención. Después de guardar, las credenciales se recargan sin reiniciar la aplicación.
 
-**Spotify:** `open.spotify.com` → DevTools Application → Cookies → copia `sp_dc`, `sp_key` e `identifier` → `config/spotify_cookies.json` via wizard.
+YouTube Music requiere el contenido de `Authorization` (con prefijo `SAPISIDHASH`) y `Cookie` de una solicitud `browse` en `music.youtube.com`:
 
-No commitees los archivos dentro de `config/`; están protegidos por `.gitignore`.
-
-### 2. Cargar playlist
-- **Streaming:** elige plataforma, pega ID (`pl.u-...`/`37i9dQ...`/`p.xxx`) y **Cargar**.
-- **Archivo local:** `Archivo Local` → elige archivo → asigna nombre.
-- **Texto:** `Pegar Texto` → una por línea `Título - Artista`.
-
-### 3. Revisar y transferir
-Selecciona canciones, usa **Organizar/Dividir**, elige destino y **Transferir**. Fuentes locales exigen destino confirmado.
-
-### 4. Resultados
-Progreso y telemetría en vivo. **Ver Detalles** abre Post-Mortem. Exporta TXT.
-
-## 🔧 Archivos de configuración
-
-| Archivo | Plataforma | Contenido |
-|---|---|---|
-| `config/.env` | Apple | `APPLE_AUTH_BEARER`, `APPLE_MUSIC_USER_TOKEN` |
-| `config/browser.json` | YouTube | `Authorization`, `Cookie`, `x-origin` |
-| `config/spotify_cookies.json` | Spotify | `{identifier, cookies:{sp_dc, sp_key}}` |
-| `config/search_cache.json` | Cache | `{key: {track_id, needs_review, low_confidence, isrc}}` |
-
-## 📁 Estructura
-
-```
-melomaniacpass/
-├── app.py                 # Entry, composición, hard cleanup
-├── config/                # .env, credenciales JSON y caché runtime (ignorado)
-├── core/availability.py   # precarga ISRC y disponibilidad por pista
-├── core/cache.py          # claves y normalización del caché
-├── core/config.py         # constantes compartidas
-├── core/models.py         # Track (album/duration_ms/is_explicit), SearchResult(isrc)
-├── core/state.py          # AppState BLoC, transfer+segments
-├── core/transfer.py       # búsqueda con rate-limit y errores
-├── services/api_service.py# Facade spotapi/ytmusicapi/amp-api, hunters, chunks
-├── engine/normalizer.py   # clean_metadata, umbrales FUZZY_IDEAL 85
-├── engine/match.py        # matching scores, score_spotify_match, _yt_select_best
-├── engine/parsers.py      # CSV/M3U/XSPF/WPL/PLS + build_local_tracks
-├── engine/organizer.py    # sort_tracks / split_tracks
-├── engine/audio_metadata.py # lectura/escritura de tags de audio
-├── services/authentication.py # credenciales y pre-flight
-├── services/circuit_breaker.py # CircuitBreaker, RateLimitError
-├── ui/main_ui.py          # PlaylistManagerUI, organize/split dialogs
-├── ui/auth_manager.py     # coordinación de autenticación con la UI
-├── ui/config_wizard.py    # wizard visual de credenciales
-├── ui/playlist_meta_dialog.py # diálogo modal para nombre/descripción antes de transferir
-├── ui/song_row.py         # SongRow/SkeletonRow ITEM_H=64
-├── ui/telemetry.py        # Monitor/Consola/Post-Mortem docked/overlay
-├── ui/widgets.py          # _primary_btn, _ghost_btn, _status_icon
-└── resources/fonts/       # IBM Plex Sans w300-700
+```json
+{
+  "Authorization": "SAPISIDHASH ...",
+  "Cookie": "...",
+  "Accept": "*/*",
+  "Content-Type": "application/json",
+  "X-Goog-AuthUser": "0",
+  "x-origin": "https://music.youtube.com"
+}
 ```
 
-Ver [ARCHITECTURE.md](ARCHITECTURE.md) para flujos y responsabilidades.
-Consulta [CHANGELOG.md](CHANGELOG.md) para el historial de versiones.
+Apple Music requiere estos valores en `config/.env`:
 
-## Estado actual
+```env
+APPLE_AUTH_BEARER="Bearer eyJ..."
+APPLE_MUSIC_USER_TOKEN="0.As..."
+```
 
-Versión `3.3.7` en la rama `main`. Incluye el diálogo de personalización de playlist, la columna visible de álbum y la corrección de su backdrop como hijo directo del `Stack` raíz para evitar errores de renderizado en Flet. La búsqueda mantiene la tupla triple de título, artista y duración; Apple usa además ISRC cuando está disponible para resolver coincidencias exactas. Spotify usa `spotapi` `searchV2/tracksV2` con `totalMilliseconds/explicit`. Incluye pruebas unitarias para ISRC, Mutagen y Apple Music; la UI se valida manualmente.
+El prefijo `Bearer ` es opcional: la aplicación lo añade si falta. Los valores se obtienen de los headers de una solicitud `catalog` en Apple Music Web.
 
-Para ejecutar las pruebas unitarias:
+Spotify usa el formato generado por el asistente en `config/spotify_cookies.json`:
+
+```json
+{
+  "identifier": "usuario@email.com",
+  "cookies": {
+    "sp_dc": "...",
+    "sp_key": "..."
+  }
+}
+```
+
+Las credenciales y la caché están dentro de `config/`, que está excluido por `.gitignore`. No compartas ni subas esos archivos.
+
+### Cargar una playlist
+
+- **Streaming:** selecciona la plataforma, introduce el ID de la playlist y pulsa **Cargar**.
+- **Archivo Local:** selecciona un archivo de playlist compatible; la aplicación lo detecta por extensión y contenido. Los archivos XML se interpretan como XSPF.
+- **Archivo de audio:** selecciona una canción compatible; sus tags se usan como título, artista, álbum, duración, número de pista, fecha e ISRC.
+- **Pegar Texto:** pega una entrada por línea. Las líneas pueden usar el formato `Título - Artista`; también se aceptan líneas sin separador.
+
+En fuentes locales debes elegir explícitamente el destino antes de transferir. El origen y el destino no pueden ser la misma plataforma.
+
+### Revisar y transferir
+
+1. Revisa las canciones y desmarca las que no quieras transferir.
+2. Opcionalmente usa **Organizar** o **Dividir** y cambia el segmento visible.
+3. Pulsa **Transferir**, confirma o edita el nombre y la descripción.
+4. Revisa el progreso, la consola y la pestaña **Post-Mortem**.
+
+Los matches con `low_confidence` pueden continuar en fuentes de streaming. En pistas locales se aplica un umbral estricto; las coincidencias por debajo de `85` se rechazan. Los matches marcados `revision_necesaria` no se insertan automáticamente.
+
+## Autenticación, API y resiliencia
+
+- **YouTube Music:** `ytmusicapi`, búsqueda de canciones y lectura/creación de playlists.
+- **Apple Music:** endpoint web `amp-api.music.apple.com`; la búsqueda usa el catálogo de Apple y `durationInMillis`/`isrc`.
+- **Spotify:** `spotapi`; usa la búsqueda `tracksV2`, duración en milisegundos y `explicit`.
+- Semáforo global de red: `2` solicitudes concurrentes.
+- Límites configurados de transferencia: `2` para Apple Music y `3` para las demás plataformas; Apple procesa sus búsquedas secuencialmente para evitar ráfagas.
+- Apple: lotes ISRC de `25`, lotes de inserción de `100`, límite preventivo de `50` solicitudes y pausa de `60` segundos; el HTTP `423` fuerza al menos `120` segundos de cooldown.
+- Spotify: inserción en lotes de `50`, con hasta cuatro intentos y espera progresiva.
+- La caché de búsquedas se guarda atómicamente en `config/search_cache.json` y acepta resultados actuales y entradas legacy con solo `track_id`.
+- Los circuit breakers gestionan `429`; Apple también distingue `401/403` de autenticación y `423` de bloqueo temporal.
+
+## Archivos de configuración
+
+| Archivo | Uso |
+|---|---|
+| `config/.env` | `APPLE_AUTH_BEARER` y `APPLE_MUSIC_USER_TOKEN` |
+| `config/browser.json` | Headers autenticados de YouTube Music |
+| `config/spotify_cookies.json` | `identifier`, `sp_dc` y `sp_key` |
+| `config/search_cache.json` | Resultados por `título|||artista|||destino` |
+| `transfer_failed_report.txt` | Reporte creado bajo demanda por la UI; no forma parte de la configuración |
+
+## Estructura del proyecto
+
+```text
+MelomaniacPass/
+├── app.py                         # Entrada, composición y ciclo de vida
+├── config/                        # Credenciales y estado runtime ignorados
+├── core/
+│   ├── availability.py            # Escaneo de disponibilidad e ISRC en Apple
+│   ├── cache.py                   # Claves y compatibilidad de caché
+│   ├── config.py                  # Plataformas, concurrencia y lotes
+│   ├── models.py                  # Track, PlaylistMeta, SearchResult y estados
+│   ├── state.py                   # Estado BLoC y flujo de transferencia
+│   └── transfer.py                # Búsqueda y errores de rate limit
+├── engine/
+│   ├── audio_metadata.py          # Lectura/escritura de tags con Mutagen
+│   ├── match.py                   # Scoring y validación de candidatos
+│   ├── normalizer.py              # Limpieza, ISRC y umbrales fuzzy
+│   ├── organizer.py               # Ordenación y segmentación en memoria
+│   └── parsers.py                 # Formatos locales y construcción de Track
+├── services/
+│   ├── api_service.py             # Fachada de APIs y sesiones HTTP
+│   ├── authentication.py           # Rutas, credenciales y pre-flight
+│   └── circuit_breaker.py          # Cooldowns y RateLimitError
+├── ui/
+│   ├── auth_manager.py            # Comprobaciones y hot reload
+│   ├── config_wizard.py            # Asistente de credenciales
+│   ├── main_ui.py                 # Ventana y eventos principales
+│   ├── playlist_meta_dialog.py     # Nombre y descripción de destino
+│   ├── song_row.py                # Filas de canciones y skeletons
+│   ├── telemetry.py               # Monitor, consola y Post-Mortem
+│   └── widgets.py / tokens.py      # Componentes y tokens visuales
+└── resources/fonts/               # IBM Plex Sans w300–w700
+```
+
+## Pruebas
+
+Con el entorno virtual creado e instalado:
 
 ```bash
 python -m unittest discover -s tests -p 'test_*.py'
 ```
 
-## 📜 Licencia
+Las pruebas cubren la estructura de paquetes, caché/rate limit, normalización ISRC, lectura de metadatos con Mutagen y operaciones Apple. La UI se valida manualmente.
 
-Uso personal. APIs sujetas a términos de cada plataforma.
+## Estado y licencia
 
-## 🙏 Agradecimientos
+La versión documentada es `3.3.7` en la rama `main`. Es un proyecto para uso personal; cada plataforma y sus APIs están sujetas a sus propios términos de servicio.
 
-- [Flet](https://flet.dev) - [ytmusicapi](https://github.com/sigma67/ytmusicapi) - [spotapi](https://github.com/spotapi) - [RapidFuzz](https://github.com/maxbachmann/RapidFuzz)
+## Agradecimientos
+
+[Flet](https://flet.dev) · [ytmusicapi](https://github.com/sigma67/ytmusicapi) · [spotapi](https://github.com/spotapi) · [RapidFuzz](https://github.com/maxbachmann/RapidFuzz) · [Mutagen](https://mutagen.readthedocs.io/)

@@ -116,7 +116,7 @@ class AppState:
         subscribe: Registra un listener para notificaciones de cambio.
         notify: Notifica a todos los listeners de un cambio de estado.
         load_playlist: Carga una playlist desde una plataforma.
-        start_transfer: Inicia transferencia a plataforma destino.
+        transfer_playlist: Inicia transferencia a plataforma destino.
         cancel_lazy_scan: Cancela escaneo lazy en progreso.
     
     Example:

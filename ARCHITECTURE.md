@@ -1,189 +1,187 @@
-# MelomaniacPass v3.3.7 — Arquitectura Técnica
+# MelomaniacPass v3.3.7 — Arquitectura
 
-App de escritorio para transferir playlists entre **YouTube Music, Apple Music y Spotify** + fuentes locales (CSV, M3U/M3U8, PLS, XSPF, WPL, iTunes XML, texto) con **Hunter Recovery** basado en la tupla triple de búsqueda `(título, artista, duración_ms)`. El ISRC se conserva como identificador auxiliar para búsquedas exactas y caché.
+MelomaniacPass separa la interfaz Flet, el estado de la aplicación, los servicios de plataforma y el motor de normalización/matching. La versión actual soporta YouTube Music, Apple Music, Spotify y dos entradas locales: archivo y texto pegado.
 
----
+## Capas y dependencias
+
+```text
+app.py
+├── AppState                 # estado reactivo, progreso y transferencia
+├── MusicApiService          # APIs, caché, sesiones y creación de playlists
+├── AuthManager              # pre-flight, wizard y hot reload
+└── PlaylistManagerUI        # Flet, eventos, filas y telemetría
+
+ui ───────> core / engine / services
+core ─────> engine / services.circuit_breaker
+services ─> core / engine
+engine ───> core.models
+```
+
+La composición real en `app.py` es:
+
+```python
+state = AppState(service=None)
+service = MusicApiService(state.cb)
+state.service = service
+ui = PlaylistManagerUI(page, state)
+auth_manager = AuthManager(page, service, state)
+ui.auth_manager = auth_manager
+service.auth_manager = auth_manager
+```
+
+`AppState` crea los circuit breakers una sola vez y los comparte con `MusicApiService`. Así, las operaciones de carga, búsqueda y creación usan el mismo cooldown por plataforma.
 
 ## Estructura
 
-```
-melomaniacpass/
-├── app.py                    # Entry, composición CircuitBreakers→Service→State→UI, hard cleanup
-├── config/                   # Runtime ignorado: .env, credenciales JSON y caché
-│
+```text
+MelomaniacPass/
+├── app.py
+├── config/                         # runtime ignorado por Git
 ├── core/
-│   ├── availability.py     # Precarga ISRC y disponibilidad por pista
-│   ├── cache.py             # Claves y normalización del caché de búsquedas
-│   ├── config.py            # Constantes compartidas y concurrencia
-│   ├── models.py             # Track(album,duration_ms,is_explicit), SearchResult(isrc), LoadState/TransferState
-│   ├── state.py              # AppState BLoC, transferencia, segmentos y estado
-│   └── transfer.py           # Búsqueda con rate-limit y razones de error
-│
-├── services/
-│   ├── api_service.py        # MusicApiService: facade spotapi + ytmusicapi + amp-api
-│   ├── authentication.py     # Rutas, credenciales y pre-flight
-│   └── circuit_breaker.py    # CircuitBreaker + RateLimitError
-│
+│   ├── availability.py             # escaneo lazy y precarga ISRC de Apple
+│   ├── cache.py                    # make_cache_key y compatibilidad legacy
+│   ├── config.py                   # plataformas, límites y tamaños de lote
+│   ├── models.py                   # Track, PlaylistMeta, SearchResult, enums
+│   ├── state.py                    # AppState y flujo BLoC/Observer
+│   └── transfer.py                 # búsqueda con rate limit y errores breves
 ├── engine/
-│   ├── audio_metadata.py     # Lectura/escritura de tags de audio
-│   ├── normalizer.py         # clean_metadata, _normalize_title, FUZZY_IDEAL 85, ARTIST_EXACT 99
-│   ├── match.py              # title/artist scores, _ideal_pass_hunter, score_spotify_match, validar_match, _yt_select_best
-│   ├── parsers.py            # parse_local_playlist (detección por contenido) + build_local_tracks
-│   └── organizer.py          # sort_tracks / split_tracks (memoria)
-│
+│   ├── audio_metadata.py           # tags de audio con Mutagen
+│   ├── match.py                    # validación, scoring y Hunter Recovery
+│   ├── normalizer.py               # limpieza, ruido e ISRC
+│   ├── organizer.py                # sort_tracks y split_tracks en memoria
+│   └── parsers.py                  # formatos locales y Track local
+├── services/
+│   ├── api_service.py              # fachada YouTube/Apple/Spotify
+│   ├── authentication.py           # archivos runtime y pre-flight
+│   └── circuit_breaker.py          # RateLimitError y cooldowns
 ├── ui/
-│   ├── auth_manager.py       # Coordinación de autenticación con la UI
-│   ├── config_wizard.py      # Wizard visual de credenciales
-│   ├── main_ui.py            # PlaylistManagerUI, organize/split dialogs, _on_state_changed
-│   ├── playlist_meta_dialog.py # diálogo modal animado para nombre/descripción de playlist
-│   ├── song_row.py           # SongRow/SkeletonRow ITEM_H=64, hover, _status_icon
-│   ├── telemetry.py          # TelemetryDrawer docked>=700 / overlay handle, Monitor/Consola/Post-Mortem
-│   └── widgets.py            # _primary_btn/_ghost_btn/_section_label/_status_icon
-│
-└── resources/fonts/          # IBM Plex Sans w300-700 locales (Flet 0.86.5)
+│   ├── auth_manager.py             # coordinación de autenticación
+│   ├── config_wizard.py             # edición de credenciales
+│   ├── main_ui.py                  # ventana principal
+│   ├── playlist_meta_dialog.py      # nombre/descripción de playlist
+│   ├── song_row.py                 # filas y skeletons
+│   ├── telemetry.py                # Monitor, Consola y Post-Mortem
+│   ├── tokens.py                   # tokens de diseño
+│   └── widgets.py                  # controles reutilizables
+├── resources/fonts/                # IBM Plex Sans w300–w700
+└── tests/                           # unittest y regresiones
 ```
 
-## Plataformas
+## Modelos y estado
 
-| Plataforma | Tipo | Auth | Archivo |
+`Track` es el modelo universal. Además de título, artista, álbum, duración, plataforma y portada, puede incluir `duration_ms`, `is_explicit`, `isrc`, `source_path`, `album_artist`, `track_number` y `release_date`.
+
+`PlaylistMeta` conserva el nombre y la descripción de la playlist de origen. `SearchResult` conserva `track_id`, `needs_review`, `low_confidence` e `isrc`.
+
+Estados principales:
+
+- `LoadState`: `IDLE → LOADING_META → LOADING_TRACKS → READY` o `ERROR`.
+- `TransferState`: `IDLE → RUNNING → DONE` o `ERROR`.
+- `Track.transfer_status`: `pending`, `searching`, `found`, `not_found`, `revision_necesaria`, `transferred`, `error` y `local_pending`.
+
+`AppState` mantiene la lista maestra, filtro, segmentos, selección, contadores, logs, fallos, resultados pendientes de revisión y flags de sesión. La UI se suscribe mediante `subscribe()` y recibe actualizaciones con `notify()`.
+
+## Plataformas y autenticación
+
+| Plataforma | Lectura/búsqueda | Creación | Credenciales |
 |---|---|---|---|
-| YouTube Music | Streaming | `SAPISIDHASH` + `Cookie` | `config/browser.json` |
-| Apple Music | Streaming | `Bearer` + `media-user-token` | `config/.env` |
-| Spotify | Streaming | `sp_dc` + `sp_key` + `identifier` via `spotapi.Login` | `config/spotify_cookies.json` |
-| Archivo Local / Pegar Texto | Local | — | — |
+| YouTube Music | `ytmusicapi` | `YTMusic.create_playlist` | `config/browser.json` |
+| Apple Music | catálogo web `amp-api.music.apple.com` | endpoint de biblioteca | `config/.env` |
+| Spotify | `spotapi`/`tracksV2` | `PrivatePlaylist` | `config/spotify_cookies.json` |
+| Archivo Local | parsers + Mutagen | — | — |
+| Pegar Texto | parser de líneas | — | — |
 
-Local → `Track(platform="local")` → transferible a cualquiera de las 3.
+`services.authentication` es el único dueño de las rutas y la persistencia de credenciales:
 
-## Flujo de Dependencias
+- YouTube: `Authorization` y `Cookie`; los campos fijos (`Accept`, `Content-Type`, `X-Goog-AuthUser`, `x-origin`) se escriben automáticamente.
+- Apple: `APPLE_AUTH_BEARER` y `APPLE_MUSIC_USER_TOKEN`.
+- Spotify: `identifier`, `cookies.sp_dc` y `cookies.sp_key`.
 
-```
-app.py
-  ├── CircuitBreaker por plataforma (AppState.PLATFORMS)
-  ├── MusicApiService ── spotapi Song/Login, YTMusic, requests.Session, GLOBAL_SEMAPHORE=2, SEARCH_CACHE, SPOTIFY_ADD_CHUNK=50
-  ├── AppState ───────── models, progreso, transfer_sem 2/3, segments
-  ├── PlaylistManagerUI ─ filas, diálogos, telemetría
-  └── AuthManager ─────── ui/auth_manager + config_wizard, pre-flight paralelo
+`run_preflight()` valida las tres plataformas en paralelo. `AuthManager` refleja el resultado en `AppState.auth_session_ok` y `auth_session_hint`, inicializa los servicios válidos y abre el tab correspondiente si una sesión está ausente o expirada. Guardar en el wizard activa un hot reload sin reinicio.
 
-ui → core / engine / services
-services → core / engine
-engine → core
-core/state → services.circuit_breaker + engine helpers
-core/availability → core.cache + engine.match + core.transfer
-```
+## Flujo de carga
 
-Init `app.py:143-147` `CircuitBreakers → Service(state.cb) → State(service) → UI(page,state) → AuthManager(page,service,state)` con inyección `ui.auth_manager` / `service.auth_manager`.
-
-## Librerías
-
-| Librería | Uso |
-|---|---|
-| `flet==0.86.5` | Ventana, controles, tema OLED |
-| `spotapi==1.2.8` | Spotify `Song.query_songs`, `Public/PrivatePlaylist`, `Login.from_cookies` |
-| `ytmusicapi==1.12.1` | YouTube Music `search`/`get_playlist` |
-| `requests` | Apple Music `amp-api/music.apple.com`, storefront, pre-flight |
-| `rapidfuzz` | `token_sort_ratio` para scores de título/artista |
-| `python-dotenv` | `.env` read/write |
-| `asyncio` | hunters, transfer, lifecycle |
-
-Ver `requirements.txt` completo.
-
-## Autenticación
-
-### `config/.env` Apple
-```env
-APPLE_AUTH_BEARER="Bearer eyJ..."
-APPLE_MUSIC_USER_TOKEN="0.As..."
+```text
+UI selecciona origen + ID
+        │
+        ├── streaming → AppState.load_playlist()
+        │                 → MusicApiService.fetch_playlist()
+        │                 → PlaylistMeta + list[Track]
+        │
+        └── local → parser por extensión/contenido
+                    → Mutagen si hay ruta de audio
+                    → AppState.load_local_tracks()
 ```
 
-### `config/browser.json` YouTube
-```json
-{"Accept":"*/*","Authorization":"SAPISIDHASH ...","Content-Type":"application/json","X-Goog-AuthUser":"0","x-origin":"https://music.youtube.com","Cookie":"..."}
+Los parsers aceptan `TXT`, `CSV`, `M3U/M3U8`, `PLS`, `WPL`, `XSPF` y XML compatible con XSPF. Las rutas locales solo se resuelven para extensiones de audio conocidas; las URLs remotas no se leen como archivos.
+
+## Flujo de búsqueda y transferencia
+
+```text
+selección de Track
+  → make_cache_key(título, artista, destino)
+  → caché o búsqueda con rate-limit
+  → normalización + hunter de la plataforma
+  → SearchResult y estado visual
+  → IDs válidos agrupados
+  → create_playlist(nombre, descripción, IDs)
+  → confirmación, rechazados y Post-Mortem
 ```
 
-### `config/spotify_cookies.json` Spotify
-```json
-{"identifier":"user@mail.com","cookies":{"sp_dc":"...","sp_key":"..."}}
+`search_with_fallback()` intenta, sin duplicar consultas equivalentes:
+
+1. metadatos limpios;
+2. título/artista originales;
+3. título normalizado.
+
+YouTube usa consultas de canciones y valida hasta los primeros tres candidatos, prefiriendo `resultType == song` y la duración más cercana en un margen de cinco segundos. Apple usa el catálogo web y selecciona por similitud y duración. Spotify consulta `tracksV2`, puntúa 40 puntos de título + 20 de artista, 30 de duración y 10 de coincidencia de `explicit`.
+
+Antes de buscar en Apple se resuelven ISRC en lotes secuenciales de `25`. Las coincidencias exactas se escriben en la caché.
+
+El matching común usa estos umbrales:
+
+| Umbral | Uso |
+|---:|---|
+| `85` | match ideal |
+| `70–84` | baja confianza pero aceptable para streaming |
+| `<40` | `needs_review` / `revision_necesaria` |
+| `99` de artista + `60` de título | salvamento por artista exacto |
+
+En pistas locales, un resultado `low_confidence` también se rechaza para evitar transferencias ambiguas.
+
+## Concurrencia, caché y resiliencia
+
+Los valores están centralizados en `core/config.py`:
+
+| Constante | Valor | Uso |
+|---|---:|---|
+| `NETWORK_CONCURRENCY` | `2` | semáforo global de API |
+| `TRANSFER_CONCURRENCY[Apple Music]` | `2` | límite de transferencia Apple |
+| `TRANSFER_CONCURRENCY[default]` | `3` | límite de transferencia restante |
+| `APPLE_ISRC_BATCH` | `25` | consulta de ISRC |
+| `APPLE_TRANSFER_BATCH` | `100` | creación/inserción Apple |
+| `APPLE_REQUEST_BURST` | `50` | contador preventivo Apple |
+| `APPLE_REQUEST_PAUSE` | `60 s` | pausa tras el burst |
+| `SPOTIFY_ADD_CHUNK` | `50` | inserción Spotify |
+
+La caché se carga al iniciar desde `config/search_cache.json` y se guarda con archivo temporal + `os.replace`. Soporta objetos `SearchResult` serializados y valores legacy que solo contienen un `track_id`.
+
+`CircuitBreaker` usa reloj monotónico, notifica el estado, crea un auto-reset y puede cancelar su tarea durante el cierre. `429` abre el breaker; Apple convierte `423` en rate limit con mínimo de `120` segundos y trata `401/403` como errores de autenticación. Spotify detecta `429/423` en los errores de SpotAPI.
+
+Apple procesa la transferencia de forma secuencial para evitar ráfagas. El resto usa tareas acotadas por semáforo. Las búsquedas no asociadas a rate limit tienen hasta tres intentos en `AppState`, con esperas de `1` y `2` segundos.
+
+## Ciclo de vida
+
+1. `app.py` prepara `config/`, entorno, ventana, tema y fuentes.
+2. Se crean `AppState`, `MusicApiService`, `PlaylistManagerUI` y `AuthManager`.
+3. La UI se monta y se ejecuta el pre-flight asíncrono.
+4. Un sondeo de sesión actualiza los iconos cada `90` segundos.
+5. Al cerrar, se cancelan breakers, escaneo lazy, recargas y tareas, se cierran sesiones HTTP y se libera la UI.
+
+## Verificación
+
+```bash
+python -m unittest discover -s tests -p 'test_*.py'
 ```
 
-`services/authentication.py` centraliza las rutas y el `read/write` de las credenciales. `ui/auth_manager.py` coordina el wizard y el hot reload. `services/api_service.py:374 _sync_init_spotify` hace `Login.from_cookies(dump, Config(NoopLogger()))` y cachea `self._sp_song = Song(client=cfg.client)` para reutilizar `TLSClient` (evita 5-8 req de setup por búsqueda).
-
-**Pre-flight paralelo** `AuthManager.run_startup_check()` valida YT (`YTMusic.get_history`), Apple (`/v1/me/storefront` + `/v1/catalog/.../search`) y Spotify (`Login.logged_in`). Actualiza `AppState.auth_session_ok/hint` y abre wizard en tab fallida.
-
-Durante matching, Apple usa `api.music.apple.com/v1/catalog/{storefront}/search?types=songs` oficial: `durationInMillis` completa la tupla triple de búsqueda y `isrc` permite resolver coincidencias exactas o desempatar cuando está disponible. Spotify usa `searchV2/tracksV2` con `duration.totalMilliseconds` + `explicit`. No se usa iTunes Search.
-
-## Comunicación
-
-### Init `app.py`
-
-```python
-circuit_breakers = {p: CircuitBreaker(p) for p in AppState.PLATFORMS}
-service = MusicApiService(circuit_breakers)
-state = AppState(service)  # state.cb sobrescribe service._cb (single source)
-ui = PlaylistManagerUI(page, state)
-auth_manager = AuthManager(page, service, state)
-ui.auth_manager = service.auth_manager = auth_manager
-```
-
-### Observer
-
-`AppState.subscribe(notify)` → `PlaylistManagerUI._on_state_changed()` refresca `display_tracks`, progreso, `auth strip`, `segments`, telemetría.
-
-### Búsqueda
-
-```
-ui → state.transfer_playlist() → _transfer_one(track) con cache_key `cn|||ca|||dest`
-state → core.transfer.search_with_rate_limit_backoff (fail-fast, trip breaker, raise)
-state → core.availability (precarga ISRC y disponibilidad lazy)
-service → search_with_fallback 3 passes (clean, raw, normalized) → search_track → _*_hunter_async
-engine/match → scores de título/artista + _ideal_pass_hunter (85 o artist 99 + title 60) → SearchResult(track_id, needs_review, low_confidence, isrc)
-state → Track.transfer_status
-service → create_playlist chunk 50 + retry 4x exp
-ui → progreso + Post-Mortem
-```
-
-## Módulos Clave
-
-### `services/circuit_breaker.py`
-`CircuitBreaker.trip(retry_after)` abre `is_open`, guarda `monotonic+wait`, `notify` y `asyncio.create_task(_auto_reset)`. `check_or_raise` lanza `RateLimitError`. `cancel` limpia task huérfana. `remaining` con `monotonic`.
-
-### `services/api_service.py`
-Unifica carga/búsqueda/creación. `GLOBAL_API_SEMAPHORE=2`, `SEARCH_CACHE_JSON`, `SPOTIFY_ADD_CHUNK=50`. `_am_check_status` convierte `429/423` en `RateLimitError` (423 → min 120s). `_sp_is_rate_limited` detecta `Status Code: 429/423` de `spotapi`. `_load/save_search_cache` con tmp+replace atómico. Socket reuse `requests.Session`.
-
-### `core/state.py` / `models.py`
-`Track` con `album`, `duration_ms` e `is_explicit`; el álbum se conserva para la columna visible de la playlist, mientras que la búsqueda usa título, artista y duración. `SearchResult` conserva `isrc`. `AppState` coordina `load_playlist`, `transfer_playlist` (semáforo 2/3), `apply_search`, `organize_sort/split`, `lazy_scan`.
-
-### `engine/match.py` Hunter Recovery
-Capas: `validar_match` L0 CJK bypass, L1 substring, L2 lethal `cover/karaoke`, L3 fuzzy 0.65. `_fuzzy_scores_triple` calcula `comb/tit/art` (tres scores, no la tupla de metadatos). `_ideal_pass_hunter` (≥85). `score_spotify_match` 60 fuzzy (40 tit+20 art) +30 duración (≤2s 30, ≤5s 15 else -20) +10 explicit. `_yt_select_best` top3 + `resultType==song` + duración ±5s.
-
-### `engine/normalizer.py`
-`clean_metadata` NFC + purga brackets + `PURGE_NOISE_WORDS` + `strip_noise`. `build_search_query` prior. obra. Umbrales `FUZZY_IDEAL 85 / LOG 70 / REVIEW 40`.
-
-### `engine/parsers.py` / `organizer.py`
-`parse_local_playlist` detecta por extensión y contenido, `build_local_tracks` → `Track`. `sort_tracks`/`split_tracks` in-memory.
-
-### `ui/main_ui.py` / `ui/playlist_meta_dialog.py` / `telemetry.py` / `widgets.py`
-`main_ui` maneja `DROPDOWN PLATFORMS`, `Organizar/Dividir`, `segment_dd`, skeletons `ITEM_H=64`, la columna `ÁLBUM` y abre el diálogo de metadatos antes de transferir. `playlist_meta_dialog` monta el modal animado en `page.overlay`; su backdrop es hijo directo del `Stack` raíz, tiene `on_click` para cancelar y `ink=False` para evitar el error de renderizado que ocurría al envolverlo en `GestureDetector`. `telemetry` usa panel docked/overlay con `Monitor/Consola/Post-Mortem`. `widgets` expone tokens `ACCENT/SUCCESS`.
-
-## ConfigWizard
-
-| Tab | Plataforma | Campos | Archivo |
-|---|---|---|---|
-| 0 | YouTube Music | Authorization, Cookie | `config/browser.json` |
-| 1 | Apple Music | Bearer, User Token | `config/.env` |
-| 2 | Spotify | identifier, sp_dc, sp_key | `config/spotify_cookies.json` |
-
-`Guardar y Aplicar` → `reload_credentials()` sin reiniciar.
-
-## Ciclo de Vida
-
-`app.py:173 _auth_poll_loop` cada 90s `refresh_session_icons`. `194 hard_cleanup` cancela breakers/UI/lazy/auth, `asyncio.all_tasks().cancel()`, `gc.collect()`, `cleanup_sessions()` en `to_thread`, `force_exit 3s` vía `os._exit`.
-
-## Métricas
-
-| Área | Estado |
-|---|---|
-| Plataformas | 3 streaming (YT, Apple, Spotify) +2 entradas locales |
-| Engine | 4 módulos |
-| Concurrencia | global 2, transfer 2/3 |
-| Resiliencia | breaker 429/423, cache persistida, chunk 50 |
-| Versión | 3.3.7 — backdrop del diálogo como hijo directo del `Stack` |
+La suite actual verifica el layout de paquetes, helpers de caché/rate limit, normalización ISRC, lectura de tags con Mutagen, limitador Apple, lotes Apple y errores de autenticación. La UI Flet se valida manualmente.

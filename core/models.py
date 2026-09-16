@@ -42,7 +42,8 @@ class Track:
         album: Nombre del álbum al que pertenece.
         duration: Duración en formato legible (ej: "3:45").
         img_url: URL de la imagen de portada del álbum.
-        platform: Plataforma de origen ("youtube", "apple").
+        platform: Plataforma de origen ("YouTube Music", "Apple Music",
+                 "Spotify" o "local").
         selected: Indica si la canción está seleccionada para transferencia.
         transfer_status: Estado actual en el proceso de transferencia.
                         Valores: "pending", "searching", "found", "not_found",

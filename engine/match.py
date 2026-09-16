@@ -299,7 +299,7 @@ def validar_match(
     _local_duration_s: Optional[int] = None,
 ) -> bool:
     """
-    Motor de validación multi-capa para resultados de ytmusicapi 1.11.5.
+    Motor de validación multi-capa para resultados de ytmusicapi 1.12.1.
 
     L0 — Bypass asiático  : scripts CJK/Hangul → match inmediato
     L1 — Prueba de ácido  : substring + solapamiento de artista → MATCH

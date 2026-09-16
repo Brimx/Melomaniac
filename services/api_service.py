@@ -5,9 +5,10 @@
 ╚══════════════════════════════════════════════════════════════════════╝
 
 Módulo: services/api_service.py
-Descripción: Fachada unificada asíncrona sobre las APIs de YouTube Music
-             y Apple Music. Abstrae las diferencias entre plataformas
-             proporcionando una interfaz consistente.
+Descripción: Fachada unificada asíncrona sobre YouTube Music, Apple Music
+             y Spotify. Abstrae las diferencias entre plataformas y
+             proporciona una interfaz consistente para lectura, búsqueda
+             y creación de playlists.
 
 Estrategia de Diseño - Patrón Facade:
     MusicApiService actúa como punto único de acceso a múltiples APIs
@@ -20,11 +21,12 @@ Estrategia de Diseño - Patrón Facade:
     
     2. Gestión de Autenticación:
         - YouTube Music: Headers de sesión (Cookie + Authorization)
-        - Apple Music: Bearer token + User token
+        - Apple Music: Bearer token + User token de la sesión web
+        - Spotify: cookies web mediante spotapi
     
     3. Resiliencia y Rate Limiting:
        - Circuit breakers por plataforma
-       - Reintentos con backoff exponencial
+       - Reintentos acotados y backoff para búsquedas/inserciones
        - Semáforo global para limitar concurrencia
        - Detección de 401/429 con mensajes específicos
     
@@ -39,8 +41,8 @@ Estrategia de Diseño - Patrón Facade:
        - Selección inteligente de mejor resultado
 
    Constantes:
-       - NETWORK_CONCURRENCY: Límite de peticiones concurrentes (5)
-       - RATE_LIMIT_BACKOFF_STEPS: Reintentos ante rate limiting (10)
+       - NETWORK_CONCURRENCY: Límite global de peticiones concurrentes (2)
+       - RATE_LIMIT_BACKOFF_STEPS: Compatibilidad del contrato de backoff (10)
 
    Funciones Auxiliares:
        - _is_ytm_unauthorized: Detecta HTTP 401 de YouTube Music

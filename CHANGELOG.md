@@ -1,5 +1,11 @@
 # Changelog
 
+## 3.3.7 — 2026-09-16 · Actualización documental
+
+- Sincroniza `README.md` y `README.en.md` con las funcionalidades actuales: importación de audio y metadatos Mutagen, escaneo de disponibilidad, caché, límites de concurrencia y lotes por plataforma.
+- Actualiza `ARCHITECTURE.md` y `ARCHITECTURE.en.md` con la composición real de `AppState`, `MusicApiService`, `AuthManager` y la UI.
+- Documenta el comportamiento actual de descripciones en Spotify, la resolución de ISRC en Apple Music y los formatos locales soportados.
+
 ## 3.3.7 — 2026-09-09
 
 - Permite editar el nombre y la descripción de la playlist antes de iniciar la transferencia.
