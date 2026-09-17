@@ -1,6 +1,6 @@
 """
 ╔══════════════════════════════════════════════════════════════════════╗
-║                    MelomaniacPass v3.3.7                               ║
+║                    MelomaniacPass v3.3.8                               ║
 ║              Transferencia Universal de Playlists                    ║
 ╚══════════════════════════════════════════════════════════════════════╝
 
@@ -15,7 +15,7 @@ Motor: Hunter Recovery · Universal Auth · Post-mortem
 Ciclo de vida: Hard exit · Session probes · Semáforo real
 
 Autor: MelomaniacPass Team
-Versión: 3.3.7
+Versión: 3.3.8
 Fecha: 2026
 """
 

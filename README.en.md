@@ -1,4 +1,4 @@
-# 🎵 MelomaniacPass v3.3.7
+# 🎵 MelomaniacPass v3.3.8
 
 MelomaniacPass is a desktop application for rebuilding playlists between **YouTube Music, Apple Music, and Spotify**. It can also import a local playlist or a single audio file, find each track on the destination, and create a new playlist.
 
@@ -172,7 +172,7 @@ Tests cover package layout, cache/rate-limit helpers, ISRC normalization, Mutage
 
 ## Status and license
 
-The documented version is `3.3.7` on the `main` branch. This is a personal-use project; each platform and its APIs are subject to their own terms of service.
+The documented version is `3.3.8` on the `main` branch. This is a personal-use project; each platform and its APIs are subject to their own terms of service.
 
 ## Thanks
 

@@ -1,4 +1,4 @@
-# MelomaniacPass v3.3.7 — Architecture
+# MelomaniacPass v3.3.8 — Architecture
 
 MelomaniacPass separates the Flet UI, application state, platform services, and metadata normalization/matching engine. The current version supports YouTube Music, Apple Music, Spotify, and two local inputs: file and pasted text.
 

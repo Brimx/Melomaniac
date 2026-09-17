@@ -1,6 +1,6 @@
 """
 ╔══════════════════════════════════════════════════════════════════════╗
-║                    MelomaniacPass v3.3.7                               ║
+║                    MelomaniacPass v3.3.8                               ║
 ║                    Estado Global de la Aplicación                    ║
 ╚══════════════════════════════════════════════════════════════════════╝
 
@@ -44,7 +44,7 @@ Funciones Auxiliares:
     - core.availability: resolución de disponibilidad por pista
 
 Autor: MelomaniacPass Team
-Versión: 3.3.7
+Versión: 3.3.8
 Fecha: 2026
 """
 

@@ -1,6 +1,6 @@
 """
 ╔══════════════════════════════════════════════════════════════════════╗
-║                    MelomaniacPass v3.3.7                               ║
+║                    MelomaniacPass v3.3.8                               ║
 ║              Parsers de Playlists Locales                            ║
 ╚══════════════════════════════════════════════════════════════════════╝
 
@@ -46,7 +46,7 @@ Formatos Soportados:
     - Texto plano: Listas simples línea por línea
 
 Autor: MelomaniacPass Team
-Versión: 3.3.7
+Versión: 3.3.8
 Fecha: 2026
 """
 

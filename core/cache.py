@@ -1,5 +1,5 @@
 """
-core/cache.py — MelomaniacPass v3.3.7 — Helpers de Caché
+core/cache.py — MelomaniacPass v3.3.8 — Helpers de Caché
 ════════════════════════════════════════════════════════
 Funciones comunes para caché de búsquedas (regla 3).
 Evita duplicar `cache_key` y `unwrap` en core/state.py.

@@ -17,7 +17,7 @@ markdown-it-py==4.2.0
 mdurl==0.1.2
 msgpack==1.2.1
 mutagen==1.48.1
-oauthlib==3.3.7
+oauthlib==3.3.8
 pillow==12.3.0
 pycparser==3.0
 Pygments==2.20.0
