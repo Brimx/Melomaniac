@@ -70,6 +70,7 @@ def app_text_field(
     expand: bool = False,
     autofocus: bool = False,
     on_submit=None,
+    content_padding=None,
     **kwargs,
 ) -> ft.TextField:
     """TextField canónico OLED. Base: playlist_meta (radius 10, dense).
@@ -99,7 +100,7 @@ def app_text_field(
         text_size=12,
         dense=True,
         border_radius=10,
-        content_padding=ft.Padding.symmetric(horizontal=12, vertical=10),
+        content_padding=content_padding or ft.Padding.symmetric(horizontal=12, vertical=8),
         **kwargs,
     )
 
