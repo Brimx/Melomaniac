@@ -1,9 +1,17 @@
-# Entorno de desarrollo
+# Entornos de desarrollo y herramientas locales
 .vscode/
 .kiro/
+.opencode/
+.envsitter/
+.flet/
+.venv/
 
-# Archivos de sistema y Python
+# Archivos generados por Python y herramientas de calidad
 __pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
 
 # Secretos y Configuración (CRÍTICO)
 .env
@@ -12,6 +20,8 @@ spotify_cookies.json
 config/*
 !config/.gitkeep
 
-# Logs y temporales
+# Logs, exportaciones y temporales
 *.log
+exports/
+transfer_failed_report.txt
 .DS_Store
