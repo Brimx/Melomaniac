@@ -1,4 +1,4 @@
-# Melomaniac v3.3.8 — Architecture
+# Melomaniac v4.0.0 — Architecture
 
 Melomaniac separates the Flet UI, application state, platform services, and metadata normalization/matching engine. The current version supports YouTube Music, Apple Music, Spotify, and two local inputs: file and pasted text.
 

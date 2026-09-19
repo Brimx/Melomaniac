@@ -7,6 +7,8 @@ __all__ = [
     "parse_local_playlist_with_paths",
     "build_local_tracks",
     "read_audio_metadata",
+    "export_tracks",
+    "default_export_path",
 ]
 
 
@@ -28,4 +30,8 @@ def __getattr__(name: str):
         from engine.audio_metadata import read_audio_metadata
 
         return read_audio_metadata
+    if name in {"export_tracks", "default_export_path"}:
+        from engine.exporters import default_export_path, export_tracks
+
+        return {"export_tracks": export_tracks, "default_export_path": default_export_path}[name]
     raise AttributeError(f"module 'engine' has no attribute {name!r}")

@@ -1,6 +1,6 @@
 """
 ╔══════════════════════════════════════════════════════════════════════╗
-║                    Melomaniac v3.3.8                               ║
+║                    Melomaniac v4.0.0                               ║
 ║              Parsers de Playlists Locales                            ║
 ╚══════════════════════════════════════════════════════════════════════╝
 
@@ -46,7 +46,7 @@ Formatos Soportados:
     - Texto plano: Listas simples línea por línea
 
 Autor: Melomaniac Team
-Versión: 3.3.8
+Versión: 4.0.0
 Fecha: 2026
 """
 
@@ -87,39 +87,42 @@ _LOCAL_EXTINF_RE    = re.compile(r'^#EXTINF\s*:\s*-?\d+\s*,\s*', re.IGNORECASE)
 _LOCAL_SEPARATORS   = (' – ', ' - ', ' — ', ' _ ')
 
 
-def _parse_local_line(raw: str) -> Optional[tuple[str, str]]:
+def _parse_local_line(raw: str, order: str = "artist-title") -> Optional[tuple[str, str]]:
     """
-    Parsea una línea de texto crudo extrayendo artista y título.
-    
-    Implementa limpieza multi-etapa para extraer metadatos de nombres
-    de archivo o líneas de playlist:
-    1. Normalización Unicode NFC
-    2. Eliminación de directivas M3U (#EXTINF)
-    3. Eliminación de extensiones de archivo
-    4. Eliminación de números de track
-    5. Eliminación de paréntesis/corchetes
-    6. Detección de separador artista-título
-    
-    Args:
-        raw: Línea de texto crudo (nombre de archivo o entrada de playlist).
-    
-    Returns:
-        Tupla (artista, título) si se pudo parsear, None si la línea está vacía.
-        Si no se detecta separador, retorna ("", título_completo).
-    
-    Example:
-        >>> _parse_local_line("01. Queen - Bohemian Rhapsody.mp3")
-        ("Queen", "Bohemian Rhapsody")
-        >>> _parse_local_line("The Beatles – Let It Be [Remastered].flac")
-        ("The Beatles", "Let It Be")
-        >>> _parse_local_line("#EXTINF:245,Pink Floyd - Wish You Were Here")
-        ("Pink Floyd", "Wish You Were Here")
-    
-    Note:
-        La función prueba múltiples separadores en orden de especificidad:
-        ' – ' (em dash con espacios) es más específico que ' - ' (guion simple).
-        Esto previene splits incorrectos en títulos que contienen guiones.
-    """
+     Parsea una línea de texto crudo extrayendo artista y título.
+     
+     Implementa limpieza multi-etapa para extraer metadatos de nombres
+     de archivo o líneas de playlist:
+     1. Normalización Unicode NFC
+     2. Eliminación de directivas M3U (#EXTINF)
+     3. Eliminación de extensiones de archivo
+     4. Eliminación de números de track
+     5. Eliminación de paréntesis/corchetes
+     6. Detección de separador artista-título
+     
+     Args:
+         raw: Línea de texto crudo (nombre de archivo o entrada de playlist).
+         order: "artist-title" (por defecto, izq=artista der=título, compatible
+                TuneMyMusic) o "title-artist" (invertido). Elige al importar/
+                exportar para evitar inversión.
+     
+     Returns:
+         Tupla (artista, título) si se pudo parsear, None si la línea está vacía.
+         Si no se detecta separador, retorna ("", título_completo).
+     
+     Example:
+         >>> _parse_local_line("01. Queen - Bohemian Rhapsody.mp3")
+         ("Queen", "Bohemian Rhapsody")
+         >>> _parse_local_line("The Beatles – Let It Be [Remastered].flac")
+         ("The Beatles", "Let It Be")
+         >>> _parse_local_line("#EXTINF:245,Pink Floyd - Wish You Were Here")
+         ("Pink Floyd", "Wish You Were Here")
+     
+     Note:
+         La función prueba múltiples separadores en orden de especificidad:
+         ' – ' (em dash con espacios) es más específico que ' - ' (guion simple).
+         Esto previene splits incorrectos en títulos que contienen guiones.
+     """
     s = unicodedata.normalize('NFC', raw.strip())
     s = _LOCAL_EXTINF_RE.sub('', s)
     s = _LOCAL_FILE_EXT_RE.sub('', s)
@@ -131,8 +134,11 @@ def _parse_local_line(raw: str) -> Optional[tuple[str, str]]:
     for sep in _LOCAL_SEPARATORS:
         if sep in s:
             parts = s.split(sep, 1)
-            title  = parts[0].strip()
-            artist = parts[1].strip()
+            left, right = parts[0].strip(), parts[1].strip()
+            if order == "title-artist":
+                title, artist = left, right
+            else:  # artist-title (default)
+                artist, title = left, right
             if title:
                 return (artist, title)
     return ("", s)
@@ -183,43 +189,44 @@ def _parse_xspf(text: str) -> list[tuple[str, str]]:
         return []
 
 
-def _parse_wpl(text: str) -> list[tuple[str, str]]:
+def _parse_wpl(text: str, order: str = "artist-title") -> list[tuple[str, str]]:
     """
-    Parsea playlist en formato WPL (Windows Media Player Playlist).
-    
-    WPL es un formato XML propietario de Microsoft. Este parser extrae
-    nombres de archivo del atributo 'src' y los procesa con _parse_local_line.
-    
-    Args:
-        text: Contenido completo del archivo WPL como string.
-    
-    Returns:
-        Lista de tuplas (artista, título). Lista vacía si el XML es inválido.
-    
-    Example:
-        >>> wpl = '''<?xml version="1.0"?>
-        ... <smil>
-        ...   <body>
-        ...     <seq>
-        ...       <media src="Queen - Bohemian Rhapsody.mp3"/>
-        ...     </seq>
-        ...   </body>
-        ... </smil>'''
-        >>> _parse_wpl(wpl)
-        [("Queen", "Bohemian Rhapsody")]
-    
-    Note:
-        WPL almacena rutas de archivo completas, por lo que extraemos
-        solo el basename antes de parsear. Soporta rutas Windows con
-        backslashes que son normalizadas a forward slashes.
-    """
+     Parsea playlist en formato WPL (Windows Media Player Playlist).
+     
+     WPL es un formato XML propietario de Microsoft. Este parser extrae
+     nombres de archivo del atributo 'src' y los procesa con _parse_local_line.
+     
+     Args:
+         text: Contenido completo del archivo WPL como string.
+         order: "artist-title" o "title-artist" (ver _parse_local_line).
+     
+     Returns:
+         Lista de tuplas (artista, título). Lista vacía si el XML es inválido.
+     
+     Example:
+         >>> wpl = '''<?xml version="1.0"?>
+         ... <smil>
+         ...   <body>
+         ...     <seq>
+         ...       <media src="Queen - Bohemian Rhapsody.mp3"/>
+         ...     </seq>
+         ...   </body>
+         ... </smil>'''
+         >>> _parse_wpl(wpl)
+         [("Queen", "Bohemian Rhapsody")]
+     
+     Note:
+         WPL almacena rutas de archivo completas, por lo que extraemos
+         solo el basename antes de parsear. Soporta rutas Windows con
+         backslashes que son normalizadas a forward slashes.
+     """
     try:
         root  = ET.fromstring(text)
         pairs: list[tuple[str, str]] = []
         for media in root.findall('.//media'):
             src  = media.get('src', '')
             base = os.path.basename(src.replace('\\', '/'))
-            pair = _parse_local_line(base)
+            pair = _parse_local_line(base, order=order)
             if pair:
                 pairs.append(pair)
         return pairs
@@ -227,38 +234,40 @@ def _parse_wpl(text: str) -> list[tuple[str, str]]:
         return []
 
 
-def _parse_csv(text: str) -> list[tuple[str, str]]:
+def _parse_csv(text: str, order: str = "artist-title") -> list[tuple[str, str]]:
     """
-    Parsea playlist en formato CSV con detección automática de headers.
-    
-    Implementa detección inteligente de estructura CSV:
-    1. Detecta si la primera fila es header (busca keywords)
-    2. Identifica columnas de título y artista por nombre
-    3. Fallback a posiciones fijas si no hay headers
-    4. Soporta filas de una sola columna parseadas con _parse_local_line
-    
-    Args:
-        text: Contenido completo del archivo CSV como string.
-    
-    Returns:
-        Lista de tuplas (artista, título).
-    
-    Example:
-        >>> csv_text = '''Title,Artist
-        ... Bohemian Rhapsody,Queen
-        ... Imagine,John Lennon'''
-        >>> _parse_csv(csv_text)
-        [("Queen", "Bohemian Rhapsody"), ("John Lennon", "Imagine")]
-    
-    Note:
-        La detección de headers busca keywords comunes en múltiples idiomas:
-        'title', 'name', 'track', 'song', 'artist', 'author'.
-        
-        Soporta tres formatos:
-        - CSV con headers: Usa nombres de columna para identificar campos
-        - CSV sin headers (2+ columnas): Asume columna 0=título, 1=artista
-        - CSV de una columna: Parsea cada línea con _parse_local_line
-    """
+     Parsea playlist en formato CSV con detección automática de headers.
+     
+     Implementa detección inteligente de estructura CSV:
+     1. Detecta si la primera fila es header (busca keywords)
+     2. Identifica columnas de título y artista por nombre
+     3. Fallback a posiciones fijas si no hay headers
+     4. Soporta filas de una sola columna parseadas con _parse_local_line
+     
+     Args:
+         text: Contenido completo del archivo CSV como string.
+         order: "artist-title" o "title-artist" para fallback sin headers y
+                para filas de una sola columna (ver _parse_local_line).
+     
+     Returns:
+         Lista de tuplas (artista, título).
+     
+     Example:
+         >>> csv_text = '''Title,Artist
+         ... Bohemian Rhapsody,Queen
+         ... Imagine,John Lennon'''
+         >>> _parse_csv(csv_text)
+         [("Queen", "Bohemian Rhapsody"), ("John Lennon", "Imagine")]
+     
+     Note:
+         La detección de headers busca keywords comunes en múltiples idiomas:
+         'title', 'name', 'track', 'song', 'artist', 'author'.
+         
+         Soporta tres formatos:
+         - CSV con headers: Usa nombres de columna para identificar campos
+         - CSV sin headers (2+ columnas): Usa `order` para mapear col 0/1
+         - CSV de una columna: Parsea cada línea con _parse_local_line(order)
+     """
     pairs: list[tuple[str, str]] = []
     reader = csv.reader(io.StringIO(text))
     rows   = list(reader)
@@ -283,10 +292,15 @@ def _parse_csv(text: str) -> list[tuple[str, str]]:
             title  = row[ti].strip().strip('"')
             artist = row[ai].strip().strip('"')
         elif len(row) >= 2:
-            title  = row[0].strip().strip('"')
-            artist = row[1].strip().strip('"')
+            # Fallback posicional: respeta `order`
+            if order == "artist-title":
+                artist = row[0].strip().strip('"')
+                title  = row[1].strip().strip('"')
+            else:
+                title  = row[0].strip().strip('"')
+                artist = row[1].strip().strip('"')
         elif len(row) == 1:
-            p = _parse_local_line(row[0])
+            p = _parse_local_line(row[0], order=order)
             if p:
                 pairs.append(p)
             continue
@@ -297,11 +311,13 @@ def _parse_csv(text: str) -> list[tuple[str, str]]:
     return pairs
 
 
-def parse_local_playlist(text: str, filename: str = "") -> list[tuple[str, str]]:
+def parse_local_playlist(text: str, filename: str = "", order: str = "artist-title") -> list[tuple[str, str]]:
     """
-    Parse raw text from supported file formats into (artist, title) pairs.
-    Supported: .txt .csv .m3u .m3u8 .pls .wpl .xspf .xml and bare text.
-    """
+     Parse raw text from supported file formats into (artist, title) pairs.
+     Supported: .txt .csv .m3u .m3u8 .pls .wpl .xspf .xml and bare text.
+     Args:
+         order: "artist-title" (default, TuneMyMusic-compatible) o "title-artist".
+     """
     ext = os.path.splitext(filename)[1].lower() if filename else ""
 
     if ext in ('.xspf', '.xml'):
@@ -310,7 +326,7 @@ def parse_local_playlist(text: str, filename: str = "") -> list[tuple[str, str]]
             return pairs
 
     if ext == '.wpl':
-        pairs = _parse_wpl(text)
+        pairs = _parse_wpl(text, order=order)
         if pairs:
             return pairs
 
@@ -321,14 +337,14 @@ def parse_local_playlist(text: str, filename: str = "") -> list[tuple[str, str]]
         for line in lines:
             m = re.match(r'^Title\d+=(.+)$', line.strip(), re.IGNORECASE)
             if m:
-                pair = _parse_local_line(m.group(1))
+                pair = _parse_local_line(m.group(1), order=order)
                 if pair:
                     pairs.append(pair)
         if pairs:
             return pairs
 
     if ext == '.csv':
-        pairs = _parse_csv(text)
+        pairs = _parse_csv(text, order=order)
         if pairs:
             return pairs
 
@@ -346,7 +362,7 @@ def parse_local_playlist(text: str, filename: str = "") -> list[tuple[str, str]]
             continue
         raw = pending if pending else os.path.basename(line.replace('\\', '/'))
         pending = ""
-        pair = _parse_local_line(raw)
+        pair = _parse_local_line(raw, order=order)
         if pair:
             pairs.append(pair)
     return pairs
@@ -406,10 +422,10 @@ def _playlist_audio_paths(text: str, filename: str = "") -> list[str]:
 
 
 def parse_local_playlist_with_paths(
-    text: str, filename: str = ""
+    text: str, filename: str = "", order: str = "artist-title"
 ) -> list[tuple[str, str, str]]:
     """Parsea una playlist y conserva la ruta local cuando está disponible."""
-    pairs = parse_local_playlist(text, filename=filename)
+    pairs = parse_local_playlist(text, filename=filename, order=order)
     paths = _playlist_audio_paths(text, filename=filename)
     if len(paths) != len(pairs):
         paths = [""] * len(pairs)

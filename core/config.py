@@ -1,5 +1,5 @@
 """
-core/config.py — Melomaniac v3.3.8 — Configuración Centralizada
+core/config.py — Melomaniac v4.0.0 — Configuración Centralizada
 ══════════════════════════════════════════════════════════════════
 Fuente única para constantes compartidas (regla 1).
 Centraliza el orden de plataformas, concurrencia y parámetros de servicios
@@ -18,6 +18,13 @@ PLATFORM_ORDER: tuple[str, ...] = (
 PLATFORMS: list[str] = list(PLATFORM_ORDER)
 LOCAL_SOURCES: frozenset[str] = frozenset({"Archivo Local", "Pegar Texto"})
 SOURCE_OPTIONS: list[str] = [*PLATFORMS, *sorted(LOCAL_SOURCES)]
+
+# Destino de exportación local (espejo de parsers, usa pathlib)
+EXPORT_DEST_LABEL: str = "Archivo Local (Exportar)"
+EXPORT_FORMATS: tuple[str, ...] = ("txt", "csv", "m3u", "m3u8", "xspf")
+EXPORT_ORDERS: tuple[str, ...] = ("artist-title", "title-artist")
+DEFAULT_EXPORT_ORDER: str = "artist-title"  # TuneMyMusic-compatible
+DEFAULT_EXPORT_FORMAT: str = "txt"
 
 # ── Concurrencia (configurable, no forzado) ─────────────────────────
 NETWORK_CONCURRENCY: int = 2

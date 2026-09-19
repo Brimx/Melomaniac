@@ -1,6 +1,6 @@
 """
 ╔══════════════════════════════════════════════════════════════════════╗
-║                    Melomaniac v3.3.8                             ║
+║                    Melomaniac v4.0.0                             ║
 ║              Interfaz Principal de Usuario                           ║
 ╚══════════════════════════════════════════════════════════════════════╝
 
@@ -45,7 +45,7 @@ Componentes Principales:
     - Dialogs: Modales para errores y confirmaciones
 
 Autor: Melomaniac Team
-Versión: 3.3.8
+Versión: 4.0.0
 Fecha: 2026
 """
 
@@ -60,7 +60,9 @@ import flet as ft
 
 from core.models import Track, LoadState, TransferState
 from core.state import AppState
+from core.config import EXPORT_DEST_LABEL, EXPORT_FORMATS, EXPORT_ORDERS
 from engine.parsers import parse_local_playlist_with_paths, build_local_tracks
+from engine.exporters import export_tracks, default_export_path
 from ui.song_row import SongRow, SkeletonRow, ITEM_H
 from ui.telemetry import TelemetryDrawer
 from ui.widgets import (
@@ -126,6 +128,41 @@ class PlaylistManagerUI(DialogMixin):
     def _close_dlg(self, dlg) -> None:
         # Compat: ciclo de vida canónico en DialogMixin.
         self.close_dialog(self.page, dlg)
+
+    def _make_order_segmented(self, current: str, on_change=None) -> ft.Control:
+        """SegmentedButton para elegir Artista-Título vs Título-Artista (reusa tokens)."""
+        # Fallback a Dropdown si SegmentedButton no está disponible en runtime
+        try:
+            return ft.SegmentedButton(
+                selected={current},
+                allow_empty_selection=False,
+                allow_multiple_selection=False,
+                show_selected_icon=False,
+                style=ft.ButtonStyle(
+                    bgcolor={ft.ControlState.SELECTED: ACCENT, ft.ControlState.DEFAULT: BG_SURFACE},
+                    color={ft.ControlState.SELECTED: TEXT_PRIMARY, ft.ControlState.DEFAULT: TEXT_MUTED},
+                ),
+                segments=[
+                    ft.Segment(value="artist-title", label=ft.Text("Artista - Título", size=11)),
+                    ft.Segment(value="title-artist", label=ft.Text("Título - Artista", size=11)),
+                ],
+                on_change=on_change,
+            )
+        except Exception:
+            # fallback Dropdown compacto
+            dd = ft.Dropdown(
+                value=current,
+                width=200, height=38,
+                bgcolor=BG_INPUT, border_color=BORDER_LIGHT, focused_border_color=ACCENT,
+                text_style=ft.TextStyle(color=TEXT_PRIMARY, size=11, font_family="IBM Plex Sans"),
+                content_padding=ft.Padding.symmetric(horizontal=10, vertical=0),
+                options=[
+                    ft.dropdown.Option("artist-title", "Artista - Título"),
+                    ft.dropdown.Option("title-artist", "Título - Artista"),
+                ],
+                on_select=on_change,  # compat
+            )
+            return dd
                                   
     def __init__(self, page: ft.Page, state: AppState):
         """
@@ -165,6 +202,8 @@ class PlaylistManagerUI(DialogMixin):
         
         self._file_picker = ft.FilePicker()
         page.services.append(self._file_picker)
+        self._save_picker = ft.FilePicker()
+        page.services.append(self._save_picker)
 
         # ──────────────────────────────────────────────────────────────
         # CAMPO DE TEXTO PARA PEGAR LISTAS
@@ -283,7 +322,7 @@ class PlaylistManagerUI(DialogMixin):
                         ft.TextSpan("Melomaniac", ft.TextStyle(size=20,
                                                                color=TEXT_PRIMARY, font_family="IBM Plex Sans Light")),
                     ], opacity=1.0),
-                    ft.Text("v3.3.8", size=9, color=TEXT_DIM, font_family="IBM Plex Sans",
+                    ft.Text("v4.0.0", size=9, color=TEXT_DIM, font_family="IBM Plex Sans",
                             style=ft.TextStyle(letter_spacing=0.8), opacity=1.0),
                 ], spacing=0, tight=True, expand=True),
                 self.btn_wizard,
@@ -308,7 +347,22 @@ class PlaylistManagerUI(DialogMixin):
                 asyncio.create_task(self._refresh_auth_live())
 
         def _on_dst_select(e) -> None:
-            s.set_destination(e.control.value)
+            val = e.control.value
+            s.set_destination(val)
+            if val == EXPORT_DEST_LABEL:
+                # Export local no requiere sesión
+                self._transfer_btn.content.value = "Exportar"  # type: ignore
+                self._transfer_btn.icon = ft.Icons.SAVE_ALT  # type: ignore
+                self._transfer_btn.update()
+                return
+            else:
+                # restaura icono transfer si venía de export
+                try:
+                    self._transfer_btn.content.value = "Transferir"  # type: ignore
+                    self._transfer_btn.icon = ft.Icons.SWAP_HORIZ  # type: ignore
+                    self._transfer_btn.update()
+                except Exception:
+                    pass
             asyncio.create_task(self._refresh_auth_live())
 
         self._src_dd = ft.Dropdown(
@@ -316,9 +370,10 @@ class PlaylistManagerUI(DialogMixin):
             options=[ft.dropdown.Option(key=p, text=p) for p in AppState.SOURCE_OPTIONS],
             on_select=_on_src_select, **_dd_style,
         )
+        _dst_opts = [*AppState.PLATFORMS, EXPORT_DEST_LABEL]
         self._dst_dd = ft.Dropdown(
             label="Destino", value=s.destination,
-            options=[ft.dropdown.Option(key=p, text=p) for p in AppState.PLATFORMS],
+            options=[ft.dropdown.Option(key=p, text=p) for p in _dst_opts],
             on_select=_on_dst_select, **_dd_style,
         )
         self._status_badge      = ft.Text("", size=10, color=SUCCESS, font_family="IBM Plex Sans", opacity=1.0)
@@ -703,16 +758,32 @@ class PlaylistManagerUI(DialogMixin):
             hint = s.auth_session_hint.get(plat) or ""
             base = f"{plat}: clic para revalidar ahora"
             ic.tooltip = f"{base} \u00b7 {hint}" if hint else f"{base} \u00b7 {'OK' if ok else 'fallo'}"
-        dest_ok = s.auth_session_ok.get(s.destination, True)
-        self._dest_session_warn.visible = not dest_ok
-        self._dest_session_warn.value = "" if dest_ok else f"Sesi\u00f3n expirada en {s.destination}"
+        if s.destination == EXPORT_DEST_LABEL:
+            dest_ok = True
+            self._dest_session_warn.visible = False
+            self._dest_session_warn.value = ""
+        else:
+            dest_ok = s.auth_session_ok.get(s.destination, True)
+            self._dest_session_warn.visible = not dest_ok
+            self._dest_session_warn.value = "" if dest_ok else f"Sesi\u00f3n expirada en {s.destination}"
         if s.source == s.destination:
             self._status_badge.value = "\u26a0 Origen y destino iguales"
             self._status_badge.color = WARNING
+        elif s.destination == EXPORT_DEST_LABEL:
+            self._status_badge.value = f"\u2713 {s.source} \u2192 Exportar local"
+            self._status_badge.color = SUCCESS
         else:
             self._status_badge.value = f"\u2713 {s.source} \u2192 {s.destination}"
             self._status_badge.color = SUCCESS
         self._select_all_chk.value = s.select_all
+        # actualiza label del botón transferir/exportar según destino
+        try:
+            is_export = s.destination == EXPORT_DEST_LABEL
+            self._transfer_btn.content.value = "Exportar" if is_export else "Transferir"  # type: ignore
+            self._transfer_btn.icon = ft.Icons.SAVE_ALT if is_export else ft.Icons.SWAP_HORIZ  # type: ignore
+            self._transfer_btn.update()
+        except Exception:
+            pass
         return dest_ok
 
     def _sync_list_state(self, s, is_loading: bool, is_ready: bool, is_error: bool, is_idle: bool) -> None:
@@ -833,11 +904,18 @@ class PlaylistManagerUI(DialogMixin):
         self._telemetry.sync_mode()
 
     def _sync_action_buttons(self, s, is_local_src: bool, dest_ok: bool, is_loading: bool, is_transferring: bool, is_ready: bool, net_blocked: bool, rule4_blocked: bool) -> None:
+        is_export = s.destination == EXPORT_DEST_LABEL
         self._load_btn.disabled = net_blocked or is_loading
-        self._transfer_btn.disabled = net_blocked or is_transferring or not is_ready or not dest_ok or rule4_blocked
+        if is_export:
+            # export local no depende de red/auth
+            self._transfer_btn.disabled = is_transferring or not is_ready or rule4_blocked
+        else:
+            self._transfer_btn.disabled = net_blocked or is_transferring or not is_ready or not dest_ok or rule4_blocked
         self._clear_session_btn.disabled = is_loading or is_transferring
         self._id_clear_btn.visible = bool(self._id_field.value)
-        if rule4_blocked:
+        if is_export:
+            self._transfer_btn.tooltip = "Exportar selección a archivo (TXT/CSV/M3U/XSPF)"
+        elif rule4_blocked:
             self._transfer_btn.tooltip = "\u26a0 Elige un destino antes de transferir"
         elif not dest_ok:
             self._transfer_btn.tooltip = f"Sesi\u00f3n expirada en {s.destination}"
@@ -906,6 +984,17 @@ class PlaylistManagerUI(DialogMixin):
     def _open_paste_dialog(self) -> None:
         self._paste_field.value = ""
 
+        def _on_order_change(e):
+            # SegmentedButton -> set, Dropdown -> value
+            try:
+                val = list(e.control.selected)[0] if hasattr(e.control, "selected") and e.control.selected else e.control.value
+            except Exception:
+                val = getattr(e.control, "value", "artist-title")
+            if val in ("artist-title", "title-artist"):
+                self.state.local_parse_order = val
+
+        order_seg = self._make_order_segmented(self.state.local_parse_order, on_change=_on_order_change)
+
         def _close_paste():
             self._close_dlg(paste_dlg)
 
@@ -922,12 +1011,20 @@ class PlaylistManagerUI(DialogMixin):
 
         paste_dlg = app_dialog(
             "Pegar Texto",
-            ft.Container(content=self._paste_field, width=480, height=220),
+            ft.Column([
+                ft.Container(content=self._paste_field, width=480, height=220),
+                ft.Row([
+                    ft.Text("Orden:", size=10, color=TEXT_MUTED, font_family="IBM Plex Sans"),
+                    order_seg
+                ], spacing=8, vertical_alignment=ft.CrossAxisAlignment.CENTER),
+                ft.Text("Elige cómo está escrito cada línea (TuneMyMusic usa Artista - Título).",
+                        size=9, color=TEXT_DIM, font_family="IBM Plex Sans"),
+            ], spacing=10, tight=True),
             [
                 dialog_action("Procesar", _process, kind="primary", icon=ft.Icons.PLAY_ARROW_OUTLINED),
                 dialog_action("Cancelar", lambda _: _close_paste(), kind="muted"),
             ],
-            width=480,
+            width=520,
         )
         self.page.show_dialog(paste_dlg)
 
@@ -938,6 +1035,16 @@ class PlaylistManagerUI(DialogMixin):
             label="Nombre de la Playlist",
             autofocus=True, on_submit=lambda _: _confirm(None),
         )
+
+        def _on_order_change2(e):
+            try:
+                val = list(e.control.selected)[0] if hasattr(e.control, "selected") and e.control.selected else e.control.value
+            except Exception:
+                val = getattr(e.control, "value", "artist-title")
+            if val in ("artist-title", "title-artist"):
+                self.state.local_parse_order = val
+
+        order_seg2 = self._make_order_segmented(self.state.local_parse_order, on_change=_on_order_change2)
 
         def _close():
             self._close_dlg(name_dlg)
@@ -954,12 +1061,18 @@ class PlaylistManagerUI(DialogMixin):
                 ft.Text("Asigna un nombre antes de importar. Si lo dejas vacío se usará el nombre sugerido.",
                         size=11, color=TEXT_MUTED, font_family="IBM Plex Sans"),
                 name_field,
+                ft.Row([
+                    ft.Text("Orden:", size=10, color=TEXT_MUTED, font_family="IBM Plex Sans"),
+                    order_seg2
+                ], spacing=8, vertical_alignment=ft.CrossAxisAlignment.CENTER),
+                ft.Text("Confirma el orden de cada línea antes de importar.",
+                        size=9, color=TEXT_DIM, font_family="IBM Plex Sans"),
             ], spacing=10, tight=True),
             [
                 dialog_action("Importar", _confirm, kind="primary", icon=ft.Icons.CHECK_OUTLINED),
                 dialog_action("Cancelar", lambda _: _close(), kind="muted"),
             ],
-            width=400,
+            width=460,
             icon=ft.Icons.DRIVE_FILE_RENAME_OUTLINE,
         )
         self.page.show_dialog(name_dlg)
@@ -992,7 +1105,7 @@ class PlaylistManagerUI(DialogMixin):
 
     def _ingest_text(self, text: str, label: str = "", filename: str = "") -> None:
         try:
-            pairs = parse_local_playlist_with_paths(text, filename=filename or label)
+            pairs = parse_local_playlist_with_paths(text, filename=filename or label, order=self.state.local_parse_order)
         except Exception as exc:  # pylint: disable=broad-exception-caught
             self.state.log(f"[ERROR] Parser ingesta: {exc}")
             self._snack(f"Error en el parser: {exc}", error=True)
@@ -1030,6 +1143,10 @@ class PlaylistManagerUI(DialogMixin):
         self.state.log(f"[INFO] Audio local importado · {path}")
 
     async def _on_transfer(self, _) -> None:
+        # Ruta export local como destino — no va por MusicApiService
+        if self.state.destination == EXPORT_DEST_LABEL:
+            await self._open_export_dialog()
+            return
         if self.state.source == self.state.destination:
             self._snack("Origen y destino no pueden ser iguales", error=True)
             return
@@ -1057,6 +1174,114 @@ class PlaylistManagerUI(DialogMixin):
             title_override=meta.title,
             description_override=meta.description,
         )
+
+    async def _open_export_dialog(self) -> None:
+        """Diálogo de export local: formato + orden + ruta (pathlib + FilePicker)."""
+        if not self.state.tracks:
+            self._snack("No hay playlist cargada para exportar", error=True)
+            return
+        # Tracks a exportar: seleccionadas si las hay, si no display
+        src_tracks = [t for t in self.state.tracks if t.selected]
+        if not src_tracks:
+            src_tracks = list(self.state.display_tracks) if hasattr(self.state, "display_tracks") else list(self.state.tracks)
+        if not src_tracks:
+            self._snack("No hay canciones para exportar", error=True)
+            return
+
+        # Estado local export (persiste en AppState)
+        fmt_val = getattr(self.state, "local_export_format", "txt")
+        order_val = getattr(self.state, "local_export_order", "artist-title")
+
+        def _on_fmt_change(e):
+            self.state.local_export_format = e.control.value
+        def _on_order_change_exp(e):
+            try:
+                val = list(e.control.selected)[0] if hasattr(e.control, "selected") and e.control.selected else e.control.value
+            except Exception:
+                val = getattr(e.control, "value", "artist-title")
+            if val in ("artist-title", "title-artist"):
+                self.state.local_export_order = val
+
+        fmt_dd = ft.Dropdown(
+            label="Formato", value=fmt_val,
+            width=160, height=38,
+            bgcolor=BG_INPUT, border_color=BORDER_LIGHT, focused_border_color=ACCENT,
+            text_style=ft.TextStyle(color=TEXT_PRIMARY, size=11, font_family="IBM Plex Sans"),
+            content_padding=ft.Padding.symmetric(horizontal=10, vertical=0),
+            options=[ft.dropdown.Option(k, k.upper()) for k in EXPORT_FORMATS],
+            on_select=_on_fmt_change,
+        )
+        order_seg = self._make_order_segmented(order_val, on_change=_on_order_change_exp)
+
+        default_path = str(default_export_path(self.state.playlist_name, fmt_val))  # type: ignore
+        path_field = app_text_field(
+            value=default_path, label="Ruta destino", hint_text=str(default_path),
+            prefix_icon=ft.Icons.FOLDER_OUTLINED, expand=True,
+        )
+
+        async def _pick_save(_):
+            # usa FilePicker.save_file (Flet 0.86) con fallback a pick
+            try:
+                res = await self._save_picker.save_file(
+                    dialog_title="Guardar playlist",
+                    file_name=path_field.value.split("/")[-1].split("\\")[-1] or "playlist.txt",
+                    allowed_extensions=list(EXPORT_FORMATS),
+                )
+                # save_file retorna FilePickerFile o None según versión
+                if res and getattr(res, "path", None):
+                    path_field.value = res.path
+                    path_field.update()
+                elif isinstance(res, str) and res:
+                    path_field.value = res
+                    path_field.update()
+            except Exception:
+                # fallback: usa path por defecto
+                pass
+
+        pick_btn = _ghost_btn("Elegir…", ft.Icons.FOLDER_OPEN, lambda e: self.page.run_task(_pick_save(e)), width=90, height=38)
+
+        # preview count
+        info_txt = ft.Text(f"{len(src_tracks)} canciones · {self.state.playlist_name[:30]}", size=10, color=TEXT_MUTED, font_family="IBM Plex Sans")
+
+        # necesitamos capturar dlg en closure
+        dlg_ref: dict = {}
+
+        def _do_export(_):
+            fmt = getattr(self.state, "local_export_format", "txt")
+            order = getattr(self.state, "local_export_order", "artist-title")
+            path = (path_field.value or "").strip() or str(default_export_path(self.state.playlist_name, fmt))  # type: ignore
+            # asegura extensión coincide con fmt
+            from pathlib import Path as _P
+            p = _P(path).expanduser()
+            if not p.suffix:
+                p = _P(str(p) + f".{fmt.replace('m3u','m3u8')}")
+            try:
+                out = export_tracks(src_tracks, p, fmt=fmt, order=order, playlist_name=self.state.playlist_name)  # type: ignore
+                self._close_dlg(dlg_ref["dlg"])
+                self._snack(f"Exportado {len(src_tracks)} canciones → {out}")
+                self.state.log(f"[INFO] Export local · {len(src_tracks)} → {out} ({fmt}, {order})")
+            except Exception as exc:
+                self._snack(f"Error al exportar: {exc}", error=True)
+                self.state.log(f"[ERROR] Export falló: {exc}")
+
+        dlg = app_dialog(
+            "Exportar playlist",
+            ft.Column([
+                ft.Text("Guarda la selección actual con el mismo bloque que lee TXT/CSV/M3U/XSPF. Elige orden para round-trip con TuneMyMusic.",
+                        size=10, color=TEXT_MUTED, font_family="IBM Plex Sans"),
+                info_txt,
+                ft.Row([fmt_dd, ft.Container(expand=True), order_seg], spacing=8, vertical_alignment=ft.CrossAxisAlignment.CENTER),
+                ft.Row([path_field, pick_btn], spacing=8, vertical_alignment=ft.CrossAxisAlignment.CENTER),
+            ], spacing=12, tight=True),
+            [
+                dialog_action("Cancelar", lambda _: self._close_dlg(dlg), kind="muted"),
+                dialog_action("Exportar", _do_export, kind="primary", icon=ft.Icons.SAVE_ALT),
+            ],
+            width=560,
+            icon=ft.Icons.SAVE_OUTLINED,
+        )
+        dlg_ref["dlg"] = dlg
+        self.page.show_dialog(dlg)
 
     async def _on_search_change(self, e: ft.ControlEvent) -> None:
         if self._search_task and not self._search_task.done():

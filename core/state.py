@@ -1,6 +1,6 @@
 """
 ╔══════════════════════════════════════════════════════════════════════╗
-║                    Melomaniac v3.3.8                               ║
+║                    Melomaniac v4.0.0                               ║
 ║                    Estado Global de la Aplicación                    ║
 ╚══════════════════════════════════════════════════════════════════════╝
 
@@ -44,7 +44,7 @@ Funciones Auxiliares:
     - core.availability: resolución de disponibilidad por pista
 
 Autor: Melomaniac Team
-Versión: 3.3.8
+Versión: 4.0.0
 Fecha: 2026
 """
 
@@ -201,6 +201,16 @@ class AppState:
         # ──────────────────────────────────────────────────────────────
         
         self.search_query: str = ""
+
+        # ──────────────────────────────────────────────────────────────
+        # ORDEN DE IMPORTACIÓN / EXPORTACIÓN LOCAL
+        # ──────────────────────────────────────────────────────────────
+        # "artist-title" (Artista - Título, default TuneMyMusic) o "title-artist"
+        from core.config import DEFAULT_EXPORT_FORMAT, DEFAULT_EXPORT_ORDER
+        self.local_parse_order: str = DEFAULT_EXPORT_ORDER
+        self.local_export_order: str = DEFAULT_EXPORT_ORDER
+        self.local_export_format: str = DEFAULT_EXPORT_FORMAT
+        self.local_export_dir: str = ""  # vacío = default ~/Documentos/.../Exports
 
         # ──────────────────────────────────────────────────────────────
         # CIRCUIT BREAKERS POR PLATAFORMA
