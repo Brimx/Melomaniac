@@ -134,7 +134,7 @@ class PlaylistManagerUI(DialogMixin):
         # Fallback a Dropdown si SegmentedButton no está disponible en runtime
         try:
             return ft.SegmentedButton(
-                selected={current},
+                selected=[current],
                 allow_empty_selection=False,
                 allow_multiple_selection=False,
                 show_selected_icon=False,
@@ -168,7 +168,7 @@ class PlaylistManagerUI(DialogMixin):
         """SegmentedButton Todo|Visibles|Seleccionadas — reusa tokens."""
         try:
             return ft.SegmentedButton(
-                selected={current},
+                selected=[current],
                 allow_empty_selection=False,
                 allow_multiple_selection=False,
                 show_selected_icon=False,
@@ -202,7 +202,7 @@ class PlaylistManagerUI(DialogMixin):
         """SegmentedButton Lista|Doble|Preview — modo doble solo al Organizar/Dividir."""
         try:
             return ft.SegmentedButton(
-                selected={current},
+                selected=[current],
                 allow_empty_selection=False,
                 allow_multiple_selection=False,
                 show_selected_icon=False,
@@ -245,7 +245,7 @@ class PlaylistManagerUI(DialogMixin):
                 ft.Text("Función en desarrollo", size=11, color=TEXT_DIM, font_family="IBM Plex Sans", opacity=0.8),
             ], horizontal_alignment=ft.CrossAxisAlignment.CENTER, spacing=8),
             alignment=ft.Alignment.CENTER, visible=visible,
-            left=0, top=0, right=0, bottom=0,
+            expand=True,
         )
 
     def _calc_skeleton_count(self) -> int:
@@ -289,7 +289,7 @@ class PlaylistManagerUI(DialogMixin):
         try:
             # sync segmented selected
             if hasattr(self._mode_seg, 'selected'):
-                self._mode_seg.selected = {mode}
+                self._mode_seg.selected = [mode]
                 self._mode_seg.update()
             else:
                 self._mode_seg.value = mode
