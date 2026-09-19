@@ -213,6 +213,13 @@ class AppState:
         self.local_export_dir: str = ""  # vacío = default ~/Documentos/.../Exports
 
         # ──────────────────────────────────────────────────────────────
+        # VISTA DOBLE ORGANIZAR/DIVIDIR (solo al activar, colapsable)
+        # ──────────────────────────────────────────────────────────────
+        self.show_dual: bool = False       # False= solo Lista, True= doble activa
+        self.dual_mode: str = "lista"      # lista|doble|preview (SegmentedButton)
+        self._dual_scope: str = "visible"  # Todo|Visibles|Seleccionadas para Organizar/Dividir
+
+        # ──────────────────────────────────────────────────────────────
         # CIRCUIT BREAKERS POR PLATAFORMA
         # ──────────────────────────────────────────────────────────────
         # Protección contra rate limiting de APIs
@@ -307,6 +314,44 @@ class AppState:
         base_list = self._base_list()
         return self.filtered if self.search_query else base_list
 
+    # ── Visible / selected por alcance (F6) ────────────────────────────
+
+    def visible_tracks(self) -> list[Track]:
+        """Alias de display_tracks: lo visible tras segmento+búsqueda."""
+        return self.display_tracks
+
+    def selected_in_scope(self, scope: str = "visible") -> list[Track]:
+        """
+        Retorna tracks según alcance para preview/export/transfer.
+        scope: "all"=todo tracks selected, "visible"=selected dentro de visible,
+               "selected"=alias de visible selected, "scope_visible" compat.
+        """
+        if scope in ("visible", "selected", "scope_visible"):
+            vis_ids = {t.id for t in self.visible_tracks()}
+            return [t for t in self.tracks if t.selected and t.id in vis_ids]
+        # "all" o cualquier otro: todas las seleccionadas
+        return [t for t in self.tracks if t.selected]
+
+    @property
+    def selected_visible_count(self) -> int:
+        return len(self.selected_in_scope("visible"))
+
+    # ── Dual view helpers ──────────────────────────────────────────────
+
+    def set_dual_mode(self, mode: str) -> None:
+        """mode: lista|doble|preview — controla SegmentedButton Lista|Doble|Preview."""
+        if mode not in ("lista", "doble", "preview"):
+            return
+        self.dual_mode = mode
+        self.show_dual = mode == "doble"
+        # preview/doble implican que hay preview, lista es solo lista
+        self.notify()
+
+    def set_show_dual(self, show: bool) -> None:
+        self.show_dual = bool(show)
+        self.dual_mode = "doble" if show else "lista"
+        self.notify()
+
     # ── Actions ────────────────────────────────────────────────────────
 
     async def load_playlist(self, playlist_id: str) -> None:
@@ -315,6 +360,10 @@ class AppState:
         self.playlist_id   = playlist_id.strip()
         self.tracks        = []
         self.filtered      = []
+        self.segments      = {}
+        self.active_segment_key = None
+        self.show_dual     = False
+        self.dual_mode     = "lista"
         self.search_query  = ""
         self.load_state    = LoadState.LOADING_META
         self.load_error    = ""
@@ -369,6 +418,10 @@ class AppState:
         self.playlist_description = playlist_description or ""
         self.tracks        = list(tracks)
         self.filtered      = []
+        self.segments      = {}
+        self.active_segment_key = None
+        self.show_dual     = False
+        self.dual_mode     = "lista"
         self.search_query  = ""
         self.load_state    = LoadState.READY
         self.load_error    = ""
@@ -387,6 +440,8 @@ class AppState:
         self.filtered      = []
         self.segments      = {}
         self.active_segment_key = None
+        self.show_dual     = False
+        self.dual_mode     = "lista"
         self.search_query  = ""
         self.load_state    = LoadState.IDLE
         self.load_error    = ""
@@ -707,6 +762,22 @@ class AppState:
             t.selected = new_val
         self.notify()
 
+    def toggle_select_all_scope(self, scope: str = "visible") -> None:
+        """Todo|Visibles|Seleccionadas — para SegmentedButton de Organizar/Dividir."""
+        if scope in ("visible", "selected"):
+            vis = self.visible_tracks()
+            # determina si todos los visibles están seleccionados
+            all_vis_selected = all(t.selected for t in vis) if vis else False
+            new_val = not all_vis_selected
+            vis_ids = {t.id for t in vis}
+            for t in self.tracks:
+                if t.id in vis_ids:
+                    t.selected = new_val
+        else:  # all
+            self.toggle_select_all()
+            return
+        self.notify()
+
     def toggle_track(self, track_id: str) -> None:
         for t in self.tracks:
             if t.id == track_id:
@@ -727,20 +798,70 @@ class AppState:
             ]
         self.notify()
 
-    def organize_sort(self, keys: list[str], reverse: bool = False) -> None:
-        self.tracks = sort_tracks(self.tracks, keys, reverse)
-        if self.segments:
-            for k in self.segments:
-                self.segments[k] = sort_tracks(self.segments[k], keys, reverse)
+    def organize_sort(self, keys: list[str], reverse: bool = False, scope: str = "all") -> None:
+        """
+        Ordena según alcance: all|visible|selected.
+        - all: ordena tracks master y cada segmento (comportamiento actual).
+        - visible/selected: ordena la lista visible y reconstruye orden master preservando visibles arriba.
+        """
+        if scope in ("visible", "selected"):
+            # Para visible/selected, ordena el subset visible y lo refleja en tracks master
+            vis = self.visible_tracks() if scope == "visible" else self.selected_in_scope("visible")
+            if not vis:
+                return
+            sorted_vis = sort_tracks(vis, keys, reverse)
+            # reconstruye tracks manteniendo no-visibles en su posición relativa
+            vis_ids = {t.id for t in vis}
+            # mapa id->track ordenado
+            sorted_iter = iter(sorted_vis)
+            new_tracks: list[Track] = []
+            for t in self.tracks:
+                if t.id in vis_ids:
+                    try:
+                        new_tracks.append(next(sorted_iter))
+                    except StopIteration:
+                        new_tracks.append(t)
+                else:
+                    new_tracks.append(t)
+            self.tracks = new_tracks
+            # si hay segmentos, reordena cada uno igualmente
+            if self.segments:
+                for k in list(self.segments.keys()):
+                    seg_vis = [x for x in self.segments[k] if x.id in vis_ids] if scope == "visible" else [x for x in self.segments[k] if x.selected]
+                    if seg_vis:
+                        sorted_seg = sort_tracks(seg_vis, keys, reverse)
+                        # reconstruye segmento preservando no afectados
+                        seg_ids = {x.id for x in seg_vis}
+                        it = iter(sorted_seg)
+                        self.segments[k] = [next(it) if x.id in seg_ids else x for x in self.segments[k]]
+        else:
+            self.tracks = sort_tracks(self.tracks, keys, reverse)
+            if self.segments:
+                for k in self.segments:
+                    self.segments[k] = sort_tracks(self.segments[k], keys, reverse)
+        # muestra dual automáticamente al organizar
+        self.show_dual = True
+        self.dual_mode = "doble"
         self.apply_search(self.search_query)  # Re-aplica filtro y notifica
 
-    def organize_split(self, key: str) -> None:
-        self.segments = split_tracks(self.tracks, key)
+    def organize_split(self, key: str, scope: str = "all") -> None:
+        """
+        Agrupa según alcance. Por defecto all (toda la lista). Si key no permitida, no hace nada.
+        """
+        src = self.tracks
+        if scope in ("visible", "selected"):
+            # scope limita el src para split, pero mantenemos segmentos completos para UI coherente
+            src = self.visible_tracks() if scope == "visible" else self.selected_in_scope("visible")
+            if not src:
+                return
+        self.segments = split_tracks(src, key)
         if self.segments:
             # Selecciona el primer segmento por defecto (ordenado alfabéticamente)
             self.active_segment_key = sorted(list(self.segments.keys()))[0]
         else:
             self.active_segment_key = None
+        self.show_dual = bool(self.segments)
+        self.dual_mode = "doble" if self.segments else "lista"
         self.apply_search(self.search_query)
 
     def clear_split(self) -> None:

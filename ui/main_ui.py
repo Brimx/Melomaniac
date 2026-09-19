@@ -163,7 +163,251 @@ class PlaylistManagerUI(DialogMixin):
                 on_select=on_change,  # compat
             )
             return dd
+
+    def _make_scope_segmented(self, current: str, on_change=None) -> ft.Control:
+        """SegmentedButton Todo|Visibles|Seleccionadas — reusa tokens."""
+        try:
+            return ft.SegmentedButton(
+                selected={current},
+                allow_empty_selection=False,
+                allow_multiple_selection=False,
+                show_selected_icon=False,
+                style=ft.ButtonStyle(
+                    bgcolor={ft.ControlState.SELECTED: ACCENT, ft.ControlState.DEFAULT: BG_SURFACE},
+                    color={ft.ControlState.SELECTED: TEXT_PRIMARY, ft.ControlState.DEFAULT: TEXT_MUTED},
+                ),
+                segments=[
+                    ft.Segment(value="all", label=ft.Text("Todo", size=11)),
+                    ft.Segment(value="visible", label=ft.Text("Visibles", size=11)),
+                    ft.Segment(value="selected", label=ft.Text("Seleccionadas", size=11)),
+                ],
+                on_change=on_change,
+            )
+        except Exception:
+            return ft.Dropdown(
+                value=current,
+                width=200, height=38,
+                bgcolor=BG_INPUT, border_color=BORDER_LIGHT, focused_border_color=ACCENT,
+                text_style=ft.TextStyle(color=TEXT_PRIMARY, size=11, font_family="IBM Plex Sans"),
+                content_padding=ft.Padding.symmetric(horizontal=10, vertical=0),
+                options=[
+                    ft.dropdown.Option("all", "Todo"),
+                    ft.dropdown.Option("visible", "Visibles"),
+                    ft.dropdown.Option("selected", "Seleccionadas"),
+                ],
+                on_select=on_change,
+            )
+
+    def _make_mode_segmented(self, current: str, on_change=None) -> ft.Control:
+        """SegmentedButton Lista|Doble|Preview — modo doble solo al Organizar/Dividir."""
+        try:
+            return ft.SegmentedButton(
+                selected={current},
+                allow_empty_selection=False,
+                allow_multiple_selection=False,
+                show_selected_icon=False,
+                style=ft.ButtonStyle(
+                    bgcolor={ft.ControlState.SELECTED: ACCENT, ft.ControlState.DEFAULT: BG_SURFACE},
+                    color={ft.ControlState.SELECTED: TEXT_PRIMARY, ft.ControlState.DEFAULT: TEXT_MUTED},
+                ),
+                segments=[
+                    ft.Segment(value="lista", label=ft.Text("Lista", size=11)),
+                    ft.Segment(value="doble", label=ft.Text("Doble", size=11)),
+                    ft.Segment(value="preview", label=ft.Text("Preview", size=11)),
+                ],
+                on_change=on_change,
+            )
+        except Exception:
+            return ft.Dropdown(
+                value=current,
+                width=180, height=38,
+                bgcolor=BG_INPUT, border_color=BORDER_LIGHT, focused_border_color=ACCENT,
+                text_style=ft.TextStyle(color=TEXT_PRIMARY, size=11, font_family="IBM Plex Sans"),
+                content_padding=ft.Padding.symmetric(horizontal=10, vertical=0),
+                options=[
+                    ft.dropdown.Option("lista", "Lista"),
+                    ft.dropdown.Option("doble", "Doble"),
+                    ft.dropdown.Option("preview", "Preview"),
+                ],
+                on_select=on_change,
+            )
                                   
+    def _make_cono_empty(self, title: str, subtitle: str, visible: bool = True) -> ft.Container:
+        """Empty con icono cono para Biblioteca/Descargas/Preview — reusa tokens."""
+        return ft.Container(
+            bgcolor=BG_LIST,
+            content=ft.Column(controls=[
+                ft.Container(content=ft.Icon(ft.Icons.CONSTRUCTION, size=52, color=TEXT_DIM),
+                             bgcolor=CHIP_BG, border=ft.Border.all(0.8, BORDER_LIGHT),
+                             border_radius=20, padding=ft.Padding.all(20)),
+                ft.Text(title, size=18, color=TEXT_PRIMARY, font_family="IBM Plex Sans Bold", opacity=1.0),
+                ft.Text(subtitle, size=12, color=TEXT_MUTED, font_family="IBM Plex Sans", opacity=1.0, text_align=ft.TextAlign.CENTER),
+                ft.Text("Función en desarrollo", size=11, color=TEXT_DIM, font_family="IBM Plex Sans", opacity=0.8),
+            ], horizontal_alignment=ft.CrossAxisAlignment.CENTER, spacing=8),
+            alignment=ft.Alignment.CENTER, visible=visible,
+            left=0, top=0, right=0, bottom=0,
+        )
+
+    def _calc_skeleton_count(self) -> int:
+        """Calcula cuántos SkeletonRow caben en alto visible (responsive)."""
+        try:
+            h = self.page.height or self.page.window.height or 650  # type: ignore
+        except Exception:
+            h = 650
+        # header + col_headers + progress + padding + tabs aproximado
+        header_h = 70
+        col_h = 36
+        pad = 48
+        prog = 40 if getattr(self, '_content_progress', None) and self._content_progress.visible else 0
+        mode_bar = 40 if getattr(self, '_mode_bar', None) and getattr(self._mode_bar, 'visible', False) else 0
+        avail = max(180, h - header_h - col_h - pad - prog - mode_bar - 120)  # sidebar no afecta listado
+        cnt = max(4, min(24, int(avail // ITEM_H)))
+        return cnt
+
+    def _sync_skeleton_count(self) -> None:
+        """Recrea skeletons si cambió el count según resolución (on_resize/dual)."""
+        try:
+            new_cnt = self._calc_skeleton_count()
+            cur_cnt = len(getattr(self, '_skeletons', []))
+            if new_cnt != cur_cnt:
+                self._skeletons = [SkeletonRow(i) for i in range(new_cnt)]
+                self._skeleton_view.controls = self._skeletons
+                self._skeleton_view.update()
+        except Exception:
+            pass
+
+    def _sync_dual_view(self, s) -> None:
+        """Sincroniza modo Lista|Doble|Preview y visibilidad de paneles (solo tras Organizar/Dividir)."""
+        is_dual = getattr(s, 'show_dual', False)
+        mode = getattr(s, 'dual_mode', 'lista')
+        # mode bar solo cuando dual activo
+        try:
+            self._mode_bar.visible = is_dual
+            self._mode_bar.update()
+        except Exception:
+            pass
+        try:
+            # sync segmented selected
+            if hasattr(self._mode_seg, 'selected'):
+                self._mode_seg.selected = {mode}
+                self._mode_seg.update()
+            else:
+                self._mode_seg.value = mode
+                self._mode_seg.update()
+        except Exception:
+            pass
+        # single vs dual — reparent dinámico de _lista_panel para evitar duplicar controles
+        try:
+            if not is_dual:
+                # modo lista: lista sola
+                if self._list_area.content != self._lista_panel:
+                    # saca _lista_panel de _dual_row si estaba ahí
+                    try:
+                        if self._lista_panel in self._dual_row.controls:
+                            self._dual_row.controls.remove(self._lista_panel)
+                    except Exception:
+                        pass
+                    self._dual_row.visible = False
+                    self._list_area.content = self._lista_panel
+                    self._list_area.update()
+                self._lista_panel.visible = True
+                self._preview_panel.visible = False
+            else:
+                # dual activo: decide contenido según mode
+                if mode == "lista":
+                    if self._list_area.content != self._lista_panel:
+                        try:
+                            if self._lista_panel in self._dual_row.controls:
+                                self._dual_row.controls.remove(self._lista_panel)
+                        except Exception:
+                            pass
+                        self._dual_row.visible = False
+                        self._list_area.content = self._lista_panel
+                        self._list_area.update()
+                    self._lista_panel.visible = True
+                    self._preview_panel.visible = False
+                elif mode == "preview":
+                    # preview solo: muestra preview_panel solo
+                    try:
+                        if self._lista_panel in self._dual_row.controls:
+                            self._dual_row.controls.remove(self._lista_panel)
+                    except Exception:
+                        pass
+                    self._dual_row.visible = False
+                    self._list_area.content = self._preview_panel
+                    self._list_area.update()
+                    self._lista_panel.visible = False
+                    self._preview_panel.visible = True
+                else:  # doble
+                    # doble: Row con ambos
+                    self._lista_panel.visible = True
+                    self._preview_panel.visible = True
+                    # asegura que _lista_panel esté dentro de _dual_row
+                    if self._lista_panel not in self._dual_row.controls:
+                        # si estaba en list_area, sácalo
+                        if self._list_area.content == self._lista_panel:
+                            self._list_area.content = None  # type: ignore
+                        self._dual_row.controls = [self._lista_panel, self._preview_panel]
+                    else:
+                        if self._preview_panel not in self._dual_row.controls:
+                            self._dual_row.controls.append(self._preview_panel)
+                    self._dual_row.visible = True
+                    self._list_area.content = self._dual_row
+                    self._list_area.update()
+        except Exception:
+            pass
+        # actualiza preview readonly
+        try:
+            self._sync_preview(s)
+        except Exception:
+            pass
+        # recalcula skeletons para nuevo alto
+        try:
+            self._sync_skeleton_count()
+        except Exception:
+            pass
+
+    def _sync_preview(self, s) -> None:
+        """Preview readonly: selected_in_scope en orden final + conteo."""
+        try:
+            preview_tracks = s.selected_in_scope("visible") if hasattr(s, 'selected_in_scope') else [t for t in s.tracks if t.selected]
+            # usa cache para preview? simple rebuild
+            if not preview_tracks:
+                self._preview_view_wrap.visible = False
+                self._preview_empty_wrap.visible = True
+                self._preview_count.value = "0 seleccionadas"
+            else:
+                self._preview_empty_wrap.visible = False
+                self._preview_view_wrap.visible = True
+                self._preview_count.value = f"{len(preview_tracks)} seleccionadas"
+                # rebuild preview list (readonly, sin checkbox)
+                # Reusa SongRow pero en modo readonly? Por ahora filas simples con texto
+                # Para no duplicar lógica compleja, usamos Column de Containers ligeros
+                # Si hay muchas, usa ListView con items simples
+                self._preview_list_view.controls = []
+                for i, tr in enumerate(preview_tracks, 1):
+                    row = ft.Container(
+                        height=ITEM_H, padding=ft.Padding.symmetric(horizontal=12, vertical=6),
+                        border=ft.Border.only(bottom=ft.BorderSide(0.5, BORDER_ROW)), bgcolor=BG_LIST,
+                        content=ft.Row([
+                            ft.Text(str(i), size=10, color=TEXT_MUTED, width=28, text_align=ft.TextAlign.CENTER),
+                            ft.Icon(ft.Icons.MUSIC_NOTE, size=16, color=TEXT_DIM),
+                            ft.Column([
+                                ft.Text(tr.name, size=12, color=TEXT_PRIMARY, overflow=ft.TextOverflow.ELLIPSIS, max_lines=1),
+                                ft.Text(tr.artist, size=10, color=TEXT_MUTED, overflow=ft.TextOverflow.ELLIPSIS, max_lines=1),
+                            ], spacing=1, expand=True, tight=True),
+                            ft.Text(tr.album or "—", size=10, color=TEXT_DIM, expand=True, overflow=ft.TextOverflow.ELLIPSIS, max_lines=1),
+                            ft.Text(tr.duration or "", size=10, color=TEXT_DIM, width=40, text_align=ft.TextAlign.CENTER),
+                        ], spacing=8, vertical_alignment=ft.CrossAxisAlignment.CENTER),
+                    )
+                    self._preview_list_view.controls.append(row)
+                self._preview_list_view.update()
+                self._preview_count.update()
+                self._preview_empty_wrap.update()
+                self._preview_view_wrap.update()
+        except Exception:
+            pass
+
     def __init__(self, page: ft.Page, state: AppState):
         """
         Inicializa la interfaz principal con todos sus componentes.
@@ -222,13 +466,82 @@ class PlaylistManagerUI(DialogMixin):
         self._build_content()
 
         # ──────────────────────────────────────────────────────────────
+        # NAVIGATION RAIL + MÓDULOS (Inicio/Biblioteca/Descargas/Config)
+        # ──────────────────────────────────────────────────────────────
+        # Rail lateral 72px (core ft.NavigationRail) — reusa tokens SIDEBAR_BG/ACCENT
+        self._current_module = 0  # 0=Inicio, 1=Biblioteca, 2=Descargas, 3=Config
+
+        def _on_nav_change(e):
+            idx = e.control.selected_index if e.control.selected_index is not None else 0
+            self._current_module = idx
+            try:
+                for i, panel in enumerate(self._module_panels):
+                    panel.visible = (i == idx)
+                self._module_stack.update()
+                # ajusta skeletons cuando vuelve a Inicio
+                if idx == 0:
+                    self._sync_skeleton_count()
+                self.page.update()
+            except Exception:
+                pass
+
+        try:
+            self._nav_rail = ft.NavigationRail(
+                selected_index=0,
+                label_type=ft.NavigationRailLabelType.ALL,
+                min_width=72, min_extended_width=200,
+                group_alignment=-0.9,
+                bgcolor=SIDEBAR_BG,
+                indicator_color=ACCENT,
+                use_indicator=True,
+                on_change=_on_nav_change,
+                destinations=[
+                    ft.NavigationRailDestination(icon=ft.Icons.HOME_OUTLINED, selected_icon=ft.Icons.HOME, label="Inicio"),
+                    ft.NavigationRailDestination(icon=ft.Icons.LIBRARY_MUSIC_OUTLINED, selected_icon=ft.Icons.LIBRARY_MUSIC, label="Biblioteca"),
+                    ft.NavigationRailDestination(icon=ft.Icons.DOWNLOAD_OUTLINED, selected_icon=ft.Icons.DOWNLOAD, label="Descargas"),
+                    ft.NavigationRailDestination(icon=ft.Icons.SETTINGS_OUTLINED, selected_icon=ft.Icons.SETTINGS, label="Config"),
+                ],
+            )
+        except Exception:
+            # fallback si NavigationRail no disponible en versión
+            self._nav_rail = ft.Container(
+                width=72, bgcolor=SIDEBAR_BG,
+                content=ft.Column([
+                    ft.IconButton(icon=ft.Icons.HOME, icon_color=ACCENT, tooltip="Inicio", on_click=lambda _: _on_nav_change(type('E',(),{'control':type('C',(),{'selected_index':0})})())),
+                    ft.IconButton(icon=ft.Icons.LIBRARY_MUSIC, icon_color=TEXT_DIM, tooltip="Biblioteca", on_click=lambda _: _on_nav_change(type('E',(),{'control':type('C',(),{'selected_index':1})})())),
+                    ft.IconButton(icon=ft.Icons.DOWNLOAD, icon_color=TEXT_DIM, tooltip="Descargas", on_click=lambda _: _on_nav_change(type('E',(),{'control':type('C',(),{'selected_index':2})})())),
+                    ft.IconButton(icon=ft.Icons.SETTINGS, icon_color=TEXT_DIM, tooltip="Config", on_click=lambda _: _on_nav_change(type('E',(),{'control':type('C',(),{'selected_index':3})})())),
+                ], spacing=12, alignment=ft.MainAxisAlignment.START),
+                padding=ft.Padding.symmetric(vertical=12),
+            )
+
+        # Paneles de módulos — Inicio es Row([sidebar, content]), resto empty cono / placeholder
+        self._panel_inicio = ft.Row(controls=[self._sidebar, self._content], spacing=0, expand=True,
+                                    vertical_alignment=ft.CrossAxisAlignment.STRETCH)
+        self._panel_biblioteca = ft.Container(expand=True, bgcolor=BG_LIST, alignment=ft.Alignment.CENTER,
+                                              content=self._make_cono_empty("Biblioteca", "Colección local, historial 20 y portadas — pronto.", visible=True))
+        self._panel_descargas = ft.Container(expand=True, bgcolor=BG_LIST, alignment=ft.Alignment.CENTER,
+                                             content=self._make_cono_empty("Descargas", "yt-dlp + player + progreso — pronto.", visible=True))
+        # Config: si hay wizard disponible se montará al abrir, si no placeholder
+        self._panel_config = ft.Container(expand=True, bgcolor=BG_LIST, alignment=ft.Alignment.CENTER,
+                                          content=self._make_cono_empty("Configuración", "Auth wizard + ajustes + About — abre con ⚙ en Inicio.", visible=True))
+        self._module_panels = [self._panel_inicio, self._panel_biblioteca, self._panel_descargas, self._panel_config]
+        # apila módulos, solo uno visible a la vez
+        for i, p in enumerate(self._module_panels):
+            p.visible = (i == 0)
+        self._module_stack = ft.Stack(controls=self._module_panels, expand=True)
+
+        # ──────────────────────────────────────────────────────────────
         # ENSAMBLAJE DE LAYOUT RAÍZ
         # ──────────────────────────────────────────────────────────────
-        # Layout principal: [Sidebar | Content]
-        
+        # Layout principal: [Rail 72 | MóduloStack]
         self.root = ft.Container(
             content=ft.Row(
-                controls=[self._sidebar, self._content],
+                controls=[
+                    self._nav_rail,
+                    ft.VerticalDivider(width=1, color=BORDER_LIGHT),
+                    self._module_stack,
+                ],
                 spacing=0, expand=True,
                 vertical_alignment=ft.CrossAxisAlignment.STRETCH,
             ),
@@ -243,7 +556,15 @@ class PlaylistManagerUI(DialogMixin):
         state.subscribe(self._on_state_changed)
         for platform, cb in state.cb.items():
             cb.subscribe(lambda is_open, rem, p=platform: self._on_circuit_change(p, is_open, rem))
-        page.on_resize = lambda _: (self._telemetry.sync_mode(), self.page.update())
+        def _on_resize(_):
+            self._telemetry.sync_mode()
+            try:
+                self._sync_skeleton_count()
+                self._sync_dual_view(self.state)
+            except Exception:
+                pass
+            self.page.update()
+        page.on_resize = _on_resize
 
         # ──────────────────────────────────────────────────────────────
         # SINCRONIZACIÓN INICIAL
@@ -478,41 +799,68 @@ class PlaylistManagerUI(DialogMixin):
     # ── MÉTODOS DE ORGANIZACIÓN Y DIVISIÓN ────────────────────────────
 
     def _on_organize(self, _e: ft.ControlEvent) -> None:
-        """Abre el diálogo para organizar la lista de canciones."""
+        """Abre el diálogo para organizar la lista de canciones (sin platform)."""
         from ui.widgets import organize_dropdown
         _dd_field = organize_dropdown(
             [("artist", "Artista"), ("album", "Álbum"), ("name", "Título"),
-             ("duration_ms", "Duración"), ("platform", "Plataforma")],
+             ("duration_ms", "Duración")],
             "artist", "Ordenar por",
         )
         _switch_rev = ft.Switch(label="Descendente", value=False, active_color=ACCENT)
+        _scope = {"value": "visible"}  # Todo|Visibles|Seleccionadas
+
+        def _on_scope_change(e):
+            try:
+                v = list(e.control.selected)[0] if hasattr(e.control, "selected") and e.control.selected else e.control.value
+            except Exception:
+                v = getattr(e.control, "value", "visible")
+            if v in ("all", "visible", "selected"):
+                _scope["value"] = v
+
+        _scope_seg = self._make_scope_segmented(_scope["value"], on_change=_on_scope_change)
 
         def _apply(_e):
-            self.state.organize_sort([_dd_field.value], _switch_rev.value)
+            self.state.organize_sort([_dd_field.value], _switch_rev.value, scope=_scope["value"])
             self._close_dlg(dlg)
 
         dlg = app_dialog(
             "Organizar lista",
-            ft.Column([_dd_field, _switch_rev], tight=True, spacing=15),
+            ft.Column([
+                _dd_field,
+                _switch_rev,
+                ft.Text("Alcance:", size=10, color=TEXT_MUTED, font_family="IBM Plex Sans"),
+                _scope_seg,
+            ], tight=True, spacing=12),
             [
                 dialog_action("Cancelar", lambda _: self._close_dlg(dlg), kind="muted"),
                 dialog_action("Aplicar", _apply, kind="primary"),
             ],
-            width=300,
+            width=380,
             bgcolor=BG_SURFACE, radius=10,
         )
         self.page.show_dialog(dlg)
 
     def _on_split(self, _e: ft.ControlEvent) -> None:
-        """Abre el diálogo para dividir la lista maestra en segmentos."""
+        """Abre el diálogo para dividir la lista maestra en segmentos (sin platform)."""
         from ui.widgets import organize_dropdown
         _dd_field = organize_dropdown(
-            [("artist", "Artista"), ("album", "Álbum"), ("platform", "Plataforma")],
+            [("artist", "Artista"), ("album", "Álbum")],
             "artist", "Agrupar por",
         )
+        _scope = {"value": "visible"}
+
+        def _on_scope_change(e):
+            try:
+                v = list(e.control.selected)[0] if hasattr(e.control, "selected") and e.control.selected else e.control.value
+            except Exception:
+                v = getattr(e.control, "value", "visible")
+            if v in ("all", "visible", "selected"):
+                _scope["value"] = v
+
+        _scope_seg = self._make_scope_segmented(_scope["value"], on_change=_on_scope_change)
 
         def _apply(_e):
-            self.state.organize_split(_dd_field.value)
+            self.state.organize_split(_dd_field.value, scope=_scope["value"])
             self._close_dlg(dlg)
 
         def _clear(_e):
@@ -530,10 +878,12 @@ class PlaylistManagerUI(DialogMixin):
             "Dividir lista",
             ft.Column([
                 ft.Text("Agrupa tu playlist en segmentos independientes.", size=12, color=TEXT_MUTED),
-                _dd_field
-            ], tight=True, spacing=15),
+                _dd_field,
+                ft.Text("Alcance:", size=10, color=TEXT_MUTED, font_family="IBM Plex Sans"),
+                _scope_seg,
+            ], tight=True, spacing=12),
             actions,
-            width=300,
+            width=380,
             actions_alignment=(
                 ft.MainAxisAlignment.SPACE_BETWEEN if len(actions) == 3
                 else ft.MainAxisAlignment.END
@@ -648,7 +998,8 @@ class PlaylistManagerUI(DialogMixin):
                                       padding=ft.Padding.only(bottom=20))
         _sf = dict(left=0, top=0, right=0, bottom=0)
         self._list_view_wrap     = ft.Container(content=self._list_view, bgcolor=BG_LIST, visible=False, **_sf)
-        self._skeletons          = [SkeletonRow(i) for i in range(self.SKELETON_COUNT)]
+        # skeleton count responsive (se recalcula en _calc_skeleton_count; inicial 14)
+        self._skeletons          = [SkeletonRow(i) for i in range(self._calc_skeleton_count() if hasattr(self, '_calc_skeleton_count') else self.SKELETON_COUNT)]
         self._skeleton_view      = ft.ListView(item_extent=ITEM_H, spacing=0, expand=True,
                                                controls=self._skeletons, visible=True)
         self._skeleton_view_wrap = ft.Container(content=self._skeleton_view, bgcolor=BG_LIST, visible=False, **_sf)
@@ -681,13 +1032,78 @@ class PlaylistManagerUI(DialogMixin):
             alignment=ft.Alignment.CENTER, visible=False, **_sf,
         )
 
-        list_area = ft.Stack(controls=[
+        # Preview readonly (derecha del doble)
+        self._preview_list_view = ft.ListView(item_extent=ITEM_H, spacing=0, expand=True,
+                                              padding=ft.Padding.only(bottom=20))
+        self._preview_count = ft.Text("", size=10, color=TEXT_MUTED, font_family="IBM Plex Sans", opacity=1.0)
+        self._preview_empty = self._make_cono_empty("Preview vacío", "Marca canciones y organiza para ver cómo se va a pasar.", visible=False)
+        self._preview_empty_wrap = ft.Container(content=self._preview_empty, bgcolor=BG_LIST, visible=False, **_sf)
+        self._preview_view_wrap = ft.Container(content=self._preview_list_view, bgcolor=BG_LIST, visible=False, **_sf)
+        self._preview_stack = ft.Stack(controls=[self._preview_view_wrap, self._preview_empty_wrap], expand=True)
+        self._preview_panel = ft.Container(
+            expand=True, bgcolor=BG_LIST, border=ft.Border.all(0.5, BORDER_LIGHT), border_radius=10,
+            clip_behavior=ft.ClipBehavior.ANTI_ALIAS,
+            content=ft.Column([
+                ft.Row([
+                    ft.Icon(ft.Icons.VISIBILITY_OUTLINED, size=14, color=TEXT_MUTED),
+                    ft.Text("Preview — cómo se va a pasar", size=11, color=TEXT_MUTED, font_family="IBM Plex Sans Bold"),
+                    ft.Container(expand=True),
+                    self._preview_count,
+                ], spacing=6, vertical_alignment=ft.CrossAxisAlignment.CENTER),
+                ft.Divider(height=1, color=BORDER_MUTED, thickness=0.5),
+                self._preview_stack,
+            ], spacing=8, expand=True),
+            padding=ft.Padding.all(10), visible=True,
+        )
+
+        # Lista panel (izq) envuelve lista editable + estados
+        list_stack = ft.Stack(controls=[
             self._list_view_wrap, self._skeleton_view_wrap, self._empty_state, self._error_state,
         ], expand=True)
+        self._lista_panel = ft.Container(
+            expand=True, bgcolor=BG_LIST, border=ft.Border.all(0.5, BORDER_LIGHT), border_radius=10,
+            clip_behavior=ft.ClipBehavior.ANTI_ALIAS,
+            content=ft.Column([
+                ft.Row([
+                    ft.Icon(ft.Icons.LIST_ALT, size=14, color=TEXT_MUTED),
+                    ft.Text("Lista editable", size=11, color=TEXT_MUTED, font_family="IBM Plex Sans Bold"),
+                ], spacing=6),
+                ft.Divider(height=1, color=BORDER_MUTED, thickness=0.5),
+                list_stack,
+            ], spacing=8, expand=True),
+            padding=ft.Padding.all(10), visible=True,
+        )
+
+        # Modo Lista|Doble|Preview (SegmentedButton principal, solo visible cuando hay dual)
+        def _on_mode_change(e):
+            try:
+                v = list(e.control.selected)[0] if hasattr(e.control, "selected") and e.control.selected else e.control.value
+            except Exception:
+                v = getattr(e.control, "value", "lista")
+            self.state.set_dual_mode(v)
+
+        self._mode_seg = self._make_mode_segmented(getattr(self.state, "dual_mode", "lista"), on_change=_on_mode_change)
+        self._mode_bar = ft.Row([
+            ft.Text("Vista:", size=10, color=TEXT_MUTED, font_family="IBM Plex Sans"),
+            self._mode_seg,
+            ft.Container(expand=True),
+            ft.IconButton(icon=ft.Icons.CLOSE, icon_size=14, icon_color=TEXT_DIM, tooltip="Cerrar doble vista",
+                          on_click=lambda _: self.state.set_show_dual(False),
+                          style=ft.ButtonStyle(padding=4, bgcolor={ft.ControlState.DEFAULT: ft.Colors.TRANSPARENT})),
+        ], spacing=8, vertical_alignment=ft.CrossAxisAlignment.CENTER, visible=False)
+
+        # Doble fila responsive: Lista | Preview — evita duplicar controles (reparent dinámico)
+        self._dual_row = ft.Row(spacing=10, expand=True, visible=False)
+        # list_area es un Container cuyo content cambia entre _lista_panel (single) y _dual_row (doble)
+        self._list_area = ft.Container(content=self._lista_panel, expand=True,
+                                       animate_opacity=ft.Animation(300, ft.AnimationCurve.EASE_OUT),
+                                       animate_scale=ft.Animation(300, ft.AnimationCurve.EASE_OUT),
+                                       opacity=1.0, scale=1.0)
+        list_area = self._list_area
 
         self._content = ft.Container(
             expand=True, bgcolor=BG_LIST, padding=ft.Padding.all(24),
-            content=ft.Column(controls=[self._content_progress, header_bar, col_headers, list_area],
+            content=ft.Column(controls=[self._content_progress, header_bar, col_headers, self._mode_bar, list_area],
                               spacing=10, expand=True),
         )
 
@@ -719,6 +1135,10 @@ class PlaylistManagerUI(DialogMixin):
         net_blocked = any(cb.is_open for cb in s.cb.values())
         rule4_blocked = is_local_src and not s.destination_confirmed
         self._sync_action_buttons(s, is_local_src, dest_ok, is_loading, is_transferring, is_ready, net_blocked, rule4_blocked)
+        try:
+            self._sync_dual_view(s)
+        except Exception:
+            pass
         self.page.update()
 
     def _sync_platform_ui(self, s, is_local_src: bool) -> None:

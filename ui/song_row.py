@@ -74,12 +74,12 @@ class SkeletonRow(ft.Container):
     def __init__(self, _index: int):
         """
         Inicializa una fila skeleton con placeholders para cada elemento.
-        
+
         Args:
-            _index: Índice de la fila (actualmente no usado, reservado para
-                   animaciones escalonadas en el futuro).
+            _index: Índice de la fila (usado para stagger escalonado).
         """
         self._pulse_task: Optional[asyncio.Task] = None
+        self._index = _index
 
         # Placeholders con dimensiones idénticas a SongRow
         self._num    = ft.Container(width=28, height=10, border_radius=3, bgcolor=SKELETON_DARK)
@@ -100,38 +100,57 @@ class SkeletonRow(ft.Container):
                 spacing=16,
                 vertical_alignment=ft.CrossAxisAlignment.CENTER,
             ),
-            opacity=1.0,
+            opacity=0.45,
+            scale=0.98,
+            animate_opacity=ft.Animation(600, ft.AnimationCurve.EASE_IN_OUT),
+            animate_scale=ft.Animation(600, ft.AnimationCurve.EASE_IN_OUT),
         )
 
     async def start_pulse(self) -> None:
         """
-        Inicia la animación de pulse del skeleton.
-        
-        Actualmente es un placeholder que mantiene la tarea viva.
-        En futuras versiones podría implementar animación de shimmer
-        real alternando opacidad de los placeholders.
-        
-        Note:
-            La tarea se mantiene en ejecución hasta que stop_pulse()
-            la cancele. Esto permite control fino del ciclo de vida
-            de la animación.
+        Animación sutil opacity 0.45↔1.0 + scale 0.98↔1.0 (600ms, stagger 60ms por índice).
+        Da sensación de carga real sin ser intrusiva.
         """
         self._pulse_task = asyncio.current_task()
+        # stagger inicial según índice para ola
+        try:
+            await asyncio.sleep(0.06 * self._index)
+        except asyncio.CancelledError:
+            return
         try:
             while True:
-                await asyncio.sleep(1.0)
+                self.opacity = 1.0
+                self.scale = 1.0
+                try:
+                    self.update()
+                except Exception:
+                    pass
+                await asyncio.sleep(0.6)
+                self.opacity = 0.45
+                self.scale = 0.98
+                try:
+                    self.update()
+                except Exception:
+                    pass
+                await asyncio.sleep(0.6)
         except asyncio.CancelledError:
             pass
 
     def stop_pulse(self) -> None:
         """
         Detiene la animación de pulse y cancela la tarea asyncio.
-        
+
         Debe ser llamado antes de reemplazar el skeleton con SongRow
-        para evitar tareas huérfanas en el event loop.
+        para evitar tareas huérfanas en el event loop. Resetea opacity/scale.
         """
         if self._pulse_task:
             self._pulse_task.cancel()
+            self._pulse_task = None
+        try:
+            self.opacity = 1.0
+            self.scale = 1.0
+        except Exception:
+            pass
 
 
 class SongRow(ft.Container):
