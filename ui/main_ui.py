@@ -1,6 +1,6 @@
 """
 ╔══════════════════════════════════════════════════════════════════════╗
-║                    Melomaniac v4.0.0                             ║
+║                    Melomaniac v4.x.x                             ║
 ║              Interfaz Principal de Usuario                           ║
 ╚══════════════════════════════════════════════════════════════════════╝
 
@@ -45,7 +45,7 @@ Componentes Principales:
     - Dialogs: Modales para errores y confirmaciones
 
 Autor: Melomaniac Team
-Versión: 4.0.0
+Versión: 4.x.x
 Fecha: 2026
 """
 
@@ -643,7 +643,7 @@ class PlaylistManagerUI(DialogMixin):
                         ft.TextSpan("Melomaniac", ft.TextStyle(size=20,
                                                                color=TEXT_PRIMARY, font_family="IBM Plex Sans Light")),
                     ], opacity=1.0),
-                    ft.Text("v4.0.0", size=9, color=TEXT_DIM, font_family="IBM Plex Sans",
+                    ft.Text("v4.x.x", size=9, color=TEXT_DIM, font_family="IBM Plex Sans",
                             style=ft.TextStyle(letter_spacing=0.8), opacity=1.0),
                 ], spacing=0, tight=True, expand=True),
                 self.btn_wizard,

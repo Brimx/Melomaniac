@@ -1,6 +1,6 @@
 """
 ╔══════════════════════════════════════════════════════════════════════╗
-║                    Melomaniac v4.0.0                               ║
+║                    Melomaniac v4.x.x                               ║
 ║              Componentes de Fila de Canción                          ║
 ╚══════════════════════════════════════════════════════════════════════╝
 
@@ -26,7 +26,7 @@ Estrategia de Diseño:
     precisos en listas largas (1000+ canciones).
 
 Autor: Melomaniac Team
-Versión: 4.0.0
+Versión: 4.x.x
 Fecha: 2026
 """
 

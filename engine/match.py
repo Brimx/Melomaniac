@@ -1,6 +1,6 @@
 """
 ╔══════════════════════════════════════════════════════════════════════╗
-║                    Melomaniac v4.0.0                               ║
+║                    Melomaniac v4.x.x                               ║
 ║              Motor de Matching Fuzzy y Validación                    ║
 ╚══════════════════════════════════════════════════════════════════════╝
 
@@ -39,7 +39,7 @@ Dependencias Opcionales:
       Si no está disponible, retorna scores perfectos (100) como fallback
 
 Autor: Melomaniac Team
-Versión: 4.0.0
+Versión: 4.x.x
 Fecha: 2026
 """
 

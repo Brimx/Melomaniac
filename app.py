@@ -1,6 +1,6 @@
 """
 ╔══════════════════════════════════════════════════════════════════════╗
-║                    Melomaniac v4.0.0                               ║
+║                    Melomaniac v4.x.x                               ║
 ║              Transferencia Universal de Playlists                    ║
 ╚══════════════════════════════════════════════════════════════════════╝
 
@@ -15,7 +15,7 @@ Motor: Hunter Recovery · Universal Auth · Post-mortem
 Ciclo de vida: Hard exit · Session probes · Semáforo real
 
 Autor: Melomaniac Team
-Versión: 4.0.0
+Versión: 4.x.x
 Fecha: 2026
 """
 
