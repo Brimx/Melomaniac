@@ -1,6 +1,6 @@
-# 🎵 Melomaniac v3.3.8
+# 🎵 MelomaniacPass v3.3.8
 
-Melomaniac is a desktop application for rebuilding playlists between **YouTube Music, Apple Music, and Spotify**. It can also import a local playlist or a single audio file, find each track on the destination, and create a new playlist.
+MelomaniacPass is a desktop application for rebuilding playlists between **YouTube Music, Apple Music, and Spotify**. It can also import a local playlist or a single audio file, find each track on the destination, and create a new playlist.
 
 Matching combines metadata normalization, RapidFuzz, title/artist similarity, duration, explicit metadata, and ISRC when available. Uncertain results are preserved in the Post-Mortem view for review.
 
@@ -9,7 +9,7 @@ Matching combines metadata normalization, RapidFuzz, title/artist similarity, du
 - Load playlists from YouTube Music, Apple Music, and Spotify.
 - Import `TXT`, `CSV`, `M3U/M3U8`, `PLS`, `WPL`, `XSPF`, and XSPF-compatible XML playlists.
 - Import audio files (`MP3`, `FLAC`, `AAC`, `OGG`, `WAV`, `M4A`, `WMA`, `OPUS`, `AIFF/AIF`) and read their tags with Mutagen.
-- Search with Hunter Recovery using three query es: cleaned metadata, original values, and a normalized title.
+- Search with Hunter Recovery using three query passes: cleaned metadata, original values, and a normalized title.
 - Use ISRC for exact Apple Music matches and retain it in the search cache.
 - Compare duration; Spotify also includes the `explicit` flag in its scoring.
 - Search, select, sort, and split tracks by artist, album, title, duration, or platform.
@@ -30,8 +30,8 @@ Matching combines metadata normalization, RapidFuzz, title/artist similarity, du
 ## Installation
 
 ```bash
-git clone https://github.com/Brimx/Melomaniac.git
-cd Melomaniac
+git clone https://github.com/Brimx/MelomaniacPass.git
+cd MelomaniacPass
 python -m venv .venv
 source .venv/bin/activate                 # Linux/macOS
 # .venv\Scripts\activate                 # Windows PowerShell
@@ -129,7 +129,7 @@ For local sources, select the destination explicitly before transferring. The so
 ## Project structure
 
 ```text
-Melomaniac/
+MelomaniacPass/
 ├── app.py                         # Entry point, composition, lifecycle
 ├── config/                        # Ignored runtime credentials and state
 ├── core/

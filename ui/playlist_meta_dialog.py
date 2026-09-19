@@ -1,5 +1,5 @@
 """
-ui/playlist_meta_dialog.py — Melomaniac v3.3.8
+ui/playlist_meta_dialog.py — MelomaniacPass v3.3.8
 
 Diálogo de personalización de playlist (nombre + descripción).
 
@@ -167,6 +167,6 @@ class PlaylistMetaDialog(DialogMixin):
         try:
             self.close_dialog(self.page, self._dlg)
         except Exception:  # pylint: disable=broad-exception-caught
-            
+            pass
         finally:
             self._dlg = None

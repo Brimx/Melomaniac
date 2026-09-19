@@ -157,7 +157,7 @@ def write_audio_metadata(
                 try:
                     tags["trkn"] = [(int(str(track_number).split("/", 1)[0]), 0)]
                 except (TypeError, ValueError):
-                    
+                    pass
             if artwork:
                 tags["covr"] = [MP4Cover(artwork, imageformat=MP4Cover.FORMAT_JPEG)]
         else:

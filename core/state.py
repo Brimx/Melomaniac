@@ -1,6 +1,6 @@
 """
 ╔══════════════════════════════════════════════════════════════════════╗
-║                    Melomaniac v3.3.8                               ║
+║                    MelomaniacPass v3.3.8                               ║
 ║                    Estado Global de la Aplicación                    ║
 ╚══════════════════════════════════════════════════════════════════════╝
 
@@ -43,7 +43,7 @@ Funciones Auxiliares:
     - core.transfer: búsqueda resistente a rate limits y razones de error
     - core.availability: resolución de disponibilidad por pista
 
-Autor: Melomaniac Team
+Autor: MelomaniacPass Team
 Versión: 3.3.8
 Fecha: 2026
 """

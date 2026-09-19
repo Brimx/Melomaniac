@@ -1,6 +1,6 @@
 """
 ╔══════════════════════════════════════════════════════════════════════╗
-║                    Melomaniac v3.3.8                               ║
+║                    MelomaniacPass v3.3.8                               ║
 ║              Servicio Unificado de APIs Musicales                    ║
 ╚══════════════════════════════════════════════════════════════════════╝
 
@@ -47,7 +47,7 @@ Estrategia de Diseño - Patrón Facade:
    Funciones Auxiliares:
        - _is_ytm_unauthorized: Detecta HTTP 401 de YouTube Music
 
-Autor: Melomaniac Team
+Autor: MelomaniacPass Team
 Versión: 3.3.8
 Fecha: 2026
 """
@@ -86,7 +86,7 @@ from engine.normalizer import (
     clean_metadata, build_search_query, _normalize_title, normalize_isrc, FUZZY_IDEAL,
 )
 from engine.match import (
-    _fuzzy_scores_triple, _fuzzy_flags_elastic, _ideal__hunter,
+    _fuzzy_scores_triple, _fuzzy_flags_elastic, _ideal_pass_hunter,
     _joji_trikeyword_query, _duration_to_seconds,
     _yt_select_best, score_spotify_match,
 )
@@ -307,7 +307,7 @@ class MusicApiService:
             try:
                 sess.close()
             except OSError:
-                
+                pass
         self._ytm = None
         self._am_headers = {}
 
@@ -366,7 +366,7 @@ class MusicApiService:
                 json.dump(payload, f, ensure_ascii=False)
             os.replace(tmp, SEARCH_CACHE_JSON)
         except Exception:  # pylint: disable=broad-exception-caught
-            
+            pass
 
     # ── YouTube Music Auth ─────────────────────────────────────────────
 
@@ -560,7 +560,7 @@ class MusicApiService:
         except RateLimitError:
             raise
         except Exception:  # pylint: disable=broad-exception-caught
-            
+            pass
 
         tracks, url = [], f"{info_url}/tracks"
         while url:
@@ -683,22 +683,22 @@ class MusicApiService:
         local_isrc: str | None = None,
     ) -> SearchResult:
         base_t, base_a = clean_metadata(name, artist)
-        es = [
+        passes = [
             (base_t, base_a),
             (name.strip(), artist.strip()),
             (_normalize_title(name), base_a),
         ]
         seen: set[tuple[str, str]] = set()
-        for idx, (t_, a_) in enumerate(es):
-            t_ = t_.strip()
-            if not t_:
+        for idx, (t_pass, a_pass) in enumerate(passes):
+            t_pass = t_pass.strip()
+            if not t_pass:
                 continue
-            key = (t_.lower(), a_.strip().lower())
+            key = (t_pass.lower(), a_pass.strip().lower())
             if key in seen:
                 continue
             seen.add(key)
             result = await self.search_track(
-                platform, t_, a_, local_duration_s,
+                platform, t_pass, a_pass, local_duration_s,
                 local_duration_ms=local_duration_ms,
                 local_is_explicit=local_is_explicit,
                 local_isrc=local_isrc,
@@ -761,7 +761,7 @@ class MusicApiService:
             if not pack:
                 return None
             chosen, comb, tit, art = pack
-            if _ideal__hunter(comb, tit, art):
+            if _ideal_pass_hunter(comb, tit, art):
                 return self._yt_pack_result(chosen, orig_name, orig_artist)
             return None
 
@@ -987,7 +987,7 @@ class MusicApiService:
                 continue
             tid, meta = sel
             comb, tit, art = _fuzzy_scores_triple(orig_name, orig_artist, meta[0], meta[1])
-            if _ideal__hunter(comb, tit, art):
+            if _ideal_pass_hunter(comb, tit, art):
                 return self._am_pack_result(tid, meta, orig_name, orig_artist)
             if comb > best_comb:
                 best_comb, best = comb, (tid, meta)
@@ -1107,7 +1107,7 @@ class MusicApiService:
             )
             if picked is None:
                 continue
-            if comb >= FUZZY_IDEAL or _ideal__hunter(comb, tit, art):
+            if comb >= FUZZY_IDEAL or _ideal_pass_hunter(comb, tit, art):
                 return self._sp_build_result(picked, comb, tit, art)
             if comb > best_comb:
                 best_comb, best = comb, (picked, comb, tit, art)

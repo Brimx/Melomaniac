@@ -1,6 +1,6 @@
 """
 ╔══════════════════════════════════════════════════════════════════════╗
-║                    Melomaniac v3.3.8                             ║
+║                    MelomaniacPass v3.3.8                             ║
 ║              Interfaz Principal de Usuario                           ║
 ╚══════════════════════════════════════════════════════════════════════╝
 
@@ -44,7 +44,7 @@ Componentes Principales:
     - File picker: Selector de archivos locales
     - Dialogs: Modales para errores y confirmaciones
 
-Autor: Melomaniac Team
+Autor: MelomaniacPass Team
 Versión: 3.3.8
 Fecha: 2026
 """

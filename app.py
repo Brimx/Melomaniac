@@ -1,11 +1,11 @@
 """
 ╔══════════════════════════════════════════════════════════════════════╗
-║                    Melomaniac v3.3.8                               ║
+║                    MelomaniacPass v3.3.8                               ║
 ║              Transferencia Universal de Playlists                    ║
 ╚══════════════════════════════════════════════════════════════════════╝
 
 Módulo: app.py
-Descripción: Punto de entrada principal de la aplicación Melomaniac.
+Descripción: Punto de entrada principal de la aplicación MelomaniacPass.
             Orquesta la inicialización de servicios, estado, UI y autenticación.
             Implementa ciclo de vida completo con limpieza profunda de recursos.
 
@@ -14,7 +14,7 @@ Diseño: Superficies oscuras sólidas · IBM Plex Sans · Optimizado OLED
 Motor: Hunter Recovery · Universal Auth · Post-mortem
 Ciclo de vida: Hard exit · Session probes · Semáforo real
 
-Autor: Melomaniac Team
+Autor: MelomaniacPass Team
 Versión: 3.3.8
 Fecha: 2026
 """
@@ -41,7 +41,7 @@ FONTS_DIR  = ASSETS_DIR / "fonts"
 
 async def main(page: ft.Page) -> None:
     """
-    Función principal asíncrona de la aplicación Melomaniac.
+    Función principal asíncrona de la aplicación MelomaniacPass.
     
     Inicializa y orquesta todos los componentes del sistema:
     - Configuración de la ventana y tema visual
@@ -70,7 +70,7 @@ async def main(page: ft.Page) -> None:
         # Establece dimensiones, colores y comportamiento visual de la
         # ventana principal de la aplicación.
         
-        page.title             = "Melomaniac"
+        page.title             = "MelomaniacPass"
         page.bgcolor           = BG_LIST
         page.width             = 1200
         page.height            = 650
@@ -222,19 +222,19 @@ async def main(page: ft.Page) -> None:
                 for cb in state_inst.cb.values():
                     cb.cancel()
             except Exception:  # pylint: disable=broad-exception-caught
-                
+                pass
 
             # Detener instancia de UI
             try:
                 app_inst.stop()
             except Exception:  # pylint: disable=broad-exception-caught
-                
+                pass
             
             # Cancelar tareas de escaneo lazy
             try:
                 state_inst.cancel_lazy_scan()
             except Exception:  # pylint: disable=broad-exception-caught
-                
+                pass
             
             # Cancelar tarea de recarga de autenticación si existe
             auth_reload = getattr(auth_inst, "_reload_task", None)
@@ -251,7 +251,7 @@ async def main(page: ft.Page) -> None:
                     if "hard_cleanup" in name or "main" in name:
                         continue
                 except AttributeError:
-                    
+                    pass
                 task.cancel()
             
             # Breve pausa para permitir cancelaciones pendientes
@@ -292,7 +292,7 @@ async def main(page: ft.Page) -> None:
 
     except asyncio.CancelledError:
         # Cierre normal de la aplicación, no requiere acción
-        
+        pass
     finally:
         # Último recurso: forzar salida del proceso
         os._exit(0)
@@ -303,4 +303,4 @@ if __name__ == "__main__":
         ft.run(main)
     except (KeyboardInterrupt, asyncio.CancelledError):
         # Cierre por interrupción del usuario, salida limpia
-        
+        pass

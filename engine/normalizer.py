@@ -1,6 +1,6 @@
 """
 ╔══════════════════════════════════════════════════════════════════════╗
-║                    Melomaniac v3.3.8                               ║
+║                    MelomaniacPass v3.3.8                               ║
 ║              Motor de Normalización de Metadatos                     ║
 ╚══════════════════════════════════════════════════════════════════════╝
 
@@ -34,7 +34,7 @@ Umbrales de Confianza:
     - FUZZY_REVISION_THRESHOLD (40%): Requiere revisión manual
     - ARTIST_EXACT_MIN (99%): Umbral para considerar artista exacto
 
-Autor: Melomaniac Team
+Autor: MelomaniacPass Team
 Versión: 3.3.8
 Fecha: 2026
 """
