@@ -1,6 +1,6 @@
-# MelomaniacPass v3.3.8 — Arquitectura
+# Melomaniac v3.3.8 — Arquitectura
 
-MelomaniacPass separa la interfaz Flet, el estado de la aplicación, los servicios de plataforma y el motor de normalización/matching. La versión actual soporta YouTube Music, Apple Music, Spotify y dos entradas locales: archivo y texto pegado.
+Melomaniac separa la interfaz Flet, el estado de la aplicación, los servicios de plataforma y el motor de normalización/matching. La versión actual soporta YouTube Music, Apple Music, Spotify y dos entradas locales: archivo y texto pegado.
 
 ## Capas y dependencias
 
@@ -34,7 +34,7 @@ service.auth_manager = auth_manager
 ## Estructura
 
 ```text
-MelomaniacPass/
+Melomaniac/
 ├── app.py
 ├── config/                         # runtime ignorado por Git
 ├── core/

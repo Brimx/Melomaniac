@@ -104,7 +104,7 @@ class AuthManager:
             else:
                 self.state_log_fn(f"[WARN]  – {r.platform}: {r.error}")
 
-        await self._init_passing_services(results)
+        await self._init_ing_services(results)
 
         if need_wizard_for:
             first_fail = need_wizard_for[0]
@@ -117,7 +117,7 @@ class AuthManager:
 
         return results
 
-    async def _init_passing_services(self, results: list[PreFlightResult]) -> None:
+    async def _init_ing_services(self, results: list[PreFlightResult]) -> None:
         init_methods = {
             "YouTube Music": self.service.init_youtube,
             "Apple Music":   self.service.init_apple,

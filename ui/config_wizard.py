@@ -65,16 +65,16 @@ YOUTUBE_FIELD_SPECS = (
 APPLE_FIELD_SPECS = tuple(
     {
         "key": key,
-        "password": True,
-        "can_reveal_password": True,
+        "word": True,
+        "can_reveal_word": True,
     }
     for key in ENV_KEYS_APPLE
 )
 
 SPOTIFY_FIELD_SPECS = (
     {"key": "identifier", "label": "Identifier (email o username)"},
-    {"key": "sp_dc", "password": True, "can_reveal_password": True},
-    {"key": "sp_key", "password": True, "can_reveal_password": True},
+    {"key": "sp_dc", "word": True, "can_reveal_word": True},
+    {"key": "sp_key", "word": True, "can_reveal_word": True},
 )
 
 YOUTUBE_INSTRUCTIONS = (
@@ -177,13 +177,13 @@ class ConfigWizard(DialogMixin):
             if self._dlg is not None and getattr(self._dlg, "open", False):
                 self._dlg.update()
         except Exception:  # pylint: disable=broad-exception-caught
-            pass
+            
 
     def _safe_page_update(self) -> None:
         try:
             self.page.update()
         except Exception:  # pylint: disable=broad-exception-caught
-            pass
+            
 
     def _reset_state(self) -> None:
         """Clear dialog, panel, and field references before rebuilding it."""
@@ -363,7 +363,7 @@ class ConfigWizard(DialogMixin):
             try:
                 self._dismiss_dialog(self._dlg)
             except Exception:  # pylint: disable=broad-exception-caught
-                pass
+                
             self._dlg = None
 
         self._reset_state()
@@ -485,7 +485,7 @@ class ConfigWizard(DialogMixin):
             if self._dlg is not None:
                 self._dismiss_dialog(self._dlg)
         except Exception:  # pylint: disable=broad-exception-caught
-            pass
+            
         finally:
             self._dlg = None
 
@@ -541,8 +541,8 @@ class ConfigWizard(DialogMixin):
         label: str,
         value: str = "",
         *,
-        password: bool = False,
-        can_reveal_password: bool = False,
+        word: bool = False,
+        can_reveal_word: bool = False,
         multiline: bool = False,
         min_lines: Optional[int] = None,
         max_lines: Optional[int] = None,
@@ -553,8 +553,8 @@ class ConfigWizard(DialogMixin):
         return app_text_field(
             label=label,
             value=value,
-            password=password,
-            can_reveal_password=can_reveal_password,
+            word=word,
+            can_reveal_word=can_reveal_word,
             multiline=multiline,
             min_lines=min_lines,
             max_lines=max_lines,
@@ -568,15 +568,15 @@ class ConfigWizard(DialogMixin):
         *,
         min_lines: int,
         max_lines: int,
-        password: bool = False,
-        can_reveal_password: bool = False,
+        word: bool = False,
+        can_reveal_word: bool = False,
     ) -> tuple[ft.Row, ft.TextField]:
         """Create a compact multiline field with an expand/collapse button."""
         field = self._make_field(
             label=label,
             value=value,
-            password=password,
-            can_reveal_password=can_reveal_password,
+            word=word,
+            can_reveal_word=can_reveal_word,
             multiline=True,
             min_lines=1,
             max_lines=1,
@@ -624,8 +624,8 @@ class ConfigWizard(DialogMixin):
             label = str(spec.get("label", key))
             raw_value = values.get(key, "") or ""
             value = raw_value if isinstance(raw_value, str) else str(raw_value)
-            password = bool(spec.get("password", False))
-            can_reveal = bool(spec.get("can_reveal_password", False))
+            word = bool(spec.get("word", False))
+            can_reveal = bool(spec.get("can_reveal_word", False))
 
             if bool(spec.get("expandable", False)):
                 min_lines = int(spec.get("min_lines", 2))
@@ -635,15 +635,15 @@ class ConfigWizard(DialogMixin):
                     value=value,
                     min_lines=min_lines,
                     max_lines=max_lines,
-                    password=password,
-                    can_reveal_password=can_reveal,
+                    word=word,
+                    can_reveal_word=can_reveal,
                 )
             else:
                 field = self._make_field(
                     label=label,
                     value=value,
-                    password=password,
-                    can_reveal_password=can_reveal,
+                    word=word,
+                    can_reveal_word=can_reveal,
                     multiline=bool(spec.get("multiline", False)),
                     min_lines=(
                         int(spec["min_lines"])

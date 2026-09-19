@@ -1,12 +1,12 @@
 """
 ╔══════════════════════════════════════════════════════════════════════╗
-║                    MelomaniacPass v3.3.8                               ║
+║                    Melomaniac v3.3.8                               ║
 ║                  Widgets UI Reutilizables                            ║
 ╚══════════════════════════════════════════════════════════════════════╝
 
 Módulo: ui/widgets.py
 Descripción: Biblioteca de componentes UI reutilizables para la interfaz
-            de MelomaniacPass. Proporciona botones, labels e iconos con
+            de Melomaniac. Proporciona botones, labels e iconos con
             estilos consistentes siguiendo el sistema de diseño OLED.
 
 Componentes:
@@ -23,7 +23,7 @@ Sistema de Diseño:
     - Estados interactivos (default, hover, pressed, disabled)
     - Elevación y sombras para jerarquía visual
 
-Autor: MelomaniacPass Team
+Autor: Melomaniac Team
 Versión: 3.3.8
 Fecha: 2026
 """
@@ -61,8 +61,8 @@ def app_text_field(
     hint_text: str | None = None,
     value: str = "",
     *,
-    password: bool = False,
-    can_reveal_password: bool = False,
+    word: bool = False,
+    can_reveal_word: bool = False,
     multiline: bool = False,
     min_lines: int | None = None,
     max_lines: int | None = None,
@@ -82,8 +82,8 @@ def app_text_field(
         label=label,
         hint_text=hint_text,
         value=value,
-        password=password,
-        can_reveal_password=can_reveal_password,
+        word=word,
+        can_reveal_word=can_reveal_word,
         multiline=multiline,
         min_lines=min_lines,
         max_lines=max_lines,
@@ -185,7 +185,7 @@ class DialogMixin:
             dlg.open = False
             page.update()
         except Exception:
-            pass
+            
 
 
 def notify(

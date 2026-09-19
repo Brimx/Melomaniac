@@ -1,6 +1,6 @@
 """
 ╔══════════════════════════════════════════════════════════════════════╗
-║                    MelomaniacPass v3.3.8                               ║
+║                    Melomaniac v3.3.8                               ║
 ║              Motor de Matching Fuzzy y Validación                    ║
 ╚══════════════════════════════════════════════════════════════════════╝
 
@@ -38,7 +38,7 @@ Dependencias Opcionales:
     - rapidfuzz: Librería de matching fuzzy de alto rendimiento
       Si no está disponible, retorna scores perfectos (100) como fallback
 
-Autor: MelomaniacPass Team
+Autor: Melomaniac Team
 Versión: 3.3.8
 Fecha: 2026
 """
@@ -128,7 +128,7 @@ def _fuzzy_scores_triple(
     return comb, tit, art
 
 
-def _ideal_pass_hunter(comb: int, tit: int, art: int) -> bool:
+def _ideal__hunter(comb: int, tit: int, art: int) -> bool:
     """
     Determina si un match cumple criterios de paso ideal del sistema Hunter.
     
@@ -187,7 +187,7 @@ def _fuzzy_flags_elastic(comb: int, tit: int, art: int) -> tuple[bool, bool]:
     """
     salvaged = (art >= ARTIST_EXACT_MIN and tit >= FUZZY_TITLE_IDEAL_WHEN_ARTIST_EXACT)
     needs_review = comb < FUZZY_REVISION_THRESHOLD and not salvaged
-    ideal = _ideal_pass_hunter(comb, tit, art)
+    ideal = _ideal__hunter(comb, tit, art)
     low_conf = (
         ideal
         and not needs_review
@@ -288,7 +288,7 @@ def _duration_to_seconds(dur: str) -> Optional[int]:
         if len(parts) == 3:
             return parts[0] * 3600 + parts[1] * 60 + parts[2]
     except (ValueError, AttributeError):
-        pass
+        
     return None
 
 
@@ -301,7 +301,7 @@ def validar_match(
     """
     Motor de validación multi-capa para resultados de ytmusicapi 1.12.1.
 
-    L0 — Bypass asiático  : scripts CJK/Hangul → match inmediato
+    L0 — By asiático  : scripts CJK/Hangul → match inmediato
     L1 — Prueba de ácido  : substring + solapamiento de artista → MATCH
     L2 — Filtro letal     : cover / karaoke / tribute → REJECT
     L3 — Fuzzy safety net : SequenceMatcher ≥ 0.65 → MATCH / REJECT
@@ -320,7 +320,7 @@ def validar_match(
     l_title:  str = _normalize_title(unicodedata.normalize("NFKC", str(local_title)))
     l_artist: str = _normalize_title(unicodedata.normalize("NFKC", str(local_artist)))
 
-    # L0: Bypass asiático
+    # L0: By asiático
     if _ASIAN_RE.search(l_title) or _ASIAN_RE.search(r_title):
         return True
 

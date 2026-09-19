@@ -1,6 +1,6 @@
 """
 ╔══════════════════════════════════════════════════════════════════════╗
-║                    MelomaniacPass v3.3.8                               ║
+║                    Melomaniac v3.3.8                               ║
 ║                  Patrón Circuit Breaker                              ║
 ╚══════════════════════════════════════════════════════════════════════╝
 
@@ -25,7 +25,7 @@ Estrategia de Diseño:
     Esto previene cascadas de errores y mejora la experiencia del usuario
     con feedback visual del tiempo de espera.
 
-Autor: MelomaniacPass Team
+Autor: Melomaniac Team
 Versión: 3.3.8
 Fecha: 2026
 """
@@ -231,7 +231,7 @@ class CircuitBreaker:
             try:
                 cb(is_open, remaining)
             except Exception:  # pylint: disable=broad-exception-caught
-                pass
+                
 
     async def _auto_reset(self, wait: float) -> None:
         """
