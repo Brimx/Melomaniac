@@ -164,9 +164,16 @@ Melomaniac/
 │   ├── playlist_meta_dialog.py     # Nombre y descripción de destino
 │   ├── song_row.py                # Filas de canciones y skeletons
 │   ├── telemetry.py               # Monitor, consola y Post-Mortem
+│   ├── fonts.py                    # Clasificación Unicode y registro dinámico
 │   └── widgets.py / tokens.py      # Componentes y tokens visuales
-└── resources/fonts/               # IBM Plex Sans w300–w700
+└── resources/fonts/               # IBM Plex Sans w300–w700; CJK opcional
 ```
+
+Los títulos y artistas se clasifican por bloques Unicode al crear cada
+control de texto: CJK tiene prioridad, después cirílico y finalmente latino.
+La aplicación busca `NotoSansCJK-Regular.ttc` en los assets o en rutas
+estándar del sistema; si no está disponible, conserva IBM Plex Sans y deja que
+el fallback nativo del motor de texto resuelva los glifos.
 
 ## Verificación
 

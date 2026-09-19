@@ -64,9 +64,10 @@ Melomaniac/
 │   ├── playlist_meta_dialog.py      # nombre/descripción de playlist
 │   ├── song_row.py                 # filas y skeletons
 │   ├── telemetry.py                # Monitor, Consola y Post-Mortem
+│   ├── fonts.py                    # clasificación Unicode y registro de fuentes
 │   ├── tokens.py                   # tokens de diseño
 │   └── widgets.py                  # controles reutilizables
-├── resources/fonts/                # IBM Plex Sans w300–w700
+├── resources/fonts/                # IBM Plex Sans w300–w700; CJK opcional
 └── tests/                           # reservado para unittest y regresiones
 ```
 

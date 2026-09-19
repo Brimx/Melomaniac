@@ -31,6 +31,7 @@ from services.api_service import MusicApiService
 from services.authentication import ensure_config_dir, load_runtime_env
 from services.circuit_breaker import CircuitBreaker
 from ui.auth_manager import AuthManager
+from ui.fonts import build_font_registry
 from ui.main_ui import PlaylistManagerUI
 from ui.tokens import BG_LIST, ACCENT, BG_SURFACE, TEXT_PRIMARY
 
@@ -107,16 +108,10 @@ async def main(page: ft.Page) -> None:
         # ──────────────────────────────────────────────────────────────
         # CONFIGURACIÓN DE FUENTES Y TEMA
         # ──────────────────────────────────────────────────────────────
-        # Carga la fuente IBM Plex Sans (estáticos por peso) desde recursos
-        # locales y configura el esquema de colores del tema oscuro.
+        # Carga IBM Plex Sans desde recursos locales y registra el alias CJK
+        # si existe una fuente Noto compatible empaquetada o instalada.
         
-        page.fonts = {
-            "IBM Plex Sans":           str(FONTS_DIR / "IBMPlexSans_w400.ttf"),
-            "IBM Plex Sans Light":     str(FONTS_DIR / "IBMPlexSans_w300.ttf"),
-            "IBM Plex Sans Medium":    str(FONTS_DIR / "IBMPlexSans_w500.ttf"),
-            "IBM Plex Sans SemiBold":  str(FONTS_DIR / "IBMPlexSans_w600.ttf"),
-            "IBM Plex Sans Bold":      str(FONTS_DIR / "IBMPlexSans_w700.ttf"),
-        }
+        page.fonts = build_font_registry(FONTS_DIR)
         page.theme = ft.Theme(
             font_family="IBM Plex Sans",
             color_scheme=ft.ColorScheme(

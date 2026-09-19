@@ -164,9 +164,16 @@ Melomaniac/
 │   ├── playlist_meta_dialog.py     # Destination name and description
 │   ├── song_row.py                # Track rows and skeletons
 │   ├── telemetry.py               # Monitor, console, Post-Mortem
+│   ├── fonts.py                    # Unicode classification and font registry
 │   └── widgets.py / tokens.py      # Components and visual tokens
-└── resources/fonts/               # IBM Plex Sans w300–w700
+└── resources/fonts/               # IBM Plex Sans w300–w700; optional CJK
 ```
+
+Track titles, artists, and albums are classified by Unicode block when their
+text controls are created: CJK has priority, followed by Cyrillic and Latin.
+The app looks for `NotoSansCJK-Regular.ttc` in bundled assets or standard
+system paths; if it is unavailable, it keeps IBM Plex Sans and relies on the
+native text fallback for missing glyphs.
 
 ## Verification
 

@@ -38,6 +38,7 @@ from typing import Callable, Optional
 import flet as ft
 
 from core.models import Track
+from ui.fonts import font_family_for
 from ui.tokens import (
     BG_LIST, BG_HOVER, SKELETON_DARK,
     TEXT_PRIMARY, TEXT_MUTED, TEXT_DIM,
@@ -255,14 +256,14 @@ class SongRow(ft.Container):
 
         title_text = ft.Text(
             track.name, size=13, color=TEXT_PRIMARY,
-            font_family="IBM Plex Sans SemiBold",
+            font_family=font_family_for(track.name, "semibold"),
             overflow=ft.TextOverflow.ELLIPSIS,
             max_lines=1,
             opacity=1.0,
         )
         artist_text = ft.Text(
             track.artist, size=11, color=TEXT_MUTED,
-            font_family="IBM Plex Sans",
+            font_family=font_family_for(track.artist),
             overflow=ft.TextOverflow.ELLIPSIS,
             max_lines=1,
             opacity=1.0,
@@ -274,7 +275,7 @@ class SongRow(ft.Container):
         )
         album_text = ft.Text(
             track.album or "—", size=11, color=TEXT_MUTED,
-            font_family="IBM Plex Sans",
+            font_family=font_family_for(track.album),
             overflow=ft.TextOverflow.ELLIPSIS,
             max_lines=1,
             opacity=1.0,

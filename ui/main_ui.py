@@ -64,6 +64,7 @@ from core.config import EXPORT_DEST_LABEL, EXPORT_FORMATS, EXPORT_ORDERS
 from engine.parsers import parse_local_playlist_with_paths, build_local_tracks
 from engine.exporters import export_tracks, default_export_path
 from ui.song_row import SongRow, SkeletonRow, ITEM_H
+from ui.fonts import font_family_for
 from ui.telemetry import TelemetryDrawer
 from ui.widgets import (
     _primary_btn, _ghost_btn, _section_label, _status_icon,
@@ -393,10 +394,16 @@ class PlaylistManagerUI(DialogMixin):
                             ft.Text(str(i), size=10, color=TEXT_MUTED, width=28, text_align=ft.TextAlign.CENTER),
                             ft.Icon(ft.Icons.MUSIC_NOTE, size=16, color=TEXT_DIM),
                             ft.Column([
-                                ft.Text(tr.name, size=12, color=TEXT_PRIMARY, overflow=ft.TextOverflow.ELLIPSIS, max_lines=1),
-                                ft.Text(tr.artist, size=10, color=TEXT_MUTED, overflow=ft.TextOverflow.ELLIPSIS, max_lines=1),
+                                ft.Text(tr.name, size=12, color=TEXT_PRIMARY,
+                                        font_family=font_family_for(tr.name, "semibold"),
+                                        overflow=ft.TextOverflow.ELLIPSIS, max_lines=1),
+                                ft.Text(tr.artist, size=10, color=TEXT_MUTED,
+                                        font_family=font_family_for(tr.artist),
+                                        overflow=ft.TextOverflow.ELLIPSIS, max_lines=1),
                             ], spacing=1, expand=True, tight=True),
-                            ft.Text(tr.album or "—", size=10, color=TEXT_DIM, expand=True, overflow=ft.TextOverflow.ELLIPSIS, max_lines=1),
+                            ft.Text(tr.album or "—", size=10, color=TEXT_DIM,
+                                    font_family=font_family_for(tr.album), expand=True,
+                                    overflow=ft.TextOverflow.ELLIPSIS, max_lines=1),
                             ft.Text(tr.duration or "", size=10, color=TEXT_DIM, width=40, text_align=ft.TextAlign.CENTER),
                         ], spacing=8, vertical_alignment=ft.CrossAxisAlignment.CENTER),
                     )
@@ -529,7 +536,13 @@ class PlaylistManagerUI(DialogMixin):
         # apila módulos, solo uno visible a la vez
         for i, p in enumerate(self._module_panels):
             p.visible = (i == 0)
-        self._module_stack = ft.Stack(controls=self._module_panels, expand=True)
+        # El stack debe entregar toda la altura a cada panel para que los
+        # estados vacíos puedan centrar su contenido también verticalmente.
+        self._module_stack = ft.Stack(
+            controls=self._module_panels,
+            expand=True,
+            fit=ft.StackFit.EXPAND,
+        )
 
         # ──────────────────────────────────────────────────────────────
         # ENSAMBLAJE DE LAYOUT RAÍZ
