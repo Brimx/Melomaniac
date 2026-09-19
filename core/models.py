@@ -1,6 +1,6 @@
 """
 ╔══════════════════════════════════════════════════════════════════════╗
-║                    MelomaniacPass v3.3.8                               ║
+║                    Melomaniac v3.3.8                               ║
 ║                    Modelos de Datos del Core                         ║
 ╚══════════════════════════════════════════════════════════════════════╝
 
@@ -15,7 +15,7 @@ Componentes:
     - LoadState: Estados del ciclo de carga de playlists
     - TransferState: Estados del proceso de transferencia entre plataformas
 
-Autor: MelomaniacPass Team
+Autor: Melomaniac Team
 Versión: 3.3.8
 Fecha: 2026
 """
@@ -30,7 +30,7 @@ from typing import Optional
 @dataclass
 class Track:
     """
-    Representación universal de una canción en el ecosistema MelomaniacPass.
+    Representación universal de una canción en el ecosistema Melomaniac.
     
     Abstrae las diferencias entre plataformas (YouTube Music, Apple Music)
     proporcionando una interfaz común para manipular metadatos de canciones.

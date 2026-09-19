@@ -257,7 +257,7 @@ class TelemetryDrawer:
         meta     = self._pm_meta
         log_path = "transfer_failed_report.txt"
         lines    = [
-            "# MelomaniacPass — Reporte Post-Mortem\n",
+            "# Melomaniac — Reporte Post-Mortem\n",
             f"# Fecha: {_dt.datetime.now().isoformat()}\n",
             f"# Destino: {meta.get('destination', '?')}\n",
             f"# Confirmadas: {meta.get('confirmed', 0)} / Detectadas: {meta.get('detected', 0)}\n\n",

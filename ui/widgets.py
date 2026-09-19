@@ -1,12 +1,12 @@
 """
 ╔══════════════════════════════════════════════════════════════════════╗
-║                    MelomaniacPass v3.3.8                               ║
+║                    Melomaniac v3.3.8                               ║
 ║                  Widgets UI Reutilizables                            ║
 ╚══════════════════════════════════════════════════════════════════════╝
 
 Módulo: ui/widgets.py
 Descripción: Biblioteca de componentes UI reutilizables para la interfaz
-            de MelomaniacPass. Proporciona botones, labels e iconos con
+            de Melomaniac. Proporciona botones, labels e iconos con
             estilos consistentes siguiendo el sistema de diseño OLED.
 
 Componentes:
@@ -23,7 +23,7 @@ Sistema de Diseño:
     - Estados interactivos (default, hover, pressed, disabled)
     - Elevación y sombras para jerarquía visual
 
-Autor: MelomaniacPass Team
+Autor: Melomaniac Team
 Versión: 3.3.8
 Fecha: 2026
 """

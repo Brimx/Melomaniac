@@ -1,6 +1,6 @@
 """
 ╔══════════════════════════════════════════════════════════════════════╗
-║                    MelomaniacPass v3.3.8                               ║
+║                    Melomaniac v3.3.8                               ║
 ║              Motor de Matching Fuzzy y Validación                    ║
 ╚══════════════════════════════════════════════════════════════════════╝
 
@@ -38,7 +38,7 @@ Dependencias Opcionales:
     - rapidfuzz: Librería de matching fuzzy de alto rendimiento
       Si no está disponible, retorna scores perfectos (100) como fallback
 
-Autor: MelomaniacPass Team
+Autor: Melomaniac Team
 Versión: 3.3.8
 Fecha: 2026
 """

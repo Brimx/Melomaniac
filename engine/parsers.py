@@ -1,6 +1,6 @@
 """
 ╔══════════════════════════════════════════════════════════════════════╗
-║                    MelomaniacPass v3.3.8                               ║
+║                    Melomaniac v3.3.8                               ║
 ║              Parsers de Playlists Locales                            ║
 ╚══════════════════════════════════════════════════════════════════════╝
 
@@ -45,7 +45,7 @@ Formatos Soportados:
     - XML: XML compatible con XSPF (no es un parser plist de iTunes)
     - Texto plano: Listas simples línea por línea
 
-Autor: MelomaniacPass Team
+Autor: Melomaniac Team
 Versión: 3.3.8
 Fecha: 2026
 """

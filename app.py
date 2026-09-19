@@ -1,11 +1,11 @@
 """
 ╔══════════════════════════════════════════════════════════════════════╗
-║                    MelomaniacPass v3.3.8                               ║
+║                    Melomaniac v3.3.8                               ║
 ║              Transferencia Universal de Playlists                    ║
 ╚══════════════════════════════════════════════════════════════════════╝
 
 Módulo: app.py
-Descripción: Punto de entrada principal de la aplicación MelomaniacPass.
+Descripción: Punto de entrada principal de la aplicación Melomaniac.
             Orquesta la inicialización de servicios, estado, UI y autenticación.
             Implementa ciclo de vida completo con limpieza profunda de recursos.
 
@@ -14,7 +14,7 @@ Diseño: Superficies oscuras sólidas · IBM Plex Sans · Optimizado OLED
 Motor: Hunter Recovery · Universal Auth · Post-mortem
 Ciclo de vida: Hard exit · Session probes · Semáforo real
 
-Autor: MelomaniacPass Team
+Autor: Melomaniac Team
 Versión: 3.3.8
 Fecha: 2026
 """
@@ -41,7 +41,7 @@ FONTS_DIR  = ASSETS_DIR / "fonts"
 
 async def main(page: ft.Page) -> None:
     """
-    Función principal asíncrona de la aplicación MelomaniacPass.
+    Función principal asíncrona de la aplicación Melomaniac.
     
     Inicializa y orquesta todos los componentes del sistema:
     - Configuración de la ventana y tema visual
@@ -70,7 +70,7 @@ async def main(page: ft.Page) -> None:
         # Establece dimensiones, colores y comportamiento visual de la
         # ventana principal de la aplicación.
         
-        page.title             = "MelomaniacPass"
+        page.title             = "Melomaniac"
         page.bgcolor           = BG_LIST
         page.width             = 1200
         page.height            = 650

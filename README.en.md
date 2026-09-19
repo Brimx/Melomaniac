@@ -1,6 +1,6 @@
-# 🎵 MelomaniacPass v3.3.8
+# 🎵 Melomaniac v3.3.8
 
-MelomaniacPass is a desktop application for rebuilding playlists between **YouTube Music, Apple Music, and Spotify**. It can also import a local playlist or a single audio file, find each track on the destination, and create a new playlist.
+Melomaniac is a desktop application for rebuilding playlists between **YouTube Music, Apple Music, and Spotify**. It can also import a local playlist or a single audio file, find each track on the destination, and create a new playlist.
 
 Matching combines metadata normalization, RapidFuzz, title/artist similarity, duration, explicit metadata, and ISRC when available. Uncertain results are preserved in the Post-Mortem view for review.
 
@@ -30,8 +30,8 @@ Matching combines metadata normalization, RapidFuzz, title/artist similarity, du
 ## Installation
 
 ```bash
-git clone https://github.com/Brimx/MelomaniacPass.git
-cd MelomaniacPass
+git clone https://github.com/Brimx/Melomaniac.git
+cd Melomaniac
 python -m venv .venv
 source .venv/bin/activate                 # Linux/macOS
 # .venv\Scripts\activate                 # Windows PowerShell
@@ -129,7 +129,7 @@ For local sources, select the destination explicitly before transferring. The so
 ## Project structure
 
 ```text
-MelomaniacPass/
+Melomaniac/
 ├── app.py                         # Entry point, composition, lifecycle
 ├── config/                        # Ignored runtime credentials and state
 ├── core/

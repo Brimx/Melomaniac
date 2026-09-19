@@ -1,6 +1,6 @@
 """
 ╔══════════════════════════════════════════════════════════════════════╗
-║                    MelomaniacPass v3.3.8                               ║
+║                    Melomaniac v3.3.8                               ║
 ║              Componentes de Fila de Canción                          ║
 ╚══════════════════════════════════════════════════════════════════════╝
 
@@ -25,7 +25,7 @@ Estrategia de Diseño:
     La altura fija (64px) garantiza scroll suave y cálculos de virtualización
     precisos en listas largas (1000+ canciones).
 
-Autor: MelomaniacPass Team
+Autor: Melomaniac Team
 Versión: 3.3.8
 Fecha: 2026
 """
