@@ -1,6 +1,8 @@
-# 🎵 Melomaniac v4.0.0
+# 🎵 Melomaniac v4.x.x
 
 Melomaniac is a desktop application for rebuilding playlists between **YouTube Music, Apple Music, and Spotify**. It can also import a local playlist or a single audio file, find each track on the destination, and create a new playlist.
+
+The working version belongs to the `4.x.x` series: major version 4 is retained while the latest functional changes and fixes are consolidated before the next minor/patch number is fixed.
 
 Matching combines metadata normalization, RapidFuzz, title/artist similarity, duration, explicit metadata, and ISRC when available. Uncertain results are preserved in the Post-Mortem view for review.
 
@@ -12,8 +14,10 @@ Matching combines metadata normalization, RapidFuzz, title/artist similarity, du
 - Search with Hunter Recovery using three query passes: cleaned metadata, original values, and a normalized title.
 - Use ISRC for exact Apple Music matches and retain it in the search cache.
 - Compare duration; Spotify also includes the `explicit` flag in its scoring.
-- Search, select, sort, and split tracks by artist, album, title, duration, or platform.
+- Search, select, sort, and split tracks by artist, album, title, or duration. The operation scope can be **All**, **Visible**, or **Selected**.
+- Use **List**, **Dual**, and **Preview** modes while organizing/splitting, with responsive layout and navigation for **Home**, **Library**, **Downloads**, and **Config**.
 - Show title, artist, album, duration, artwork, and transfer status for each track.
+- Export the selected tracks or visible scope to `TXT`, `CSV`, `M3U`, `M3U8`, and `XSPF`, using artist-title or title-artist order.
 - Edit the playlist name and description before creating it. Spotify's SpotAPI integration only saves the name; the description is reported as unsupported.
 - Provide destination availability scanning, progress, console logs, and a Post-Mortem report exportable to `transfer_failed_report.txt`.
 - Protect API usage with semaphores, circuit breakers, persistent caching, and batched writes.
@@ -98,9 +102,11 @@ For local sources, select the destination explicitly before transferring. The so
 ### Review and transfer
 
 1. Review the tracks and deselect anything you do not want to transfer.
-2. Optionally use **Organize** or **Split**, then change the visible segment.
+2. Optionally use **Organize** or **Split**, choose the operation scope, and change the visible segment. The view can switch between **List**, **Dual**, and **Preview**.
 3. Click **Transfer**, and confirm or edit the name and description.
 4. Review progress, the console, and the **Post-Mortem** tab.
+
+If you choose **Local File (Export)** as the destination, the button changes to **Export**. You can select the format, order, and output path; the default is `~/Documents/Melomaniac/Exports` when available, with `./exports` as a fallback.
 
 `low_confidence` matches may continue for streaming sources. Local tracks use a strict threshold; matches below `85` are rejected. Matches marked `revision_necesaria` are not inserted automatically.
 
@@ -124,6 +130,7 @@ For local sources, select the destination explicitly before transferring. The so
 | `config/browser.json` | Authenticated YouTube Music headers |
 | `config/spotify_cookies.json` | `identifier`, `sp_dc`, and `sp_key` |
 | `config/search_cache.json` | Results keyed by `title|||artist|||destination` |
+| `exports/` | Local exporter output; excluded by `.gitignore` |
 | `transfer_failed_report.txt` | On-demand UI report; not a configuration file |
 
 ## Project structure
@@ -144,6 +151,7 @@ Melomaniac/
 │   ├── match.py                   # Candidate scoring and validation
 │   ├── normalizer.py              # Cleanup, ISRC, fuzzy thresholds
 │   ├── organizer.py               # In-memory sorting and segmentation
+│   ├── exporters.py               # TXT/CSV/M3U/XSPF local export
 │   └── parsers.py                 # Local formats and Track construction
 ├── services/
 │   ├── api_service.py             # API facade and HTTP sessions
@@ -160,19 +168,19 @@ Melomaniac/
 └── resources/fonts/               # IBM Plex Sans w300–w700
 ```
 
-## Tests
+## Verification
 
-After installing dependencies in the virtual environment:
+The quick Python module check is:
 
 ```bash
-python -m unittest discover -s tests -p 'test_*.py'
+python -m compileall -q app.py core engine services ui
 ```
 
-Tests cover package layout, cache/rate-limit helpers, ISRC normalization, Mutagen metadata, and Apple operations. The UI is validated manually.
+The Flet UI is validated manually, especially the view modes, Organize/Split scope, responsive navigation, and export dialog. The `tests/` directory remains available for future regressions.
 
 ## Status and license
 
-The documented version is `4.0.0` on the `main` branch. This is a personal-use project; each platform and its APIs are subject to their own terms of service.
+The documented version is `4.x.x` on the `main` branch. This is a personal-use project; each platform and its APIs are subject to their own terms of service.
 
 ## Thanks
 

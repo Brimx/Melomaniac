@@ -1,6 +1,8 @@
-# Melomaniac v4.0.0 — Arquitectura
+# Melomaniac v4.x.x — Arquitectura
 
 Melomaniac separa la interfaz Flet, el estado de la aplicación, los servicios de plataforma y el motor de normalización/matching. La versión actual soporta YouTube Music, Apple Music, Spotify y dos entradas locales: archivo y texto pegado.
+
+La versión de trabajo se mantiene en la serie `4.x.x`; el número minor/parche exacto se fijará al cerrar este ciclo de cambios.
 
 ## Capas y dependencias
 
@@ -49,6 +51,7 @@ Melomaniac/
 │   ├── match.py                    # validación, scoring y Hunter Recovery
 │   ├── normalizer.py               # limpieza, ruido e ISRC
 │   ├── organizer.py                # sort_tracks y split_tracks en memoria
+│   ├── exporters.py                # exportación local en varios formatos
 │   └── parsers.py                  # formatos locales y Track local
 ├── services/
 │   ├── api_service.py              # fachada YouTube/Apple/Spotify
@@ -64,7 +67,7 @@ Melomaniac/
 │   ├── tokens.py                   # tokens de diseño
 │   └── widgets.py                  # controles reutilizables
 ├── resources/fonts/                # IBM Plex Sans w300–w700
-└── tests/                           # unittest y regresiones
+└── tests/                           # reservado para unittest y regresiones
 ```
 
 ## Modelos y estado
@@ -79,7 +82,9 @@ Estados principales:
 - `TransferState`: `IDLE → RUNNING → DONE` o `ERROR`.
 - `Track.transfer_status`: `pending`, `searching`, `found`, `not_found`, `revision_necesaria`, `transferred`, `error` y `local_pending`.
 
-`AppState` mantiene la lista maestra, filtro, segmentos, selección, contadores, logs, fallos, resultados pendientes de revisión y flags de sesión. La UI se suscribe mediante `subscribe()` y recibe actualizaciones con `notify()`.
+`AppState` mantiene la lista maestra, filtro, segmentos, selección, contadores, logs, fallos, resultados pendientes de revisión y flags de sesión. También calcula `visible_tracks()` y `selected_in_scope()` para que Organizar, Dividir, transferir y exportar compartan el mismo alcance. `dual_mode` controla los modos `lista`, `doble` y `preview`; la UI se suscribe mediante `subscribe()` y recibe actualizaciones con `notify()`.
+
+`engine.organizer` limita las claves de ordenación a `artist`, `album`, `name` y `duration_ms`. `split_tracks` normaliza las claves, recorta espacios y agrupa valores vacíos bajo `Desconocido`. El campo `platform` ya no se ofrece como criterio de Organizar/Dividir.
 
 ## Plataformas y autenticación
 
@@ -115,6 +120,8 @@ UI selecciona origen + ID
 
 Los parsers aceptan `TXT`, `CSV`, `M3U/M3U8`, `PLS`, `WPL`, `XSPF` y XML compatible con XSPF. Las rutas locales solo se resuelven para extensiones de audio conocidas; las URLs remotas no se leen como archivos.
 
+`engine.exporters` es el espejo de los parsers para la salida local. Exporta `TXT`, `CSV`, `M3U`, `M3U8` y `XSPF`, respeta el orden `artist-title` o `title-artist`, sanea el nombre de archivo y conserva el ISRC en XSPF. La UI lo expone como el destino `Archivo Local (Exportar)` y usa `FilePicker` cuando está disponible.
+
 ## Flujo de búsqueda y transferencia
 
 ```text
@@ -149,6 +156,8 @@ El matching común usa estos umbrales:
 
 En pistas locales, un resultado `low_confidence` también se rechaza para evitar transferencias ambiguas.
 
+Durante Organizar/Dividir, la UI ofrece los alcances `Todo`, `Visibles` y `Seleccionadas`. Al aplicar una operación se actualizan los segmentos y se abre la vista doble; el usuario puede mostrar la lista, el preview o ambas columnas. `NavigationRail` organiza los módulos Inicio, Biblioteca, Descargas y Config, adaptándose al espacio disponible.
+
 ## Concurrencia, caché y resiliencia
 
 Los valores están centralizados en `core/config.py`:
@@ -181,7 +190,7 @@ Apple procesa la transferencia de forma secuencial para evitar ráfagas. El rest
 ## Verificación
 
 ```bash
-python -m unittest discover -s tests -p 'test_*.py'
+python -m compileall -q app.py core engine services ui
 ```
 
-La suite actual verifica el layout de paquetes, helpers de caché/rate limit, normalización ISRC, lectura de tags con Mutagen, limitador Apple, lotes Apple y errores de autenticación. La UI Flet se valida manualmente.
+La UI Flet se valida manualmente, incluyendo los modos Lista/Doble/Preview, el alcance de Organizar/Dividir, la navegación responsive, el skeleton animado y la exportación local. La carpeta `tests/` queda reservada para regresiones futuras.

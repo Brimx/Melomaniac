@@ -1,6 +1,8 @@
-# Melomaniac v4.0.0 — Architecture
+# Melomaniac v4.x.x — Architecture
 
 Melomaniac separates the Flet UI, application state, platform services, and metadata normalization/matching engine. The current version supports YouTube Music, Apple Music, Spotify, and two local inputs: file and pasted text.
+
+The working version remains in the `4.x.x` series; the exact minor/patch number will be fixed when this change cycle is closed.
 
 ## Layers and dependencies
 
@@ -49,6 +51,7 @@ Melomaniac/
 │   ├── match.py                    # validation, scoring, Hunter Recovery
 │   ├── normalizer.py               # cleanup, noise, ISRC
 │   ├── organizer.py                # in-memory sort_tracks/split_tracks
+│   ├── exporters.py                # multi-format local export
 │   └── parsers.py                 # local formats and local Track creation
 ├── services/
 │   ├── api_service.py             # YouTube/Apple/Spotify facade
@@ -64,7 +67,7 @@ Melomaniac/
 │   ├── tokens.py                  # design tokens
 │   └── widgets.py                 # reusable controls
 ├── resources/fonts/               # IBM Plex Sans w300–w700
-└── tests/                          # unittest regressions
+└── tests/                          # reserved for unittest regressions
 ```
 
 ## Models and state
@@ -79,7 +82,9 @@ Main states:
 - `TransferState`: `IDLE → RUNNING → DONE` or `ERROR`.
 - `Track.transfer_status`: `pending`, `searching`, `found`, `not_found`, `revision_necesaria`, `transferred`, `error`, and `local_pending`.
 
-`AppState` owns the master list, filter, segments, selection, counters, logs, failures, review candidates, and session flags. The UI subscribes through `subscribe()` and receives updates through `notify()`.
+`AppState` owns the master list, filter, segments, selection, counters, logs, failures, review candidates, and session flags. It also provides `visible_tracks()` and `selected_in_scope()` so Organize, Split, transfer, and export share the same scope. `dual_mode` controls the `list`, `dual`, and `preview` modes; the UI subscribes through `subscribe()` and receives updates through `notify()`.
+
+`engine.organizer` limits sorting keys to `artist`, `album`, `name`, and `duration_ms`. `split_tracks` normalizes keys, trims whitespace, and groups empty values under `Desconocido`. `platform` is no longer offered as an Organize/Split key.
 
 ## Platforms and authentication
 
@@ -115,6 +120,8 @@ UI selects source + ID
 
 Parsers accept `TXT`, `CSV`, `M3U/M3U8`, `PLS`, `WPL`, `XSPF`, and XSPF-compatible XML. Local paths are resolved only for known audio extensions; remote URLs are not read as local files.
 
+`engine.exporters` mirrors the parsers for local output. It exports `TXT`, `CSV`, `M3U`, `M3U8`, and `XSPF`, supports `artist-title` and `title-artist` order, sanitizes filenames, and preserves ISRC in XSPF. The UI exposes it as the `Local File (Export)` destination and uses `FilePicker` when available.
+
 ## Search and transfer flow
 
 ```text
@@ -149,6 +156,8 @@ The shared matcher uses these thresholds:
 
 For local tracks, a `low_confidence` result is also rejected to avoid ambiguous transfers.
 
+During Organize/Split, the UI offers `All`, `Visible`, and `Selected` scopes. Applying an operation updates the segments and opens dual view; the user can show the list, preview, or both columns. `NavigationRail` organizes the Home, Library, Downloads, and Config modules and adapts to the available space.
+
 ## Concurrency, caching, and resilience
 
 Values are centralized in `core/config.py`:
@@ -181,7 +190,7 @@ Apple processes transfers sequentially to avoid bursts. Other platforms use task
 ## Verification
 
 ```bash
-python -m unittest discover -s tests -p 'test_*.py'
+python -m compileall -q app.py core engine services ui
 ```
 
-The current suite verifies package layout, cache/rate-limit helpers, ISRC normalization, Mutagen tags, the Apple limiter, Apple batching, and authentication errors. The Flet UI is validated manually.
+The Flet UI is validated manually, including List/Dual/Preview modes, Organize/Split scope, responsive navigation, animated skeletons, and local export. The `tests/` directory remains available for future regressions.

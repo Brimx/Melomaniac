@@ -1,6 +1,8 @@
-# 🎵 Melomaniac v4.0.0
+# 🎵 Melomaniac v4.x.x
 
 Melomaniac es una aplicación de escritorio para reconstruir playlists entre **YouTube Music, Apple Music y Spotify**. También permite importar una lista local o una canción individual, buscar cada pista en el destino y crear una nueva playlist.
+
+La versión de trabajo pertenece a la serie `4.x.x`: se conserva la versión mayor 4 mientras se consolidan los cambios funcionales y correcciones antes de fijar el siguiente número minor/parche.
 
 El matching combina normalización de metadatos, RapidFuzz, artista/título, duración, contenido explícito e ISRC cuando está disponible. Los resultados dudosos se conservan en el Post-Mortem para revisión.
 
@@ -12,8 +14,10 @@ El matching combina normalización de metadatos, RapidFuzz, artista/título, dur
 - Busca con Hunter Recovery y tres pasadas de consulta: metadatos limpios, valores originales y título normalizado.
 - Usa ISRC para coincidencias exactas en Apple Music y conserva el valor en la caché.
 - Compara la duración; Spotify añade el indicador `explicit` al scoring.
-- Permite buscar, seleccionar, ordenar y dividir la lista por artista, álbum, título, duración o plataforma.
+- Permite buscar, seleccionar, ordenar y dividir la lista por artista, álbum, título o duración. El alcance puede ser **Todo**, **Visibles** o **Seleccionadas**.
+- Ofrece los modos **Lista**, **Doble** y **Preview** durante Organizar/Dividir, con una vista responsive y navegación por **Inicio**, **Biblioteca**, **Descargas** y **Config**.
 - Muestra título, artista, álbum, duración, portada y estado de cada pista.
+- Exporta la selección o el alcance visible a `TXT`, `CSV`, `M3U`, `M3U8` y `XSPF`, con orden artista-título o título-artista.
 - Permite editar nombre y descripción antes de crear la playlist. En Spotify, SpotAPI solo permite guardar el nombre; la descripción se informa como no soportada.
 - Incluye precarga/escaneo de disponibilidad del destino, progreso, consola y reporte Post-Mortem exportable a `transfer_failed_report.txt`.
 - Protege las APIs con semáforos, circuit breakers, caché persistida y control de lotes.
@@ -98,9 +102,11 @@ En fuentes locales debes elegir explícitamente el destino antes de transferir. 
 ### Revisar y transferir
 
 1. Revisa las canciones y desmarca las que no quieras transferir.
-2. Opcionalmente usa **Organizar** o **Dividir** y cambia el segmento visible.
+2. Opcionalmente usa **Organizar** o **Dividir**, elige el alcance de la operación y cambia el segmento visible. La vista puede alternarse entre **Lista**, **Doble** y **Preview**.
 3. Pulsa **Transferir**, confirma o edita el nombre y la descripción.
 4. Revisa el progreso, la consola y la pestaña **Post-Mortem**.
+
+Si eliges **Archivo Local (Exportar)** como destino, el botón cambia a **Exportar**. Puedes seleccionar el formato, el orden y la ruta de salida; por defecto se propone `~/Documentos/Melomaniac/Exports` cuando existe, o `./exports` como fallback.
 
 Los matches con `low_confidence` pueden continuar en fuentes de streaming. En pistas locales se aplica un umbral estricto; las coincidencias por debajo de `85` se rechazan. Los matches marcados `revision_necesaria` no se insertan automáticamente.
 
@@ -124,6 +130,7 @@ Los matches con `low_confidence` pueden continuar en fuentes de streaming. En pi
 | `config/browser.json` | Headers autenticados de YouTube Music |
 | `config/spotify_cookies.json` | `identifier`, `sp_dc` y `sp_key` |
 | `config/search_cache.json` | Resultados por `título|||artista|||destino` |
+| `exports/` | Salidas locales generadas por el exportador; está excluido por `.gitignore` |
 | `transfer_failed_report.txt` | Reporte creado bajo demanda por la UI; no forma parte de la configuración |
 
 ## Estructura del proyecto
@@ -144,6 +151,7 @@ Melomaniac/
 │   ├── match.py                   # Scoring y validación de candidatos
 │   ├── normalizer.py              # Limpieza, ISRC y umbrales fuzzy
 │   ├── organizer.py               # Ordenación y segmentación en memoria
+│   ├── exporters.py               # Exportación local TXT/CSV/M3U/XSPF
 │   └── parsers.py                 # Formatos locales y construcción de Track
 ├── services/
 │   ├── api_service.py             # Fachada de APIs y sesiones HTTP
@@ -160,19 +168,19 @@ Melomaniac/
 └── resources/fonts/               # IBM Plex Sans w300–w700
 ```
 
-## Pruebas
+## Verificación
 
-Con el entorno virtual creado e instalado:
+La comprobación rápida de los módulos Python es:
 
 ```bash
-python -m unittest discover -s tests -p 'test_*.py'
+python -m compileall -q app.py core engine services ui
 ```
 
-Las pruebas cubren la estructura de paquetes, caché/rate limit, normalización ISRC, lectura de metadatos con Mutagen y operaciones Apple. La UI se valida manualmente.
+La UI Flet se valida manualmente, en especial los modos de vista, el alcance de Organizar/Dividir, la navegación responsive y el diálogo de exportación. La carpeta `tests/` queda reservada para regresiones futuras.
 
 ## Estado y licencia
 
-La versión documentada es `4.0.0` en la rama `main`. Es un proyecto para uso personal; cada plataforma y sus APIs están sujetas a sus propios términos de servicio.
+La versión documentada es `4.x.x` en la rama `main`. Es un proyecto para uso personal; cada plataforma y sus APIs están sujetas a sus propios términos de servicio.
 
 ## Agradecimientos
 
