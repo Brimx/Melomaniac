@@ -1,6 +1,6 @@
 """
 ╔══════════════════════════════════════════════════════════════════════╗
-║                    Melomaniac v4.x.x                               ║
+║                    Melomaniac v4.1.0                               ║
 ║              Parsers de Playlists Locales                            ║
 ╚══════════════════════════════════════════════════════════════════════╝
 
@@ -46,7 +46,7 @@ Formatos Soportados:
     - Texto plano: Listas simples línea por línea
 
 Autor: Melomaniac Team
-Versión: 4.x.x
+Versión: 4.1.0
 Fecha: 2026
 """
 

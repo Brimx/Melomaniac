@@ -1,5 +1,5 @@
 """
-core/config.py — Melomaniac v4.x.x — Configuración Centralizada
+core/config.py — Melomaniac v4.1.0 — Configuración Centralizada
 ══════════════════════════════════════════════════════════════════
 Fuente única para constantes compartidas (regla 1).
 Centraliza el orden de plataformas, concurrencia y parámetros de servicios
