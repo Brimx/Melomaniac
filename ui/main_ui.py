@@ -64,7 +64,10 @@ from core.config import EXPORT_DEST_LABEL, EXPORT_FORMATS, EXPORT_ORDERS
 from engine.parsers import parse_local_playlist_with_paths, build_local_tracks
 from engine.exporters import export_tracks, default_export_path
 from ui.song_row import SongRow, SkeletonRow, ITEM_H
-from ui.fonts import font_family_for
+from ui.fonts import (
+    FONT_HEADLINE, FONT_HEADLINE_BOLD, FONT_TEXT,
+    brand_family, font_family_for, mono_family,
+)
 from ui.telemetry import TelemetryDrawer
 from ui.widgets import (
     _primary_btn, _ghost_btn, _section_label, _status_icon,
@@ -145,8 +148,8 @@ class PlaylistManagerUI(DialogMixin):
                     color={ft.ControlState.SELECTED: TEXT_PRIMARY, ft.ControlState.DEFAULT: TEXT_MUTED},
                 ),
                 segments=[
-                    ft.Segment(value="artist-title", label=ft.Text("Artista - Título", size=11)),
-                    ft.Segment(value="title-artist", label=ft.Text("Título - Artista", size=11)),
+                    ft.Segment(value="artist-title", label=ft.Text("Artista - Título", size=11, font_family=FONT_HEADLINE)),
+                    ft.Segment(value="title-artist", label=ft.Text("Título - Artista", size=11, font_family=FONT_HEADLINE)),
                 ],
                 on_change=on_change,
             )
@@ -156,7 +159,7 @@ class PlaylistManagerUI(DialogMixin):
                 value=current,
                 width=200, height=38,
                 bgcolor=BG_INPUT, border_color=BORDER_LIGHT, focused_border_color=ACCENT,
-                text_style=ft.TextStyle(color=TEXT_PRIMARY, size=11, font_family="IBM Plex Sans"),
+                text_style=ft.TextStyle(color=TEXT_PRIMARY, size=11, font_family=FONT_TEXT),
                 content_padding=ft.Padding.symmetric(horizontal=10, vertical=0),
                 options=[
                     ft.dropdown.Option("artist-title", "Artista - Título"),
@@ -179,9 +182,9 @@ class PlaylistManagerUI(DialogMixin):
                     color={ft.ControlState.SELECTED: TEXT_PRIMARY, ft.ControlState.DEFAULT: TEXT_MUTED},
                 ),
                 segments=[
-                    ft.Segment(value="all", label=ft.Text("Todo", size=11)),
-                    ft.Segment(value="visible", label=ft.Text("Visibles", size=11)),
-                    ft.Segment(value="selected", label=ft.Text("Seleccionadas", size=11)),
+                    ft.Segment(value="all", label=ft.Text("Todo", size=11, font_family=FONT_HEADLINE)),
+                    ft.Segment(value="visible", label=ft.Text("Visibles", size=11, font_family=FONT_HEADLINE)),
+                    ft.Segment(value="selected", label=ft.Text("Seleccionadas", size=11, font_family=FONT_HEADLINE)),
                 ],
                 on_change=on_change,
             )
@@ -190,7 +193,7 @@ class PlaylistManagerUI(DialogMixin):
                 value=current,
                 width=200, height=38,
                 bgcolor=BG_INPUT, border_color=BORDER_LIGHT, focused_border_color=ACCENT,
-                text_style=ft.TextStyle(color=TEXT_PRIMARY, size=11, font_family="IBM Plex Sans"),
+                text_style=ft.TextStyle(color=TEXT_PRIMARY, size=11, font_family=FONT_TEXT),
                 content_padding=ft.Padding.symmetric(horizontal=10, vertical=0),
                 options=[
                     ft.dropdown.Option("all", "Todo"),
@@ -213,9 +216,9 @@ class PlaylistManagerUI(DialogMixin):
                     color={ft.ControlState.SELECTED: TEXT_PRIMARY, ft.ControlState.DEFAULT: TEXT_MUTED},
                 ),
                 segments=[
-                    ft.Segment(value="lista", label=ft.Text("Lista", size=11)),
-                    ft.Segment(value="doble", label=ft.Text("Doble", size=11)),
-                    ft.Segment(value="preview", label=ft.Text("Preview", size=11)),
+                    ft.Segment(value="lista", label=ft.Text("Lista", size=11, font_family=FONT_HEADLINE)),
+                    ft.Segment(value="doble", label=ft.Text("Doble", size=11, font_family=FONT_HEADLINE)),
+                    ft.Segment(value="preview", label=ft.Text("Preview", size=11, font_family=FONT_HEADLINE)),
                 ],
                 on_change=on_change,
             )
@@ -224,7 +227,7 @@ class PlaylistManagerUI(DialogMixin):
                 value=current,
                 width=180, height=38,
                 bgcolor=BG_INPUT, border_color=BORDER_LIGHT, focused_border_color=ACCENT,
-                text_style=ft.TextStyle(color=TEXT_PRIMARY, size=11, font_family="IBM Plex Sans"),
+                text_style=ft.TextStyle(color=TEXT_PRIMARY, size=11, font_family=FONT_TEXT),
                 content_padding=ft.Padding.symmetric(horizontal=10, vertical=0),
                 options=[
                     ft.dropdown.Option("lista", "Lista"),
@@ -242,9 +245,9 @@ class PlaylistManagerUI(DialogMixin):
                 ft.Container(content=ft.Icon(ft.Icons.CONSTRUCTION, size=52, color=TEXT_DIM),
                              bgcolor=CHIP_BG, border=ft.Border.all(0.8, BORDER_LIGHT),
                              border_radius=20, padding=ft.Padding.all(20)),
-                ft.Text(title, size=18, color=TEXT_PRIMARY, font_family="IBM Plex Sans Bold", opacity=1.0),
-                ft.Text(subtitle, size=12, color=TEXT_MUTED, font_family="IBM Plex Sans", opacity=1.0, text_align=ft.TextAlign.CENTER),
-                ft.Text("Función en desarrollo", size=11, color=TEXT_DIM, font_family="IBM Plex Sans", opacity=0.8),
+                ft.Text(title, size=18, color=TEXT_PRIMARY, font_family=FONT_HEADLINE_BOLD, opacity=1.0),
+                ft.Text(subtitle, size=12, color=TEXT_MUTED, font_family=FONT_TEXT, opacity=1.0, text_align=ft.TextAlign.CENTER),
+                ft.Text("Función en desarrollo", size=11, color=TEXT_DIM, font_family=FONT_TEXT, opacity=0.8),
             ], horizontal_alignment=ft.CrossAxisAlignment.CENTER, spacing=8),
             alignment=ft.Alignment.CENTER, visible=visible,
             expand=True,
@@ -405,7 +408,8 @@ class PlaylistManagerUI(DialogMixin):
                             ft.Text(tr.album or "—", size=10, color=TEXT_DIM,
                                     font_family=font_family_for(tr.album), expand=True,
                                     overflow=ft.TextOverflow.ELLIPSIS, max_lines=1),
-                            ft.Text(tr.duration or "", size=10, color=TEXT_DIM, width=40, text_align=ft.TextAlign.CENTER),
+                            ft.Text(tr.duration or "", size=10, color=TEXT_DIM, width=40,
+                                    font_family=mono_family("light"), text_align=ft.TextAlign.CENTER),
                         ], spacing=8, vertical_alignment=ft.CrossAxisAlignment.CENTER),
                     )
                     self._preview_list_view.controls.append(row)
@@ -655,9 +659,9 @@ class PlaylistManagerUI(DialogMixin):
                 ft.Column([
                     ft.Text(spans=[
                         ft.TextSpan("Melomaniac", ft.TextStyle(size=20,
-                                                               color=TEXT_PRIMARY, font_family="IBM Plex Sans Light")),
+                                                               color=TEXT_PRIMARY, font_family=brand_family("bold"))),
                     ], opacity=1.0),
-                    ft.Text("v4.1.0", size=9, color=TEXT_DIM, font_family="IBM Plex Sans",
+                    ft.Text("v4.1.0", size=9, color=TEXT_DIM, font_family=FONT_TEXT,
                             style=ft.TextStyle(letter_spacing=0.8), opacity=1.0),
                 ], spacing=0, tight=True, expand=True),
                 self.btn_wizard,
@@ -666,8 +670,8 @@ class PlaylistManagerUI(DialogMixin):
 
         _dd_style = dict(
             bgcolor=BG_INPUT, border_color=BORDER_LIGHT,
-            label_style=ft.TextStyle(color=TEXT_MUTED, size=10, font_family="IBM Plex Sans"),
-            text_style=ft.TextStyle(color=TEXT_PRIMARY, size=12, font_family="IBM Plex Sans"),
+            label_style=ft.TextStyle(color=TEXT_MUTED, size=10, font_family=FONT_HEADLINE),
+            text_style=ft.TextStyle(color=TEXT_PRIMARY, size=12, font_family=FONT_TEXT),
             border_radius=10, expand=True,
         )
 
@@ -711,8 +715,8 @@ class PlaylistManagerUI(DialogMixin):
             options=[ft.dropdown.Option(key=p, text=p) for p in _dst_opts],
             on_select=_on_dst_select, **_dd_style,
         )
-        self._status_badge      = ft.Text("", size=10, color=SUCCESS, font_family="IBM Plex Sans", opacity=1.0)
-        self._dest_session_warn = ft.Text("", size=9, color=ERROR_COL, font_family="IBM Plex Sans", visible=False)
+        self._status_badge      = ft.Text("", size=10, color=SUCCESS, font_family=mono_family(), opacity=1.0)
+        self._dest_session_warn = ft.Text("", size=9, color=ERROR_COL, font_family=FONT_TEXT, visible=False)
 
         platform_section = ft.Column([
             _section_label("PLATAFORMAS"),
@@ -762,7 +766,7 @@ class PlaylistManagerUI(DialogMixin):
         self._rl_banner = ft.Container(
             content=ft.Row([
                 ft.Icon(ft.Icons.TIMER_OUTLINED, color=WARNING, size=14),
-                ft.Text("", size=10, color=WARNING, font_family="IBM Plex Sans", opacity=1.0),
+                ft.Text("", size=10, color=WARNING, font_family=mono_family("light"), opacity=1.0),
             ], spacing=6),
             bgcolor=BG_PANEL, border=ft.Border.all(0.8, WARNING),
             border_radius=8, padding=ft.Padding.symmetric(horizontal=10, vertical=6),
@@ -773,7 +777,7 @@ class PlaylistManagerUI(DialogMixin):
         self._progress_row = ft.Container(
             content=ft.Column([
                 self._progress_bar,
-                ft.Row([ft.Text("", size=10, color=TEXT_MUTED, font_family="IBM Plex Sans", opacity=1.0)],
+                ft.Row([ft.Text("", size=10, color=TEXT_MUTED, font_family=mono_family("light"), opacity=1.0)],
                        alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
             ], spacing=4),
             visible=False,
@@ -842,7 +846,7 @@ class PlaylistManagerUI(DialogMixin):
             ft.Column([
                 _dd_field,
                 _switch_rev,
-                ft.Text("Alcance:", size=10, color=TEXT_MUTED, font_family="IBM Plex Sans"),
+                ft.Text("Alcance:", size=10, color=TEXT_MUTED, font_family=FONT_HEADLINE),
                 _scope_seg,
             ], tight=True, spacing=12),
             [
@@ -893,7 +897,7 @@ class PlaylistManagerUI(DialogMixin):
             ft.Column([
                 ft.Text("Agrupa tu playlist en segmentos independientes.", size=12, color=TEXT_MUTED),
                 _dd_field,
-                ft.Text("Alcance:", size=10, color=TEXT_MUTED, font_family="IBM Plex Sans"),
+                ft.Text("Alcance:", size=10, color=TEXT_MUTED, font_family=FONT_HEADLINE),
                 _scope_seg,
             ], tight=True, spacing=12),
             actions,
@@ -912,9 +916,9 @@ class PlaylistManagerUI(DialogMixin):
     def _build_content(self) -> None:
         self._playlist_title = ft.Text(
             "Cargar una playlist", size=22,
-            color=TEXT_PRIMARY, font_family="IBM Plex Sans Bold", opacity=1.0,
+            color=TEXT_PRIMARY, font_family=FONT_HEADLINE_BOLD, opacity=1.0,
         )
-        self._track_count = ft.Text("", size=12, color=TEXT_MUTED, font_family="IBM Plex Sans", opacity=1.0)
+        self._track_count = ft.Text("", size=12, color=TEXT_MUTED, font_family=mono_family("light"), opacity=1.0)
         self._search_field = app_text_field(
             hint_text="Buscar título, artista…",
             prefix_icon=ft.Icons.SEARCH,
@@ -925,7 +929,7 @@ class PlaylistManagerUI(DialogMixin):
         self._segment_dd = ft.Dropdown(
             width=160, height=38,
             bgcolor=BG_INPUT, border_color=BORDER_LIGHT, focused_border_color=ACCENT,
-            text_style=ft.TextStyle(color=TEXT_PRIMARY, size=12, font_family="IBM Plex Sans"),
+            text_style=ft.TextStyle(color=TEXT_PRIMARY, size=12, font_family=FONT_TEXT),
             content_padding=ft.Padding.symmetric(horizontal=10, vertical=0),
             on_select=lambda e: self.state.set_active_segment(e.control.value),
             visible=False,
@@ -951,7 +955,7 @@ class PlaylistManagerUI(DialogMixin):
 
         self._select_all_chk = ft.Checkbox(
             label="Todo",
-            label_style=ft.TextStyle(color=TEXT_MUTED, size=11, font_family="IBM Plex Sans"),
+            label_style=ft.TextStyle(color=TEXT_MUTED, size=11, font_family=FONT_HEADLINE),
             fill_color={ft.ControlState.SELECTED: ACCENT},
             check_color=TEXT_PRIMARY,
             border_side=ft.BorderSide(1.5, TEXT_DIM),
@@ -959,8 +963,8 @@ class PlaylistManagerUI(DialogMixin):
         )
 
         self._content_progress_bar = ft.ProgressBar(value=0, bgcolor=BG_SURFACE, color=ACCENT, border_radius=4)
-        self._content_prog_label   = ft.Text("", size=10, color=TEXT_MUTED, font_family="IBM Plex Sans", opacity=0.6)
-        self._content_eta_label    = ft.Text("", size=10, color=TEXT_DIM,   font_family="IBM Plex Sans", opacity=0.45)
+        self._content_prog_label   = ft.Text("", size=10, color=TEXT_MUTED, font_family=mono_family("light"), opacity=0.6)
+        self._content_eta_label    = ft.Text("", size=10, color=TEXT_DIM,   font_family=mono_family("light"), opacity=0.45)
         self._content_progress = ft.Container(
             content=ft.Column([
                 self._content_progress_bar,
@@ -987,7 +991,7 @@ class PlaylistManagerUI(DialogMixin):
 
         def _col_header(text, width=None, expand=False, center=False):
             align = ft.Alignment.CENTER if center else ft.Alignment.CENTER_LEFT
-            ctrl  = ft.Text(text, size=9, color=TEXT_DIM, font_family="IBM Plex Sans Bold",
+            ctrl  = ft.Text(text, size=9, color=TEXT_DIM, font_family=FONT_HEADLINE_BOLD,
                             style=ft.TextStyle(letter_spacing=0.8),
                             text_align=ft.TextAlign.CENTER if center else ft.TextAlign.LEFT, opacity=1.0)
             return ft.Container(content=ctrl, width=width, expand=expand, alignment=align)
@@ -1020,7 +1024,7 @@ class PlaylistManagerUI(DialogMixin):
 
         self._empty_hint_text = ft.Text(
             "Introduce el ID en el panel izquierdo y pulsa «Cargar».",
-            size=12, color=TEXT_DIM, font_family="IBM Plex Sans", opacity=1.0, text_align=ft.TextAlign.CENTER,
+            size=12, color=TEXT_DIM, font_family=FONT_TEXT, opacity=1.0, text_align=ft.TextAlign.CENTER,
         )
         self._empty_state = ft.Container(
             bgcolor=BG_LIST,
@@ -1028,9 +1032,9 @@ class PlaylistManagerUI(DialogMixin):
                 ft.Container(content=ft.Icon(ft.Icons.LIBRARY_MUSIC, size=52, color=TEXT_DIM),
                              bgcolor=CHIP_BG, border=ft.Border.all(0.8, BORDER_LIGHT),
                              border_radius=20, padding=ft.Padding.all(20)),
-                ft.Text("Carga una playlist", size=20, color=TEXT_PRIMARY, font_family="IBM Plex Sans Bold",
+                ft.Text("Carga una playlist", size=20, color=TEXT_PRIMARY, font_family=FONT_HEADLINE_BOLD,
                         opacity=1.0),
-                ft.Text("Sin playlist cargada", size=14, color=TEXT_MUTED, font_family="IBM Plex Sans Medium",
+                ft.Text("Sin playlist cargada", size=14, color=TEXT_MUTED, font_family=FONT_HEADLINE,
                         opacity=1.0),
                 self._empty_hint_text,
             ], horizontal_alignment=ft.CrossAxisAlignment.CENTER,
@@ -1038,7 +1042,7 @@ class PlaylistManagerUI(DialogMixin):
             alignment=ft.Alignment.CENTER, visible=True, **_sf,
         )
 
-        self._error_text  = ft.Text("", size=13, color=ERROR_COL, font_family="IBM Plex Sans", opacity=1.0)
+        self._error_text  = ft.Text("", size=13, color=ERROR_COL, font_family=FONT_TEXT, opacity=1.0)
         self._error_state = ft.Container(
             bgcolor=BG_LIST,
             content=ft.Column([ft.Icon(ft.Icons.ERROR_OUTLINE, size=48, color=ERROR_COL), self._error_text],
@@ -1049,7 +1053,7 @@ class PlaylistManagerUI(DialogMixin):
         # Preview readonly (derecha del doble)
         self._preview_list_view = ft.ListView(item_extent=ITEM_H, spacing=0, expand=True,
                                               padding=ft.Padding.only(bottom=20))
-        self._preview_count = ft.Text("", size=10, color=TEXT_MUTED, font_family="IBM Plex Sans", opacity=1.0)
+        self._preview_count = ft.Text("", size=10, color=TEXT_MUTED, font_family=mono_family("light"), opacity=1.0)
         self._preview_empty = self._make_cono_empty("Preview vacío", "Marca canciones y organiza para ver cómo se va a pasar.", visible=False)
         self._preview_empty_wrap = ft.Container(content=self._preview_empty, bgcolor=BG_LIST, visible=False, **_sf)
         self._preview_view_wrap = ft.Container(content=self._preview_list_view, bgcolor=BG_LIST, visible=False, **_sf)
@@ -1060,7 +1064,7 @@ class PlaylistManagerUI(DialogMixin):
             content=ft.Column([
                 ft.Row([
                     ft.Icon(ft.Icons.VISIBILITY_OUTLINED, size=14, color=TEXT_MUTED),
-                    ft.Text("Preview — cómo se va a pasar", size=11, color=TEXT_MUTED, font_family="IBM Plex Sans Bold"),
+                    ft.Text("Preview — cómo se va a pasar", size=11, color=TEXT_MUTED, font_family=FONT_HEADLINE_BOLD),
                     ft.Container(expand=True),
                     self._preview_count,
                 ], spacing=6, vertical_alignment=ft.CrossAxisAlignment.CENTER),
@@ -1080,7 +1084,7 @@ class PlaylistManagerUI(DialogMixin):
             content=ft.Column([
                 ft.Row([
                     ft.Icon(ft.Icons.LIST_ALT, size=14, color=TEXT_MUTED),
-                    ft.Text("Lista editable", size=11, color=TEXT_MUTED, font_family="IBM Plex Sans Bold"),
+                    ft.Text("Lista editable", size=11, color=TEXT_MUTED, font_family=FONT_HEADLINE_BOLD),
                 ], spacing=6),
                 ft.Divider(height=1, color=BORDER_MUTED, thickness=0.5),
                 list_stack,
@@ -1098,7 +1102,7 @@ class PlaylistManagerUI(DialogMixin):
 
         self._mode_seg = self._make_mode_segmented(getattr(self.state, "dual_mode", "lista"), on_change=_on_mode_change)
         self._mode_bar = ft.Row([
-            ft.Text("Vista:", size=10, color=TEXT_MUTED, font_family="IBM Plex Sans"),
+            ft.Text("Vista:", size=10, color=TEXT_MUTED, font_family=FONT_HEADLINE),
             self._mode_seg,
             ft.Container(expand=True),
             ft.IconButton(icon=ft.Icons.CLOSE, icon_size=14, icon_color=TEXT_DIM, tooltip="Cerrar doble vista",
@@ -1448,11 +1452,11 @@ class PlaylistManagerUI(DialogMixin):
             ft.Column([
                 ft.Container(content=self._paste_field, width=480, height=220),
                 ft.Row([
-                    ft.Text("Orden:", size=10, color=TEXT_MUTED, font_family="IBM Plex Sans"),
+                    ft.Text("Orden:", size=10, color=TEXT_MUTED, font_family=FONT_HEADLINE),
                     order_seg
                 ], spacing=8, vertical_alignment=ft.CrossAxisAlignment.CENTER),
                 ft.Text("Elige cómo está escrito cada línea (TuneMyMusic usa Artista - Título).",
-                        size=9, color=TEXT_DIM, font_family="IBM Plex Sans"),
+                        size=9, color=TEXT_DIM, font_family=FONT_HEADLINE),
             ], spacing=10, tight=True),
             [
                 dialog_action("Procesar", _process, kind="primary", icon=ft.Icons.PLAY_ARROW_OUTLINED),
@@ -1493,14 +1497,14 @@ class PlaylistManagerUI(DialogMixin):
             "Nombra esta playlist",
             ft.Column([
                 ft.Text("Asigna un nombre antes de importar. Si lo dejas vacío se usará el nombre sugerido.",
-                        size=11, color=TEXT_MUTED, font_family="IBM Plex Sans"),
+                        size=11, color=TEXT_MUTED, font_family=FONT_HEADLINE),
                 name_field,
                 ft.Row([
-                    ft.Text("Orden:", size=10, color=TEXT_MUTED, font_family="IBM Plex Sans"),
+                    ft.Text("Orden:", size=10, color=TEXT_MUTED, font_family=FONT_HEADLINE),
                     order_seg2
                 ], spacing=8, vertical_alignment=ft.CrossAxisAlignment.CENTER),
                 ft.Text("Confirma el orden de cada línea antes de importar.",
-                        size=9, color=TEXT_DIM, font_family="IBM Plex Sans"),
+                        size=9, color=TEXT_DIM, font_family=FONT_HEADLINE),
             ], spacing=10, tight=True),
             [
                 dialog_action("Importar", _confirm, kind="primary", icon=ft.Icons.CHECK_OUTLINED),
@@ -1640,7 +1644,7 @@ class PlaylistManagerUI(DialogMixin):
             label="Formato", value=fmt_val,
             width=160, height=38,
             bgcolor=BG_INPUT, border_color=BORDER_LIGHT, focused_border_color=ACCENT,
-            text_style=ft.TextStyle(color=TEXT_PRIMARY, size=11, font_family="IBM Plex Sans"),
+            text_style=ft.TextStyle(color=TEXT_PRIMARY, size=11, font_family=FONT_TEXT),
             content_padding=ft.Padding.symmetric(horizontal=10, vertical=0),
             options=[ft.dropdown.Option(k, k.upper()) for k in EXPORT_FORMATS],
             on_select=_on_fmt_change,
@@ -1675,7 +1679,7 @@ class PlaylistManagerUI(DialogMixin):
         pick_btn = _ghost_btn("Elegir…", ft.Icons.FOLDER_OPEN, lambda e: self.page.run_task(_pick_save(e)), width=90, height=38)
 
         # preview count
-        info_txt = ft.Text(f"{len(src_tracks)} canciones · {self.state.playlist_name[:30]}", size=10, color=TEXT_MUTED, font_family="IBM Plex Sans")
+        info_txt = ft.Text(f"{len(src_tracks)} canciones · {self.state.playlist_name[:30]}", size=10, color=TEXT_MUTED, font_family=mono_family("light"))
 
         # necesitamos capturar dlg en closure
         dlg_ref: dict = {}
@@ -1702,7 +1706,7 @@ class PlaylistManagerUI(DialogMixin):
             "Exportar playlist",
             ft.Column([
                 ft.Text("Guarda la selección actual con el mismo bloque que lee TXT/CSV/M3U/XSPF. Elige orden para round-trip con TuneMyMusic.",
-                        size=10, color=TEXT_MUTED, font_family="IBM Plex Sans"),
+                        size=10, color=TEXT_MUTED, font_family=FONT_TEXT),
                 info_txt,
                 ft.Row([fmt_dd, ft.Container(expand=True), order_seg], spacing=8, vertical_alignment=ft.CrossAxisAlignment.CENTER),
                 ft.Row([path_field, pick_btn], spacing=8, vertical_alignment=ft.CrossAxisAlignment.CENTER),

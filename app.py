@@ -31,7 +31,7 @@ from services.api_service import MusicApiService
 from services.authentication import ensure_config_dir, load_runtime_env
 from services.circuit_breaker import CircuitBreaker
 from ui.auth_manager import AuthManager
-from ui.fonts import build_font_registry
+from ui.fonts import FONT_TEXT, build_font_registry
 from ui.main_ui import PlaylistManagerUI
 from ui.tokens import BG_LIST, ACCENT, BG_SURFACE, TEXT_PRIMARY
 
@@ -113,7 +113,7 @@ async def main(page: ft.Page) -> None:
         
         page.fonts = build_font_registry(FONTS_DIR)
         page.theme = ft.Theme(
-            font_family="IBM Plex Sans",
+            font_family=FONT_TEXT,
             color_scheme=ft.ColorScheme(
                 primary=ACCENT, surface=BG_SURFACE,
                 on_primary=TEXT_PRIMARY, on_surface=TEXT_PRIMARY,

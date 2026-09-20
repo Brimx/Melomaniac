@@ -3,6 +3,8 @@ from __future__ import annotations
 
 import flet as ft
 
+from ui.fonts import FONT_HEADLINE, FONT_HEADLINE_SEMI, FONT_TEXT, mono_family
+
 from ui.tokens import (
     BG_PANEL, BG_HOVER, BORDER_LIGHT, BORDER_MUTED,
     ACCENT, SUCCESS, ERROR_COL,
@@ -104,12 +106,12 @@ class TelemetryDrawer:
     def _mk_placeholder() -> ft.Text:
         """Placeholder único para Post-Mortem vacío. Evita duplicar ft.Text."""
         return ft.Text("Sin errores registrados", size=10, color=TEXT_DIM,
-                       font_family="IBM Plex Sans", opacity=0.6,
+                       font_family=FONT_TEXT, opacity=0.6,
                        text_align=ft.TextAlign.CENTER)
 
     def _mk_cnts(self) -> dict:
         def _t(color):
-            return ft.Text("—", size=11, color=color, font_family="IBM Plex Sans SemiBold", opacity=1.0)
+            return ft.Text("—", size=11, color=color, font_family=mono_family(), opacity=1.0)
         return {
             "detected":   _t(TEXT_MUTED),
             "candidates": _t(TEXT_MUTED),
@@ -132,7 +134,7 @@ class TelemetryDrawer:
     def _build_body(self, cnts, log_list, pm_list, pm_ph) -> tuple:
         def _crow(label, val_node):
             return ft.Row([
-                ft.Text(label, size=9, color=TEXT_DIM, font_family="IBM Plex Sans", opacity=1.0),
+                ft.Text(label, size=9, color=TEXT_DIM, font_family=FONT_HEADLINE, opacity=1.0),
                 ft.Container(expand=True),
                 val_node,
             ], spacing=0)
@@ -156,7 +158,7 @@ class TelemetryDrawer:
         export_btn = ft.Container(
             content=ft.Row([
                 ft.Icon(ft.Icons.DOWNLOAD_OUTLINED, size=11, color=ACCENT),
-                ft.Text("Exportar a TXT", size=10, color=ACCENT, font_family="IBM Plex Sans", opacity=1.0),
+                ft.Text("Exportar a TXT", size=10, color=ACCENT, font_family=FONT_HEADLINE, opacity=1.0),
             ], spacing=4, tight=True),
             padding=ft.Padding.symmetric(horizontal=8, vertical=4),
             border_radius=6,
@@ -187,7 +189,7 @@ class TelemetryDrawer:
                 content=ft.Text(
                     label, size=10,
                     color=TEXT_PRIMARY if active else TEXT_DIM,
-                    font_family=("IBM Plex Sans SemiBold" if active else "IBM Plex Sans"),
+                    font_family=(FONT_HEADLINE_SEMI if active else FONT_HEADLINE),
                     opacity=1.0,
                 ),
                 padding=ft.Padding.symmetric(horizontal=8, vertical=5),
@@ -223,7 +225,7 @@ class TelemetryDrawer:
             p.visible        = is_sel
             b.bgcolor        = BG_HOVER if is_sel else ft.Colors.TRANSPARENT
             b.content.color  = TEXT_PRIMARY if is_sel else TEXT_DIM
-            b.content.font_family = "IBM Plex Sans SemiBold" if is_sel else "IBM Plex Sans"
+            b.content.font_family = FONT_HEADLINE_SEMI if is_sel else FONT_HEADLINE
             b.border = ft.Border(bottom=ft.BorderSide(
                 1.5 if is_sel else 0, ACCENT if is_sel else ft.Colors.TRANSPARENT
             ))
@@ -321,7 +323,7 @@ class TelemetryDrawer:
             for line in log_lines[-80:]:
                 col = (SUCCESS if "[SUCCESS]" in line else ERROR_COL if "[ERROR]" in line else TEXT_MUTED)
                 lst.controls.append(
-                    ft.Text(f"› {line}", size=9, color=col, font_family="IBM Plex Sans", opacity=1.0)
+                    ft.Text(f"› {line}", size=9, color=col, font_family=mono_family(), opacity=1.0)
                 )
 
     def update_postmortem(self, failed_tracks, *, destination="", confirmed=0, detected=0) -> None:
@@ -337,5 +339,5 @@ class TelemetryDrawer:
                 if reason:
                     label += f"  ·  {reason[:48]}"
                 lst.controls.append(
-                    ft.Text(label, size=9, color=ERROR_COL, font_family="IBM Plex Sans", opacity=1.0)
+                    ft.Text(label, size=9, color=ERROR_COL, font_family=mono_family(), opacity=1.0)
                 )

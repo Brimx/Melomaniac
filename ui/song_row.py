@@ -38,7 +38,7 @@ from typing import Callable, Optional
 import flet as ft
 
 from core.models import Track
-from ui.fonts import font_family_for
+from ui.fonts import font_family_for, mono_family
 from ui.tokens import (
     BG_LIST, BG_HOVER, SKELETON_DARK,
     TEXT_PRIMARY, TEXT_MUTED, TEXT_DIM,
@@ -249,7 +249,7 @@ class SongRow(ft.Container):
         
         num_label = ft.Text(
             str(index), size=11, color=TEXT_MUTED,
-            font_family="IBM Plex Sans Medium",
+            font_family=mono_family("light"),
             text_align=ft.TextAlign.CENTER,
             opacity=1.0,
         )
@@ -270,7 +270,7 @@ class SongRow(ft.Container):
         )
         dur_text = ft.Text(
             track.duration, size=11, color=TEXT_DIM,
-            font_family="IBM Plex Sans Medium",
+            font_family=mono_family("light"),
             opacity=1.0,
         )
         album_text = ft.Text(

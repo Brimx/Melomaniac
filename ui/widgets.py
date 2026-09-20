@@ -32,6 +32,11 @@ from __future__ import annotations
 
 import flet as ft
 
+from ui.fonts import (
+    FONT_HEADLINE, FONT_HEADLINE_BOLD,
+    FONT_TEXT, FONT_TEXT_MEDIUM, FONT_TEXT_SEMI,
+)
+
 from ui.tokens import (
     TEXT_PRIMARY, TEXT_MUTED, TEXT_DIM,
     ACCENT, ACCENT_HOVER, ACCENT_DIM, ACCENT_HALO, BG_HOVER,
@@ -39,10 +44,10 @@ from ui.tokens import (
     BG_INPUT, BG_PANEL,
 )
 
-FONT = "IBM Plex Sans"
-FONT_BOLD = "IBM Plex Sans Bold"
-FONT_MEDIUM = "IBM Plex Sans Medium"
-FONT_SEMI = "IBM Plex Sans SemiBold"
+FONT = FONT_TEXT
+FONT_BOLD = FONT_HEADLINE_BOLD
+FONT_MEDIUM = FONT_TEXT_MEDIUM
+FONT_SEMI = FONT_TEXT_SEMI
 
 
 def app_text(
@@ -95,8 +100,8 @@ def app_text_field(
         border_color=BORDER_LIGHT,
         focused_border_color=ACCENT,
         hint_style=ft.TextStyle(color=TEXT_DIM, size=11),
-        label_style=ft.TextStyle(color=TEXT_MUTED, size=10, font_family=FONT),
-        text_style=ft.TextStyle(color=TEXT_PRIMARY, size=12, font_family=FONT),
+        label_style=ft.TextStyle(color=TEXT_MUTED, size=10, font_family=FONT_HEADLINE),
+        text_style=ft.TextStyle(color=TEXT_PRIMARY, size=12, font_family=FONT_TEXT),
         text_size=12,
         dense=True,
         border_radius=10,
@@ -137,7 +142,7 @@ def app_dialog(
         title_ctrl: ft.Control = ft.Row(
             controls=[
                 ft.Icon(icon or ft.Icons.INFO_OUTLINED, color=ACCENT, size=18),
-                ft.Text(title, size=14, color=TEXT_PRIMARY, font_family=FONT_BOLD),
+                ft.Text(title, size=14, color=TEXT_PRIMARY, font_family=FONT_HEADLINE_BOLD),
             ],
             spacing=8,
         )
@@ -167,8 +172,8 @@ def organize_dropdown(
         options=[ft.dropdown.Option(key=k, text=t) for k, t in options],
         value=value, label=label, width=width,
         bgcolor=_IN, border_color=_BL, focused_border_color=_AC,
-        label_style=ft.TextStyle(color=_TM, size=11, font_family=FONT),
-        text_style=ft.TextStyle(color=_TP, size=12, font_family=FONT),
+        label_style=ft.TextStyle(color=_TM, size=11, font_family=FONT_HEADLINE),
+        text_style=ft.TextStyle(color=_TP, size=12, font_family=FONT_TEXT),
     )
 
 
@@ -201,7 +206,7 @@ def notify(
     from ui.tokens import BG_PANEL as _BG_PANEL, ERROR_COL as _ERR
     bgcolor = _ERR if kind == "error" else _BG_PANEL
     snack = ft.SnackBar(
-        content=ft.Text(msg, color=ft.Colors.WHITE, font_family=FONT, size=12, opacity=1.0),
+        content=ft.Text(msg, color=ft.Colors.WHITE, font_family=FONT_TEXT, size=12, opacity=1.0),
         bgcolor=bgcolor,
         duration=duration or (6000 if action else 3500),
         behavior=ft.SnackBarBehavior.FLOATING,
@@ -242,7 +247,7 @@ def _section_label(text: str) -> ft.Text:
     """
     return ft.Text(
         text, size=9, color=TEXT_DIM,
-        font_family="IBM Plex Sans Bold",
+        font_family=FONT_HEADLINE_BOLD,
         style=ft.TextStyle(letter_spacing=1.4),
         opacity=1.0,
     )
@@ -285,7 +290,7 @@ def _primary_btn(text: str, icon: str, on_click, width=None, height=None) -> ft.
         es suficientemente rápida para sentirse responsiva sin ser abrupta.
     """
     return ft.Button(
-        content=ft.Text(text, opacity=1.0),
+        content=ft.Text(text, opacity=1.0, font_family=FONT_HEADLINE),
         icon=icon,
         on_click=on_click,
         style=ft.ButtonStyle(
@@ -341,7 +346,7 @@ def _ghost_btn(text: str, icon: str, on_click, width=None, height=None, disabled
         feedback claro sin ser intrusivo.
     """
     return ft.OutlinedButton(
-        content=ft.Text(text, opacity=1.0),
+        content=ft.Text(text, opacity=1.0, font_family=FONT_HEADLINE),
         icon=icon,
         on_click=on_click,
         disabled=disabled,

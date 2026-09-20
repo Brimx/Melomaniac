@@ -15,6 +15,7 @@ if TYPE_CHECKING:
 import flet as ft
 
 from core.config import PLATFORM_ORDER
+from ui.fonts import FONT_HEADLINE, FONT_HEADLINE_BOLD, FONT_HEADLINE_SEMI, FONT_TEXT
 from ui.tokens import (
     BG_PANEL, BG_SURFACE, BG_INPUT, BORDER_LIGHT,
     ACCENT, SUCCESS, WARNING, ERROR_COL,
@@ -228,7 +229,7 @@ class ConfigWizard(DialogMixin):
             row.controls[0].color  = col_active   if i == idx else col_inactive
             row.controls[1].color  = col_active   if i == idx else col_inactive
             row.controls[1].font_family = (
-                "IBM Plex Sans SemiBold" if i == idx else "IBM Plex Sans"
+                FONT_HEADLINE_SEMI if i == idx else FONT_HEADLINE
             )
         self._safe_dialog_update()
         self._safe_page_update()
@@ -260,8 +261,8 @@ class ConfigWizard(DialogMixin):
                     ft.Text(
                         label, size=11, color=color,
                         font_family=(
-                            "IBM Plex Sans SemiBold"
-                            if idx == self._active_tab_idx else "IBM Plex Sans"
+                            FONT_HEADLINE_SEMI
+                            if idx == self._active_tab_idx else FONT_HEADLINE
                         ),
                     ),
                 ],
@@ -436,7 +437,7 @@ class ConfigWizard(DialogMixin):
             "",
             size=10,
             color=ERROR_COL,
-            font_family="IBM Plex Sans",
+            font_family=FONT_TEXT,
             visible=False,
         )
         body.controls.append(self._save_error)
@@ -456,7 +457,7 @@ class ConfigWizard(DialogMixin):
                     ft.Icon(ft.Icons.SETTINGS, color=ACCENT, size=18),
                     ft.Text(
                         "Configuración de Credenciales",
-                        size=14, font_family="IBM Plex Sans Bold",
+                        size=14, font_family=FONT_HEADLINE_BOLD,
                         color=TEXT_PRIMARY,
                     ),
                 ],
@@ -502,7 +503,7 @@ class ConfigWizard(DialogMixin):
                     ft.Container(
                         content=ft.Text(
                             str(num), size=10, color=ACCENT,
-                            font_family="IBM Plex Sans Bold",
+                            font_family=FONT_HEADLINE_BOLD,
                         ),
                         bgcolor=OVERLAY_18,
                         border_radius=20,
@@ -513,11 +514,11 @@ class ConfigWizard(DialogMixin):
                         controls=[
                             ft.Text(
                                 label, size=11, color=TEXT_PRIMARY,
-                                font_family="IBM Plex Sans Bold",
+                                font_family=FONT_HEADLINE_BOLD,
                             ),
                             ft.Text(
                                 body, size=11, color=TEXT_MUTED,
-                                font_family="IBM Plex Sans",
+                                font_family=FONT_TEXT,
                             ),
                         ],
                         spacing=1, tight=True, expand=True,
@@ -817,7 +818,7 @@ class ConfigWizard(DialogMixin):
     @staticmethod
     def _fixed_note(text: str) -> ft.Container:
         return ft.Container(
-            content=ft.Text(text, size=9, color=TEXT_DIM, font_family="IBM Plex Sans"),
+            content=ft.Text(text, size=9, color=TEXT_DIM, font_family=FONT_TEXT),
             bgcolor=OVERLAY_06,
             border_radius=6,
             padding=ft.Padding.symmetric(horizontal=8, vertical=6),
@@ -831,7 +832,7 @@ class ConfigWizard(DialogMixin):
                     ft.Icon(ft.Icons.WARNING_AMBER_ROUNDED, color=WARNING, size=14),
                     ft.Text(
                         text, size=10, color=WARNING,
-                        font_family="IBM Plex Sans", expand=True,
+                        font_family=FONT_TEXT, expand=True,
                     ),
                 ],
                 spacing=6,
