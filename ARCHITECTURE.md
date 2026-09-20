@@ -188,6 +188,16 @@ Apple procesa la transferencia de forma secuencial para evitar ráfagas. El rest
 4. Un sondeo de sesión actualiza los iconos cada `90` segundos.
 5. Al cerrar, se cancelan breakers, escaneo lazy, recargas y tareas, se cierran sesiones HTTP y se libera la UI.
 
+## Aviso legal
+
+Melomaniac es una aplicación local para gestionar, organizar, transferir y descubrir música a partir de información proporcionada por servicios de terceros.
+
+Melomaniac no aloja, proporciona ni redistribuye contenido musical protegido por derechos de autor. Las funciones de adquisición de archivos utilizan herramientas y fuentes de terceros y no implican acceso directo al contenido de los servicios de streaming.
+
+El usuario es responsable de asegurarse de que cualquier contenido que obtenga, almacene o utilice mediante Melomaniac esté autorizado para dicho uso y de cumplir las leyes aplicables y los términos de los servicios de origen.
+
+Melomaniac no está afiliado, patrocinado ni respaldado por Spotify, Apple, Google, YouTube ni otros servicios de terceros.
+
 ## Verificación
 
 ```bash

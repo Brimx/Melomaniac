@@ -185,6 +185,28 @@ python -m compileall -q app.py core engine services ui
 
 La UI Flet se valida manualmente, en especial los modos de vista, el alcance de Organizar/Dividir, la navegación responsive y el diálogo de exportación. La carpeta `tests/` queda reservada para regresiones futuras.
 
+## Aviso legal
+
+### Español
+
+Melomaniac es una aplicación local para gestionar, organizar, transferir y descubrir música a partir de información proporcionada por servicios de terceros.
+
+Melomaniac no aloja, proporciona ni redistribuye contenido musical protegido por derechos de autor. Las funciones de adquisición de archivos utilizan herramientas y fuentes de terceros y no implican acceso directo al contenido de los servicios de streaming.
+
+El usuario es responsable de asegurarse de que cualquier contenido que obtenga, almacene o utilice mediante Melomaniac esté autorizado para dicho uso y de cumplir las leyes aplicables y los términos de los servicios de origen.
+
+Melomaniac no está afiliado, patrocinado ni respaldado por Spotify, Apple, Google, YouTube ni otros servicios de terceros.
+
+### English
+
+Melomaniac is a local application for managing, organizing, transferring, and discovering music using information provided by third-party services.
+
+Melomaniac does not host, provide, or redistribute copyrighted music content. File-acquisition features use third-party tools and sources and do not imply direct access to streaming service content.
+
+The user is responsible for ensuring that any content obtained, stored, or used through Melomaniac is authorized for that use and for complying with applicable laws and the terms of the source services.
+
+Melomaniac is not affiliated with, sponsored by, or endorsed by Spotify, Apple, Google, YouTube, or any other third-party service.
+
 ## Estado y licencia
 
 La versión documentada es `4.2.0` en la rama `main`. Es un proyecto para uso personal; cada plataforma y sus APIs están sujetas a sus propios términos de servicio.

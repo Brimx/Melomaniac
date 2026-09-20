@@ -188,6 +188,16 @@ Apple processes transfers sequentially to avoid bursts. Other platforms use task
 4. A session poll refreshes the auth icons every `90` seconds.
 5. On close, breakers, lazy scans, reloads, and tasks are cancelled, HTTP sessions are closed, and the UI is released.
 
+## Legal notice
+
+Melomaniac is a local application for managing, organizing, transferring, and discovering music using information provided by third-party services.
+
+Melomaniac does not host, provide, or redistribute copyrighted music content. File-acquisition features use third-party tools and sources and do not imply direct access to streaming service content.
+
+The user is responsible for ensuring that any content obtained, stored, or used through Melomaniac is authorized for that use and for complying with applicable laws and the terms of the source services.
+
+Melomaniac is not affiliated with, sponsored by, or endorsed by Spotify, Apple, Google, YouTube, or any other third-party service.
+
 ## Verification
 
 ```bash
