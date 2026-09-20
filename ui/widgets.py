@@ -76,6 +76,7 @@ def app_text_field(
     autofocus: bool = False,
     on_submit=None,
     content_padding=None,
+    text_style: ft.TextStyle | None = None,
     **kwargs,
 ) -> ft.TextField:
     """TextField canónico OLED. Base: playlist_meta (radius 10, dense).
@@ -101,7 +102,7 @@ def app_text_field(
         focused_border_color=ACCENT,
         hint_style=ft.TextStyle(color=TEXT_DIM, size=11),
         label_style=ft.TextStyle(color=TEXT_MUTED, size=10, font_family=FONT_HEADLINE),
-        text_style=ft.TextStyle(color=TEXT_PRIMARY, size=12, font_family=FONT_TEXT),
+        text_style=text_style or ft.TextStyle(color=TEXT_PRIMARY, size=12, font_family=FONT_TEXT),
         text_size=12,
         dense=True,
         border_radius=10,

@@ -15,7 +15,7 @@ if TYPE_CHECKING:
 import flet as ft
 
 from core.config import PLATFORM_ORDER
-from ui.fonts import FONT_HEADLINE, FONT_HEADLINE_BOLD, FONT_HEADLINE_SEMI, FONT_TEXT
+from ui.fonts import FONT_HEADLINE, FONT_HEADLINE_BOLD, FONT_HEADLINE_SEMI, FONT_TEXT, mono_family
 from ui.tokens import (
     BG_PANEL, BG_SURFACE, BG_INPUT, BORDER_LIGHT,
     ACCENT, SUCCESS, WARNING, ERROR_COL,
@@ -560,6 +560,11 @@ class ConfigWizard(DialogMixin):
             min_lines=min_lines,
             max_lines=max_lines,
             expand=expand,
+            text_style=ft.TextStyle(
+                color=TEXT_PRIMARY,
+                size=12,
+                font_family=mono_family(),
+            ),
         )
 
     def _make_expandable_field(
