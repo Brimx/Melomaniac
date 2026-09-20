@@ -1,12 +1,12 @@
 # Changelog
 
-## 4.1.0 — Unreleased · F6: doble vista, alcance y exportación local
+## 4.2.0 — Unreleased · F6: doble vista, alcance y exportación local
 
 - Añade los modos **Lista**, **Doble** y **Preview** para Organizar/Dividir, con `AnimatedSwitcher`, skeleton responsive y navegación `NavigationRail`.
 - Permite aplicar Organizar/Dividir al alcance **Todo**, **Visibles** o **Seleccionadas**; `platform` deja de ser un criterio disponible.
 - Añade exportación local en `TXT`, `CSV`, `M3U`, `M3U8` y `XSPF`, con orden artista-título o título-artista y destino `Archivo Local (Exportar)`.
 - Sincroniza la documentación bilingüe con la estructura actual y amplía `.gitignore` para entornos virtuales, herramientas locales, cachés y salidas generadas.
-- Mantiene la serie mayor `4.1.0` sin fijar todavía un número minor/parche de publicación.
+- Mantiene la serie mayor `4.2.0` sin fijar todavía un número minor/parche de publicación.
 
 ## 4.0.0 — 2026-09-19 · Export local + orden configurable + preparación navegación
 

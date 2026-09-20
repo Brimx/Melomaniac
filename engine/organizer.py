@@ -2,7 +2,7 @@
 Motor de transformación de datos local para la gestión de playlists.
 Proporciona funciones para ordenar y segmentar listas de canciones en memoria
 sin realizar peticiones de red, optimizando la experiencia de usuario.
-Semver 4.1.0: allowlist sin `platform`, split normalizado, multi-key.
+Semver 4.2.0: allowlist sin `platform`, split normalizado, multi-key.
 """
 
 from collections import defaultdict
