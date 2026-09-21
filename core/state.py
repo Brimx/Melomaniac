@@ -170,9 +170,13 @@ class AppState:
         self.playlist_name: str         = "Cargar una playlist"
         self.playlist_description: str  = ""
         self.tracks:        list[Track] = []
+        # SOURCE|RESULT §6,11 — fuente inmutable, result observable
+        self.source_tracks: list[Track] = []  # original cargada, nunca mutada por organizar/dividir
         self.filtered:      list[Track] = []
         self.segments:      dict[str, list[Track]] = {}
-        self.active_segment_key: Optional[str]     = None
+        # Selección partición: None = Todos (default), set = filtrado multi (§16) — sin Row de chips
+        self.active_segment_keys: Optional[set[str]] = None
+        self.active_segment_key: Optional[str]     = None  # compat single (sincronizado con set de 1)
         self.load_state:    LoadState   = LoadState.IDLE
         self.load_error:    str         = ""
 
@@ -305,6 +309,21 @@ class AppState:
 
     def _base_list(self) -> list[Track]:
         """Fuente única para lista base considerando segmentos (regla 1)."""
+        # multi-selección: None = Todos, set = unión preservando orden §16-17
+        if self.active_segment_keys is not None and self.segments:
+            # unión de particiones seleccionadas en orden de aparición §12
+            chosen = {k for k in self.active_segment_keys if k in self.segments}
+            if chosen:
+                # preserva orden global de tracks filtrando por particiones elegidas
+                # construye set de ids pertenecientes a chosen para O(1)
+                allowed_ids: set[str] = set()
+                for k in chosen:
+                    for t in self.segments[k]:
+                        allowed_ids.add(t.id)
+                # filtra tracks manteniendo orden actual de self.tracks
+                return [t for t in self.tracks if t.id in allowed_ids]
+            # set vacío → Todos (fallback)
+            return self.tracks
         if self.active_segment_key and self.active_segment_key in self.segments:
             return self.segments[self.active_segment_key]
         return self.tracks
@@ -359,8 +378,10 @@ class AppState:
             return
         self.playlist_id   = playlist_id.strip()
         self.tracks        = []
+        self.source_tracks = []
         self.filtered      = []
         self.segments      = {}
+        self.active_segment_keys = None
         self.active_segment_key = None
         self.show_dual     = False
         self.dual_mode     = "lista"
@@ -399,6 +420,8 @@ class AppState:
                 self.playlist_name = meta  # type: ignore[assignment]
                 self.playlist_description = ""
             self.tracks        = tracks
+            # guarda SOURCE inmutable (§6, §25) — izquierda siempre original
+            self.source_tracks = list(tracks)
             self.load_state    = LoadState.READY
         except RateLimitError as e:
             self.cb[self.source].trip(e.retry_after)
@@ -411,14 +434,16 @@ class AppState:
             self.notify()
 
     def load_local_tracks(self, tracks: list, playlist_name: str = "Playlist Local",
-                            playlist_description: str = "") -> None:
+                             playlist_description: str = "") -> None:
         self.cancel_lazy_scan()
         self.playlist_id   = f"local_{uuid.uuid4().hex[:8]}"
         self.playlist_name = playlist_name
         self.playlist_description = playlist_description or ""
         self.tracks        = list(tracks)
+        self.source_tracks = list(tracks)
         self.filtered      = []
         self.segments      = {}
+        self.active_segment_keys = None
         self.active_segment_key = None
         self.show_dual     = False
         self.dual_mode     = "lista"
@@ -437,8 +462,10 @@ class AppState:
         self.playlist_name = "Cargar una playlist"
         self.playlist_description = ""
         self.tracks        = []
+        self.source_tracks = []
         self.filtered      = []
         self.segments      = {}
+        self.active_segment_keys = None
         self.active_segment_key = None
         self.show_dual     = False
         self.dual_mode     = "lista"
@@ -800,79 +827,90 @@ class AppState:
 
     def organize_sort(self, keys: list[str], reverse: bool = False, scope: str = "all") -> None:
         """
-        Ordena según alcance: all|visible|selected.
-        - all: ordena tracks master y cada segmento (comportamiento actual).
-        - visible/selected: ordena la lista visible y reconstruye orden master preservando visibles arriba.
+        Ordena siempre sobre toda la playlist (sin alcance) — alcance = filtros.
+        keys puede incluir original_position para volver a fuente.
         """
-        if scope in ("visible", "selected"):
-            # Para visible/selected, ordena el subset visible y lo refleja en tracks master
-            vis = self.visible_tracks() if scope == "visible" else self.selected_in_scope("visible")
-            if not vis:
+        # scope ignorado (siempre toda la playlist, filtros definen scope)
+        if keys == ["original_position"] and not reverse:
+            # restaura desde SOURCE si existe (§13 ORIGINAL)
+            src = getattr(self, "source_tracks", None)
+            if src is not None and len(src) == len(self.tracks):
+                id_to_idx = {t.id: i for i, t in enumerate(src)}
+                self.tracks = sorted(self.tracks, key=lambda t: id_to_idx.get(t.id, 9999))
+                if self.segments:
+                    for k in self.segments:
+                        self.segments[k] = sorted(self.segments[k], key=lambda t: id_to_idx.get(t.id, 9999))
+                self.show_dual = True
+                self.dual_mode = "doble"
+                self.apply_search(self.search_query)
                 return
-            sorted_vis = sort_tracks(vis, keys, reverse)
-            # reconstruye tracks manteniendo no-visibles en su posición relativa
-            vis_ids = {t.id for t in vis}
-            # mapa id->track ordenado
-            sorted_iter = iter(sorted_vis)
-            new_tracks: list[Track] = []
-            for t in self.tracks:
-                if t.id in vis_ids:
-                    try:
-                        new_tracks.append(next(sorted_iter))
-                    except StopIteration:
-                        new_tracks.append(t)
-                else:
-                    new_tracks.append(t)
-            self.tracks = new_tracks
-            # si hay segmentos, reordena cada uno igualmente
-            if self.segments:
-                for k in list(self.segments.keys()):
-                    seg_vis = [x for x in self.segments[k] if x.id in vis_ids] if scope == "visible" else [x for x in self.segments[k] if x.selected]
-                    if seg_vis:
-                        sorted_seg = sort_tracks(seg_vis, keys, reverse)
-                        # reconstruye segmento preservando no afectados
-                        seg_ids = {x.id for x in seg_vis}
-                        it = iter(sorted_seg)
-                        self.segments[k] = [next(it) if x.id in seg_ids else x for x in self.segments[k]]
-        else:
-            self.tracks = sort_tracks(self.tracks, keys, reverse)
-            if self.segments:
-                for k in self.segments:
-                    self.segments[k] = sort_tracks(self.segments[k], keys, reverse)
-        # muestra dual automáticamente al organizar
+        self.tracks = sort_tracks(self.tracks, keys, reverse)
+        if self.segments:
+            for k in self.segments:
+                self.segments[k] = sort_tracks(self.segments[k], keys, reverse)
         self.show_dual = True
         self.dual_mode = "doble"
-        self.apply_search(self.search_query)  # Re-aplica filtro y notifica
+        self.apply_search(self.search_query)
 
     def organize_split(self, key: str, scope: str = "all") -> None:
         """
-        Agrupa según alcance. Por defecto all (toda la lista). Si key no permitida, no hace nada.
+        Agrupa siempre sobre toda la playlist (sin alcance) — alcance ya lo definen filtros.
+        Preserva active si sigue válido; primer key es 1ª aparición O(n) §12, no alfabético.
         """
+        # scope ignorado (siempre toda la playlist)
         src = self.tracks
-        if scope in ("visible", "selected"):
-            # scope limita el src para split, pero mantenemos segmentos completos para UI coherente
-            src = self.visible_tracks() if scope == "visible" else self.selected_in_scope("visible")
-            if not src:
-                return
-        self.segments = split_tracks(src, key)
-        if self.segments:
-            # Selecciona el primer segmento por defecto (ordenado alfabéticamente)
-            self.active_segment_key = sorted(list(self.segments.keys()))[0]
-        else:
+        new_segments = split_tracks(src, key)
+        if not new_segments:
+            self.segments = {}
             self.active_segment_key = None
-        self.show_dual = bool(self.segments)
-        self.dual_mode = "doble" if self.segments else "lista"
+            self.show_dual = False
+            self.dual_mode = "lista"
+            self.apply_search(self.search_query)
+            return
+        # siempre Todos por defecto tras agrupar (si no elige cuales → todos §16)
+        self.segments = new_segments
+        self.active_segment_keys = None  # Todos
+        self.active_segment_key = None  # compat
+        self.show_dual = True
+        self.dual_mode = "doble"
         self.apply_search(self.search_query)
 
     def clear_split(self) -> None:
         self.segments = {}
+        self.active_segment_keys = None
         self.active_segment_key = None
         self.apply_search(self.search_query)
 
     def set_active_segment(self, key: str) -> None:
         if key in self.segments:
             self.active_segment_key = key
+            self.active_segment_keys = {key}
             self.apply_search(self.search_query)
+
+    def set_active_segments(self, keys: set[str] | None) -> None:
+        """Multi-selección buscable: None = Todos, set = filtrado. Si elige cuales → solo esos."""
+        if keys is None or len(keys) == 0 or len(keys) == len(self.segments):
+            # Todos por defecto
+            self.active_segment_keys = None
+            self.active_segment_key = None
+        else:
+            # filtra a existentes
+            valid = {k for k in keys if k in self.segments}
+            self.active_segment_keys = valid if valid else None
+            self.active_segment_key = next(iter(valid)) if valid and len(valid)==1 else None
+        self.apply_search(self.search_query)
+
+    def toggle_segment(self, key: str) -> None:
+        if key not in self.segments:
+            return
+        cur = set(self.active_segment_keys) if self.active_segment_keys is not None else set(self.segments.keys())
+        if key in cur:
+            cur.remove(key)
+            # si queda 0 → Todos
+            self.set_active_segments(cur if cur else None)
+        else:
+            cur.add(key)
+            self.set_active_segments(cur)
 
     def set_source(self, val: str) -> None:
         self.source = val

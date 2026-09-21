@@ -282,7 +282,7 @@ class PlaylistManagerUI(DialogMixin):
             pass
 
     def _sync_dual_view(self, s) -> None:
-        """Sincroniza modo Lista|Doble|Preview — versión estable sin reparent (preserva virtualización)."""
+        """Sincroniza modo Lista|Doble|Preview — SOURCE|RESULT (§25)."""
         mode = getattr(s, 'dual_mode', 'lista')
         is_dual = bool(getattr(s, 'show_dual', False) or mode in ("doble", "preview"))
         # mode bar visible mientras exista transformación (§25) — no solo 'doble'
@@ -290,6 +290,28 @@ class PlaylistManagerUI(DialogMixin):
             has_transform = bool(s.segments) or s.show_dual or mode in ("doble", "preview")
             self._mode_bar.visible = bool(is_dual or has_transform)
             self._mode_bar.update()
+        except Exception:
+            pass
+        # headers SOURCE|RESULT
+        try:
+            if is_dual:
+                # izq = Original base (§25), der = Resultado / partición activa
+                self._lista_header_text.value = "Original — base"
+                self._lista_header_icon.name = ft.Icons.HISTORY
+                if s.segments:
+                    seg = s.active_segment_key or ""
+                    self._preview_header_text.value = f"Resultado — {seg}" if seg else "Resultado — partición"
+                    self._preview_header_icon.name = ft.Icons.CALL_SPLIT
+                else:
+                    self._preview_header_text.value = "Resultado — ordenado"
+                    self._preview_header_icon.name = ft.Icons.SORT
+            else:
+                self._lista_header_text.value = "Lista editable"
+                self._lista_header_icon.name = ft.Icons.LIST_ALT
+                self._preview_header_text.value = "Preview — cómo se va a pasar"
+                self._preview_header_icon.name = ft.Icons.VISIBILITY_OUTLINED
+            self._lista_header_text.update(); self._lista_header_icon.update()
+            self._preview_header_text.update(); self._preview_header_icon.update()
         except Exception:
             pass
         try:
@@ -347,30 +369,46 @@ class PlaylistManagerUI(DialogMixin):
             pass
 
     def _sync_preview(self, s) -> None:
-        """Preview readonly: selected_in_scope en orden final + conteo."""
+        """Preview readonly: SOURCE|RESULT (§25) cuando hay transformación, si no selected_in_scope."""
         try:
-            preview_tracks = s.selected_in_scope("visible") if hasattr(s, 'selected_in_scope') else [t for t in s.tracks if t.selected]
-            # usa cache para preview? simple rebuild
+            is_dual = bool(getattr(s, 'show_dual', False) or getattr(s, 'dual_mode', 'lista') in ("doble", "preview"))
+            has_transform = bool(getattr(s, 'segments', {})) or bool(getattr(s, 'show_dual', False))
+            # Si hay transformación (organizar/dividir), preview es RESULT (display_tracks con segmento activo)
+            if is_dual or has_transform:
+                preview_tracks = s.display_tracks
+                label_suffix = f"{len(preview_tracks)} en resultado"
+            else:
+                preview_tracks = s.selected_in_scope("visible") if hasattr(s, 'selected_in_scope') else [t for t in s.tracks if t.selected]
+                label_suffix = f"{len(preview_tracks)} seleccionadas"
             if not preview_tracks:
                 self._preview_view_wrap.visible = False
                 self._preview_empty_wrap.visible = True
-                self._preview_count.value = "0 seleccionadas"
+                # mantiene count visible incluso vacío para contexto
+                self._preview_count.value = label_suffix
             else:
                 self._preview_empty_wrap.visible = False
                 self._preview_view_wrap.visible = True
-                self._preview_count.value = f"{len(preview_tracks)} seleccionadas"
-                # rebuild preview list (readonly, sin checkbox)
-                # Reusa SongRow pero en modo readonly? Por ahora filas simples con texto
-                # Para no duplicar lógica compleja, usamos Column de Containers ligeros
-                # Si hay muchas, usa ListView con items simples
+                self._preview_count.value = label_suffix
+                # preview usa misma portada que izquierda (SongRow cover) — readonly
                 self._preview_list_view.controls = []
                 for i, tr in enumerate(preview_tracks, 1):
+                    # cover idéntica a SongRow: Image si hay img_url, Icon fallback
+                    if getattr(tr, "img_url", ""):
+                        cover = ft.Container(
+                            content=ft.Image(src=tr.img_url, fit=ft.BoxFit.COVER, error_content=ft.Icon(ft.Icons.MUSIC_NOTE, size=16, color=TEXT_DIM)),
+                            width=32, height=32, clip_behavior=ft.ClipBehavior.ANTI_ALIAS, border_radius=ft.BorderRadius.all(4),
+                        )
+                    else:
+                        cover = ft.Container(
+                            content=ft.Icon(ft.Icons.MUSIC_NOTE, size=16, color=TEXT_DIM),
+                            width=32, height=32, bgcolor=CHIP_BG, border_radius=4, alignment=ft.Alignment.CENTER,
+                        )
                     row = ft.Container(
                         height=ITEM_H, padding=ft.Padding.symmetric(horizontal=12, vertical=6),
                         border=ft.Border.only(bottom=ft.BorderSide(0.5, BORDER_ROW)), bgcolor=BG_LIST,
                         content=ft.Row([
                             ft.Text(str(i), size=10, color=TEXT_MUTED, width=28, text_align=ft.TextAlign.CENTER),
-                            ft.Icon(ft.Icons.MUSIC_NOTE, size=16, color=TEXT_DIM),
+                            cover,
                             ft.Column([
                                 ft.Text(tr.name, size=12, color=TEXT_PRIMARY,
                                         font_family=font_family_for(tr.name, "semibold"),
@@ -588,7 +626,7 @@ class PlaylistManagerUI(DialogMixin):
         )
         # header del rail con toggle — Stack Sans Notch Bold, tamaño similar a sidebar (14-16)
         self._rail_header_brand = ft.Text(
-            "Melomaniac", size=16, color=TEXT_PRIMARY,
+            "Melomaniac", size=20, color=TEXT_PRIMARY,
             font_family=brand_family("bold"),
             visible=not self._rail_collapsed, opacity=1.0,
             animate_opacity=ft.Animation(200, ft.AnimationCurve.EASE_IN_OUT),
@@ -942,59 +980,152 @@ class PlaylistManagerUI(DialogMixin):
     # ── MÉTODOS DE ORGANIZACIÓN Y DIVISIÓN ────────────────────────────
 
     def _on_organize(self, _e: ft.ControlEvent) -> None:
-        """Delega a panel unificado Tabs Ordenar|Agrupar (cookbook, genre pendiente §10)."""
+        """Organizar separado — solo orden (Original vs Alfabético), sin alcance."""
         try:
-            from ui.organize_panel import show_organize_divide_dialog
-            show_organize_divide_dialog(self.page, self.state)
+            from ui.organize_panel import show_organize_dialog
+            show_organize_dialog(self.page, self.state)
         except Exception as exc:
-            # fallback legacy si panel falla (no romper UI)
+            # fallback legacy mínimo (sin alcance)
             try:
                 from ui.widgets import organize_dropdown
-                _dd_field = organize_dropdown([("artist","Artista"),("album","Álbum"),("name","Título"),("duration_ms","Duración"),("release_date","Fecha")], "artist","Ordenar por")
-                _sw = ft.Switch(label="Descendente", value=False, active_color=ACCENT)
-                _scope={"value":"visible"}
-                def _sc(e):
-                    try: v=list(e.control.selected)[0] if hasattr(e.control,"selected") and e.control.selected else e.control.value
-                    except: v=getattr(e.control,"value","visible")
-                    if v in ("all","visible","selected"): _scope["value"]=v
-                _seg=self._make_scope_segmented(_scope["value"], on_change=_sc)
-                def _ap(_e): self.state.organize_sort([_dd_field.value], _sw.value, scope=_scope["value"]); self._close_dlg(dlg)
-                dlg=app_dialog("Organizar lista", ft.Column([_dd_field,_sw,ft.Text("Alcance:",size=10,color=TEXT_MUTED,font_family=FONT_HEADLINE),_seg],tight=True,spacing=12), [dialog_action("Cancelar",lambda _:self._close_dlg(dlg),kind="muted"),dialog_action("Aplicar",_ap,kind="primary")], width=380, bgcolor=BG_SURFACE, radius=10)
+                _dd = organize_dropdown([("artist","Artista"),("album","Álbum"),("name","Título"),("duration_ms","Duración"),("release_date","Fecha")], "artist","Ordenar por")
+                _orden = {"value": "original"}
+                try:
+                    _seg = ft.SegmentedButton(selected=["original"], allow_empty_selection=False, allow_multiple_selection=False, show_selected_icon=False,
+                        style=ft.ButtonStyle(bgcolor={ft.ControlState.SELECTED: ACCENT, ft.ControlState.DEFAULT: BG_SURFACE}, color={ft.ControlState.SELECTED: TEXT_PRIMARY, ft.ControlState.DEFAULT: TEXT_MUTED}),
+                        segments=[ft.Segment(value="original", label=ft.Text("Original", size=11)), ft.Segment(value="az", label=ft.Text("A → Z", size=11)), ft.Segment(value="za", label=ft.Text("Z → A", size=11))],
+                        on_change=lambda e: _orden.__setitem__("value", list(e.control.selected)[0] if hasattr(e.control,"selected") and e.control.selected else e.control.value))
+                except Exception:
+                    _seg = ft.Dropdown(value="original", width=200, bgcolor=BG_INPUT, border_color=BORDER_LIGHT, focused_border_color=ACCENT, options=[ft.dropdown.Option("original","Original"), ft.dropdown.Option("az","A → Z"), ft.dropdown.Option("za","Z → A")], on_select=lambda e: _orden.__setitem__("value", e.control.value))
+                def _ap(_e):
+                    if _orden["value"]=="original":
+                        self.state.organize_sort(["original_position"], False, scope="all")
+                    else:
+                        rev = _orden["value"]=="za"
+                        self.state.organize_sort([_dd.value], rev, scope="all")
+                    self._close_dlg(dlg)
+                dlg=app_dialog("Organizar", ft.Column([_dd, _seg], tight=True, spacing=12), [dialog_action("Cancelar", lambda _:self._close_dlg(dlg), kind="muted"), dialog_action("Aplicar", _ap, kind="primary")], width=380, bgcolor=BG_SURFACE, radius=10)
                 self.page.show_dialog(dlg)
             except Exception:
                 self.state.log(f"[ERROR] Organizar fallback falló: {exc}")
 
     def _on_split(self, _e: ft.ControlEvent) -> None:
-        """Idem — mismo panel unificado para toggle sin cerrar (cambia a tab Agrupar)."""
+        """Agrupar separado — solo dividir y elegir artista/álbum claramente."""
         try:
-            from ui.organize_panel import show_organize_divide_dialog
-            show_organize_divide_dialog(self.page, self.state)
-            # intenta seleccionar tab Agrupar (índice 1) si el diálogo lo expone
-            try:
-                # el panel ya abre en Tabs con Ordenar primero; el usuario cambia con click
-                pass
-            except Exception:
-                pass
+            from ui.organize_panel import show_group_dialog
+            show_group_dialog(self.page, self.state)
         except Exception as exc:
-            # fallback legacy
             try:
                 from ui.widgets import organize_dropdown
                 _dd=organize_dropdown([("artist","Artista"),("album","Álbum")],"artist","Agrupar por")
-                _sc={"value":"visible"}
-                def _on(e):
-                    try: v=list(e.control.selected)[0] if hasattr(e.control,"selected") and e.control.selected else e.control.value
-                    except: v=getattr(e.control,"value","visible")
-                    if v in ("all","visible","selected"): _sc["value"]=v
-                _seg=self._make_scope_segmented(_sc["value"], on_change=_on)
-                def _ap(_e): self.state.organize_split(_dd.value, scope=_sc["value"]); self._close_dlg(dlg)
+                def _ap(_e): self.state.organize_split(_dd.value, scope="all"); self._close_dlg(dlg)
                 def _cl(_e): self.state.clear_split(); self._close_dlg(dlg)
                 acts=[]
                 if bool(self.state.segments): acts.append(dialog_action("Limpiar División",_cl,kind="danger"))
                 acts+=[dialog_action("Cancelar",lambda _:self._close_dlg(dlg),kind="muted"),dialog_action("Agrupar",_ap,kind="primary")]
-                dlg=app_dialog("Dividir lista", ft.Column([ft.Text("Agrupa tu playlist en segmentos independientes.",size=12,color=TEXT_MUTED),_dd,ft.Text("Alcance:",size=10,color=TEXT_MUTED,font_family=FONT_HEADLINE),_seg],tight=True,spacing=12), acts, width=380, bgcolor=BG_SURFACE, radius=10)
+                dlg=app_dialog("Agrupar", ft.Column([_dd], tight=True, spacing=12), acts, width=380, bgcolor=BG_SURFACE, radius=10)
                 self.page.show_dialog(dlg)
             except Exception:
                 self.state.log(f"[ERROR] Dividir fallback falló: {exc}")
+
+    def _partition_btn_label(self) -> str:
+        s = self.state
+        if not s.segments:
+            return "Todos"
+        total = len(s.segments)
+        active = s.active_segment_keys
+        if active is None or len(active) == total or len(active) == 0:
+            return f"Todos ({total})"
+        if len(active) == 1:
+            return next(iter(active))
+        return f"{len(active)} seleccionados"
+
+    def _open_partition_picker(self) -> None:
+        s = self.state
+        if not s.segments:
+            self._snack("No hay particiones — agrupa primero por Artista/Álbum", error=True)
+            return
+        all_keys = sorted(list(s.segments.keys()))  # orden alfabético para buscar
+        # estado local mutable
+        selected: set[str] = set(s.active_segment_keys) if s.active_segment_keys is not None else set(s.segments.keys())
+
+        search_field = app_text_field(hint_text="Buscar artista/álbum…", prefix_icon=ft.Icons.SEARCH, width=360, height=36, content_padding=ft.Padding.symmetric(horizontal=10, vertical=6))
+        list_view = ft.ListView(height=260, spacing=4, padding=ft.Padding.all(4), expand=False)
+
+        def _rebuild(filter_q: str = ""):
+            q = (filter_q or "").strip().lower()
+            list_view.controls.clear()
+            for k in all_keys:
+                if q and q not in k.lower():
+                    continue
+                cnt = len(s.segments.get(k, []))
+                is_checked = k in selected
+                # checkbox por partición — buscable
+                chk = ft.Checkbox(
+                    label=f"{k} ({cnt})",
+                    value=is_checked,
+                    fill_color={ft.ControlState.SELECTED: ACCENT},
+                    check_color=TEXT_PRIMARY,
+                    label_style=ft.TextStyle(color=TEXT_PRIMARY if is_checked else TEXT_MUTED, size=11, font_family=FONT_HEADLINE),
+                    border_side=ft.BorderSide(1.2, ACCENT if is_checked else TEXT_DIM),
+                    data=k,
+                    on_change=lambda e, _k=k: _on_toggle(_k, bool(e.control.value)),
+                )
+                list_view.controls.append(chk)
+            try:
+                list_view.update()
+            except Exception:
+                pass
+
+        def _on_toggle(key: str, checked: bool):
+            if checked:
+                selected.add(key)
+            else:
+                selected.discard(key)
+            # no cierra, solo actualiza estado visual; si queda 0 → interpreta como Todos luego
+
+        def _on_search(e):
+            _rebuild(e.control.value or "")
+
+        search_field.on_change = _on_search
+        _rebuild("")
+
+        dlg_ref: dict = {}
+
+        def _apply(_e):
+            # si todos seleccionados → None (Todos)
+            if len(selected) == len(all_keys) or len(selected) == 0:
+                s.set_active_segments(None)
+            else:
+                s.set_active_segments(set(selected))
+            self._close_dlg(dlg_ref.get("dlg"))
+
+        def _select_all(_e):
+            selected.clear()
+            selected.update(all_keys)
+            _rebuild(search_field.value or "")
+
+        def _clear(_e):
+            selected.clear()
+            _rebuild(search_field.value or "")
+
+        dlg = app_dialog(
+            "Filtrar particiones",
+            ft.Column([
+                search_field,
+                ft.Divider(height=1, color=BORDER_MUTED, thickness=0.5),
+                list_view,
+            ], tight=True, spacing=8),
+            [
+                dialog_action("Seleccionar todos", _select_all, kind="muted"),
+                dialog_action("Limpiar", _clear, kind="muted"),
+                dialog_action("Cancelar", lambda _: self._close_dlg(dlg_ref.get("dlg")), kind="muted"),
+                dialog_action("Aplicar", _apply, kind="primary"),
+            ],
+            width=420, bgcolor=BG_SURFACE, radius=10,
+        )
+        dlg_ref["dlg"] = dlg
+        self.page.show_dialog(dlg)
 
 
     # ── BUILD CONTENT ──────────────────────────────────────────────────
@@ -1068,10 +1199,11 @@ class PlaylistManagerUI(DialogMixin):
             style=ft.ButtonStyle(padding=4, bgcolor={ft.ControlState.DEFAULT: ft.Colors.TRANSPARENT}),
         )
 
+        # header sin selector de partición (movido junto a Vista §)
         header_bar = ft.Row(controls=[
             ft.Column([self._playlist_title, self._track_count], spacing=2),
             ft.Container(expand=True),
-            self._segment_dd, self._auth_strip, self._search_field, self._select_all_chk,
+            self._auth_strip, self._search_field, self._select_all_chk,
             self._clear_session_btn,
         ], vertical_alignment=ft.CrossAxisAlignment.CENTER)
 
@@ -1144,13 +1276,15 @@ class PlaylistManagerUI(DialogMixin):
         self._preview_empty_wrap = ft.Container(content=self._preview_empty, bgcolor=BG_LIST, visible=False, **_sf)
         self._preview_view_wrap = ft.Container(content=self._preview_list_view, bgcolor=BG_LIST, visible=False, **_sf)
         self._preview_stack = ft.Stack(controls=[self._preview_view_wrap, self._preview_empty_wrap], expand=True)
+        self._preview_header_text = ft.Text("Preview — cómo se va a pasar", size=11, color=TEXT_MUTED, font_family=FONT_HEADLINE_BOLD)
+        self._preview_header_icon = ft.Icon(ft.Icons.VISIBILITY_OUTLINED, size=14, color=TEXT_MUTED)
         self._preview_panel = ft.Container(
             expand=True, bgcolor=BG_LIST, border=ft.Border.all(0.5, BORDER_LIGHT), border_radius=10,
             clip_behavior=ft.ClipBehavior.ANTI_ALIAS,
             content=ft.Column([
                 ft.Row([
-                    ft.Icon(ft.Icons.VISIBILITY_OUTLINED, size=14, color=TEXT_MUTED),
-                    ft.Text("Preview — cómo se va a pasar", size=11, color=TEXT_MUTED, font_family=FONT_HEADLINE_BOLD),
+                    self._preview_header_icon,
+                    self._preview_header_text,
                     ft.Container(expand=True),
                     self._preview_count,
                 ], spacing=6, vertical_alignment=ft.CrossAxisAlignment.CENTER),
@@ -1160,17 +1294,19 @@ class PlaylistManagerUI(DialogMixin):
             padding=ft.Padding.all(10), visible=True,
         )
 
-        # Lista panel (izq) envuelve lista editable + estados
+        # Lista panel (izq) — SOURCE (base) cuando dual, RESULT cuando single
         list_stack = ft.Stack(controls=[
             self._list_view_wrap, self._skeleton_view_wrap, self._empty_state, self._error_state,
         ], expand=True)
+        self._lista_header_text = ft.Text("Lista editable", size=11, color=TEXT_MUTED, font_family=FONT_HEADLINE_BOLD)
+        self._lista_header_icon = ft.Icon(ft.Icons.LIST_ALT, size=14, color=TEXT_MUTED)
         self._lista_panel = ft.Container(
             expand=True, bgcolor=BG_LIST, border=ft.Border.all(0.5, BORDER_LIGHT), border_radius=10,
             clip_behavior=ft.ClipBehavior.ANTI_ALIAS,
             content=ft.Column([
                 ft.Row([
-                    ft.Icon(ft.Icons.LIST_ALT, size=14, color=TEXT_MUTED),
-                    ft.Text("Lista editable", size=11, color=TEXT_MUTED, font_family=FONT_HEADLINE_BOLD),
+                    self._lista_header_icon,
+                    self._lista_header_text,
                 ], spacing=6),
                 ft.Divider(height=1, color=BORDER_MUTED, thickness=0.5),
                 list_stack,
@@ -1187,9 +1323,25 @@ class PlaylistManagerUI(DialogMixin):
             self.state.set_dual_mode(v)
 
         self._mode_seg = self._make_mode_segmented(getattr(self.state, "dual_mode", "lista"), on_change=_on_mode_change)
+        # selector partición junto a Vista (reemplaza Dropdown mono en header; buscable multi via dialog)
+        self._partition_btn = ft.OutlinedButton(
+            content=ft.Text("Todos", size=11, color=TEXT_MUTED, font_family=FONT_HEADLINE),
+            icon=ft.Icons.FILTER_LIST,
+            on_click=lambda _: self._open_partition_picker(),
+            style=ft.ButtonStyle(
+                padding=ft.Padding.symmetric(horizontal=10, vertical=6),
+                side={ft.ControlState.DEFAULT: ft.BorderSide(0.7, BORDER_LIGHT)},
+                shape=ft.RoundedRectangleBorder(radius=8),
+            ),
+            visible=False,
+            tooltip="Filtrar por artista/álbum (partición)",
+        )
         self._mode_bar = ft.Row([
             ft.Text("Vista:", size=10, color=TEXT_MUTED, font_family=FONT_HEADLINE),
             self._mode_seg,
+            ft.VerticalDivider(width=1, color=BORDER_MUTED),
+            ft.Icon(ft.Icons.CALL_SPLIT, size=14, color=TEXT_DIM),
+            self._partition_btn,
             ft.Container(expand=True),
             ft.IconButton(icon=ft.Icons.CLOSE, icon_size=14, icon_color=TEXT_DIM, tooltip="Cerrar doble vista",
                           on_click=lambda _: self.state.set_show_dual(False),
@@ -1330,35 +1482,42 @@ class PlaylistManagerUI(DialogMixin):
             self._ensure_skeletons_pulsing()
         if is_ready:
             self._stop_skeleton_pulse()
-            self._sync_list_view(s.display_tracks)
+            # SOURCE|RESULT: izq = base original cuando hay transformación, si no display (lista única)
+            is_dual = bool(getattr(s, 'show_dual', False) or getattr(s, 'dual_mode', 'lista') in ("doble", "preview"))
+            if is_dual and getattr(s, 'source_tracks', None) and len(s.source_tracks) > 0:
+                # izquierda = SOURCE intacta (§25) — muestra base sin filtro de segmento
+                self._sync_list_view(s.source_tracks)
+            else:
+                self._sync_list_view(s.display_tracks)
         has_tracks = len(s.tracks) > 0
         self._organize_btn.disabled = not has_tracks
         self._split_btn.disabled = not has_tracks
-        if s.segments:
-            current_options = [opt.key for opt in self._segment_dd.options] if self._segment_dd.options else []
-            new_options = sorted(list(s.segments.keys()))
-            if current_options != new_options:
-                # Fix: Options debe ser list[dropdown.Option], no list[str] (Flet 0.86)
-                self._segment_dd.options = [ft.dropdown.Option(k) for k in new_options]
-            # valida active_segment_key (puede ser None tras clear)
-            try:
-                if s.active_segment_key not in new_options:
-                    self._segment_dd.value = new_options[0] if new_options else None
-                else:
-                    self._segment_dd.value = s.active_segment_key
-            except Exception:
-                self._segment_dd.value = s.active_segment_key
-            self._segment_dd.visible = True
-            try:
-                self._segment_dd.update()
-            except Exception:
-                pass
-        else:
+        # compat: _segment_dd siempre oculto (movido junto a Vista) — mantener sync silencioso
+        try:
             self._segment_dd.visible = False
-            try:
-                self._segment_dd.update()
-            except Exception:
-                pass
+            self._segment_dd.update()
+        except Exception:
+            pass
+        # selector partición junto a Vista (Button multi buscable) — Todos por defecto
+        try:
+            if s.segments:
+                self._partition_btn.visible = True
+                label = self._partition_btn_label()
+                # OutlinedButton content es Text
+                if hasattr(self._partition_btn, "content") and isinstance(self._partition_btn.content, ft.Text):
+                    self._partition_btn.content.value = label
+                else:
+                    # fallback si content es otro
+                    try:
+                        self._partition_btn.text = label  # type: ignore
+                    except Exception:
+                        pass
+                self._partition_btn.tooltip = f"Particiones: {', '.join(sorted(s.segments.keys())[:3])}{'...' if len(s.segments)>3 else ''}"
+            else:
+                self._partition_btn.visible = False
+            self._partition_btn.update()
+        except Exception:
+            pass
 
     def _sync_progress(self, s, is_transferring: bool, xfer_active: bool, is_scan_run: bool, is_scan_done: bool, idle_xfer: bool, show_progress: bool) -> None:
         if is_transferring:
@@ -1473,22 +1632,34 @@ class PlaylistManagerUI(DialogMixin):
 
 
     def _sync_list_view(self, tracks: list[Track]) -> None:
-        lv           = self._list_view
-        existing_ids = {c.track.id for c in lv.controls if hasattr(c, "track")}
-        incoming_ids = {t.id for t in tracks}
-        if existing_ids != incoming_ids:
+        lv = self._list_view
+        # compara orden además de conjunto para detectar reorden (SOURCE vs RESULT §25)
+        existing_order = [c.track.id for c in lv.controls if hasattr(c, "track")]
+        incoming_order = [t.id for t in tracks]
+        if existing_order != incoming_order:
             lv.controls.clear()
             self._row_cache.clear()
             for i, track in enumerate(tracks, 1):
                 row = SongRow(track, i, self.state.toggle_track)
                 self._row_cache[track.id] = row
                 lv.controls.append(row)
+            try:
+                lv.update()
+            except Exception:
+                pass
         else:
             track_map = {t.id: t for t in tracks}
             for tid, row in self._row_cache.items():
                 current = track_map.get(tid)
                 if current:
-                    row.refresh(current)
+                    try:
+                        row.refresh(current)
+                    except Exception:
+                        pass
+            try:
+                lv.update()
+            except Exception:
+                pass
 
 
     # ── EVENT HANDLERS ─────────────────────────────────────────────────
