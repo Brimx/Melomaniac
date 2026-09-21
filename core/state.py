@@ -343,8 +343,8 @@ class AppState:
         if mode not in ("lista", "doble", "preview"):
             return
         self.dual_mode = mode
-        self.show_dual = mode == "doble"
-        # preview/doble implican que hay preview, lista es solo lista
+        # lista = solo lista; doble/preview requieren vista dual activa (§25-26)
+        self.show_dual = mode in ("doble", "preview")
         self.notify()
 
     def set_show_dual(self, show: bool) -> None:

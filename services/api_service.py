@@ -575,6 +575,8 @@ class MusicApiService:
                 arturl = attrs.get("artwork", {}).get("url", "")
                 if arturl:
                     arturl = arturl.replace("{w}", "60").replace("{h}", "60")
+                # releaseDate puede venir como "2023-05-12" o ISO; se guarda como string para criterio release_date
+                rel = (attrs.get("releaseDate") or attrs.get("release_date") or "").strip() if isinstance(attrs.get("releaseDate") or attrs.get("release_date"), str) else str(attrs.get("releaseDate") or attrs.get("release_date") or "").strip()
                 tracks.append(Track(
                     id=item["id"], name=attrs.get("name", "Unknown"),
                     artist=attrs.get("artistName", "Unknown"),
@@ -584,6 +586,7 @@ class MusicApiService:
                     duration_ms=int(ms) if ms else 0,
                     is_explicit=bool(attrs.get("contentRating") == "explicit"),
                     isrc=normalize_isrc(attrs.get("isrc")),
+                    release_date=rel,
                 ))
             url = data.get("next")
             if cb:
@@ -624,13 +627,24 @@ class MusicApiService:
                 img_url = ""
                 if art_sources:
                     img_url = min(art_sources, key=lambda s: s.get("width", 9999)).get("url", "")
+                # Spotify: albumOfTrack puede traer date con precision day/month/year
+                alb = t.get("albumOfTrack") or {}
+                rel_sp = ""
+                try:
+                    date_obj = alb.get("date") or {}
+                    rel_sp = (date_obj.get("isoString") or date_obj.get("year") or "").strip() if isinstance(date_obj, dict) else str(date_obj or "").strip()
+                    if not rel_sp and isinstance(alb.get("releaseDate"), str):
+                        rel_sp = alb.get("releaseDate", "").strip()
+                except Exception:
+                    rel_sp = ""
                 tracks.append(Track(
                     id=tid, name=t.get("name", "Unknown"),
                     artist=artists or "Unknown",
-                    album=(t.get("albumOfTrack") or {}).get("name", "Unknown"),
+                    album=alb.get("name", "Unknown"),
                     duration=f"{int(ms/60000)}:{int((ms/1000)%60):02d}" if ms else "0:00",
                     img_url=img_url, platform="Spotify",
                     isrc=self._extract_spotify_isrc(t),
+                    release_date=rel_sp,
                 ))
             offset += len(items)
             if offset >= total or not items:
