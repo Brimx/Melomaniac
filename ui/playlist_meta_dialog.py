@@ -1,5 +1,5 @@
 """
-ui/playlist_meta_dialog.py — Melomaniac v4.2.0
+ui/playlist_meta_dialog.py — Melomaniac v4.4.2
 
 Diálogo de personalización de playlist (nombre + descripción).
 
