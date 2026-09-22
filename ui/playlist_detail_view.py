@@ -23,7 +23,7 @@ from ui.widgets import _ghost_btn, _primary_btn, app_text
 class PlaylistDetailView(ft.Container):
     def __init__(self, page: ft.Page, summary: PlaylistSummary, service, on_back: Callable[[], None]):
         super().__init__(expand=True, bgcolor=BG_LIST)
-        self.page = page
+        self._page_ref = page
         self.summary = summary
         self.service = service
         self.on_back = on_back
@@ -76,7 +76,10 @@ class PlaylistDetailView(ft.Container):
         if not url:
             return
         try:
-            self.page.launch_url(url)
+            # ft.Container.page es read-only, usa referencia guardada
+            page = getattr(self, "_page_ref", None) or getattr(self, "page", None)
+            if page and hasattr(page, "launch_url"):
+                page.launch_url(url)
         except Exception:
             pass
 

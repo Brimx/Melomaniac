@@ -31,7 +31,7 @@ PLATFORM_ICONS = {
 class LibraryView(ft.Container):
     def __init__(self, page: ft.Page, library_state: LibraryState, service):
         super().__init__(expand=True, bgcolor=BG_LIST)
-        self.page = page
+        self._page_ref = page
         self.library_state = library_state
         self.service = service
         self.library_state.set_service(service)
@@ -180,7 +180,7 @@ class LibraryView(ft.Container):
 
     def _on_open_playlist(self, summary) -> None:
         # push detail
-        self._detail = PlaylistDetailView(self.page, summary, self.service, on_back=self._on_back_from_detail)
+        self._detail = PlaylistDetailView(self._page_ref, summary, self.service, on_back=self._on_back_from_detail)
         self.content = self._detail
         try:
             self.update()
