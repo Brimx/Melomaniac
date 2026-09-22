@@ -17,7 +17,7 @@ _ALLOWED_SORT_KEYS: frozenset[str] = frozenset({
     "artist", "album", "name", "duration_ms",
     "release_date", "track_number", "original_position",
 })
-_ALLOWED_SPLIT_KEYS: frozenset[str] = frozenset({"artist", "album"})
+_ALLOWED_SPLIT_KEYS: frozenset[str] = frozenset({"artist", "album", "release_date"})
 
 
 def _get_attr_safe(track: Track, key: str) -> Any:

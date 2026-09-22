@@ -224,6 +224,16 @@ class AppState:
         self._dual_scope: str = "visible"  # Todo|Visibles|Seleccionadas para Organizar/Dividir
 
         # ──────────────────────────────────────────────────────────────
+        # CONFIG PERSISTENTE ORGANIZAR (re-apertura recuerda selección)
+        # ──────────────────────────────────────────────────────────────
+        self.organize_sort_key: str = "artist"       # artist|album|name|duration_ms|release_date
+        self.organize_order: str = "az"              # original(=Mantener orden para agrupar)|az|za
+        self.organize_group_by: str = "none"         # none|artist|album|release_date
+        self.organize_second_key: str = "none"
+        self.organize_third_key: str = "none"
+        self.organize_advanced: bool = False
+
+        # ──────────────────────────────────────────────────────────────
         # CIRCUIT BREAKERS POR PLATAFORMA
         # ──────────────────────────────────────────────────────────────
         # Protección contra rate limiting de APIs
@@ -880,6 +890,29 @@ class AppState:
         self.active_segment_keys = None
         self.active_segment_key = None
         self.apply_search(self.search_query)
+
+    def clear_organize(self) -> None:
+        """Limpiar todo Organizar: restaura SOURCE intacta, quita dual y segmentos."""
+        # tracks vuelve a SOURCE (izquierda intacta) — como "Original" pero vía limpiar
+        if getattr(self, "source_tracks", None) and len(self.source_tracks) == len(self.tracks):
+            self.tracks = list(self.source_tracks)
+        else:
+            # fallback: si source_tracks no concuerda, ordena por original_position estable
+            try:
+                self.tracks = sort_tracks(self.tracks, ["original_position"], False)
+            except Exception:
+                pass
+        # limpia también división si la hubiera (limpiar todo)
+        self.segments = {}
+        self.active_segment_keys = None
+        self.active_segment_key = None
+        self.show_dual = False
+        self.dual_mode = "lista"
+        self.apply_search(self.search_query)
+
+    def clear_all_transforms(self) -> None:
+        """Alias de clear_organize para cubrir ambos flujos (§25)."""
+        self.clear_organize()
 
     def set_active_segment(self, key: str) -> None:
         if key in self.segments:

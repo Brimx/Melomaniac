@@ -52,82 +52,67 @@ ITEM_H = 64
 
 class SkeletonRow(ft.Container):
     """
-    Fila placeholder animada mostrada durante carga de canciones.
-    
-    Implementa un skeleton screen que reduce la percepción de latencia
-    al mostrar la estructura de la fila antes de que los datos estén
-    disponibles. El efecto shimmer (pulse) proporciona feedback visual
-    de que la carga está en progreso.
-    
-    Attributes:
-        _pulse_task: Tarea asyncio que controla la animación de pulse.
-    
-    Methods:
-        start_pulse: Inicia la animación de pulse (actualmente placeholder).
-        stop_pulse: Detiene la animación y cancela la tarea.
-    
-    Note:
-        El skeleton mantiene las mismas proporciones y espaciado que
-        SongRow para evitar layout shift cuando los datos reales se cargan.
-        Esto es crítico para UX: el usuario no percibe "saltos" visuales.
+    Fila placeholder con Shimmer + zoom sutil (reemplaza opacity pulse).
+
+    Usa ft.Shimmer(base/highlight) para efecto deslizante y mantiene
+    animate_scale 600ms para zoom. Dinámico por viewport se calcula en
+    ui/main_ui.py (_calc_skeleton_count) y se muestra entre cambios de
+    vista / organizar (ver main_ui _show_reload_shimmer).
     """
 
     def __init__(self, _index: int):
-        """
-        Inicializa una fila skeleton con placeholders para cada elemento.
-
-        Args:
-            _index: Índice de la fila (usado para stagger escalonado).
-        """
         self._pulse_task: Optional[asyncio.Task] = None
         self._index = _index
 
-        # Placeholders con dimensiones idénticas a SongRow
-        self._num    = ft.Container(width=28, height=10, border_radius=3, bgcolor=SKELETON_DARK)
-        self._thumb  = ft.Container(width=55, height=55, border_radius=8, bgcolor=SKELETON_DARK)
-        self._title  = ft.Container(expand=3, height=10, border_radius=3, bgcolor=SKELETON_DARK)
-        self._album  = ft.Container(expand=2, height=10, border_radius=3, bgcolor=SKELETON_DARK)
-        self._dur    = ft.Container(width=48,  height=10, border_radius=3, bgcolor=SKELETON_DARK)
-        self._status = ft.Container(width=26,  height=10, border_radius=3, bgcolor=SKELETON_DARK)
-        self._chk    = ft.Container(width=32,  height=18, border_radius=4, bgcolor=SKELETON_DARK)
+        # placeholders — dentro de Shimmer serán animados por gradiente; bgcolor es base
+        self._num = ft.Container(width=28, height=10, border_radius=3, bgcolor=BG_SURFACE)
+        self._thumb = ft.Container(width=55, height=55, border_radius=8, bgcolor=BG_SURFACE)
+        self._title = ft.Container(expand=3, height=10, border_radius=3, bgcolor=BG_SURFACE)
+        self._album = ft.Container(expand=2, height=10, border_radius=3, bgcolor=BG_SURFACE)
+        self._dur = ft.Container(width=48, height=10, border_radius=3, bgcolor=BG_SURFACE)
+        self._status = ft.Container(width=26, height=10, border_radius=3, bgcolor=BG_SURFACE)
+        self._chk = ft.Container(width=32, height=18, border_radius=4, bgcolor=BG_SURFACE)
+
+        _row = ft.Row(
+            controls=[self._num, self._thumb, self._title, self._album, self._dur, self._status, self._chk],
+            spacing=16, vertical_alignment=ft.CrossAxisAlignment.CENTER,
+        )
+        # Shimmer envolviendo la fila — base/highlight desde tokens (OLED)
+        try:
+            _shimmer = ft.Shimmer(
+                base_color=ft.Colors.with_opacity(0.35, SKELETON_DARK),
+                highlight_color=ft.Colors.with_opacity(0.9, BG_SURFACE),
+                content=_row,
+            )
+        except Exception:
+            # fallback si Shimmer no disponible en esta versión
+            _shimmer = _row
 
         super().__init__(
             height=ITEM_H,
             padding=ft.Padding.symmetric(horizontal=16, vertical=12),
             border=ft.Border.only(bottom=ft.BorderSide(0.5, BORDER_ROW)),
-            content=ft.Row(
-                controls=[self._num, self._thumb, self._title,
-                           self._album, self._dur, self._status, self._chk],
-                spacing=16,
-                vertical_alignment=ft.CrossAxisAlignment.CENTER,
-            ),
-            opacity=0.45,
+            content=_shimmer,
+            opacity=1.0,
             scale=0.98,
-            animate_opacity=ft.Animation(600, ft.AnimationCurve.EASE_IN_OUT),
             animate_scale=ft.Animation(600, ft.AnimationCurve.EASE_IN_OUT),
         )
 
     async def start_pulse(self) -> None:
-        """
-        Animación sutil opacity 0.45↔1.0 + scale 0.98↔1.0 (600ms, stagger 60ms por índice).
-        Da sensación de carga real sin ser intrusiva.
-        """
+        """Zoom sutil 0.98↔1.0 (600ms, stagger 60ms). Shimmer corre solo via ft.Shimmer."""
         self._pulse_task = asyncio.current_task()
-        # stagger inicial según índice para ola
         try:
             await asyncio.sleep(0.06 * self._index)
         except asyncio.CancelledError:
             return
         try:
             while True:
-                self.opacity = 1.0
                 self.scale = 1.0
                 try:
                     self.update()
                 except Exception:
                     pass
                 await asyncio.sleep(0.6)
-                self.opacity = 0.45
                 self.scale = 0.98
                 try:
                     self.update()
@@ -138,17 +123,163 @@ class SkeletonRow(ft.Container):
             pass
 
     def stop_pulse(self) -> None:
-        """
-        Detiene la animación de pulse y cancela la tarea asyncio.
-
-        Debe ser llamado antes de reemplazar el skeleton con SongRow
-        para evitar tareas huérfanas en el event loop. Resetea opacity/scale.
-        """
         if self._pulse_task:
             self._pulse_task.cancel()
             self._pulse_task = None
         try:
-            self.opacity = 1.0
+            self.scale = 1.0
+        except Exception:
+            pass
+
+
+def build_preview_row(track: Track, index: int) -> ft.Container:
+    """
+    Fila Preview readonly — espejo 1:1 de SongRow sin columna Estado/Sel.
+    Mantiene ITEM_H, padding 16/0, spacing 16, widths 32/55/expand3/expand2/48,
+    tipografías y colores idénticos para alineación visual con SongRow.
+    Solo quita Estado (26) y Checkbox (32) — resto idéntico.
+    """
+    # thumbnail idéntico a SongRow (55) con fallback
+    if track.img_url:
+        thumb_content = ft.Image(
+            src=track.img_url,
+            fit=ft.BoxFit.COVER,
+            error_content=ft.Icon(ft.Icons.MUSIC_NOTE, color=TEXT_DIM, size=18),
+        )
+    else:
+        thumb_content = ft.Container(
+            content=ft.Icon(ft.Icons.MUSIC_NOTE, color=TEXT_DIM, size=20),
+            alignment=ft.Alignment.CENTER,
+        )
+    thumb = ft.Container(
+        width=55, height=55,
+        border_radius=8,
+        bgcolor=SKELETON_DARK,
+        clip_behavior=ft.ClipBehavior.ANTI_ALIAS,
+        content=thumb_content,
+    )
+    num_label = ft.Text(
+        str(index), size=11, color=TEXT_MUTED,
+        font_family=mono_family("light"),
+        text_align=ft.TextAlign.CENTER,
+        opacity=1.0,
+    )
+    title_text = ft.Text(
+        track.name, size=13, color=TEXT_PRIMARY,
+        font_family=font_family_for(track.name, "semibold"),
+        overflow=ft.TextOverflow.ELLIPSIS,
+        max_lines=1,
+        opacity=1.0,
+    )
+    artist_text = ft.Text(
+        track.artist, size=11, color=TEXT_MUTED,
+        font_family=font_family_for(track.artist),
+        overflow=ft.TextOverflow.ELLIPSIS,
+        max_lines=1,
+        opacity=1.0,
+    )
+    dur_text = ft.Text(
+        track.duration, size=11, color=TEXT_DIM,
+        font_family=mono_family("light"),
+        opacity=1.0,
+    )
+    album_text = ft.Text(
+        track.album or "—", size=11, color=TEXT_MUTED,
+        font_family=font_family_for(track.album),
+        overflow=ft.TextOverflow.ELLIPSIS,
+        max_lines=1,
+        opacity=1.0,
+    )
+    row_content = ft.Row(
+        controls=[
+            ft.Container(content=num_label, width=32, alignment=ft.Alignment.CENTER),
+            thumb,
+            ft.Column(
+                controls=[title_text, artist_text],
+                spacing=1,
+                tight=True,
+                expand=3,
+                alignment=ft.MainAxisAlignment.CENTER,
+            ),
+            ft.Container(content=album_text, expand=2, alignment=ft.Alignment.CENTER_LEFT),
+            ft.Container(content=dur_text, width=48, alignment=ft.Alignment.CENTER),
+        ],
+        spacing=16,
+        vertical_alignment=ft.CrossAxisAlignment.CENTER,
+    )
+    return ft.Container(
+        height=ITEM_H,
+        padding=ft.Padding.symmetric(horizontal=16, vertical=0),
+        border=ft.Border.only(bottom=ft.BorderSide(0.5, BORDER_ROW)),
+        border_radius=0,
+        bgcolor=BG_LIST,
+        content=row_content,
+    )
+
+
+class PreviewSkeletonRow(ft.Container):
+    """
+    Skeleton espejo de Preview (sin Estado/Sel) — mismo ritmo Shimmer+zoom.
+    """
+
+    def __init__(self, _index: int):
+        self._pulse_task: Optional[asyncio.Task] = None
+        self._index = _index
+        self._num = ft.Container(width=28, height=10, border_radius=3, bgcolor=BG_SURFACE)
+        self._thumb = ft.Container(width=55, height=55, border_radius=8, bgcolor=BG_SURFACE)
+        self._title = ft.Container(expand=3, height=10, border_radius=3, bgcolor=BG_SURFACE)
+        self._album = ft.Container(expand=2, height=10, border_radius=3, bgcolor=BG_SURFACE)
+        self._dur = ft.Container(width=48, height=10, border_radius=3, bgcolor=BG_SURFACE)
+        _row = ft.Row(
+            controls=[self._num, self._thumb, self._title, self._album, self._dur],
+            spacing=16, vertical_alignment=ft.CrossAxisAlignment.CENTER,
+        )
+        try:
+            _shimmer = ft.Shimmer(
+                base_color=ft.Colors.with_opacity(0.35, SKELETON_DARK),
+                highlight_color=ft.Colors.with_opacity(0.9, BG_SURFACE),
+                content=_row,
+            )
+        except Exception:
+            _shimmer = _row
+        super().__init__(
+            height=ITEM_H,
+            padding=ft.Padding.symmetric(horizontal=16, vertical=12),
+            border=ft.Border.only(bottom=ft.BorderSide(0.5, BORDER_ROW)),
+            content=_shimmer,
+            opacity=1.0,
+            scale=0.98,
+            animate_scale=ft.Animation(600, ft.AnimationCurve.EASE_IN_OUT),
+        )
+
+    async def start_pulse(self) -> None:
+        self._pulse_task = asyncio.current_task()
+        try:
+            await asyncio.sleep(0.06 * self._index)
+        except asyncio.CancelledError:
+            return
+        try:
+            while True:
+                self.scale = 1.0
+                try:
+                    self.update()
+                except Exception:
+                    pass
+                await asyncio.sleep(0.6)
+                self.scale = 0.98
+                try:
+                    self.update()
+                except Exception:
+                    pass
+                await asyncio.sleep(0.6)
+        except asyncio.CancelledError:
+            pass
+
+    def stop_pulse(self) -> None:
+        if self._pulse_task:
+            self._pulse_task.cancel()
+            self._pulse_task = None
+        try:
             self.scale = 1.0
         except Exception:
             pass

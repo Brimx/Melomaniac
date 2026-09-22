@@ -63,7 +63,7 @@ from core.state import AppState
 from core.config import EXPORT_DEST_LABEL, EXPORT_FORMATS, EXPORT_ORDERS
 from engine.parsers import parse_local_playlist_with_paths, build_local_tracks
 from engine.exporters import export_tracks, default_export_path
-from ui.song_row import SongRow, SkeletonRow, ITEM_H
+from ui.song_row import SongRow, SkeletonRow, PreviewSkeletonRow, build_preview_row, ITEM_H
 from ui.fonts import (
     FONT_HEADLINE, FONT_HEADLINE_BOLD, FONT_HEADLINE_MEDIUM, FONT_TEXT,
     brand_family, font_family_for, mono_family,
@@ -254,36 +254,148 @@ class PlaylistManagerUI(DialogMixin):
         )
 
     def _calc_skeleton_count(self) -> int:
-        """Calcula cuántos SkeletonRow caben en alto visible (responsive)."""
+        """Calcula cuántos SkeletonRow caben en alto visible — overfill garantizado."""
         try:
-            h = self.page.height or self.page.window.height or 650  # type: ignore
+            h = self.page.height or self.page.window.height or 900  # type: ignore
+            # si ambos son pequeños (init), usa fallback generoso
+            if not h or h < 700:
+                h = 900
         except Exception:
-            h = 650
+            h = 900
         # header + col_headers + progress + padding + tabs aproximado
         header_h = 70
         col_h = 36
         pad = 48
         prog = 40 if getattr(self, '_content_progress', None) and self._content_progress.visible else 0
         mode_bar = 40 if getattr(self, '_mode_bar', None) and getattr(self._mode_bar, 'visible', False) else 0
-        avail = max(180, h - header_h - col_h - pad - prog - mode_bar - 120)  # sidebar no afecta listado
-        cnt = max(4, min(24, int(avail // ITEM_H)))
+        avail = max(180, h - header_h - col_h - pad - prog - mode_bar - 60)  # -60 menor que -120 para overfill
+        cnt = max(12, min(24, int(avail // ITEM_H)))
+        # overfill: garantiza cubrir viewport incluso en ventana pequeña
         return cnt
 
     def _sync_skeleton_count(self) -> None:
-        """Recrea skeletons si cambió el count según resolución (on_resize/dual)."""
+        """Recrea skeletons si cambió el count según resolución (on_resize/dual) — ambos paneles."""
         try:
             new_cnt = self._calc_skeleton_count()
             cur_cnt = len(getattr(self, '_skeletons', []))
             if new_cnt != cur_cnt:
+                # detener pulso previo antes de recrear (evita tasks huérfanas)
+                try:
+                    self._stop_skeleton_pulse()
+                except Exception:
+                    pass
                 self._skeletons = [SkeletonRow(i) for i in range(new_cnt)]
                 self._skeleton_view.controls = self._skeletons
+                # preview skeletons espejo (mismo cnt, sin Estado/Sel)
+                if hasattr(self, '_preview_skeleton_view'):
+                    self._preview_skeletons = [PreviewSkeletonRow(i) for i in range(new_cnt)]
+                    self._preview_skeleton_view.controls = self._preview_skeletons
+                    try:
+                        self._preview_skeleton_view.update()
+                    except Exception:
+                        pass
+                # si skeleton está visible, reinicia pulso con nuevo count
+                if getattr(self, '_skeleton_view_wrap', None) and self._skeleton_view_wrap.visible:
+                    try:
+                        self._ensure_skeletons_pulsing()
+                    except Exception:
+                        pass
+                if getattr(self, '_preview_skeleton_wrap', None) and self._preview_skeleton_wrap.visible:
+                    try:
+                        self._ensure_preview_skeletons_pulsing()
+                    except Exception:
+                        pass
                 self._skeleton_view.update()
         except Exception:
             pass
 
+    def _trigger_shimmer_reload(self, duration_ms: int = 280) -> None:
+        """Muestra Shimmer en ambas ListViews que quedarán visibles — Opción A."""
+        try:
+            if self._view_shimmer_task and not self._view_shimmer_task.done():
+                self._view_shimmer_task.cancel()
+        except Exception:
+            pass
+        s = self.state
+        if s.load_state in (LoadState.LOADING_META, LoadState.LOADING_TRACKS):
+            return
+        # determina qué paneles quedarán visibles tras sync
+        try:
+            mode = getattr(s, 'dual_mode', 'lista')
+            is_dual = bool(getattr(s, 'show_dual', False) or mode in ("doble", "preview"))
+            # lista (izq) visible en lista y doble; preview (der) visible en doble y preview
+            show_left = not is_dual or mode in ("lista", "doble")
+            show_preview = is_dual and mode in ("doble", "preview")
+            # si no hay dual pero hay transformación, igualmente preview oculto → solo left
+            if not is_dual:
+                show_preview = False
+        except Exception:
+            show_left, show_preview = True, False
+        try:
+            if show_left:
+                self._skeleton_view_wrap.visible = True
+                self._list_view_wrap.visible = False
+                self._ensure_skeletons_pulsing()
+                self._skeleton_view_wrap.update()
+                try:
+                    self._list_view_wrap.update()
+                except Exception:
+                    pass
+            if show_preview and hasattr(self, '_preview_skeleton_wrap'):
+                self._preview_skeleton_wrap.visible = True
+                self._preview_view_wrap.visible = False
+                self._preview_empty_wrap.visible = False
+                self._ensure_preview_skeletons_pulsing()
+                self._preview_skeleton_wrap.update()
+                try:
+                    self._preview_view_wrap.update()
+                    self._preview_empty_wrap.update()
+                except Exception:
+                    pass
+            elif not show_preview and hasattr(self, '_preview_skeleton_wrap'):
+                # si preview no debe mostrar shimmer, asegúrate oculto
+                try:
+                    self._preview_skeleton_wrap.visible = False
+                    self._preview_skeleton_wrap.update()
+                except Exception:
+                    pass
+        except Exception:
+            pass
+
+        async def _hide():
+            try:
+                await asyncio.sleep(duration_ms / 1000)
+            except asyncio.CancelledError:
+                return
+            try:
+                self._stop_skeleton_pulse()
+                if show_left:
+                    self._skeleton_view_wrap.visible = False
+                    self._list_view_wrap.visible = True
+                    self._skeleton_view_wrap.update()
+                    self._list_view_wrap.update()
+                if show_preview and hasattr(self, '_preview_skeleton_wrap'):
+                    self._preview_skeleton_wrap.visible = False
+                    # preview contenido lo restaura _sync_preview en siguiente notify
+                    self._preview_skeleton_wrap.update()
+                self.page.update()
+            except Exception:
+                pass
+        try:
+            self._view_shimmer_task = asyncio.create_task(_hide())
+        except Exception:
+            pass
+
     def _sync_dual_view(self, s) -> None:
-        """Sincroniza modo Lista|Doble|Preview — SOURCE|RESULT (§25)."""
+        """Sincroniza modo Lista|Doble|Preview — SOURCE|RESULT (§25). + Shimmer entre vistas."""
         mode = getattr(s, 'dual_mode', 'lista')
+        # shimmer entre cambios de vista (se tardan un poco)
+        try:
+            if mode != getattr(self, '_prev_dual_mode', 'lista'):
+                self._trigger_shimmer_reload(duration_ms=320)
+                self._prev_dual_mode = mode
+        except Exception:
+            pass
         is_dual = bool(getattr(s, 'show_dual', False) or mode in ("doble", "preview"))
         # mode bar visible mientras exista transformación (§25) — no solo 'doble'
         try:
@@ -389,46 +501,21 @@ class PlaylistManagerUI(DialogMixin):
                 self._preview_empty_wrap.visible = False
                 self._preview_view_wrap.visible = True
                 self._preview_count.value = label_suffix
-                # preview usa misma portada que izquierda (SongRow cover) — readonly
+                # preview espejo 1:1 de SongRow sin Estado/Sel (DRY via build_preview_row)
                 self._preview_list_view.controls = []
                 for i, tr in enumerate(preview_tracks, 1):
-                    # cover idéntica a SongRow: Image si hay img_url, Icon fallback
-                    if getattr(tr, "img_url", ""):
-                        cover = ft.Container(
-                            content=ft.Image(src=tr.img_url, fit=ft.BoxFit.COVER, error_content=ft.Icon(ft.Icons.MUSIC_NOTE, size=16, color=TEXT_DIM)),
-                            width=32, height=32, clip_behavior=ft.ClipBehavior.ANTI_ALIAS, border_radius=ft.BorderRadius.all(4),
-                        )
-                    else:
-                        cover = ft.Container(
-                            content=ft.Icon(ft.Icons.MUSIC_NOTE, size=16, color=TEXT_DIM),
-                            width=32, height=32, bgcolor=CHIP_BG, border_radius=4, alignment=ft.Alignment.CENTER,
-                        )
-                    row = ft.Container(
-                        height=ITEM_H, padding=ft.Padding.symmetric(horizontal=12, vertical=6),
-                        border=ft.Border.only(bottom=ft.BorderSide(0.5, BORDER_ROW)), bgcolor=BG_LIST,
-                        content=ft.Row([
-                            ft.Text(str(i), size=10, color=TEXT_MUTED, width=28, text_align=ft.TextAlign.CENTER),
-                            cover,
-                            ft.Column([
-                                ft.Text(tr.name, size=12, color=TEXT_PRIMARY,
-                                        font_family=font_family_for(tr.name, "semibold"),
-                                        overflow=ft.TextOverflow.ELLIPSIS, max_lines=1),
-                                ft.Text(tr.artist, size=10, color=TEXT_MUTED,
-                                        font_family=font_family_for(tr.artist),
-                                        overflow=ft.TextOverflow.ELLIPSIS, max_lines=1),
-                            ], spacing=1, expand=True, tight=True),
-                            ft.Text(tr.album or "—", size=10, color=TEXT_DIM,
-                                    font_family=font_family_for(tr.album), expand=True,
-                                    overflow=ft.TextOverflow.ELLIPSIS, max_lines=1),
-                            ft.Text(tr.duration or "", size=10, color=TEXT_DIM, width=40,
-                                    font_family=mono_family("light"), text_align=ft.TextAlign.CENTER),
-                        ], spacing=8, vertical_alignment=ft.CrossAxisAlignment.CENTER),
-                    )
-                    self._preview_list_view.controls.append(row)
+                    self._preview_list_view.controls.append(build_preview_row(tr, i))
                 self._preview_list_view.update()
                 self._preview_count.update()
                 self._preview_empty_wrap.update()
                 self._preview_view_wrap.update()
+                # mantener skeleton oculto cuando hay contenido (shimmer lo muestra temporalmente)
+                if hasattr(self, '_preview_skeleton_wrap') and self._preview_skeleton_wrap.visible:
+                    try:
+                        self._preview_skeleton_wrap.visible = False
+                        self._preview_skeleton_wrap.update()
+                    except Exception:
+                        pass
         except Exception:
             pass
 
@@ -455,6 +542,7 @@ class PlaylistManagerUI(DialogMixin):
         
         self._search_task:            Optional[asyncio.Task] = None
         self._skeleton_tasks:         list[asyncio.Task]     = []
+        self._preview_skeleton_tasks: list[asyncio.Task]     = []
         self._row_cache:              dict[str, SongRow]     = {}
         self._failed_dialog_shown:    bool  = False
         self._transfer_start:         float = 0.0
@@ -462,6 +550,8 @@ class PlaylistManagerUI(DialogMixin):
         self._pm_cleared_for_load:    bool  = False
         self.auth_manager                   = None
         self._auth_poll_task: Optional[asyncio.Task] = None
+        self._prev_dual_mode: str = "lista"
+        self._view_shimmer_task: Optional[asyncio.Task] = None
 
         # ──────────────────────────────────────────────────────────────
         # FILE PICKER
@@ -980,31 +1070,55 @@ class PlaylistManagerUI(DialogMixin):
     # ── MÉTODOS DE ORGANIZACIÓN Y DIVISIÓN ────────────────────────────
 
     def _on_organize(self, _e: ft.ControlEvent) -> None:
-        """Organizar separado — solo orden (Original vs Alfabético), sin alcance."""
+        """Organizar separado — Mantener orden (agrupar) o A→Z/Z→A + agrupar; sin alcance."""
         try:
             from ui.organize_panel import show_organize_dialog
             show_organize_dialog(self.page, self.state)
         except Exception as exc:
-            # fallback legacy mínimo (sin alcance)
+            # fallback legacy mínimo — incluye Mantener orden para agrupar
             try:
                 from ui.widgets import organize_dropdown
-                _dd = organize_dropdown([("artist","Artista"),("album","Álbum"),("name","Título"),("duration_ms","Duración"),("release_date","Fecha")], "artist","Ordenar por")
-                _orden = {"value": "original"}
+                from engine.organizer import group_tracks_stable
+                _dd = organize_dropdown([("artist","Artista"),("album","Álbum"),("name","Título"),("duration_ms","Duración"),("release_date","Fecha")], getattr(self.state, "organize_sort_key", "artist"),"Ordenar por")
+                _ord_raw = getattr(self.state, "organize_order", "az")
+                if _ord_raw == "mantener":
+                    _ord_raw = "original"
+                _orden = {"value": _ord_raw if _ord_raw in ("az","za","original") else "az"}
                 try:
-                    _seg = ft.SegmentedButton(selected=["original"], allow_empty_selection=False, allow_multiple_selection=False, show_selected_icon=False,
+                    _seg = ft.SegmentedButton(selected=[_orden["value"]], allow_empty_selection=False, allow_multiple_selection=False, show_selected_icon=False,
                         style=ft.ButtonStyle(bgcolor={ft.ControlState.SELECTED: ACCENT, ft.ControlState.DEFAULT: BG_SURFACE}, color={ft.ControlState.SELECTED: TEXT_PRIMARY, ft.ControlState.DEFAULT: TEXT_MUTED}),
-                        segments=[ft.Segment(value="original", label=ft.Text("Original", size=11)), ft.Segment(value="az", label=ft.Text("A → Z", size=11)), ft.Segment(value="za", label=ft.Text("Z → A", size=11))],
+                        segments=[ft.Segment(value="original", label=ft.Text("Mantener orden", size=10)), ft.Segment(value="az", label=ft.Text("A → Z", size=11)), ft.Segment(value="za", label=ft.Text("Z → A", size=11))],
                         on_change=lambda e: _orden.__setitem__("value", list(e.control.selected)[0] if hasattr(e.control,"selected") and e.control.selected else e.control.value))
                 except Exception:
-                    _seg = ft.Dropdown(value="original", width=200, bgcolor=BG_INPUT, border_color=BORDER_LIGHT, focused_border_color=ACCENT, options=[ft.dropdown.Option("original","Original"), ft.dropdown.Option("az","A → Z"), ft.dropdown.Option("za","Z → A")], on_select=lambda e: _orden.__setitem__("value", e.control.value))
+                    _seg = ft.Dropdown(value=_orden["value"], width=240, bgcolor=BG_INPUT, border_color=BORDER_LIGHT, focused_border_color=ACCENT, options=[ft.dropdown.Option("original","Mantener orden"), ft.dropdown.Option("az","A → Z"), ft.dropdown.Option("za","Z → A")], on_select=lambda e: _orden.__setitem__("value", e.control.value))
                 def _ap(_e):
-                    if _orden["value"]=="original":
+                    # persist fallback también
+                    try:
+                        self.state.organize_sort_key = _dd.value
+                        self.state.organize_order = _orden["value"]
+                    except Exception:
+                        pass
+                    if _orden["value"] == "original":
+                        # Mantener orden sirve para agrupar: si hay agrupación previa usa group, si no restaura
+                        # fallback sin selector de agrupar → solo restaura
                         self.state.organize_sort(["original_position"], False, scope="all")
                     else:
                         rev = _orden["value"]=="za"
                         self.state.organize_sort([_dd.value], rev, scope="all")
                     self._close_dlg(dlg)
-                dlg=app_dialog("Organizar", ft.Column([_dd, _seg], tight=True, spacing=12), [dialog_action("Cancelar", lambda _:self._close_dlg(dlg), kind="muted"), dialog_action("Aplicar", _ap, kind="primary")], width=380, bgcolor=BG_SURFACE, radius=10)
+                def _cl(_e):
+                    try:
+                        self.state.clear_organize()
+                    except Exception:
+                        self.state.organize_sort(["original_position"], False, scope="all")
+                    self._close_dlg(dlg)
+                _has = bool(getattr(self.state, "show_dual", False) or getattr(self.state, "segments", {}) or (getattr(self.state, "source_tracks", None) and self.state.tracks != self.state.source_tracks))
+                _acts: list[ft.Control] = []
+                if _has:
+                    _acts.append(dialog_action("Limpiar", _cl, kind="danger"))
+                _acts += [dialog_action("Cancelar", lambda _:self._close_dlg(dlg), kind="muted"), dialog_action("Aplicar", _ap, kind="primary")]
+                dlg=app_dialog("Organizar", ft.Column([_dd, _seg], tight=True, spacing=12), _acts, width=420, bgcolor=BG_SURFACE, radius=10,
+                               actions_alignment=ft.MainAxisAlignment.SPACE_BETWEEN if len(_acts)==3 else ft.MainAxisAlignment.END)
                 self.page.show_dialog(dlg)
             except Exception:
                 self.state.log(f"[ERROR] Organizar fallback falló: {exc}")
@@ -1275,7 +1389,12 @@ class PlaylistManagerUI(DialogMixin):
         self._preview_empty = self._make_cono_empty("Preview vacío", "Marca canciones y organiza para ver cómo se va a pasar.", visible=False)
         self._preview_empty_wrap = ft.Container(content=self._preview_empty, bgcolor=BG_LIST, visible=False, **_sf)
         self._preview_view_wrap = ft.Container(content=self._preview_list_view, bgcolor=BG_LIST, visible=False, **_sf)
-        self._preview_stack = ft.Stack(controls=[self._preview_view_wrap, self._preview_empty_wrap], expand=True)
+        # skeleton preview espejo (mismo cnt, sin Estado/Sel)
+        _init_cnt = len(self._skeletons) if hasattr(self, '_skeletons') and self._skeletons else self._calc_skeleton_count()
+        self._preview_skeletons = [PreviewSkeletonRow(i) for i in range(_init_cnt)]
+        self._preview_skeleton_view = ft.ListView(item_extent=ITEM_H, spacing=0, expand=True, controls=self._preview_skeletons, visible=True)
+        self._preview_skeleton_wrap = ft.Container(content=self._preview_skeleton_view, bgcolor=BG_LIST, visible=False, **_sf)
+        self._preview_stack = ft.Stack(controls=[self._preview_view_wrap, self._preview_skeleton_wrap, self._preview_empty_wrap], expand=True)
         self._preview_header_text = ft.Text("Preview — cómo se va a pasar", size=11, color=TEXT_MUTED, font_family=FONT_HEADLINE_BOLD)
         self._preview_header_icon = ft.Icon(ft.Icons.VISIBILITY_OUTLINED, size=14, color=TEXT_MUTED)
         self._preview_panel = ft.Container(
@@ -1637,6 +1756,12 @@ class PlaylistManagerUI(DialogMixin):
         existing_order = [c.track.id for c in lv.controls if hasattr(c, "track")]
         incoming_order = [t.id for t in tracks]
         if existing_order != incoming_order:
+            # shimmer entre recargas organizar/dividir (reemplaza opacity, mantiene zoom)
+            try:
+                if existing_order:  # no en primera carga vacía
+                    self._trigger_shimmer_reload(duration_ms=280)
+            except Exception:
+                pass
             lv.controls.clear()
             self._row_cache.clear()
             for i, track in enumerate(tracks, 1):
@@ -2021,15 +2146,38 @@ class PlaylistManagerUI(DialogMixin):
         for sk in self._skeletons:
             self._skeleton_tasks.append(asyncio.create_task(sk.start_pulse()))
 
+    def _ensure_preview_skeletons_pulsing(self) -> None:
+        if getattr(self, '_preview_skeleton_tasks', None) is None:
+            self._preview_skeleton_tasks = []
+        if self._preview_skeleton_tasks:
+            return
+        for sk in getattr(self, '_preview_skeletons', []):
+            self._preview_skeleton_tasks.append(asyncio.create_task(sk.start_pulse()))
+
     def _stop_skeleton_pulse(self) -> None:
         for task in self._skeleton_tasks:
             task.cancel()
         self._skeleton_tasks.clear()
         for sk in self._skeletons:
             sk.stop_pulse()
+        # preview skeletons
+        if hasattr(self, '_preview_skeleton_tasks'):
+            for task in self._preview_skeleton_tasks:
+                task.cancel()
+            self._preview_skeleton_tasks.clear()
+        for sk in getattr(self, '_preview_skeletons', []):
+            try:
+                sk.stop_pulse()
+            except Exception:
+                pass
 
     def stop(self) -> None:
         self._stop_skeleton_pulse()
+        try:
+            if self._view_shimmer_task and not self._view_shimmer_task.done():
+                self._view_shimmer_task.cancel()
+        except Exception:
+            pass
         if self._search_task and not self._search_task.done():
             self._search_task.cancel()
 
