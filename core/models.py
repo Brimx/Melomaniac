@@ -1,6 +1,6 @@
 """
 ╔══════════════════════════════════════════════════════════════════════╗
-║                    Melomaniac v4.5.0                               ║
+║                    Melomaniac v4.5.1                               ║
 ║                    Modelos de Datos del Core                         ║
 ╚══════════════════════════════════════════════════════════════════════╝
 
@@ -16,7 +16,7 @@ Componentes:
     - TransferState: Estados del proceso de transferencia entre plataformas
 
 Autor: Melomaniac Team
-Versión: 4.5.0
+Versión: 4.5.1
 Fecha: 2026
 """
 
@@ -97,7 +97,7 @@ class PlaylistMeta:
 @dataclass
 class SearchResult:
     """
-    Resultado de búsqueda universal con sistema ISRC-Master v4.5.0.
+    Resultado de búsqueda universal con sistema ISRC-Master v4.5.1.
     
     Encapsula el resultado de una búsqueda en plataformas de streaming,
     incluyendo metadatos de confianza del matching fuzzy y código ISRC

@@ -1,6 +1,6 @@
 """
 ╔══════════════════════════════════════════════════════════════════════╗
-║                    Melomaniac v4.5.0                             ║
+║                    Melomaniac v4.5.1                             ║
 ║              Interfaz Principal de Usuario                           ║
 ╚══════════════════════════════════════════════════════════════════════╝
 
@@ -45,7 +45,7 @@ Componentes Principales:
     - Dialogs: Modales para errores y confirmaciones
 
 Autor: Melomaniac Team
-Versión: 4.5.0
+Versión: 4.5.1
 Fecha: 2026
 """
 
@@ -721,7 +721,7 @@ class PlaylistManagerUI(DialogMixin):
 
         # versión — IBM Plex Mono Light 300 (datos técnicos § Mono)
         self._rail_version_text = ft.Text(
-            "v4.5.0", size=8, color=TEXT_DIM,
+            "v4.5.1", size=8, color=TEXT_DIM,
             font_family=mono_family("light"),
             visible=not self._rail_collapsed, opacity=0.7,
             animate_opacity=ft.Animation(200, ft.AnimationCurve.EASE_IN_OUT),
@@ -896,7 +896,7 @@ class PlaylistManagerUI(DialogMixin):
                         ft.TextSpan("Melomaniac", ft.TextStyle(size=20,
                                                                color=TEXT_PRIMARY, font_family=brand_family("bold"))),
                     ], opacity=1.0),
-                    ft.Text("v4.5.0", size=9, color=TEXT_DIM, font_family=FONT_TEXT,
+                    ft.Text("v4.5.1", size=9, color=TEXT_DIM, font_family=FONT_TEXT,
                             style=ft.TextStyle(letter_spacing=0.8), opacity=1.0),
                 ], spacing=0, tight=True, expand=True),
                 self.btn_wizard,
@@ -1234,17 +1234,30 @@ class PlaylistManagerUI(DialogMixin):
         self.page.show_dialog(dlg)
 
     def _open_edit_division_dialog(self) -> None:
-        """Editar división §4 — quitar/agregar entre ORIGINAL y División activa + destino por división si destino==origen."""
+        """Editar división §4 — nombre editable, criterio artista/álbum/canción (canción default), quitar/agregar expand full."""
         s = self.state
         if not s.segments:
             self._snack("No hay divisiones para editar — divide primero", error=True)
             return
-        # División activa §6 (una a la vez)
         active = s.active_segment_key or next(iter(s.segments.keys()))
-        # listas buscables
         src_tracks = getattr(s, "source_tracks", s.tracks) or s.tracks
         div_tracks = s.segments.get(active, [])
-        # estado selección local
+        # nombre editable de la división (playlist derivada)
+        name_field = app_text_field(value=active, label="Nombre división", hint_text=active, expand=True, height=36, content_padding=ft.Padding.symmetric(horizontal=8, vertical=4))
+        def _on_name(e):
+            new = (e.control.value or "").strip()
+            if new and new != active and new not in s.segments:
+                s.segments[new] = s.segments.pop(active)
+                if s.active_segment_key == active:
+                    s.active_segment_key = new
+                    s.active_segment_keys = {new}
+                s.notify()
+        name_field.on_change = _on_name
+        name_field.on_submit = _on_name
+        # criterio para añadir: artista/álbum/canción (canción default)
+        add_criterion = {"value": "song"}
+        crit_dd = ft.Dropdown(label="Añadir por", value="song", width=160, height=36, bgcolor=BG_INPUT, border_color=BORDER_LIGHT, focused_border_color=ACCENT, text_style=ft.TextStyle(size=11, color=TEXT_PRIMARY), options=[ft.dropdown.Option("artist","Artista"), ft.dropdown.Option("album","Álbum"), ft.dropdown.Option("song","Canción")], on_select=lambda e: (add_criterion.__setitem__("value", e.control.value), _rebuild_left(left_search.value or "")))
+        # listas buscables
         left_sel: set[str] = set()
         right_sel: set[str] = set()
         left_search = app_text_field(hint_text="Buscar en ORIGINAL…", prefix_icon=ft.Icons.SEARCH, expand=True, height=32, content_padding=ft.Padding.symmetric(horizontal=8, vertical=4))
@@ -1255,22 +1268,30 @@ class PlaylistManagerUI(DialogMixin):
         def _rebuild_left(q: str = ""):
             ql = (q or "").strip().lower()
             left_lv.controls.clear()
-            for t in src_tracks:
-                if ql and ql not in t.name.lower() and ql not in t.artist.lower():
-                    continue
-                inside = any(x.id == t.id for x in div_tracks)
-                # deseleccionados para agregar están no inside
-                chk = ft.Checkbox(
-                    label=f"{t.name[:24]} — {t.artist[:16]}",
-                    value=t.id in left_sel,
-                    fill_color={ft.ControlState.SELECTED: ACCENT},
-                    check_color=TEXT_PRIMARY,
-                    label_style=ft.TextStyle(size=10, color=TEXT_PRIMARY if t.id in left_sel else TEXT_MUTED),
-                    border_side=ft.BorderSide(1.0, ACCENT if t.id in left_sel else TEXT_DIM),
-                    data=t.id,
-                    on_change=lambda e, _tid=t.id: (left_sel.add(_tid) if e.control.value else left_sel.discard(_tid)),
-                )
-                left_lv.controls.append(chk)
+            crit = add_criterion["value"]
+            if crit == "artist":
+                artists = sorted(set(t.artist for t in src_tracks if t.artist), key=lambda x: x.lower())
+                for a in artists:
+                    if ql and ql not in a.lower(): continue
+                    # cuenta canciones de ese artista en ORIGINAL
+                    cnt = sum(1 for t in src_tracks if t.artist == a)
+                    label = f"{a} ({cnt})"
+                    chk = ft.Checkbox(label=label, value=a in left_sel, fill_color={ft.ControlState.SELECTED: ACCENT}, check_color=TEXT_PRIMARY, label_style=ft.TextStyle(size=10, color=TEXT_PRIMARY if a in left_sel else TEXT_MUTED), border_side=ft.BorderSide(1.0, ACCENT if a in left_sel else TEXT_DIM), data=a, on_change=lambda e, _a=a: (left_sel.add(_a) if e.control.value else left_sel.discard(_a)))
+                    left_lv.controls.append(chk)
+            elif crit == "album":
+                albums = sorted(set(t.album for t in src_tracks if t.album), key=lambda x: x.lower())
+                for a in albums:
+                    if ql and ql not in a.lower(): continue
+                    cnt = sum(1 for t in src_tracks if t.album == a)
+                    label = f"{a} ({cnt})"
+                    chk = ft.Checkbox(label=label, value=a in left_sel, fill_color={ft.ControlState.SELECTED: ACCENT}, check_color=TEXT_PRIMARY, label_style=ft.TextStyle(size=10, color=TEXT_PRIMARY if a in left_sel else TEXT_MUTED), border_side=ft.BorderSide(1.0, ACCENT if a in left_sel else TEXT_DIM), data=a, on_change=lambda e, _a=a: (left_sel.add(_a) if e.control.value else left_sel.discard(_a)))
+                    left_lv.controls.append(chk)
+            else:
+                for t in src_tracks:
+                    label = f"{t.name[:24]} — {t.artist[:16]}"
+                    if ql and ql not in label.lower(): continue
+                    chk = ft.Checkbox(label=label, value=t.id in left_sel, fill_color={ft.ControlState.SELECTED: ACCENT}, check_color=TEXT_PRIMARY, label_style=ft.TextStyle(size=10, color=TEXT_PRIMARY if t.id in left_sel else TEXT_MUTED), border_side=ft.BorderSide(1.0, ACCENT if t.id in left_sel else TEXT_DIM), data=t.id, on_change=lambda e, _tid=t.id: (left_sel.add(_tid) if e.control.value else left_sel.discard(_tid)))
+                    left_lv.controls.append(chk)
             try: left_lv.update()
             except: pass
 
@@ -1278,18 +1299,9 @@ class PlaylistManagerUI(DialogMixin):
             ql = (q or "").strip().lower()
             right_lv.controls.clear()
             for t in div_tracks:
-                if ql and ql not in t.name.lower() and ql not in t.artist.lower():
-                    continue
-                chk = ft.Checkbox(
-                    label=f"{t.name[:24]} — {t.artist[:16]}",
-                    value=t.id in right_sel,
-                    fill_color={ft.ControlState.SELECTED: ACCENT},
-                    check_color=TEXT_PRIMARY,
-                    label_style=ft.TextStyle(size=10, color=TEXT_PRIMARY if t.id in right_sel else TEXT_MUTED),
-                    border_side=ft.BorderSide(1.0, ACCENT if t.id in right_sel else TEXT_DIM),
-                    data=t.id,
-                    on_change=lambda e, _tid=t.id: (right_sel.add(_tid) if e.control.value else right_sel.discard(_tid)),
-                )
+                label = f"{t.name[:24]} — {t.artist[:16]}"
+                if ql and ql not in label.lower(): continue
+                chk = ft.Checkbox(label=label, value=t.id in right_sel, fill_color={ft.ControlState.SELECTED: ACCENT}, check_color=TEXT_PRIMARY, label_style=ft.TextStyle(size=10, color=TEXT_PRIMARY if t.id in right_sel else TEXT_MUTED), border_side=ft.BorderSide(1.0, ACCENT if t.id in right_sel else TEXT_DIM), data=t.id, on_change=lambda e, _tid=t.id: (right_sel.add(_tid) if e.control.value else right_sel.discard(_tid)))
                 right_lv.controls.append(chk)
             try: right_lv.update()
             except: pass
@@ -1299,32 +1311,22 @@ class PlaylistManagerUI(DialogMixin):
         _rebuild_left("")
         _rebuild_right("")
 
-        # destino por división si origen==destino — menu context con animación nativa Flet
-        dest_row = ft.Container(visible=False)
-        if s.source == s.destination:
-            try:
-                dest_dd = ft.Dropdown(
-                    label="Destino para esta división", value=s.destination,
-                    width=260, height=38,
-                    bgcolor=BG_INPUT, border_color=BORDER_LIGHT, focused_border_color=ACCENT,
-                    text_style=ft.TextStyle(color=TEXT_PRIMARY, size=11, font_family=FONT_TEXT),
-                    options=[ft.dropdown.Option(p, p) for p in AppState.PLATFORMS],
-                    on_select=lambda e: setattr(s, 'log', lambda m: s.log(f"[INFO] Destino división '{active}' → {e.control.value}")) or None,
-                )
-                dest_row = ft.Container(
-                    content=ft.Row([ft.Icon(ft.Icons.SWAP_HORIZ, size=14, color=ACCENT), dest_dd], spacing=8),
-                    animate=ft.Animation(200, ft.AnimationCurve.EASE_IN_OUT),
-                    visible=True,
-                    bgcolor=CHIP_BG, border=ft.Border.all(0.5, BORDER_LIGHT), border_radius=8, padding=ft.Padding.all(8),
-                )
-            except Exception:
-                dest_row = ft.Container(visible=False)
-
         def _add_to_division(_e):
-            for tid in list(left_sel):
-                s.add_track_to_division(tid, active)
+            crit = add_criterion["value"]
+            if crit == "artist":
+                for a in list(left_sel):
+                    for t in src_tracks:
+                        if t.artist == a:
+                            s.add_track_to_division(t.id, active)
+            elif crit == "album":
+                for a in list(left_sel):
+                    for t in src_tracks:
+                        if t.album == a:
+                            s.add_track_to_division(t.id, active)
+            else:
+                for tid in list(left_sel):
+                    s.add_track_to_division(tid, active)
             left_sel.clear()
-            # refresca división track list
             nonlocal div_tracks
             div_tracks = s.segments.get(active, [])
             _rebuild_left(left_search.value or "")
@@ -1343,13 +1345,13 @@ class PlaylistManagerUI(DialogMixin):
         dlg = app_dialog(
             f"Editar división — {active}",
             ft.Column([
-                ft.Text(f"ORIGINAL ({len(src_tracks)}) vs DIVISIÓN ACTIVA '{active}' ({len(div_tracks)}) — quitar/agregar §4", size=10, color=TEXT_MUTED, font_family=FONT_TEXT),
+                name_field,
+                ft.Row([crit_dd, left_search], spacing=8),
                 ft.Row([
-                    ft.Column([left_search, ft.Container(content=left_lv, bgcolor=CHIP_BG, border=ft.Border.all(0.5, BORDER_LIGHT), border_radius=8), ft.TextButton("Agregar →", icon=ft.Icons.ARROW_FORWARD, on_click=_add_to_division, style=ft.ButtonStyle(color=ACCENT))], expand=True, spacing=6),
-                    ft.Column([right_search, ft.Container(content=right_lv, bgcolor=CHIP_BG, border=ft.Border.all(0.5, BORDER_LIGHT), border_radius=8), ft.TextButton("← Quitar", icon=ft.Icons.ARROW_BACK, on_click=_remove_from_division, style=ft.ButtonStyle(color=WARNING))], expand=True, spacing=6),
+                    ft.Column([ft.Container(content=left_lv, bgcolor=CHIP_BG, border=ft.Border.all(0.5, BORDER_LIGHT), border_radius=8, expand=True), ft.TextButton("Agregar →", icon=ft.Icons.ARROW_FORWARD, on_click=_add_to_division, style=ft.ButtonStyle(color=ACCENT))], expand=True, spacing=6),
+                    ft.Column([right_search, ft.Container(content=right_lv, bgcolor=CHIP_BG, border=ft.Border.all(0.5, BORDER_LIGHT), border_radius=8, expand=True), ft.TextButton("← Quitar", icon=ft.Icons.ARROW_BACK, on_click=_remove_from_division, style=ft.ButtonStyle(color=WARNING))], expand=True, spacing=6),
                 ], spacing=10, expand=True),
-                dest_row,
-            ], tight=True, spacing=8),
+            ], tight=True, spacing=8, expand=True),
             [
                 dialog_action("Cerrar", lambda _: self._close_dlg(dlg_ref.get("dlg")), kind="muted"),
             ],
@@ -1561,12 +1563,12 @@ class PlaylistManagerUI(DialogMixin):
         # selector partición junto a Vista (reemplaza Dropdown mono en header; buscable multi via dialog)
         # División activa — dropdown simple single para preview §6 (no multi, sin alert)
         self._partition_dd = ft.Dropdown(
-            label="División", width=180, height=38,
+            label="División", width=130, height=32,
             bgcolor=BG_INPUT, border_color=BORDER_LIGHT, focused_border_color=ACCENT,
-            border_radius=10,
+            border_radius=8,
             label_style=ft.TextStyle(color=TEXT_MUTED, size=10, font_family=FONT_HEADLINE),
             text_style=ft.TextStyle(color=TEXT_PRIMARY, size=11, font_family=FONT_TEXT),
-            content_padding=ft.Padding.symmetric(horizontal=10, vertical=4),
+            content_padding=ft.Padding.symmetric(horizontal=8, vertical=4),
             hint_text="División activa",
             visible=False,
             on_select=lambda e: self.state.set_active_segment(e.control.value) if e.control.value else None,
@@ -1712,13 +1714,12 @@ class PlaylistManagerUI(DialogMixin):
             dest_ok = s.auth_session_ok.get(s.destination, True)
             self._dest_session_warn.visible = not dest_ok
             self._dest_session_warn.value = "" if dest_ok else f"Sesi\u00f3n expirada en {s.destination}"
-        # Misma plataforma ahora permitida si hay Organizar/Dividir (has_transform) §11
         has_transform = bool(s.segments or getattr(s, 'show_dual', False) or (getattr(s, 'source_tracks', None) and s.tracks != s.source_tracks))
         if s.source == s.destination and not has_transform:
             self._status_badge.value = "\u26a0 Origen y destino iguales"
             self._status_badge.color = WARNING
         elif s.source == s.destination and has_transform:
-            self._status_badge.value = f"\u2713 {s.source} \u2192 {s.destination} (misma plataforma — organizada/dividida)"
+            self._status_badge.value = f"\u2713 {s.source} \u2192 {s.destination}"
             self._status_badge.color = SUCCESS
         elif s.destination == EXPORT_DEST_LABEL:
             self._status_badge.value = f"\u2713 {s.source} \u2192 Exportar local"
@@ -1765,26 +1766,16 @@ class PlaylistManagerUI(DialogMixin):
             self._segment_dd.update()
         except Exception:
             pass
-        # selector División activa (dropdown single) + multi para transferir + Editar §4,6,7
+        # selector División activa (dropdown single) §6 — quita referencia a puntos cumplidos
         try:
             if s.segments:
-                # dropdown single para preview §6
                 self._partition_dd.visible = True
                 self._partition_dd.options = [ft.dropdown.Option(k, k) for k in s.segments.keys()]
                 self._partition_dd.value = s.active_segment_key or next(iter(s.segments.keys()))
                 self._partition_dd.update()
-                # botón multi para transferir §7
-                self._partition_btn.visible = True
+                # botón multi para transferir oculto — dropdown cumple papel §5
+                self._partition_btn.visible = False
                 self._edit_division_btn.visible = True
-                label = self._partition_btn_label()
-                if hasattr(self._partition_btn, "content") and isinstance(self._partition_btn.content, ft.Text):
-                    self._partition_btn.content.value = label
-                else:
-                    try:
-                        self._partition_btn.text = label  # type: ignore
-                    except Exception:
-                        pass
-                self._partition_btn.tooltip = f"Divisiones: {', '.join(list(s.segments.keys())[:3])}{'...' if len(s.segments)>3 else ''}"
                 self._partition_btn.update()
                 self._edit_division_btn.update()
             else:
@@ -2175,45 +2166,49 @@ class PlaylistManagerUI(DialogMixin):
                 self._snack("Selecciona al menos una canción", error=True)
                 return
         from ui.playlist_meta_dialog import PlaylistMetaDialog
-        # Reemplazar requiere sesión activa origen
         src_requires_auth = self.state.source not in AppState.LOCAL_SOURCES and self.state.auth_session_ok.get(self.state.source, True)
+        divisions_for_dialog = list(sel_divs) if has_divisions else None
         meta = await PlaylistMetaDialog(
             self.page,
             default_title=self.state.playlist_name,
             default_description=self.state.playlist_description,
             source_requires_auth=src_requires_auth,
+            divisions=divisions_for_dialog,
+            global_destination=self.state.destination,
         ).show()
         if not meta.confirmed:
             return
         if not meta.title.strip():
             self._snack("El nombre de la playlist no puede estar vacío", error=True)
             return
-        # Flujo Dividir (múltiples playlists) vs Organizar/single §10-12
+        # Flujo Dividir (múltiples playlists) vs Organizar/single §10-12 — per-división destino variable solo Dividir
         if has_divisions:
             sel_divs = self.state.active_segment_keys if self.state.active_segment_keys is not None else set(self.state.segments.keys())
-            # destino global: si destino==origen se aplica a todas; per-división via context menu pendiente
-            # por defecto creará "{title} — {división}" por cada división seleccionada
+            per_div_dests = getattr(meta, 'per_division_destinations', None) or {}
             successes = 0
             for div in sorted(sel_divs, key=lambda k: list(self.state.segments.keys()).index(k) if k in self.state.segments else 9999):
                 div_tracks = self.state.segments.get(div, [])
-                # filtra por seleccionadas si las hay
                 div_selected = [t for t in div_tracks if t.selected] if any(t.selected for t in div_tracks) else div_tracks
                 if not div_selected:
                     continue
-                # crea playlist por división — misma plataforma: IDs directos; distinto: requiere búsqueda (pendiente transfer_tracks_subset)
-                # por ahora usa IDs directos; cross-platform usará pipeline de búsqueda en siguiente iteración
+                dest = per_div_dests.get(div, "Mantener")
+                if dest == "Mantener" or not dest:
+                    dest = self.state.destination
                 try:
                     ok, msg, confirmed, rejected = await self.state.service.create_playlist(
-                        self.state.destination, f"{meta.title.strip()} — {div}", [t.id for t in div_selected if t.id], meta.description
+                        dest, f"{meta.title.strip()} — {div}", [t.id for t in div_selected if t.id], meta.description
                     )
                     if ok:
                         successes += 1
-                        self.state.log(f"[SUCCESS] División '{div}' → {self.state.destination}: {confirmed} canciones")
+                        self.state.log(f"[SUCCESS] División '{div}' → {dest}: {confirmed} canciones")
                     else:
                         self.state.log(f"[ERROR] División '{div}' fallo: {msg}")
                 except Exception as exc:
                     self.state.log(f"[ERROR] División '{div}' excepción: {exc}")
-            self._snack(f"{successes}/{len(sel_divs)} divisiones transferidas a {self.state.destination}")
+            # mensaje sin referencia a punto cumplido
+            self._snack(f"{successes}/{len(sel_divs)} divisiones transferidas")
+            if per_div_dests:
+                self.state.division_destinations.update(per_div_dests)
         else:
             await self.state.transfer_playlist(
                 title_override=meta.title,

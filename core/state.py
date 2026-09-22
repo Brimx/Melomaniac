@@ -1,6 +1,6 @@
 """
 ╔══════════════════════════════════════════════════════════════════════╗
-║                    Melomaniac v4.5.0                               ║
+║                    Melomaniac v4.5.1                               ║
 ║                    Estado Global de la Aplicación                    ║
 ╚══════════════════════════════════════════════════════════════════════╝
 
@@ -44,7 +44,7 @@ Funciones Auxiliares:
     - core.availability: resolución de disponibilidad por pista
 
 Autor: Melomaniac Team
-Versión: 4.5.0
+Versión: 4.5.1
 Fecha: 2026
 """
 
@@ -232,6 +232,8 @@ class AppState:
         self.organize_third_key: str = "none"
         self.organize_advanced: bool = False
         self.split_key: str = "artist"               # persistencia Agrupar (Dividir) artist|album
+        self.split_key_count: str = "2"              # cantidad divisiones max 5
+        self.division_destinations: dict[str, str] = {}  # per-división destino override, Mantener = global
 
         # ──────────────────────────────────────────────────────────────
         # CIRCUIT BREAKERS POR PLATAFORMA

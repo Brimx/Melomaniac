@@ -1,5 +1,5 @@
 """
-ui/playlist_meta_dialog.py — Melomaniac v4.5.0
+ui/playlist_meta_dialog.py — Melomaniac v4.5.1
 
 Diálogo de personalización de playlist (nombre + descripción).
 
@@ -44,13 +44,15 @@ class PlaylistMetaResult:
     title: str
     description: str
     delete_original: bool = False
+    per_division_destinations: dict[str, str] | None = None
 
 
 class PlaylistMetaDialog(DialogMixin):
     """Modal AlertDialog para editar nombre/descripción antes de crear."""
 
     def __init__(self, page: ft.Page, *, default_title: str,
-                 default_description: str = "", source_requires_auth: bool = True) -> None:
+                 default_description: str = "", source_requires_auth: bool = True,
+                 divisions: list[str] | None = None, global_destination: str | None = None) -> None:
         self.page = page
         # Las APIs traen la descripción con \n, \t, espacios múltiples y
         # a veces entidades HTML (Spotify). _as_text solo recorta los
@@ -60,11 +62,16 @@ class PlaylistMetaDialog(DialogMixin):
         self._default_title = self._clean(default_title)
         self._default_description = self._clean(default_description)
         self._source_requires_auth = source_requires_auth
+        self._divisions = divisions
+        self._global_destination = global_destination
+        self._per_div_dests: dict[str, str] = {}
         self._future: asyncio.Future[PlaylistMetaResult] | None = None
         self._dlg: ft.AlertDialog | None = None
         self._title_field: ft.TextField | None = None
         self._desc_field: ft.TextField | None = None
         self._delete_chk: ft.Checkbox | None = None
+        self._div_switch: ft.Dropdown | None = None
+        self._dest_dd: ft.Dropdown | None = None
 
     # ── API pública ──────────────────────────────────────────────
 
@@ -125,8 +132,9 @@ class PlaylistMetaDialog(DialogMixin):
             max_lines=3,
             width=CONTENT_W,
         )
+        # Avanzado: solo Eliminar original, desmarcado por defecto
         self._delete_chk = ft.Checkbox(
-            label="Reemplazar y eliminar original (requiere sesión activa)",
+            label="Eliminar original (avanzado, requiere sesión activa)",
             value=False,
             fill_color={ft.ControlState.SELECTED: ACCENT},
             check_color=TEXT_PRIMARY,
@@ -134,21 +142,66 @@ class PlaylistMetaDialog(DialogMixin):
             border_side=ft.BorderSide(1.2, TEXT_DIM),
             visible=True,
         )
-        # hint si es local o sin auth
         if not self._source_requires_auth:
             self._delete_chk.disabled = True
-            self._delete_chk.label = "Reemplazar (no disponible para local)"
+            self._delete_chk.label = "Eliminar original (no disponible para local)"
+        controls: list[ft.Control] = [
+            _section_label("NOMBRE"),
+            self._title_field,
+            _section_label("DESCRIPCIÓN"),
+            self._desc_field,
+        ]
+        # Solo Dividir muestra destino por división (variable, Mantener + otras plataformas sin repetir global)
+        if self._divisions:
+            # per-division destinos dict init Mantener
+            for div in self._divisions:
+                self._per_div_dests[div] = "Mantener"
+            # dropdown switch division
+            self._div_switch = ft.Dropdown(
+                label="División", value=self._divisions[0], width=CONTENT_W, height=38,
+                bgcolor=BG_INPUT, border_color=BORDER_LIGHT, focused_border_color=ACCENT,
+                label_style=ft.TextStyle(color=TEXT_MUTED, size=10, font_family="IBM Plex Sans"),
+                text_style=ft.TextStyle(color=TEXT_PRIMARY, size=11, font_family="IBM Plex Sans"),
+                border_radius=10,
+                options=[ft.dropdown.Option(d, d) for d in self._divisions],
+            )
+            # destino dropdown variable: Mantener + otras plataformas que no son global
+            from core.config import PLATFORMS as _PLATS
+            dest_opts = ["Mantener"] + [p for p in _PLATS if p != self._global_destination]
+            self._dest_dd = ft.Dropdown(
+                label="Destino para esta división", value="Mantener", width=CONTENT_W, height=38,
+                bgcolor=BG_INPUT, border_color=BORDER_LIGHT, focused_border_color=ACCENT,
+                label_style=ft.TextStyle(color=TEXT_MUTED, size=10, font_family="IBM Plex Sans"),
+                text_style=ft.TextStyle(color=TEXT_PRIMARY, size=11, font_family="IBM Plex Sans"),
+                border_radius=10,
+                options=[ft.dropdown.Option(o, o) for o in dest_opts],
+            )
+            def _on_div_change(e):
+                cur = e.control.value
+                # carga destino guardado para esa división
+                try:
+                    self._dest_dd.value = self._per_div_dests.get(cur, "Mantener")
+                    self._dest_dd.update()
+                except: pass
+            def _on_dest_change(e):
+                cur_div = self._div_switch.value if self._div_switch else self._divisions[0]
+                self._per_div_dests[cur_div] = e.control.value
+            self._div_switch.on_select = _on_div_change  # type: ignore
+            self._dest_dd.on_select = _on_dest_change  # type: ignore
+            controls += [
+                _section_label("DIVISIÓN ACTIVA"),
+                self._div_switch,
+                self._dest_dd,
+                ft.Text("Mantener = usa destino global elegido fuera; otras opciones son las dos plataformas restantes.", size=9, color=TEXT_DIM, font_family="IBM Plex Sans"),
+            ]
+        controls += [
+            self._delete_chk,
+            ft.Text("Desmarcado por defecto — crea nueva sin borrar original.", size=9, color=TEXT_DIM, font_family="IBM Plex Sans"),
+        ]
         self._dlg = app_dialog(
             "Personalizar playlist",
             ft.Column(
-                controls=[
-                    _section_label("NOMBRE"),
-                    self._title_field,
-                    _section_label("DESCRIPCIÓN"),
-                    self._desc_field,
-                    self._delete_chk,
-                    ft.Text("Desmarcado por defecto — crea nueva sin borrar original. Si marcas, se elimina la original tras transferir (requiere sesión).", size=9, color=TEXT_DIM, font_family="IBM Plex Sans"),
-                ],
+                controls=controls,
                 spacing=8,
                 tight=True,
                 width=CONTENT_W,
@@ -172,8 +225,15 @@ class PlaylistMetaDialog(DialogMixin):
         title = ((self._title_field.value or "") if self._title_field else "")
         desc = ((self._desc_field.value or "") if self._desc_field else "")
         delete = bool(self._delete_chk.value) if self._delete_chk else False
+        # guarda destino actual de la división activa antes de confirmar
+        try:
+            if self._divisions and self._div_switch and self._dest_dd:
+                cur = self._div_switch.value
+                if cur:
+                    self._per_div_dests[cur] = self._dest_dd.value or "Mantener"
+        except: pass
         self._finish(PlaylistMetaResult(
-            confirmed=True, title=title.strip(), description=desc.strip(), delete_original=delete))
+            confirmed=True, title=title.strip(), description=desc.strip(), delete_original=delete, per_division_destinations=dict(self._per_div_dests) if self._per_div_dests else None))
 
     def _on_cancel(self, _e) -> None:
         self._finish(PlaylistMetaResult(
