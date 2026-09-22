@@ -862,14 +862,25 @@ class AppState:
         self.dual_mode = "doble"
         self.apply_search(self.search_query)
 
+    # Alias División (§1) — partición visible = División
+    @property
+    def divisions(self) -> dict[str, list["Track"]]:
+        return self.segments
+
+    @divisions.setter
+    def divisions(self, val: dict[str, list["Track"]]) -> None:
+        self.segments = val
+
     def organize_split(self, key: str, scope: str = "all") -> None:
         """
-        Agrupa siempre sobre toda la playlist (sin alcance) — alcance ya lo definen filtros.
-        Preserva active si sigue válido; primer key es 1ª aparición O(n) §12, no alfabético.
-        Persiste split_key para re-apertura.
+        Dividir (§2-12): genera Divisiones por criterio Artista|Álbum|Género|Título(name).
+        Opera sobre lista actual de trabajo (RESULT si hubo Organizar, si no ORIGINAL §11).
+        Preserva active si sigue válido; 1ª aparición O(n) §12. Persiste split_key.
         """
         # scope ignorado (siempre toda la playlist)
-        self.split_key = key if key in ("artist", "album") else "artist"
+        if key not in ("artist", "album", "genre", "name"):
+            key = "artist"
+        self.split_key = key
         src = self.tracks
         new_segments = split_tracks(src, key)
         if not new_segments:
@@ -962,6 +973,75 @@ class AppState:
             cur.add(key)
             self.set_active_segments(cur)
 
+    # ── División activa vs seleccionadas §7 ───────────────────────────────
+    @property
+    def active_division(self) -> str | None:
+        return self.active_segment_key
+
+    @active_division.setter
+    def active_division(self, val: str | None) -> None:
+        if val is None or val in self.segments:
+            self.active_segment_key = val
+            self.active_segment_keys = {val} if val else None
+            self.apply_search(self.search_query)
+
+    @property
+    def selected_divisions(self) -> set[str] | None:
+        return self.active_segment_keys
+
+    # ── Divisiones — excepciones manuales §4 (agregar/quitar/mover) ─────────
+    def add_track_to_division(self, track_id: str, division: str) -> bool:
+        """Agrega canción a División aunque no cumpla criterio inicial §3."""
+        if division not in self.segments:
+            return False
+        tr = next((t for t in self.tracks if t.id == track_id), None)
+        if tr is None:
+            tr = next((t for t in getattr(self, "source_tracks", []) if t.id == track_id), None)
+        if tr is None:
+            return False
+        if any(t.id == track_id for t in self.segments[division]):
+            return False
+        self.segments[division].append(tr)
+        self.apply_search(self.search_query)
+        return True
+
+    def remove_track_from_division(self, track_id: str, division: str) -> bool:
+        """Quita canción de División §4."""
+        if division not in self.segments:
+            return False
+        lst = self.segments[division]
+        for i, t in enumerate(lst):
+            if t.id == track_id:
+                lst.pop(i)
+                self.apply_search(self.search_query)
+                return True
+        return False
+
+    def move_track_between_divisions(self, track_id: str, from_div: str, to_div: str) -> bool:
+        """Mueve canción entre Divisiones (reasignación §9)."""
+        if from_div not in self.segments or to_div not in self.segments or from_div == to_div:
+            return False
+        if not self.remove_track_from_division(track_id, from_div):
+            return False
+        return self.add_track_to_division(track_id, to_div)
+
+    def reorder_divisions(self, order: list[str]) -> None:
+        """Reordena Divisiones (§8 control REORGANIZAR — artistas/álbumes)."""
+        if not order or set(order) != set(self.segments.keys()):
+            return
+        self.segments = {k: self.segments[k] for k in order}
+        self.apply_search(self.search_query)
+
+    def reorder_tracks_in_division(self, division: str, order_ids: list[str]) -> None:
+        """Reordena canciones dentro de División (reordenamiento §9)."""
+        if division not in self.segments:
+            return
+        id_map = {t.id: t for t in self.segments[division]}
+        if set(order_ids) != set(id_map.keys()):
+            return
+        self.segments[division] = [id_map[i] for i in order_ids]
+        self.apply_search(self.search_query)
+
     def set_source(self, val: str) -> None:
         self.source = val
         self.destination_confirmed = val not in self.LOCAL_SOURCES
@@ -971,6 +1051,22 @@ class AppState:
         self.destination = val
         self.destination_confirmed = True
         self.notify()
+
+    def move_track_to_position(self, track_id: str, new_index: int) -> bool:
+        """Reorganización por Nº posición editable — mueve canción a nueva posición 1-based en mismo ListView."""
+        try:
+            n = int(new_index)
+        except Exception:
+            return False
+        if n < 1 or n > len(self.tracks):
+            return False
+        idx = next((i for i, t in enumerate(self.tracks) if t.id == track_id), None)
+        if idx is None or idx == n - 1:
+            return idx == n - 1
+        tr = self.tracks.pop(idx)
+        self.tracks.insert(n - 1, tr)
+        self.apply_search(self.search_query)
+        return True
 
     def _log(self, msg: str) -> None:
         self.log_lines.append(msg)

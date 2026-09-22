@@ -43,6 +43,7 @@ from ui.tokens import (
     BG_LIST, BG_HOVER, SKELETON_DARK,
     TEXT_PRIMARY, TEXT_MUTED, TEXT_DIM,
     ACCENT, BG_SURFACE, BORDER_ROW,
+    BG_INPUT, BORDER_LIGHT,
 )
 from ui.widgets import _status_icon
 
@@ -315,7 +316,7 @@ class SongRow(ft.Container):
         sin ser intrusivo.
     """
 
-    def __init__(self, track: Track, index: int, on_toggle: Callable[[str], None]):
+    def __init__(self, track: Track, index: int, on_toggle: Callable[[str], None], on_move: Callable[[str, int], None] | None = None):
         """
         Inicializa una fila de canción con todos sus componentes visuales.
         
@@ -324,9 +325,12 @@ class SongRow(ft.Container):
             index: Número de fila (1-indexed) mostrado al usuario.
             on_toggle: Callback (track_id: str) -> None ejecutado al
                       cambiar el estado del checkbox.
+            on_move: Callback opcional (track_id, new_index) para Nº editable §8 — subir/bajar vía teclado.
         """
         self.track      = track
         self._on_toggle = on_toggle
+        self._on_move = on_move
+        self._index = index
 
         # ──────────────────────────────────────────────────────────────
         # THUMBNAIL DE ÁLBUM CON FALLBACK
@@ -378,12 +382,38 @@ class SongRow(ft.Container):
         # ELEMENTOS DE TEXTO
         # ──────────────────────────────────────────────────────────────
         
-        num_label = ft.Text(
-            str(index), size=11, color=TEXT_MUTED,
-            font_family=mono_family("light"),
-            text_align=ft.TextAlign.CENTER,
-            opacity=1.0,
-        )
+        # Nº posición editable — TextField 32 ancho para subir/bajar sin drag §8
+        if self._on_move is not None:
+            def _on_num_submit(e):
+                try:
+                    new_pos = int((e.control.value or "").strip())
+                    if 1 <= new_pos <= 9999 and new_pos != self._index:
+                        self._on_move(track.id, new_pos)
+                except Exception:
+                    pass
+                # restaura valor visual (será recreado en sync)
+                try:
+                    e.control.value = str(self._index)
+                    e.control.update()
+                except Exception:
+                    pass
+            num_label = ft.TextField(
+                value=str(index), width=32, height=28,
+                text_align=ft.TextAlign.CENTER,
+                text_style=ft.TextStyle(size=11, color=TEXT_MUTED, font_family=mono_family("light")),
+                bgcolor=BG_INPUT, border_color=ft.Colors.TRANSPARENT, focused_border_color=ACCENT,
+                content_padding=ft.Padding.symmetric(horizontal=2, vertical=4),
+                dense=True, border_radius=6,
+                on_submit=_on_num_submit,
+                on_blur=_on_num_submit,
+            )
+        else:
+            num_label = ft.Text(
+                str(index), size=11, color=TEXT_MUTED,
+                font_family=mono_family("light"),
+                text_align=ft.TextAlign.CENTER,
+                opacity=1.0,
+            )
 
         title_text = ft.Text(
             track.name, size=13, color=TEXT_PRIMARY,

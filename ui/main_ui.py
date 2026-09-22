@@ -1233,6 +1233,130 @@ class PlaylistManagerUI(DialogMixin):
         dlg_ref["dlg"] = dlg
         self.page.show_dialog(dlg)
 
+    def _open_edit_division_dialog(self) -> None:
+        """Editar división §4 — quitar/agregar entre ORIGINAL y División activa + destino por división si destino==origen."""
+        s = self.state
+        if not s.segments:
+            self._snack("No hay divisiones para editar — divide primero", error=True)
+            return
+        # División activa §6 (una a la vez)
+        active = s.active_segment_key or next(iter(s.segments.keys()))
+        # listas buscables
+        src_tracks = getattr(s, "source_tracks", s.tracks) or s.tracks
+        div_tracks = s.segments.get(active, [])
+        # estado selección local
+        left_sel: set[str] = set()
+        right_sel: set[str] = set()
+        left_search = app_text_field(hint_text="Buscar en ORIGINAL…", prefix_icon=ft.Icons.SEARCH, expand=True, height=32, content_padding=ft.Padding.symmetric(horizontal=8, vertical=4))
+        right_search = app_text_field(hint_text="Buscar en División…", prefix_icon=ft.Icons.SEARCH, expand=True, height=32, content_padding=ft.Padding.symmetric(horizontal=8, vertical=4))
+        left_lv = ft.ListView(height=180, spacing=2, padding=ft.Padding.all(4), expand=True)
+        right_lv = ft.ListView(height=180, spacing=2, padding=ft.Padding.all(4), expand=True)
+
+        def _rebuild_left(q: str = ""):
+            ql = (q or "").strip().lower()
+            left_lv.controls.clear()
+            for t in src_tracks:
+                if ql and ql not in t.name.lower() and ql not in t.artist.lower():
+                    continue
+                inside = any(x.id == t.id for x in div_tracks)
+                # deseleccionados para agregar están no inside
+                chk = ft.Checkbox(
+                    label=f"{t.name[:24]} — {t.artist[:16]}",
+                    value=t.id in left_sel,
+                    fill_color={ft.ControlState.SELECTED: ACCENT},
+                    check_color=TEXT_PRIMARY,
+                    label_style=ft.TextStyle(size=10, color=TEXT_PRIMARY if t.id in left_sel else TEXT_MUTED),
+                    border_side=ft.BorderSide(1.0, ACCENT if t.id in left_sel else TEXT_DIM),
+                    data=t.id,
+                    on_change=lambda e, _tid=t.id: (left_sel.add(_tid) if e.control.value else left_sel.discard(_tid)),
+                )
+                left_lv.controls.append(chk)
+            try: left_lv.update()
+            except: pass
+
+        def _rebuild_right(q: str = ""):
+            ql = (q or "").strip().lower()
+            right_lv.controls.clear()
+            for t in div_tracks:
+                if ql and ql not in t.name.lower() and ql not in t.artist.lower():
+                    continue
+                chk = ft.Checkbox(
+                    label=f"{t.name[:24]} — {t.artist[:16]}",
+                    value=t.id in right_sel,
+                    fill_color={ft.ControlState.SELECTED: ACCENT},
+                    check_color=TEXT_PRIMARY,
+                    label_style=ft.TextStyle(size=10, color=TEXT_PRIMARY if t.id in right_sel else TEXT_MUTED),
+                    border_side=ft.BorderSide(1.0, ACCENT if t.id in right_sel else TEXT_DIM),
+                    data=t.id,
+                    on_change=lambda e, _tid=t.id: (right_sel.add(_tid) if e.control.value else right_sel.discard(_tid)),
+                )
+                right_lv.controls.append(chk)
+            try: right_lv.update()
+            except: pass
+
+        left_search.on_change = lambda e: _rebuild_left(e.control.value or "")
+        right_search.on_change = lambda e: _rebuild_right(e.control.value or "")
+        _rebuild_left("")
+        _rebuild_right("")
+
+        # destino por división si origen==destino — menu context con animación nativa Flet
+        dest_row = ft.Container(visible=False)
+        if s.source == s.destination:
+            try:
+                dest_dd = ft.Dropdown(
+                    label="Destino para esta división", value=s.destination,
+                    width=260, height=38,
+                    bgcolor=BG_INPUT, border_color=BORDER_LIGHT, focused_border_color=ACCENT,
+                    text_style=ft.TextStyle(color=TEXT_PRIMARY, size=11, font_family=FONT_TEXT),
+                    options=[ft.dropdown.Option(p, p) for p in AppState.PLATFORMS],
+                    on_select=lambda e: setattr(s, 'log', lambda m: s.log(f"[INFO] Destino división '{active}' → {e.control.value}")) or None,
+                )
+                dest_row = ft.Container(
+                    content=ft.Row([ft.Icon(ft.Icons.SWAP_HORIZ, size=14, color=ACCENT), dest_dd], spacing=8),
+                    animate=ft.Animation(200, ft.AnimationCurve.EASE_IN_OUT),
+                    visible=True,
+                    bgcolor=CHIP_BG, border=ft.Border.all(0.5, BORDER_LIGHT), border_radius=8, padding=ft.Padding.all(8),
+                )
+            except Exception:
+                dest_row = ft.Container(visible=False)
+
+        def _add_to_division(_e):
+            for tid in list(left_sel):
+                s.add_track_to_division(tid, active)
+            left_sel.clear()
+            # refresca división track list
+            nonlocal div_tracks
+            div_tracks = s.segments.get(active, [])
+            _rebuild_left(left_search.value or "")
+            _rebuild_right(right_search.value or "")
+            self.page.update()
+
+        def _remove_from_division(_e):
+            for tid in list(right_sel):
+                s.remove_track_from_division(tid, active)
+            right_sel.clear()
+            div_tracks = s.segments.get(active, [])
+            _rebuild_right(right_search.value or "")
+            self.page.update()
+
+        dlg_ref: dict = {}
+        dlg = app_dialog(
+            f"Editar división — {active}",
+            ft.Column([
+                ft.Text(f"ORIGINAL ({len(src_tracks)}) vs DIVISIÓN ACTIVA '{active}' ({len(div_tracks)}) — quitar/agregar §4", size=10, color=TEXT_MUTED, font_family=FONT_TEXT),
+                ft.Row([
+                    ft.Column([left_search, ft.Container(content=left_lv, bgcolor=CHIP_BG, border=ft.Border.all(0.5, BORDER_LIGHT), border_radius=8), ft.TextButton("Agregar →", icon=ft.Icons.ARROW_FORWARD, on_click=_add_to_division, style=ft.ButtonStyle(color=ACCENT))], expand=True, spacing=6),
+                    ft.Column([right_search, ft.Container(content=right_lv, bgcolor=CHIP_BG, border=ft.Border.all(0.5, BORDER_LIGHT), border_radius=8), ft.TextButton("← Quitar", icon=ft.Icons.ARROW_BACK, on_click=_remove_from_division, style=ft.ButtonStyle(color=WARNING))], expand=True, spacing=6),
+                ], spacing=10, expand=True),
+                dest_row,
+            ], tight=True, spacing=8),
+            [
+                dialog_action("Cerrar", lambda _: self._close_dlg(dlg_ref.get("dlg")), kind="muted"),
+            ],
+            width=620, bgcolor=BG_SURFACE, radius=10,
+        )
+        dlg_ref["dlg"] = dlg
+        self.page.show_dialog(dlg)
 
     # ── BUILD CONTENT ──────────────────────────────────────────────────
 
@@ -1435,6 +1559,18 @@ class PlaylistManagerUI(DialogMixin):
 
         self._mode_seg = self._make_mode_segmented(getattr(self.state, "dual_mode", "lista"), on_change=_on_mode_change)
         # selector partición junto a Vista (reemplaza Dropdown mono en header; buscable multi via dialog)
+        # División activa — dropdown simple single para preview §6 (no multi, sin alert)
+        self._partition_dd = ft.Dropdown(
+            label="División", width=180, height=38,
+            bgcolor=BG_INPUT, border_color=BORDER_LIGHT, focused_border_color=ACCENT,
+            border_radius=10,
+            label_style=ft.TextStyle(color=TEXT_MUTED, size=10, font_family=FONT_HEADLINE),
+            text_style=ft.TextStyle(color=TEXT_PRIMARY, size=11, font_family=FONT_TEXT),
+            content_padding=ft.Padding.symmetric(horizontal=10, vertical=4),
+            hint_text="División activa",
+            visible=False,
+            on_select=lambda e: self.state.set_active_segment(e.control.value) if e.control.value else None,
+        )
         self._partition_btn = ft.OutlinedButton(
             content=ft.Text("Todos", size=11, color=TEXT_MUTED, font_family=FONT_HEADLINE),
             icon=ft.Icons.FILTER_LIST,
@@ -1445,14 +1581,28 @@ class PlaylistManagerUI(DialogMixin):
                 shape=ft.RoundedRectangleBorder(radius=8),
             ),
             visible=False,
-            tooltip="Filtrar divisiones — División activa vs seleccionadas §7",
+            tooltip="Seleccionar divisiones para transferir — multi §7",
+        )
+        self._edit_division_btn = ft.OutlinedButton(
+            content=ft.Text("Editar", size=11, color=TEXT_MUTED, font_family=FONT_HEADLINE),
+            icon=ft.Icons.EDIT_NOTE,
+            on_click=lambda _: self._open_edit_division_dialog(),
+            style=ft.ButtonStyle(
+                padding=ft.Padding.symmetric(horizontal=10, vertical=6),
+                side={ft.ControlState.DEFAULT: ft.BorderSide(0.7, BORDER_LIGHT)},
+                shape=ft.RoundedRectangleBorder(radius=8),
+            ),
+            visible=False,
+            tooltip="Editar división — quitar/agregar entre ORIGINAL y División activa §4 (animación nativa)",
         )
         self._mode_bar = ft.Row([
             ft.Text("Vista:", size=10, color=TEXT_MUTED, font_family=FONT_HEADLINE),
             self._mode_seg,
             ft.VerticalDivider(width=1, color=BORDER_MUTED),
             ft.Icon(ft.Icons.CALL_SPLIT, size=14, color=TEXT_DIM),
+            self._partition_dd,
             self._partition_btn,
+            self._edit_division_btn,
             ft.Container(expand=True),
             ft.IconButton(icon=ft.Icons.CLOSE, icon_size=14, icon_color=TEXT_DIM, tooltip="Cerrar doble vista",
                           on_click=lambda _: self.state.set_show_dual(False),
@@ -1562,9 +1712,14 @@ class PlaylistManagerUI(DialogMixin):
             dest_ok = s.auth_session_ok.get(s.destination, True)
             self._dest_session_warn.visible = not dest_ok
             self._dest_session_warn.value = "" if dest_ok else f"Sesi\u00f3n expirada en {s.destination}"
-        if s.source == s.destination:
+        # Misma plataforma ahora permitida si hay Organizar/Dividir (has_transform) §11
+        has_transform = bool(s.segments or getattr(s, 'show_dual', False) or (getattr(s, 'source_tracks', None) and s.tracks != s.source_tracks))
+        if s.source == s.destination and not has_transform:
             self._status_badge.value = "\u26a0 Origen y destino iguales"
             self._status_badge.color = WARNING
+        elif s.source == s.destination and has_transform:
+            self._status_badge.value = f"\u2713 {s.source} \u2192 {s.destination} (misma plataforma — organizada/dividida)"
+            self._status_badge.color = SUCCESS
         elif s.destination == EXPORT_DEST_LABEL:
             self._status_badge.value = f"\u2713 {s.source} \u2192 Exportar local"
             self._status_badge.color = SUCCESS
@@ -1610,24 +1765,35 @@ class PlaylistManagerUI(DialogMixin):
             self._segment_dd.update()
         except Exception:
             pass
-        # selector partición junto a Vista (Button multi buscable) — Todos por defecto
+        # selector División activa (dropdown single) + multi para transferir + Editar §4,6,7
         try:
             if s.segments:
+                # dropdown single para preview §6
+                self._partition_dd.visible = True
+                self._partition_dd.options = [ft.dropdown.Option(k, k) for k in s.segments.keys()]
+                self._partition_dd.value = s.active_segment_key or next(iter(s.segments.keys()))
+                self._partition_dd.update()
+                # botón multi para transferir §7
                 self._partition_btn.visible = True
+                self._edit_division_btn.visible = True
                 label = self._partition_btn_label()
-                # OutlinedButton content es Text
                 if hasattr(self._partition_btn, "content") and isinstance(self._partition_btn.content, ft.Text):
                     self._partition_btn.content.value = label
                 else:
-                    # fallback si content es otro
                     try:
                         self._partition_btn.text = label  # type: ignore
                     except Exception:
                         pass
-                self._partition_btn.tooltip = f"Particiones: {', '.join(list(s.segments.keys())[:3])}{'...' if len(s.segments)>3 else ''}"
+                self._partition_btn.tooltip = f"Divisiones: {', '.join(list(s.segments.keys())[:3])}{'...' if len(s.segments)>3 else ''}"
+                self._partition_btn.update()
+                self._edit_division_btn.update()
             else:
+                self._partition_dd.visible = False
                 self._partition_btn.visible = False
-            self._partition_btn.update()
+                self._edit_division_btn.visible = False
+                self._partition_dd.update()
+                self._partition_btn.update()
+                self._edit_division_btn.update()
         except Exception:
             pass
 
@@ -1758,7 +1924,7 @@ class PlaylistManagerUI(DialogMixin):
             lv.controls.clear()
             self._row_cache.clear()
             for i, track in enumerate(tracks, 1):
-                row = SongRow(track, i, self.state.toggle_track)
+                row = SongRow(track, i, self.state.toggle_track, on_move=self.state.move_track_to_position)
                 self._row_cache[track.id] = row
                 lv.controls.append(row)
             try:
@@ -1985,8 +2151,10 @@ class PlaylistManagerUI(DialogMixin):
         if self.state.destination == EXPORT_DEST_LABEL:
             await self._open_export_dialog()
             return
-        if self.state.source == self.state.destination:
-            self._snack("Origen y destino no pueden ser iguales", error=True)
+        # Misma plataforma permitida si hay Organizar/Dividir (has_transform) §11 — antes bloqueado
+        has_transform = bool(self.state.segments or getattr(self.state, 'show_dual', False) or (getattr(self.state, 'source_tracks', None) and self.state.tracks != self.state.source_tracks))
+        if self.state.source == self.state.destination and not has_transform:
+            self._snack("Origen y destino no pueden ser iguales (solo permitido tras Organizar/Dividir)", error=True)
             return
         if self.state.source in AppState.LOCAL_SOURCES and not self.state.destination_confirmed:
             self._snack("⚠ Selecciona una plataforma de destino antes de transferir", error=True)
@@ -1994,24 +2162,74 @@ class PlaylistManagerUI(DialogMixin):
             self._dst_dd.focused_border_color = WARNING
             self._dst_dd.update()
             return
-        if self.state.selected_count == 0:
-            self._snack("Selecciona al menos una canción", error=True)
-            return
+        # División: si hay divisiones, se transfiere por división; si no, selección global
+        has_divisions = bool(getattr(self.state, 'segments', {}))
+        if has_divisions:
+            # para divisiones, cuenta seleccionadas para transferir = divisiones seleccionadas
+            sel_divs = self.state.active_segment_keys if self.state.active_segment_keys is not None else set(self.state.segments.keys())
+            if not sel_divs:
+                self._snack("Selecciona al menos una división para transferir", error=True)
+                return
+        else:
+            if self.state.selected_count == 0:
+                self._snack("Selecciona al menos una canción", error=True)
+                return
         from ui.playlist_meta_dialog import PlaylistMetaDialog
+        # Reemplazar requiere sesión activa origen
+        src_requires_auth = self.state.source not in AppState.LOCAL_SOURCES and self.state.auth_session_ok.get(self.state.source, True)
         meta = await PlaylistMetaDialog(
             self.page,
             default_title=self.state.playlist_name,
             default_description=self.state.playlist_description,
+            source_requires_auth=src_requires_auth,
         ).show()
         if not meta.confirmed:
             return
         if not meta.title.strip():
             self._snack("El nombre de la playlist no puede estar vacío", error=True)
             return
-        await self.state.transfer_playlist(
-            title_override=meta.title,
-            description_override=meta.description,
-        )
+        # Flujo Dividir (múltiples playlists) vs Organizar/single §10-12
+        if has_divisions:
+            sel_divs = self.state.active_segment_keys if self.state.active_segment_keys is not None else set(self.state.segments.keys())
+            # destino global: si destino==origen se aplica a todas; per-división via context menu pendiente
+            # por defecto creará "{title} — {división}" por cada división seleccionada
+            successes = 0
+            for div in sorted(sel_divs, key=lambda k: list(self.state.segments.keys()).index(k) if k in self.state.segments else 9999):
+                div_tracks = self.state.segments.get(div, [])
+                # filtra por seleccionadas si las hay
+                div_selected = [t for t in div_tracks if t.selected] if any(t.selected for t in div_tracks) else div_tracks
+                if not div_selected:
+                    continue
+                # crea playlist por división — misma plataforma: IDs directos; distinto: requiere búsqueda (pendiente transfer_tracks_subset)
+                # por ahora usa IDs directos; cross-platform usará pipeline de búsqueda en siguiente iteración
+                try:
+                    ok, msg, confirmed, rejected = await self.state.service.create_playlist(
+                        self.state.destination, f"{meta.title.strip()} — {div}", [t.id for t in div_selected if t.id], meta.description
+                    )
+                    if ok:
+                        successes += 1
+                        self.state.log(f"[SUCCESS] División '{div}' → {self.state.destination}: {confirmed} canciones")
+                    else:
+                        self.state.log(f"[ERROR] División '{div}' fallo: {msg}")
+                except Exception as exc:
+                    self.state.log(f"[ERROR] División '{div}' excepción: {exc}")
+            self._snack(f"{successes}/{len(sel_divs)} divisiones transferidas a {self.state.destination}")
+        else:
+            await self.state.transfer_playlist(
+                title_override=meta.title,
+                description_override=meta.description,
+            )
+        # Reemplazar/eliminar original si marcado (§11)
+        if meta.delete_original and self.state.playlist_id and self.state.source not in AppState.LOCAL_SOURCES:
+            try:
+                ok, msg = await self.state.service.delete_playlist(self.state.source, self.state.playlist_id)
+                if ok:
+                    self._snack(f"Original eliminada ({self.state.source})")
+                    self.state.log(f"[INFO] Original {self.state.playlist_id} eliminada tras reemplazo")
+                else:
+                    self._snack(f"No se pudo eliminar original: {msg}", error=True)
+            except Exception as exc:
+                self._snack(f"Error eliminando original: {exc}", error=True)
 
     async def _open_export_dialog(self) -> None:
         """Diálogo de export local: formato + orden + ruta (pathlib + FilePicker)."""

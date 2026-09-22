@@ -11,13 +11,13 @@ from typing import Any, Dict, List
 from core.models import Track
 
 # Allowlist de claves con sentido musical (platform excluida: no es metadata)
-# Semver 4.2: añade release_date, track_number, original_position.
-# genre queda pendiente para biblioteca (no external enrichment en esta fase, §10).
+# Semver 4.4.3: añade genre + title(=name) para División por Título/Género §2,5.
+# genre: Apple genreNames independiente; Spotify vía artist.genres; YTM pendiente fuente externa (deshabilitado en UI si vacío).
 _ALLOWED_SORT_KEYS: frozenset[str] = frozenset({
     "artist", "album", "name", "duration_ms",
-    "release_date", "track_number", "original_position",
+    "release_date", "track_number", "original_position", "genre",
 })
-_ALLOWED_SPLIT_KEYS: frozenset[str] = frozenset({"artist", "album", "release_date"})
+_ALLOWED_SPLIT_KEYS: frozenset[str] = frozenset({"artist", "album", "release_date", "genre", "name"})
 
 
 def _get_attr_safe(track: Track, key: str) -> Any:
@@ -59,8 +59,8 @@ def sort_tracks(tracks: List[Track], keys: List[str], reverse: bool = False) -> 
 
     Args:
         tracks: Lista maestra de canciones.
-        keys: Lista de nombres de atributos por los cuales ordenar (ej: ['artist', 'album', 'name', 'release_date']).
-              Solo se aceptan keys en allowlist; `platform`/`genre` se ignoran (genre pendiente).
+        keys: Lista de nombres de atributos por los cuales ordenar (ej: ['artist', 'album', 'name', 'release_date', 'genre']).
+              Solo se aceptan keys en allowlist.
         reverse: Si es True, ordena de forma descendente.
 
     Returns:
@@ -146,10 +146,11 @@ def organize_with_grouping(
 def split_tracks(tracks: List[Track], key: str) -> Dict[str, List[Track]]:
     """
     Agrupa la lista maestra basándose en un atributo específico (normalizado).
+    Soporta Artista/Álbum/Género/Título(name) §2,5 — Género YTM pendiente fuente.
 
     Args:
         tracks: Lista maestra de canciones.
-        key: Nombre del atributo por el cual agrupar (artist/album).
+        key: Nombre del atributo por el cual agrupar (artist/album/genre/name).
              Keys fuera de allowlist retornan dict vacío.
 
     Returns:

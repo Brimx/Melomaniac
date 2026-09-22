@@ -450,6 +450,13 @@ class MusicApiService:
             print(f"[Apple Music] init failed: {exc}")
             return False
         except Exception as exc:  # pylint: disable=broad-exception-caught
+            msg = str(exc)
+            if "Name or service not known" in msg or "Failed to resolve" in msg or "amp-api.music.apple.com" in msg:
+                print(f"[Apple Music] init offline (storefront no resuelto) — fallback us")
+                self._am_headers    = am_headers
+                self._http_session.headers.update(am_headers)
+                self._am_storefront = "us"
+                return True
             print(f"[Apple Music] init failed: {exc}")
             return False
 
@@ -1478,6 +1485,61 @@ class MusicApiService:
             return True
         payload = getattr(exc, "error", None)
         return bool(payload and ("429" in str(payload) or "423" in str(payload)))
+
+    # ── Playlist Deletion (reemplazar) §11 ───────────────────────────────
+    async def delete_playlist(self, platform: str, playlist_id: str) -> tuple[bool, str]:
+        self._cb[platform].check_or_raise()
+        if platform == "YouTube Music":
+            return await asyncio.to_thread(self._yt_delete, playlist_id)
+        elif platform == "Apple Music":
+            return await asyncio.to_thread(self._am_delete, playlist_id)
+        elif platform == "Spotify":
+            return await asyncio.to_thread(self._sp_delete, playlist_id)
+        return False, "Platform not supported"
+
+    def _yt_delete(self, pid: str) -> tuple[bool, str]:
+        if not self._ytm:
+            self._sync_init_youtube()
+        if not self._ytm:
+            return False, "YouTube Music no disponible"
+        try:
+            # ytmusicapi delete_playlist returns status
+            self._ytm.delete_playlist(pid)
+            return True, pid
+        except Exception as exc:
+            return False, str(exc)
+
+    def _am_delete(self, pid: str) -> tuple[bool, str]:
+        try:
+            r = self._am_request("delete", f"{APPLE_API_BASE}/me/library/playlists/{pid}", timeout=10)
+            if r.status_code in (200, 204):
+                return True, pid
+            return False, f"Apple {r.status_code}"
+        except Exception as exc:
+            return False, str(exc)
+
+    def _sp_delete(self, pid: str) -> tuple[bool, str]:
+        # Spotify: unfollow playlist = delete para usuario; SpotAPI no expone, usar Web API con cookies
+        try:
+            if not self._sp_login:
+                self._sync_init_spotify()
+            # fallback via SpotAPI PrivatePlaylist si tiene delete
+            try:
+                from spotapi import PrivatePlaylist as _Priv
+                pl = _Priv(self._sp_login) if self._sp_login else None
+                if pl and hasattr(pl, "delete_playlist"):
+                    pl.delete_playlist(pid)
+                    return True, pid
+            except Exception:
+                pass
+            # Web API unfollow
+            # Usa session de _http_session si tiene auth cookies (best effort)
+            r = self._http_session.delete(f"https://api.spotify.com/v1/playlists/{pid}/followers", timeout=10)
+            if r.status_code in (200, 204):
+                return True, pid
+            return False, f"Spotify {r.status_code}"
+        except Exception as exc:
+            return False, str(exc)
 
     @staticmethod
     def _sp_add_tracks(pl, ids: list[str]) -> list[str]:

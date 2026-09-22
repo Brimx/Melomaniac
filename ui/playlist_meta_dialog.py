@@ -43,13 +43,14 @@ class PlaylistMetaResult:
     confirmed: bool
     title: str
     description: str
+    delete_original: bool = False
 
 
 class PlaylistMetaDialog(DialogMixin):
     """Modal AlertDialog para editar nombre/descripción antes de crear."""
 
     def __init__(self, page: ft.Page, *, default_title: str,
-                 default_description: str = "") -> None:
+                 default_description: str = "", source_requires_auth: bool = True) -> None:
         self.page = page
         # Las APIs traen la descripción con \n, \t, espacios múltiples y
         # a veces entidades HTML (Spotify). _as_text solo recorta los
@@ -58,10 +59,12 @@ class PlaylistMetaDialog(DialogMixin):
         # incrustados y parece de distinto tamaño aunque el width sea igual.
         self._default_title = self._clean(default_title)
         self._default_description = self._clean(default_description)
+        self._source_requires_auth = source_requires_auth
         self._future: asyncio.Future[PlaylistMetaResult] | None = None
         self._dlg: ft.AlertDialog | None = None
         self._title_field: ft.TextField | None = None
         self._desc_field: ft.TextField | None = None
+        self._delete_chk: ft.Checkbox | None = None
 
     # ── API pública ──────────────────────────────────────────────
 
@@ -122,6 +125,19 @@ class PlaylistMetaDialog(DialogMixin):
             max_lines=3,
             width=CONTENT_W,
         )
+        self._delete_chk = ft.Checkbox(
+            label="Reemplazar y eliminar original (requiere sesión activa)",
+            value=False,
+            fill_color={ft.ControlState.SELECTED: ACCENT},
+            check_color=TEXT_PRIMARY,
+            label_style=ft.TextStyle(color=TEXT_MUTED, size=11, font_family="IBM Plex Sans"),
+            border_side=ft.BorderSide(1.2, TEXT_DIM),
+            visible=True,
+        )
+        # hint si es local o sin auth
+        if not self._source_requires_auth:
+            self._delete_chk.disabled = True
+            self._delete_chk.label = "Reemplazar (no disponible para local)"
         self._dlg = app_dialog(
             "Personalizar playlist",
             ft.Column(
@@ -130,6 +146,8 @@ class PlaylistMetaDialog(DialogMixin):
                     self._title_field,
                     _section_label("DESCRIPCIÓN"),
                     self._desc_field,
+                    self._delete_chk,
+                    ft.Text("Desmarcado por defecto — crea nueva sin borrar original. Si marcas, se elimina la original tras transferir (requiere sesión).", size=9, color=TEXT_DIM, font_family="IBM Plex Sans"),
                 ],
                 spacing=8,
                 tight=True,
@@ -153,14 +171,16 @@ class PlaylistMetaDialog(DialogMixin):
     def _on_confirm(self, _e) -> None:
         title = ((self._title_field.value or "") if self._title_field else "")
         desc = ((self._desc_field.value or "") if self._desc_field else "")
+        delete = bool(self._delete_chk.value) if self._delete_chk else False
         self._finish(PlaylistMetaResult(
-            confirmed=True, title=title.strip(), description=desc.strip()))
+            confirmed=True, title=title.strip(), description=desc.strip(), delete_original=delete))
 
     def _on_cancel(self, _e) -> None:
         self._finish(PlaylistMetaResult(
             confirmed=False,
             title=self._default_title,
             description=self._default_description,
+            delete_original=False,
         ))
 
     def _close(self) -> None:
