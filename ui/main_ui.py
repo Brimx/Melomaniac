@@ -1146,6 +1146,38 @@ class PlaylistManagerUI(DialogMixin):
             return next(iter(active))
         return f"{len(active)} seleccionados"
 
+    def _refresh_division_popup(self) -> None:
+        """Popup dinámico 2..5 divisiones — texto del botón = activa."""
+        try:
+            s = self.state
+            if not s.segments:
+                self._division_popup.visible = False
+                self._division_col.visible = False
+                return
+            active = s.active_segment_key or next(iter(s.segments.keys()))
+            self._division_btn_text.value = active
+            items = []
+            for k in s.segments.keys():
+                cnt = len(s.segments.get(k, []))
+                def _on_pick(e, _k=k):
+                    try:
+                        s.set_active_segment(_k)
+                        self._division_btn_text.value = _k
+                        self._division_popup.update()
+                    except Exception:
+                        pass
+                items.append(ft.PopupMenuItem(text=f"{k} ({cnt})", data=k, on_click=_on_pick, checked=(k == active)))
+            self._division_popup.items = items
+            self._division_popup.visible = True
+            self._division_col.visible = True
+            try:
+                self._division_popup.update()
+                self._division_col.update()
+            except Exception:
+                pass
+        except Exception:
+            pass
+
     def _open_partition_picker(self) -> None:
         s = self.state
         if not s.segments:
@@ -1254,16 +1286,20 @@ class PlaylistManagerUI(DialogMixin):
                 s.notify()
         name_field.on_change = _on_name
         name_field.on_submit = _on_name
-        # criterio para añadir: artista/álbum/canción (canción default)
+        import copy as _copy
+        _snapshot = _copy.deepcopy(s.segments.get(active, []))
+        # criterio añadir / eliminar: artista/álbum/canción (canción default)
         add_criterion = {"value": "song"}
-        crit_dd = ft.Dropdown(label="Añadir por", value="song", width=160, height=36, bgcolor=BG_INPUT, border_color=BORDER_LIGHT, focused_border_color=ACCENT, text_style=ft.TextStyle(size=11, color=TEXT_PRIMARY), options=[ft.dropdown.Option("artist","Artista"), ft.dropdown.Option("album","Álbum"), ft.dropdown.Option("song","Canción")], on_select=lambda e: (add_criterion.__setitem__("value", e.control.value), _rebuild_left(left_search.value or "")))
+        remove_criterion = {"value": "song"}
+        def _icon_for(v: str):
+            return ft.Icons.PERSON if v == "artist" else ft.Icons.ALBUM if v == "album" else ft.Icons.MUSIC_NOTE
         # listas buscables
         left_sel: set[str] = set()
         right_sel: set[str] = set()
         left_search = app_text_field(hint_text="Buscar en ORIGINAL…", prefix_icon=ft.Icons.SEARCH, expand=True, height=32, content_padding=ft.Padding.symmetric(horizontal=8, vertical=4))
         right_search = app_text_field(hint_text="Buscar en División…", prefix_icon=ft.Icons.SEARCH, expand=True, height=32, content_padding=ft.Padding.symmetric(horizontal=8, vertical=4))
-        left_lv = ft.ListView(height=180, spacing=2, padding=ft.Padding.all(4), expand=True)
-        right_lv = ft.ListView(height=180, spacing=2, padding=ft.Padding.all(4), expand=True)
+        left_lv = ft.ListView(spacing=4, padding=ft.Padding.all(6), expand=True)
+        right_lv = ft.ListView(spacing=4, padding=ft.Padding.all(6), expand=True)
 
         def _rebuild_left(q: str = ""):
             ql = (q or "").strip().lower()
@@ -1298,13 +1334,61 @@ class PlaylistManagerUI(DialogMixin):
         def _rebuild_right(q: str = ""):
             ql = (q or "").strip().lower()
             right_lv.controls.clear()
-            for t in div_tracks:
-                label = f"{t.name[:24]} — {t.artist[:16]}"
-                if ql and ql not in label.lower(): continue
-                chk = ft.Checkbox(label=label, value=t.id in right_sel, fill_color={ft.ControlState.SELECTED: ACCENT}, check_color=TEXT_PRIMARY, label_style=ft.TextStyle(size=10, color=TEXT_PRIMARY if t.id in right_sel else TEXT_MUTED), border_side=ft.BorderSide(1.0, ACCENT if t.id in right_sel else TEXT_DIM), data=t.id, on_change=lambda e, _tid=t.id: (right_sel.add(_tid) if e.control.value else right_sel.discard(_tid)))
-                right_lv.controls.append(chk)
+            crit = remove_criterion["value"]
+            if crit == "artist":
+                artists = sorted(set(t.artist for t in div_tracks if t.artist), key=lambda x: x.lower())
+                for a in artists:
+                    if ql and ql not in a.lower(): continue
+                    cnt = sum(1 for t in div_tracks if t.artist == a)
+                    chk = ft.Checkbox(label=f"{a} ({cnt})", value=a in right_sel, fill_color={ft.ControlState.SELECTED: ACCENT}, check_color=TEXT_PRIMARY, label_style=ft.TextStyle(size=10, color=TEXT_PRIMARY if a in right_sel else TEXT_MUTED), border_side=ft.BorderSide(1.0, ACCENT if a in right_sel else TEXT_DIM), data=a, on_change=lambda e, _a=a: (right_sel.add(_a) if e.control.value else right_sel.discard(_a)))
+                    right_lv.controls.append(chk)
+            elif crit == "album":
+                albums = sorted(set(t.album for t in div_tracks if t.album), key=lambda x: x.lower())
+                for a in albums:
+                    if ql and ql not in a.lower(): continue
+                    cnt = sum(1 for t in div_tracks if t.album == a)
+                    chk = ft.Checkbox(label=f"{a} ({cnt})", value=a in right_sel, fill_color={ft.ControlState.SELECTED: ACCENT}, check_color=TEXT_PRIMARY, label_style=ft.TextStyle(size=10, color=TEXT_PRIMARY if a in right_sel else TEXT_MUTED), border_side=ft.BorderSide(1.0, ACCENT if a in right_sel else TEXT_DIM), data=a, on_change=lambda e, _a=a: (right_sel.add(_a) if e.control.value else right_sel.discard(_a)))
+                    right_lv.controls.append(chk)
+            else:
+                for t in div_tracks:
+                    label = f"{t.name[:24]} — {t.artist[:16]}"
+                    if ql and ql not in label.lower(): continue
+                    chk = ft.Checkbox(label=label, value=t.id in right_sel, fill_color={ft.ControlState.SELECTED: ACCENT}, check_color=TEXT_PRIMARY, label_style=ft.TextStyle(size=10, color=TEXT_PRIMARY if t.id in right_sel else TEXT_MUTED), border_side=ft.BorderSide(1.0, ACCENT if t.id in right_sel else TEXT_DIM), data=t.id, on_change=lambda e, _tid=t.id: (right_sel.add(_tid) if e.control.value else right_sel.discard(_tid)))
+                    right_lv.controls.append(chk)
             try: right_lv.update()
             except: pass
+
+        # IconButton + ContextMenu a la IZQUIERDA de cada buscador, icono cambia según criterio
+        add_icon_btn = ft.IconButton(icon=ft.Icons.MUSIC_NOTE, icon_size=16, icon_color=ACCENT, tooltip="Añadir por")
+        remove_icon_btn = ft.IconButton(icon=ft.Icons.MUSIC_NOTE, icon_size=16, icon_color=WARNING, tooltip="Eliminar por")
+        def _set_add_crit(v: str):
+            add_criterion["value"] = v
+            add_icon_btn.icon = _icon_for(v)
+            try: add_icon_btn.update()
+            except: pass
+            _rebuild_left(left_search.value or "")
+        def _set_remove_crit(v: str):
+            remove_criterion["value"] = v
+            remove_icon_btn.icon = _icon_for(v)
+            try: remove_icon_btn.update()
+            except: pass
+            _rebuild_right(right_search.value or "")
+        add_popup = ft.PopupMenuButton(
+            content=add_icon_btn,
+            items=[
+                ft.PopupMenuItem(text="Artista", icon=ft.Icons.PERSON, on_click=lambda _: _set_add_crit("artist")),
+                ft.PopupMenuItem(text="Álbum", icon=ft.Icons.ALBUM, on_click=lambda _: _set_add_crit("album")),
+                ft.PopupMenuItem(text="Canción", icon=ft.Icons.MUSIC_NOTE, on_click=lambda _: _set_add_crit("song")),
+            ],
+        )
+        remove_popup = ft.PopupMenuButton(
+            content=remove_icon_btn,
+            items=[
+                ft.PopupMenuItem(text="Artista", icon=ft.Icons.PERSON, on_click=lambda _: _set_remove_crit("artist")),
+                ft.PopupMenuItem(text="Álbum", icon=ft.Icons.ALBUM, on_click=lambda _: _set_remove_crit("album")),
+                ft.PopupMenuItem(text="Canción", icon=ft.Icons.MUSIC_NOTE, on_click=lambda _: _set_remove_crit("song")),
+            ],
+        )
 
         left_search.on_change = lambda e: _rebuild_left(e.control.value or "")
         right_search.on_change = lambda e: _rebuild_right(e.control.value or "")
@@ -1334,28 +1418,56 @@ class PlaylistManagerUI(DialogMixin):
             self.page.update()
 
         def _remove_from_division(_e):
-            for tid in list(right_sel):
-                s.remove_track_from_division(tid, active)
+            crit = remove_criterion["value"]
+            if crit == "artist":
+                for a in list(right_sel):
+                    for t in list(div_tracks):
+                        if t.artist == a:
+                            s.remove_track_from_division(t.id, active)
+            elif crit == "album":
+                for a in list(right_sel):
+                    for t in list(div_tracks):
+                        if t.album == a:
+                            s.remove_track_from_division(t.id, active)
+            else:
+                for tid in list(right_sel):
+                    s.remove_track_from_division(tid, active)
             right_sel.clear()
             div_tracks = s.segments.get(active, [])
             _rebuild_right(right_search.value or "")
             self.page.update()
+
+        def _apply_edit(_e):
+            s.notify()
+            self._close_dlg(dlg_ref.get("dlg"))
+
+        def _revert_edit(_e):
+            s.segments[active] = list(_snapshot)
+            s.apply_search(s.search_query)
+            try:
+                nonlocal div_tracks
+                div_tracks = s.segments.get(active, [])
+                _rebuild_left(left_search.value or "")
+                _rebuild_right(right_search.value or "")
+                self.page.update()
+            except: pass
 
         dlg_ref: dict = {}
         dlg = app_dialog(
             f"Editar división — {active}",
             ft.Column([
                 name_field,
-                ft.Row([crit_dd, left_search], spacing=8),
                 ft.Row([
-                    ft.Column([ft.Container(content=left_lv, bgcolor=CHIP_BG, border=ft.Border.all(0.5, BORDER_LIGHT), border_radius=8, expand=True), ft.TextButton("Agregar →", icon=ft.Icons.ARROW_FORWARD, on_click=_add_to_division, style=ft.ButtonStyle(color=ACCENT))], expand=True, spacing=6),
-                    ft.Column([right_search, ft.Container(content=right_lv, bgcolor=CHIP_BG, border=ft.Border.all(0.5, BORDER_LIGHT), border_radius=8, expand=True), ft.TextButton("← Quitar", icon=ft.Icons.ARROW_BACK, on_click=_remove_from_division, style=ft.ButtonStyle(color=WARNING))], expand=True, spacing=6),
+                    ft.Column([ft.Row([add_popup, left_search], spacing=4), ft.Container(content=left_lv, bgcolor=CHIP_BG, border=ft.Border.all(0.5, BORDER_LIGHT), border_radius=8, expand=True), ft.TextButton("Agregar →", icon=ft.Icons.ARROW_FORWARD, on_click=_add_to_division, style=ft.ButtonStyle(color=ACCENT))], expand=True, spacing=6),
+                    ft.Column([ft.Row([remove_popup, right_search], spacing=4), ft.Container(content=right_lv, bgcolor=CHIP_BG, border=ft.Border.all(0.5, BORDER_LIGHT), border_radius=8, expand=True), ft.TextButton("← Quitar", icon=ft.Icons.ARROW_BACK, on_click=_remove_from_division, style=ft.ButtonStyle(color=WARNING))], expand=True, spacing=6),
                 ], spacing=10, expand=True),
             ], tight=True, spacing=8, expand=True),
             [
                 dialog_action("Cerrar", lambda _: self._close_dlg(dlg_ref.get("dlg")), kind="muted"),
+                dialog_action("Revertir", _revert_edit, kind="muted"),
+                dialog_action("Aplicar", _apply_edit, kind="primary"),
             ],
-            width=620, bgcolor=BG_SURFACE, radius=10,
+            width=720, bgcolor=BG_SURFACE, radius=10,
         )
         dlg_ref["dlg"] = dlg
         self.page.show_dialog(dlg)
@@ -1560,19 +1672,28 @@ class PlaylistManagerUI(DialogMixin):
             self.state.set_dual_mode(v)
 
         self._mode_seg = self._make_mode_segmented(getattr(self.state, "dual_mode", "lista"), on_change=_on_mode_change)
-        # selector partición junto a Vista (reemplaza Dropdown mono en header; buscable multi via dialog)
-        # División activa — dropdown simple single para preview §6 (no multi, sin alert)
-        self._partition_dd = ft.Dropdown(
-            label="División", width=130, height=32,
-            bgcolor=BG_INPUT, border_color=BORDER_LIGHT, focused_border_color=ACCENT,
-            border_radius=8,
-            label_style=ft.TextStyle(color=TEXT_MUTED, size=10, font_family=FONT_HEADLINE),
-            text_style=ft.TextStyle(color=TEXT_PRIMARY, size=11, font_family=FONT_TEXT),
-            content_padding=ft.Padding.symmetric(horizontal=8, vertical=4),
-            hint_text="División activa",
+        # División activa — Outlined + PopupMenu dinámico 2..5 junto a Vista (reemplaza Dropdown)
+        self._division_btn_text = ft.Text("División 1", size=11, color=TEXT_MUTED, font_family=FONT_HEADLINE)
+        self._division_label = ft.Text("División", size=9, color=TEXT_DIM, font_family=FONT_HEADLINE_BOLD)
+        self._division_popup = ft.PopupMenuButton(
+            content=ft.Row([
+                ft.Icon(ft.Icons.FILTER_LIST, size=14, color=TEXT_DIM),
+                self._division_btn_text,
+                ft.Icon(ft.Icons.ARROW_DROP_DOWN, size=16, color=TEXT_DIM),
+            ], spacing=4, tight=True, vertical_alignment=ft.CrossAxisAlignment.CENTER),
+            items=[],
+            style=ft.ButtonStyle(
+                padding=ft.Padding.symmetric(horizontal=10, vertical=6),
+                side={ft.ControlState.DEFAULT: ft.BorderSide(0.7, BORDER_LIGHT)},
+                shape=ft.RoundedRectangleBorder(radius=8),
+                bgcolor={ft.ControlState.DEFAULT: ft.Colors.TRANSPARENT},
+            ),
+            tooltip="División activa — cambia preview",
             visible=False,
-            on_select=lambda e: self.state.set_active_segment(e.control.value) if e.control.value else None,
         )
+        self._division_col = ft.Column([self._division_label, self._division_popup], spacing=0, tight=True)
+        # Compat: dropdown antiguo eliminado, botón Todos oculto (dropdown cumple papel)
+        self._partition_dd = None
         self._partition_btn = ft.OutlinedButton(
             content=ft.Text("Todos", size=11, color=TEXT_MUTED, font_family=FONT_HEADLINE),
             icon=ft.Icons.FILTER_LIST,
@@ -1602,8 +1723,7 @@ class PlaylistManagerUI(DialogMixin):
             self._mode_seg,
             ft.VerticalDivider(width=1, color=BORDER_MUTED),
             ft.Icon(ft.Icons.CALL_SPLIT, size=14, color=TEXT_DIM),
-            self._partition_dd,
-            self._partition_btn,
+            self._division_col,
             self._edit_division_btn,
             ft.Container(expand=True),
             ft.IconButton(icon=ft.Icons.CLOSE, icon_size=14, icon_color=TEXT_DIM, tooltip="Cerrar doble vista",
@@ -1766,25 +1886,27 @@ class PlaylistManagerUI(DialogMixin):
             self._segment_dd.update()
         except Exception:
             pass
-        # selector División activa (dropdown single) §6 — quita referencia a puntos cumplidos
+        # selector División activa — Outlined + Popup dinámico junto a Vista
         try:
             if s.segments:
-                self._partition_dd.visible = True
-                self._partition_dd.options = [ft.dropdown.Option(k, k) for k in s.segments.keys()]
-                self._partition_dd.value = s.active_segment_key or next(iter(s.segments.keys()))
-                self._partition_dd.update()
-                # botón multi para transferir oculto — dropdown cumple papel §5
-                self._partition_btn.visible = False
+                self._refresh_division_popup()
                 self._edit_division_btn.visible = True
-                self._partition_btn.update()
                 self._edit_division_btn.update()
             else:
-                self._partition_dd.visible = False
-                self._partition_btn.visible = False
+                try:
+                    self._division_popup.visible = False
+                    self._division_col.visible = False
+                    self._division_popup.update()
+                    self._division_col.update()
+                except Exception:
+                    pass
                 self._edit_division_btn.visible = False
-                self._partition_dd.update()
-                self._partition_btn.update()
                 self._edit_division_btn.update()
+            try:
+                self._partition_btn.visible = False
+                self._partition_btn.update()
+            except Exception:
+                pass
         except Exception:
             pass
 

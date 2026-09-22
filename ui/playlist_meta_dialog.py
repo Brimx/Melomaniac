@@ -65,6 +65,7 @@ class PlaylistMetaDialog(DialogMixin):
         self._divisions = divisions
         self._global_destination = global_destination
         self._per_div_dests: dict[str, str] = {}
+        self._visited: set[str] = set()
         self._future: asyncio.Future[PlaylistMetaResult] | None = None
         self._dlg: ft.AlertDialog | None = None
         self._title_field: ft.TextField | None = None
@@ -72,6 +73,7 @@ class PlaylistMetaDialog(DialogMixin):
         self._delete_chk: ft.Checkbox | None = None
         self._div_switch: ft.Dropdown | None = None
         self._dest_dd: ft.Dropdown | None = None
+        self._primary_btn: ft.TextButton | None = None
 
     # ── API pública ──────────────────────────────────────────────
 
@@ -122,7 +124,7 @@ class PlaylistMetaDialog(DialogMixin):
             autofocus=True,
             multiline=False,
             width=CONTENT_W,
-            on_submit=lambda _: self._on_confirm(None),
+            on_submit=lambda _: self._on_next_or_confirm(None),
         )
         self._desc_field = app_text_field(
             value=self._default_description,
@@ -132,7 +134,6 @@ class PlaylistMetaDialog(DialogMixin):
             max_lines=3,
             width=CONTENT_W,
         )
-        # Avanzado: solo Eliminar original, desmarcado por defecto
         self._delete_chk = ft.Checkbox(
             label="Eliminar original (avanzado, requiere sesión activa)",
             value=False,
@@ -145,18 +146,12 @@ class PlaylistMetaDialog(DialogMixin):
         if not self._source_requires_auth:
             self._delete_chk.disabled = True
             self._delete_chk.label = "Eliminar original (no disponible para local)"
-        controls: list[ft.Control] = [
-            _section_label("NOMBRE"),
-            self._title_field,
-            _section_label("DESCRIPCIÓN"),
-            self._desc_field,
-        ]
-        # Solo Dividir muestra destino por división (variable, Mantener + otras plataformas sin repetir global)
+        controls: list[ft.Control] = []
+        # División hasta arriba, antes de nombre/descripción (solo Dividir)
         if self._divisions:
-            # per-division destinos dict init Mantener
             for div in self._divisions:
                 self._per_div_dests[div] = "Mantener"
-            # dropdown switch division
+            self._visited.add(self._divisions[0])
             self._div_switch = ft.Dropdown(
                 label="División", value=self._divisions[0], width=CONTENT_W, height=38,
                 bgcolor=BG_INPUT, border_color=BORDER_LIGHT, focused_border_color=ACCENT,
@@ -165,7 +160,6 @@ class PlaylistMetaDialog(DialogMixin):
                 border_radius=10,
                 options=[ft.dropdown.Option(d, d) for d in self._divisions],
             )
-            # destino dropdown variable: Mantener + otras plataformas que no son global
             from core.config import PLATFORMS as _PLATS
             dest_opts = ["Mantener"] + [p for p in _PLATS if p != self._global_destination]
             self._dest_dd = ft.Dropdown(
@@ -178,10 +172,12 @@ class PlaylistMetaDialog(DialogMixin):
             )
             def _on_div_change(e):
                 cur = e.control.value
-                # carga destino guardado para esa división
                 try:
+                    self._save_current_div()
                     self._dest_dd.value = self._per_div_dests.get(cur, "Mantener")
                     self._dest_dd.update()
+                    self._visited.add(cur)
+                    self._refresh_primary_label()
                 except: pass
             def _on_dest_change(e):
                 cur_div = self._div_switch.value if self._div_switch else self._divisions[0]
@@ -189,15 +185,21 @@ class PlaylistMetaDialog(DialogMixin):
             self._div_switch.on_select = _on_div_change  # type: ignore
             self._dest_dd.on_select = _on_dest_change  # type: ignore
             controls += [
-                _section_label("DIVISIÓN ACTIVA"),
+                _section_label("DIVISIÓN"),
                 self._div_switch,
                 self._dest_dd,
                 ft.Text("Mantener = usa destino global elegido fuera; otras opciones son las dos plataformas restantes.", size=9, color=TEXT_DIM, font_family="IBM Plex Sans"),
             ]
         controls += [
+            _section_label("NOMBRE"),
+            self._title_field,
+            _section_label("DESCRIPCIÓN"),
+            self._desc_field,
             self._delete_chk,
             ft.Text("Desmarcado por defecto — crea nueva sin borrar original.", size=9, color=TEXT_DIM, font_family="IBM Plex Sans"),
         ]
+        # Botón Guardar + primario Siguiente/Crear
+        self._primary_btn = dialog_action("Siguiente" if self._divisions and len(self._divisions) > 1 else "Crear y transferir", self._on_next_or_confirm, kind="primary", icon=ft.Icons.SWAP_HORIZ)
         self._dlg = app_dialog(
             "Personalizar playlist",
             ft.Column(
@@ -208,7 +210,8 @@ class PlaylistMetaDialog(DialogMixin):
                 horizontal_alignment=ft.CrossAxisAlignment.STRETCH,
             ),
             [
-                dialog_action("Crear y transferir", self._on_confirm, kind="primary", icon=ft.Icons.SWAP_HORIZ),
+                self._primary_btn,
+                dialog_action("Guardar", self._on_save, kind="muted"),
                 dialog_action("Cancelar", self._on_cancel, kind="muted"),
             ],
             width=CONTENT_W,
@@ -221,17 +224,63 @@ class PlaylistMetaDialog(DialogMixin):
         if self._future is not None and not self._future.done():
             self._future.set_result(result)
 
-    def _on_confirm(self, _e) -> None:
-        title = ((self._title_field.value or "") if self._title_field else "")
-        desc = ((self._desc_field.value or "") if self._desc_field else "")
-        delete = bool(self._delete_chk.value) if self._delete_chk else False
-        # guarda destino actual de la división activa antes de confirmar
+    def _save_current_div(self) -> None:
         try:
             if self._divisions and self._div_switch and self._dest_dd:
                 cur = self._div_switch.value
                 if cur:
                     self._per_div_dests[cur] = self._dest_dd.value or "Mantener"
+                    self._visited.add(cur)
         except: pass
+
+    def _refresh_primary_label(self) -> None:
+        try:
+            if not self._divisions or not self._primary_btn:
+                return
+            all_seen = len(self._visited) >= len(self._divisions)
+            label = "Crear y transferir" if all_seen else "Siguiente"
+            # dialog_action returns TextButton with text attr
+            try:
+                self._primary_btn.text = label  # type: ignore
+            except Exception:
+                pass
+            try:
+                self._primary_btn.update()
+            except Exception:
+                pass
+        except: pass
+
+    def _on_save(self, _e) -> None:
+        self._save_current_div()
+        self._refresh_primary_label()
+        try:
+            self.page.update()
+        except: pass
+
+    def _on_next_or_confirm(self, _e) -> None:
+        # Si hay divisiones sin visitar, avanza a la siguiente en vez de confirmar
+        if self._divisions and self._div_switch:
+            self._save_current_div()
+            remaining = [d for d in self._divisions if d not in self._visited]
+            if remaining:
+                nxt = remaining[0]
+                try:
+                    self._div_switch.value = nxt
+                    self._div_switch.update()
+                    self._dest_dd.value = self._per_div_dests.get(nxt, "Mantener")
+                    self._dest_dd.update()
+                    self._visited.add(nxt)
+                    self._refresh_primary_label()
+                    self.page.update()
+                except: pass
+                return
+        self._on_confirm(None)
+
+    def _on_confirm(self, _e) -> None:
+        title = ((self._title_field.value or "") if self._title_field else "")
+        desc = ((self._desc_field.value or "") if self._desc_field else "")
+        delete = bool(self._delete_chk.value) if self._delete_chk else False
+        self._save_current_div()
         self._finish(PlaylistMetaResult(
             confirmed=True, title=title.strip(), description=desc.strip(), delete_original=delete, per_division_destinations=dict(self._per_div_dests) if self._per_div_dests else None))
 
