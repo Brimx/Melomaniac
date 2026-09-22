@@ -1166,7 +1166,7 @@ class PlaylistManagerUI(DialogMixin):
                         self._division_popup.update()
                     except Exception:
                         pass
-                items.append(ft.PopupMenuItem(text=f"{k} ({cnt})", data=k, on_click=_on_pick, checked=(k == active)))
+                items.append(ft.PopupMenuItem(content=ft.Text(f"{k} ({cnt})"), data=k, on_click=_on_pick, checked=(k == active)))
             self._division_popup.items = items
             self._division_popup.visible = True
             self._division_col.visible = True
@@ -1376,17 +1376,17 @@ class PlaylistManagerUI(DialogMixin):
         add_popup = ft.PopupMenuButton(
             content=add_icon_btn,
             items=[
-                ft.PopupMenuItem(text="Artista", icon=ft.Icons.PERSON, on_click=lambda _: _set_add_crit("artist")),
-                ft.PopupMenuItem(text="Álbum", icon=ft.Icons.ALBUM, on_click=lambda _: _set_add_crit("album")),
-                ft.PopupMenuItem(text="Canción", icon=ft.Icons.MUSIC_NOTE, on_click=lambda _: _set_add_crit("song")),
+                ft.PopupMenuItem(content=ft.Text("Artista"), icon=ft.Icons.PERSON, on_click=lambda _: _set_add_crit("artist")),
+                ft.PopupMenuItem(content=ft.Text("Álbum"), icon=ft.Icons.ALBUM, on_click=lambda _: _set_add_crit("album")),
+                ft.PopupMenuItem(content=ft.Text("Canción"), icon=ft.Icons.MUSIC_NOTE, on_click=lambda _: _set_add_crit("song")),
             ],
         )
         remove_popup = ft.PopupMenuButton(
             content=remove_icon_btn,
             items=[
-                ft.PopupMenuItem(text="Artista", icon=ft.Icons.PERSON, on_click=lambda _: _set_remove_crit("artist")),
-                ft.PopupMenuItem(text="Álbum", icon=ft.Icons.ALBUM, on_click=lambda _: _set_remove_crit("album")),
-                ft.PopupMenuItem(text="Canción", icon=ft.Icons.MUSIC_NOTE, on_click=lambda _: _set_remove_crit("song")),
+                ft.PopupMenuItem(content=ft.Text("Artista"), icon=ft.Icons.PERSON, on_click=lambda _: _set_remove_crit("artist")),
+                ft.PopupMenuItem(content=ft.Text("Álbum"), icon=ft.Icons.ALBUM, on_click=lambda _: _set_remove_crit("album")),
+                ft.PopupMenuItem(content=ft.Text("Canción"), icon=ft.Icons.MUSIC_NOTE, on_click=lambda _: _set_remove_crit("song")),
             ],
         )
 
