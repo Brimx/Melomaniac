@@ -133,6 +133,22 @@ async def main(page: ft.Page) -> None:
         service = MusicApiService(state.cb)
         state.service = service
         ui           = PlaylistManagerUI(page, state)
+        # inyección tardía library_state -> service (respeta capas)
+        try:
+            lib_state = getattr(ui, "library_state", None)
+            if lib_state is not None and hasattr(lib_state, "set_service"):
+                lib_state.set_service(service)
+                # re-crea LibraryView con service real si el placeholder usó None
+                if hasattr(ui, "_panel_biblioteca") and ui._panel_biblioteca.__class__.__name__ != "LibraryView":
+                    from services.library_state import LibraryState as _LS
+                    from ui.library_view import LibraryView as _LV
+                    ui.library_state = _LS(service)
+                    ui._panel_biblioteca = _LV(page, ui.library_state, service)
+                    # reemplaza en stack
+                    ui._module_panels[1] = ui._panel_biblioteca
+                    ui._module_stack.controls[1] = ui._panel_biblioteca
+        except Exception:
+            pass
         auth_manager = AuthManager(page, service, state)
 
         # ──────────────────────────────────────────────────────────────

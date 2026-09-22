@@ -370,23 +370,24 @@ class PlaylistManagerUI(DialogMixin):
             self._mode_bar.update()
         except Exception:
             pass
-        # headers SOURCE|RESULT
+        # headers SOURCE|RESULT + Divisiones §1,6
         try:
             if is_dual:
-                # izq = Original base (§25), der = Resultado / partición activa
-                self._lista_header_text.value = "Original — base"
+                # izq = Playlist original base (§1), der = División activa §6
+                self._lista_header_text.value = "PLAYLIST ORIGINAL"
                 self._lista_header_icon.name = ft.Icons.HISTORY
                 if s.segments:
                     seg = s.active_segment_key or ""
-                    self._preview_header_text.value = f"Resultado — {seg}" if seg else "Resultado — partición"
+                    # §6 una División a la vez; §7 División activa vs seleccionadas
+                    self._preview_header_text.value = f"DIVISIÓN — {seg}" if seg else f"DIVISIONES — {len(s.segments)} divisiones"
                     self._preview_header_icon.name = ft.Icons.CALL_SPLIT
                 else:
-                    self._preview_header_text.value = "Resultado — ordenado"
+                    self._preview_header_text.value = "RESULTADO — organizado"
                     self._preview_header_icon.name = ft.Icons.SORT
             else:
-                self._lista_header_text.value = "Lista editable"
+                self._lista_header_text.value = "PLAYLIST ORIGINAL"
                 self._lista_header_icon.name = ft.Icons.LIST_ALT
-                self._preview_header_text.value = "Preview — cómo se va a pasar"
+                self._preview_header_text.value = "DIVISIÓN ACTIVA — preview"
                 self._preview_header_icon.name = ft.Icons.VISIBILITY_OUTLINED
             self._lista_header_text.update(); self._lista_header_icon.update()
             self._preview_header_text.update(); self._preview_header_icon.update()
@@ -746,11 +747,26 @@ class PlaylistManagerUI(DialogMixin):
             ),
         )
 
-        # Paneles de módulos — Inicio es Row([sidebar, content]), resto empty cono / placeholder
+        # Paneles de módulos — Inicio es Row([sidebar, content]), Biblioteca real + Descargas placeholder
         self._panel_inicio = ft.Row(controls=[self._sidebar, self._content], spacing=0, expand=True,
                                     vertical_alignment=ft.CrossAxisAlignment.STRETCH)
-        self._panel_biblioteca = ft.Container(expand=True, bgcolor=BG_LIST, alignment=ft.Alignment.CENTER,
-                                              content=self._make_cono_empty("Biblioteca", "Colección local, historial 20 y portadas — pronto.", visible=True))
+        # Biblioteca: LibraryView con Tabs Playlists|Descargas + selector plataforma
+        try:
+            from services.library_state import LibraryState
+            from ui.library_view import LibraryView
+            # library_state con inyección service (respeta core->services)
+            lib_state = LibraryState(service=getattr(state, "service", None) or getattr(self.state, "service", None))
+            # si service aún None (init temprano), se inyectará luego via app.py/ui.library_state
+            self.library_state = lib_state  # type: ignore
+            self._panel_biblioteca = LibraryView(page, lib_state, getattr(state, "service", None) or getattr(self.state, "service", None))
+        except Exception as exc:
+            # fallback placeholder no rompe app
+            try:
+                state.log(f"[WARN] Biblioteca fallback: {exc}")  # type: ignore
+            except Exception:
+                pass
+            self._panel_biblioteca = ft.Container(expand=True, bgcolor=BG_LIST, alignment=ft.Alignment.CENTER,
+                                                  content=self._make_cono_empty("Biblioteca", "Colección local, historial 20 y portadas — pronto.", visible=True))
         self._panel_descargas = ft.Container(expand=True, bgcolor=BG_LIST, alignment=ft.Alignment.CENTER,
                                              content=self._make_cono_empty("Descargas", "yt-dlp + player + progreso — pronto.", visible=True))
         # Config: si hay wizard disponible se montará al abrir, si no placeholder
@@ -976,10 +992,12 @@ class PlaylistManagerUI(DialogMixin):
         self._transfer_btn = _ghost_btn(  "Transferir",  ft.Icons.SWAP_HORIZ, self._on_transfer, width=_BTN_W, height=_BTN_H)
         self._organize_btn = _ghost_btn(  "Organizar",   ft.Icons.SORT,       self._on_organize, width=_BTN_W, height=_BTN_H, disabled=True)
         self._split_btn    = _ghost_btn(  "Dividir",     ft.Icons.CALL_SPLIT, self._on_split,    width=_BTN_W, height=_BTN_H, disabled=True)
+        self._reorganize_btn = _ghost_btn("Reorganizar", ft.Icons.REORDER, self._on_reorganize, width=_BTN_W*2+6, height=_BTN_H, disabled=True)
 
         actions = ft.Column([
             ft.Row([self._load_btn,  self._transfer_btn], spacing=6),
             ft.Row([self._organize_btn, self._split_btn], spacing=6),
+            ft.Row([self._reorganize_btn], spacing=6),
         ], spacing=6)
 
         self._rl_banner = ft.Container(
@@ -1089,21 +1107,29 @@ class PlaylistManagerUI(DialogMixin):
             except Exception:
                 self.state.log(f"[ERROR] Organizar fallback falló: {exc}")
 
+    def _on_reorganize(self, _e: ft.ControlEvent) -> None:
+        """Reorganizar por niveles §8 — control específico Artistas/Álbumes drag & drop."""
+        try:
+            from ui.organize_panel import show_reorganize_dialog
+            show_reorganize_dialog(self.page, self.state)
+        except Exception as exc:
+            self.state.log(f"[ERROR] Reorganizar falló: {exc}")
+
     def _on_split(self, _e: ft.ControlEvent) -> None:
-        """Agrupar separado — solo dividir y elegir artista/álbum claramente."""
+        """Dividir — genera Divisiones por Artista/Álbum/Género/Título §2,5."""
         try:
             from ui.organize_panel import show_group_dialog
             show_group_dialog(self.page, self.state)
         except Exception as exc:
             try:
                 from ui.widgets import organize_dropdown
-                _dd=organize_dropdown([("artist","Artista"),("album","Álbum")],"artist","Agrupar por")
+                _dd=organize_dropdown([("artist","Artista"),("album","Álbum"),("genre","Género"),("name","Título")],"artist","Dividir por")
                 def _ap(_e): self.state.organize_split(_dd.value, scope="all"); self._close_dlg(dlg)
                 def _cl(_e): self.state.clear_split(); self._close_dlg(dlg)
                 acts=[]
                 if bool(self.state.segments): acts.append(dialog_action("Limpiar División",_cl,kind="danger"))
-                acts+=[dialog_action("Cancelar",lambda _:self._close_dlg(dlg),kind="muted"),dialog_action("Agrupar",_ap,kind="primary")]
-                dlg=app_dialog("Agrupar", ft.Column([_dd], tight=True, spacing=12), acts, width=380, bgcolor=BG_SURFACE, radius=10)
+                acts+=[dialog_action("Cancelar",lambda _:self._close_dlg(dlg),kind="muted"),dialog_action("Dividir",_ap,kind="primary")]
+                dlg=app_dialog("Dividir", ft.Column([_dd], tight=True, spacing=12), acts, width=400, bgcolor=BG_SURFACE, radius=10)
                 self.page.show_dialog(dlg)
             except Exception:
                 self.state.log(f"[ERROR] Dividir fallback falló: {exc}")
@@ -1123,13 +1149,13 @@ class PlaylistManagerUI(DialogMixin):
     def _open_partition_picker(self) -> None:
         s = self.state
         if not s.segments:
-            self._snack("No hay particiones — agrupa primero por Artista/Álbum", error=True)
+            self._snack("No hay divisiones — divide primero por Artista/Álbum/Género/Título", error=True)
             return
-        all_keys = list(s.segments.keys())  # orden 1ª aparición O(n) §12, sin sort alfabético
-        # estado local mutable
+        all_keys = list(s.segments.keys())  # orden 1ª aparición O(n) §12
+        # estado local mutable — §7 División activa vs seleccionadas para transferir
         selected: set[str] = set(s.active_segment_keys) if s.active_segment_keys is not None else set(s.segments.keys())
 
-        search_field = app_text_field(hint_text="Buscar artista/álbum…", prefix_icon=ft.Icons.SEARCH, width=360, height=36, content_padding=ft.Padding.symmetric(horizontal=10, vertical=6))
+        search_field = app_text_field(hint_text="Buscar división…", prefix_icon=ft.Icons.SEARCH, width=360, height=36, content_padding=ft.Padding.symmetric(horizontal=10, vertical=6))
         list_view = ft.ListView(height=260, spacing=4, padding=ft.Padding.all(4), expand=False)
 
         def _rebuild(filter_q: str = ""):
@@ -1190,7 +1216,7 @@ class PlaylistManagerUI(DialogMixin):
             _rebuild(search_field.value or "")
 
         dlg = app_dialog(
-            "Filtrar particiones",
+            "Filtrar divisiones",
             ft.Column([
                 search_field,
                 ft.Divider(height=1, color=BORDER_MUTED, thickness=0.5),
@@ -1419,7 +1445,7 @@ class PlaylistManagerUI(DialogMixin):
                 shape=ft.RoundedRectangleBorder(radius=8),
             ),
             visible=False,
-            tooltip="Filtrar por artista/álbum (partición)",
+            tooltip="Filtrar divisiones — División activa vs seleccionadas §7",
         )
         self._mode_bar = ft.Row([
             ft.Text("Vista:", size=10, color=TEXT_MUTED, font_family=FONT_HEADLINE),
@@ -1577,6 +1603,7 @@ class PlaylistManagerUI(DialogMixin):
         has_tracks = len(s.tracks) > 0
         self._organize_btn.disabled = not has_tracks
         self._split_btn.disabled = not has_tracks
+        self._reorganize_btn.disabled = not has_tracks
         # compat: _segment_dd siempre oculto (movido junto a Vista) — mantener sync silencioso
         try:
             self._segment_dd.visible = False

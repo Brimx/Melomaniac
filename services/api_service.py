@@ -70,6 +70,7 @@ from services.authentication import (
     ensure_config_dir,
     load_runtime_env,
 )
+from core.library_models import PlaylistSummary
 from core.models import Track, SearchResult, PlaylistMeta
 from core.config import (
     NETWORK_CONCURRENCY as CFG_NETWORK_CONCURRENCY,
@@ -528,14 +529,17 @@ class MusicApiService:
         tracks = []
         for i, t in enumerate(raw, 1):
             thumbs = t.get("thumbnails", [])
+            vid = t.get("videoId") or ""
             tracks.append(Track(
-                id=t["videoId"], name=t["title"],
+                id=vid, name=t["title"],
                 artist=", ".join(a["name"] for a in t.get("artists", [])),
                 album=(t.get("album") or {}).get("name", "Single"),
                 duration=t.get("duration", "0:00"),
                 img_url=thumbs[-1]["url"] if thumbs else "",
                 platform="YouTube Music",
                 isrc=normalize_isrc(t.get("isrc")),
+                source_url=f"https://music.youtube.com/watch?v={vid}" if vid else "",
+                genre="",  # §10 pendiente fuente externa para YTM
             ))
             if cb and i % 50 == 0:
                 cb(i, total, name)
@@ -574,9 +578,19 @@ class MusicApiService:
                 ms     = attrs.get("durationInMillis", 0)
                 arturl = attrs.get("artwork", {}).get("url", "")
                 if arturl:
-                    arturl = arturl.replace("{w}", "60").replace("{h}", "60")
+                    arturl = arturl.replace("{w}", "400").replace("{h}", "400")
                 # releaseDate puede venir como "2023-05-12" o ISO; se guarda como string para criterio release_date
                 rel = (attrs.get("releaseDate") or attrs.get("release_date") or "").strip() if isinstance(attrs.get("releaseDate") or attrs.get("release_date"), str) else str(attrs.get("releaseDate") or attrs.get("release_date") or "").strip()
+                # género independiente por canción/álbum/artista §2 — Apple más completo
+                genre = ""
+                try:
+                    gnames = attrs.get("genreNames") or []
+                    if isinstance(gnames, list) and gnames:
+                        genre = str(gnames[0]).strip()
+                    if not genre:
+                        genre = str(attrs.get("genre") or "").strip()
+                except Exception:
+                    genre = ""
                 tracks.append(Track(
                     id=item["id"], name=attrs.get("name", "Unknown"),
                     artist=attrs.get("artistName", "Unknown"),
@@ -587,6 +601,8 @@ class MusicApiService:
                     is_explicit=bool(attrs.get("contentRating") == "explicit"),
                     isrc=normalize_isrc(attrs.get("isrc")),
                     release_date=rel,
+                    source_url=attrs.get("url") or f"https://music.apple.com/song/{item['id']}",
+                    genre=genre,
                 ))
             url = data.get("next")
             if cb:
@@ -626,7 +642,7 @@ class MusicApiService:
                 art_sources = ((t.get("albumOfTrack") or {}).get("coverArt") or {}).get("sources", [])
                 img_url = ""
                 if art_sources:
-                    img_url = min(art_sources, key=lambda s: s.get("width", 9999)).get("url", "")
+                    img_url = max(art_sources, key=lambda s: s.get("width", 0)).get("url", "")
                 # Spotify: albumOfTrack puede traer date con precision day/month/year
                 alb = t.get("albumOfTrack") or {}
                 rel_sp = ""
@@ -637,6 +653,15 @@ class MusicApiService:
                         rel_sp = alb.get("releaseDate", "").strip()
                 except Exception:
                     rel_sp = ""
+                # Spotify género a nivel artista (todas sus canciones heredan) §10
+                genre_sp = ""
+                try:
+                    # si el payload trae primaryGenre no oficial, úsalo; si no, vacío pendiente enrichment por artist
+                    g = t.get("primaryGenre") or (t.get("genres") or [None])[0] if isinstance(t.get("genres"), list) else None
+                    if isinstance(g, str) and g.strip():
+                        genre_sp = g.strip()
+                except Exception:
+                    genre_sp = ""
                 tracks.append(Track(
                     id=tid, name=t.get("name", "Unknown"),
                     artist=artists or "Unknown",
@@ -645,6 +670,8 @@ class MusicApiService:
                     img_url=img_url, platform="Spotify",
                     isrc=self._extract_spotify_isrc(t),
                     release_date=rel_sp,
+                    source_url=f"https://open.spotify.com/track/{tid}" if tid else "",
+                    genre=genre_sp,
                 ))
             offset += len(items)
             if offset >= total or not items:
@@ -655,6 +682,230 @@ class MusicApiService:
                 cb(len(tracks), total, name)
         return PlaylistMeta(name=name, description=description), tracks
 
+    # ── Biblioteca: listado de playlists (solo metadatos) ───────────────
+
+    @staticmethod
+    def _ytm_cover_best(thumbnails) -> str:
+        if not thumbnails:
+            return ""
+        try:
+            # ytmusicapi ordena ascendente; mayor resolución al final
+            return sorted(thumbnails, key=lambda t: t.get("width", 0))[-1].get("url", "")
+        except Exception:
+            return thumbnails[-1].get("url", "") if thumbnails else ""
+
+    @staticmethod
+    def _apple_cover_normalized(url: str, size: int = 400) -> str:
+        if not url:
+            return ""
+        return url.replace("{w}", str(size)).replace("{h}", str(size))
+
+    @staticmethod
+    def _spotify_cover_best(sources) -> str:
+        if not sources:
+            return ""
+        try:
+            return max(sources, key=lambda s: s.get("width", 0) or 0).get("url", "")
+        except Exception:
+            return sources[0].get("url", "") if sources else ""
+
+    def _sync_list_ytm(self) -> list[PlaylistSummary]:
+        if not self._ytm:
+            self._sync_init_youtube()
+        if not self._ytm:
+            raise RuntimeError("YouTube Music no disponible. Comprueba config/browser.json.")
+        try:
+            raw = self._ytm.get_library_playlists(limit=None)
+        except Exception as exc:
+            if _is_ytm_unauthorized(exc):
+                raise RuntimeError("Sesion YouTube Music expirada (401). Renueva config/browser.json.") from exc
+            raise
+        out: list[PlaylistSummary] = []
+        for pl in raw or []:
+            pid = str(pl.get("playlistId") or pl.get("browseId") or "").strip()
+            if not pid:
+                continue
+            name = str(pl.get("title") or "Playlist").strip()
+            desc = _as_text(pl.get("description"))
+            count = 0
+            try:
+                count = int(str(pl.get("count") or pl.get("trackCount") or 0).strip() or 0)
+            except Exception:
+                count = 0
+            thumbs = pl.get("thumbnails") or pl.get("thumbnail") or []
+            if isinstance(thumbs, dict):
+                thumbs = [thumbs]
+            cover = self._ytm_cover_best(thumbs if isinstance(thumbs, list) else [])
+            out.append(PlaylistSummary(
+                platform="YouTube Music",
+                id=pid,
+                name=name,
+                description=desc,
+                track_count=count,
+                cover_urls=[cover] if cover else [],
+                external_url=f"https://music.youtube.com/playlist?list={pid}",
+            ))
+        return out
+
+    def _sync_list_apple(self) -> list[PlaylistSummary]:
+        url = f"{APPLE_API_BASE}/me/library/playlists"
+        params = {"limit": 100}
+        out: list[PlaylistSummary] = []
+        next_url: Optional[str] = url
+        while next_url:
+            full = next_url if next_url.startswith("http") else f"https://amp-api.music.apple.com{next_url}"
+            # primera página con params, siguientes ya traen query
+            if next_url == url:
+                r = self._am_request("get", full, params=params, timeout=10)
+            else:
+                r = self._am_request("get", full, timeout=10)
+            self._am_check_status(r)
+            r.raise_for_status()
+            data = r.json()
+            for item in data.get("data", []):
+                attrs = item.get("attributes") or {}
+                pid = str(item.get("id") or "").strip()
+                if not pid:
+                    continue
+                name = str(attrs.get("name") or "Playlist").strip()
+                desc = _as_text(attrs.get("description"))
+                # track count puede venir como trackCount o playParams?
+                count = 0
+                try:
+                    count = int(attrs.get("trackCount") or attrs.get("track_count") or 0)
+                except Exception:
+                    count = 0
+                art = attrs.get("artwork") or {}
+                art_url = self._apple_cover_normalized(str(art.get("url") or ""), 400)
+                # fallback: si no hay artwork en listado, dejar vacío (detail puede enriquecer con 4 covers)
+                cover_urls = [art_url] if art_url else []
+                # external url
+                ext = str(attrs.get("url") or f"https://music.apple.com/library/playlist/{pid}")
+                out.append(PlaylistSummary(
+                    platform="Apple Music",
+                    id=pid,
+                    name=name,
+                    description=desc,
+                    track_count=count,
+                    cover_urls=cover_urls,
+                    external_url=ext,
+                ))
+            next_url = data.get("next")
+        return out
+
+    def _sync_list_spotify(self) -> list[PlaylistSummary]:
+        if not HAS_SPOTIFY:
+            raise RuntimeError("SpotAPI no disponible. Instala spotapi.")
+        if not self._sp_login:
+            self._sync_init_spotify()
+        if not self._sp_login:
+            raise RuntimeError("Spotify no autenticado. Revisa config/spotify_cookies.json.")
+        try:
+            # PrivatePlaylist.get_library() es privado; normaliza y filtra carpetas
+            pl = PrivatePlaylist(client=self._sp_cfg.client)  # type: ignore[attr-defined]
+            raw = pl.get_library()  # type: ignore[union-attr]
+        except Exception as exc:
+            raise RuntimeError(f"Spotify get_library falló: {exc}") from exc
+        # raw puede ser dict con data/me/playlists o lista; normaliza defensivo
+        items = []
+        if isinstance(raw, dict):
+            # intenta varias formas conocidas
+            if "data" in raw:
+                # posible estructura: data/me/library/playlists/items o data/...
+                d = raw.get("data") or {}
+                # SpotAPI privado: d.get("me", {}).get("library", {}).get("playlists")
+                for key in ("me", "user", "currentUser"):
+                    if isinstance(d.get(key), dict):
+                        d = d[key]
+                        break
+                # busca lista
+                for k in ("playlists", "items", "library"):
+                    v = d.get(k)
+                    if isinstance(v, list):
+                        items = v
+                        break
+                    if isinstance(v, dict) and isinstance(v.get("items"), list):
+                        items = v["items"]
+                        break
+                if not items and isinstance(raw.get("items"), list):
+                    items = raw["items"]
+            elif isinstance(raw.get("items"), list):
+                items = raw["items"]
+            elif isinstance(raw.get("playlists"), list):
+                items = raw["playlists"]
+        elif isinstance(raw, list):
+            items = raw
+        out: list[PlaylistSummary] = []
+        for it in items or []:
+            # filtra carpetas: solo playlists con id/uri y typename playlist
+            if not isinstance(it, dict):
+                continue
+            # carpeta suele tener type folder o sin uri
+            if str(it.get("type") or it.get("__typename") or "").lower() == "folder":
+                continue
+            data = it.get("data") if isinstance(it.get("data"), dict) else it
+            uri = str(data.get("uri") or it.get("uri") or "")
+            pid = uri.split(":")[-1] if ":" in uri else str(data.get("id") or it.get("id") or "").strip()
+            if not pid:
+                continue
+            # valida que sea playlist (typename Playlist o uri contiene playlist)
+            typename = str(data.get("__typename") or it.get("__typename") or "")
+            if typename and typename.lower() not in ("playlist", "privateplaylist"):
+                # si typename es Folder/Track etc, salta
+                if "folder" in typename.lower():
+                    continue
+            if uri and "playlist" not in uri.lower() and not data.get("name"):
+                continue
+            name = str(data.get("name") or it.get("name") or "Playlist").strip()
+            desc = _as_text(data.get("description") or it.get("description"))
+            count = 0
+            try:
+                count = int((data.get("content") or {}).get("totalCount") or data.get("trackCount") or it.get("trackCount") or 0)
+            except Exception:
+                count = 0
+            # cover
+            sources = None
+            for cand in (data.get("images"), data.get("coverArt"), (data.get("images") or {}).get("items") if isinstance(data.get("images"), dict) else None):
+                if cand:
+                    sources = cand
+                    break
+            if isinstance(sources, dict) and isinstance(sources.get("sources"), list):
+                sources = sources["sources"]
+            cover = ""
+            if isinstance(sources, list) and sources:
+                # sources puede ser lista de dicts con url/width o lista de urls
+                if isinstance(sources[0], dict):
+                    cover = self._spotify_cover_best(sources)
+                elif isinstance(sources[0], str):
+                    cover = sources[0]
+            if not cover:
+                # fallback: images[0].url
+                try:
+                    imgs = data.get("images") or it.get("images") or []
+                    if isinstance(imgs, list) and imgs and isinstance(imgs[0], dict):
+                        cover = str(imgs[0].get("url") or "")
+                except Exception:
+                    pass
+            out.append(PlaylistSummary(
+                platform="Spotify",
+                id=pid,
+                name=name,
+                description=desc,
+                track_count=count,
+                cover_urls=[cover] if cover else [],
+                external_url=f"https://open.spotify.com/playlist/{pid}",
+            ))
+        return out
+
+    async def list_library_playlists(self, platform: str) -> list[PlaylistSummary]:
+        self._cb[platform].check_or_raise()
+        if platform == "YouTube Music":
+            return await asyncio.to_thread(self._sync_list_ytm)
+        if platform == "Apple Music":
+            return await asyncio.to_thread(self._sync_list_apple)
+        if platform == "Spotify":
+            return await asyncio.to_thread(self._sync_list_spotify)
+        raise ValueError(f"Unknown platform: {platform}")
 
     # ── Search ─────────────────────────────────────────────────────────
 
