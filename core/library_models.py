@@ -1,5 +1,5 @@
 """
-core/library_models.py — Melomaniac v4.4.2 — Modelos Biblioteca
+core/library_models.py — Melomaniac v4.5.0 — Modelos Biblioteca
 Fuente única para metadatos de playlists de biblioteca (solo metadatos, nunca tracks).
 """
 

@@ -1,6 +1,6 @@
 """
 ╔══════════════════════════════════════════════════════════════════════╗
-║                    Melomaniac v4.4.2                             ║
+║                    Melomaniac v4.5.0                             ║
 ║              Interfaz Principal de Usuario                           ║
 ╚══════════════════════════════════════════════════════════════════════╝
 
@@ -45,7 +45,7 @@ Componentes Principales:
     - Dialogs: Modales para errores y confirmaciones
 
 Autor: Melomaniac Team
-Versión: 4.4.2
+Versión: 4.5.0
 Fecha: 2026
 """
 
@@ -721,7 +721,7 @@ class PlaylistManagerUI(DialogMixin):
 
         # versión — IBM Plex Mono Light 300 (datos técnicos § Mono)
         self._rail_version_text = ft.Text(
-            "v4.4.2", size=8, color=TEXT_DIM,
+            "v4.5.0", size=8, color=TEXT_DIM,
             font_family=mono_family("light"),
             visible=not self._rail_collapsed, opacity=0.7,
             animate_opacity=ft.Animation(200, ft.AnimationCurve.EASE_IN_OUT),
@@ -896,7 +896,7 @@ class PlaylistManagerUI(DialogMixin):
                         ft.TextSpan("Melomaniac", ft.TextStyle(size=20,
                                                                color=TEXT_PRIMARY, font_family=brand_family("bold"))),
                     ], opacity=1.0),
-                    ft.Text("v4.4.2", size=9, color=TEXT_DIM, font_family=FONT_TEXT,
+                    ft.Text("v4.5.0", size=9, color=TEXT_DIM, font_family=FONT_TEXT,
                             style=ft.TextStyle(letter_spacing=0.8), opacity=1.0),
                 ], spacing=0, tight=True, expand=True),
                 self.btn_wizard,
