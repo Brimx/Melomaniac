@@ -73,6 +73,8 @@ class Track:
     is_explicit: bool = False
     isrc: Optional[str] = None
     source_path: str = ""
+    source_url: str = ""  # URL externa para abrir canción (Biblioteca)
+    genre: str = ""  # género por canción (Apple/Spotify)
     album_artist: str = ""
     track_number: int = 0
     release_date: str = ""
