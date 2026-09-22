@@ -169,40 +169,6 @@ class PlaylistManagerUI(DialogMixin):
             )
             return dd
 
-    def _make_scope_segmented(self, current: str, on_change=None) -> ft.Control:
-        """SegmentedButton Todo|Visibles|Seleccionadas — reusa tokens."""
-        try:
-            return ft.SegmentedButton(
-                selected=[current],
-                allow_empty_selection=False,
-                allow_multiple_selection=False,
-                show_selected_icon=False,
-                style=ft.ButtonStyle(
-                    bgcolor={ft.ControlState.SELECTED: ACCENT, ft.ControlState.DEFAULT: BG_SURFACE},
-                    color={ft.ControlState.SELECTED: TEXT_PRIMARY, ft.ControlState.DEFAULT: TEXT_MUTED},
-                ),
-                segments=[
-                    ft.Segment(value="all", label=ft.Text("Todo", size=11, font_family=FONT_HEADLINE)),
-                    ft.Segment(value="visible", label=ft.Text("Visibles", size=11, font_family=FONT_HEADLINE)),
-                    ft.Segment(value="selected", label=ft.Text("Seleccionadas", size=11, font_family=FONT_HEADLINE)),
-                ],
-                on_change=on_change,
-            )
-        except Exception:
-            return ft.Dropdown(
-                value=current,
-                width=200, height=38,
-                bgcolor=BG_INPUT, border_color=BORDER_LIGHT, focused_border_color=ACCENT,
-                text_style=ft.TextStyle(color=TEXT_PRIMARY, size=11, font_family=FONT_TEXT),
-                content_padding=ft.Padding.symmetric(horizontal=10, vertical=0),
-                options=[
-                    ft.dropdown.Option("all", "Todo"),
-                    ft.dropdown.Option("visible", "Visibles"),
-                    ft.dropdown.Option("selected", "Seleccionadas"),
-                ],
-                on_select=on_change,
-            )
-
     def _make_mode_segmented(self, current: str, on_change=None) -> ft.Control:
         """SegmentedButton Lista|Doble|Preview — modo doble solo al Organizar/Dividir."""
         try:
@@ -1159,7 +1125,7 @@ class PlaylistManagerUI(DialogMixin):
         if not s.segments:
             self._snack("No hay particiones — agrupa primero por Artista/Álbum", error=True)
             return
-        all_keys = sorted(list(s.segments.keys()))  # orden alfabético para buscar
+        all_keys = list(s.segments.keys())  # orden 1ª aparición O(n) §12, sin sort alfabético
         # estado local mutable
         selected: set[str] = set(s.active_segment_keys) if s.active_segment_keys is not None else set(s.segments.keys())
 
@@ -1631,7 +1597,7 @@ class PlaylistManagerUI(DialogMixin):
                         self._partition_btn.text = label  # type: ignore
                     except Exception:
                         pass
-                self._partition_btn.tooltip = f"Particiones: {', '.join(sorted(s.segments.keys())[:3])}{'...' if len(s.segments)>3 else ''}"
+                self._partition_btn.tooltip = f"Particiones: {', '.join(list(s.segments.keys())[:3])}{'...' if len(s.segments)>3 else ''}"
             else:
                 self._partition_btn.visible = False
             self._partition_btn.update()

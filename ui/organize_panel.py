@@ -253,8 +253,11 @@ def show_organize_dialog(page: ft.Page, state) -> None:
 
 
 def show_group_dialog(page: ft.Page, state) -> None:
-    """Agrupar/Dividir — elegir Artista/Álbum con lista counts clara; sin alcance."""
-    split_key = {"value": "artist"}
+    """Agrupar/Dividir — elegir Artista/Álbum con lista counts clara; sin alcance. Orden estable O(n)."""
+    _init_split = getattr(state, "split_key", "artist")
+    if _init_split not in ("artist", "album"):
+        _init_split = "artist"
+    split_key = {"value": _init_split}
 
     dd_split = organize_dropdown([("artist", "Artista"), ("album", "Álbum")], split_key["value"], "Agrupar por")
     def _on_split_change(e):
@@ -265,12 +268,13 @@ def show_group_dialog(page: ft.Page, state) -> None:
     preview_list = ft.ListView(height=180, spacing=4, padding=ft.Padding.all(4), expand=False, visible=True)
     preview_empty = ft.Text("Sin segmentos (carga una playlist)", size=11, color=TEXT_DIM, font_family="IBM Plex Sans")
     preview_wrap = ft.Container(content=ft.Column([preview_list, preview_empty], spacing=6), bgcolor=CHIP_BG, border=ft.Border.all(0.5, BORDER_LIGHT), border_radius=8, padding=ft.Padding.all(8), visible=True)
+    # multi-selección local (checkboxes) — Todos por defecto, persiste tras Organizar
+    selected: dict[str, set] = {"value": set()}
 
     def _refresh_preview():
         try:
             # siempre toda la playlist (sin alcance)
             src = getattr(state, "source_tracks", state.tracks) if getattr(state, "tracks", None) else []
-            # si hay transformación result, usa tracks (result) para preview actualizado
             src = state.tracks if state.tracks else src
             segs = split_tracks(src, split_key["value"])
             if not segs:
@@ -281,26 +285,40 @@ def show_group_dialog(page: ft.Page, state) -> None:
                 except: pass
                 return
             preview_empty.visible = False
-            # orden 1ª aparición (dict preserva inserción O(n) §12), no alfabético; muestra count desc para UX pero respeta selección
-            sorted_keys = sorted(segs.keys(), key=lambda k: len(segs[k]), reverse=True)
-            active = getattr(state, "active_segment_key", None)
+            # orden 1ª aparición O(n) §12 — sin sort por tamaño ni alfabético
+            sorted_keys = list(segs.keys())
+            # init / sync selected con estado actual si primera vez o tras cambio de criterio
+            cur_sel = selected["value"]
+            if not cur_sel or not cur_sel.issubset(set(segs.keys())):
+                # si hay active multi/single previo y coincide con nuevo segs, respeta
+                if getattr(state, "active_segment_keys", None) is not None:
+                    inter = {k for k in state.active_segment_keys if k in segs}
+                    # si cambio de criterio (artist→album) inter vacía → Todos
+                    cur_sel = inter if inter else set(sorted_keys)
+                elif getattr(state, "active_segment_key", None) and state.active_segment_key in segs:
+                    cur_sel = {state.active_segment_key}
+                else:
+                    # si preview viene de state.segments distinto, usar esos keys si coinciden
+                    if getattr(state, "segments", {}) and set(state.segments.keys()) == set(segs.keys()):
+                        cur_sel = set(state.active_segment_keys) if state.active_segment_keys else set(sorted_keys)
+                    else:
+                        cur_sel = set(sorted_keys)
+                selected["value"] = cur_sel
             controls = []
             for k in sorted_keys:
                 cnt = len(segs[k])
-                is_active = (k == active)
-                row = ft.Row([
-                    ft.Icon(ft.Icons.CHECK_CIRCLE if is_active else (ft.Icons.PERSON_OUTLINE if split_key["value"]=="artist" else ft.Icons.ALBUM_OUTLINED), size=14, color=ACCENT if is_active else TEXT_MUTED),
-                    ft.Text(k, size=11, color=TEXT_PRIMARY if is_active else TEXT_PRIMARY, font_family="IBM Plex Sans Medium" if is_active else "IBM Plex Sans", expand=True, overflow=ft.TextOverflow.ELLIPSIS, max_lines=1),
-                    ft.Container(content=ft.Text(str(cnt), size=10, color=TEXT_MUTED, font_family="IBM Plex Sans"), bgcolor=ACCENT if is_active else BG_SURFACE, border_radius=8, padding=ft.Padding.symmetric(horizontal=6, vertical=2)),
-                ], spacing=8, vertical_alignment=ft.CrossAxisAlignment.CENTER)
-                def _on_pick(e, key=k):
-                    try:
-                        state.set_active_segment(key)
-                        _refresh_preview()
-                        page.update()
-                    except Exception:
-                        pass
-                controls.append(ft.Container(content=row, ink=True, on_click=_on_pick, padding=ft.Padding.symmetric(horizontal=6, vertical=4), bgcolor=CHIP_BG if is_active else ft.Colors.TRANSPARENT, border=ft.Border.all(0.6, ACCENT if is_active else ft.Colors.TRANSPARENT), border_radius=6))
+                is_checked = k in selected["value"]
+                chk = ft.Checkbox(
+                    label=f"{k} ({cnt})",
+                    value=is_checked,
+                    fill_color={ft.ControlState.SELECTED: ACCENT},
+                    check_color=TEXT_PRIMARY,
+                    label_style=ft.TextStyle(color=TEXT_PRIMARY if is_checked else TEXT_MUTED, size=11, font_family="IBM Plex Sans"),
+                    border_side=ft.BorderSide(1.2, ACCENT if is_checked else TEXT_DIM),
+                    data=k,
+                    on_change=lambda e, _k=k: _on_toggle(_k, bool(e.control.value)),
+                )
+                controls.append(chk)
             preview_list.controls = controls
             try:
                 preview_list.update(); preview_wrap.update()
@@ -309,18 +327,40 @@ def show_group_dialog(page: ft.Page, state) -> None:
         except Exception:
             pass
 
+    def _on_toggle(key: str, checked: bool):
+        if checked:
+            selected["value"].add(key)
+        else:
+            selected["value"].discard(key)
+        try:
+            preview_list.update(); preview_wrap.update()
+        except Exception:
+            pass
+
     _refresh_preview()
 
     content = ft.Column([
         dd_split,
+        ft.Text("Selecciona particiones (varias) — se aplicará tras Agrupar:", size=10, color=TEXT_MUTED, font_family="IBM Plex Sans"),
         preview_wrap,
     ], tight=True, spacing=12)
 
     dlg_ref: dict = {}
 
     def _apply(_e):
-        # siempre toda la playlist
+        # siempre toda la playlist; persiste split_key y aplica multi-selección
         state.organize_split(split_key["value"], scope="all")
+        # aplica selección multi del preview (Todos = None)
+        try:
+            segs = state.segments
+            if segs:
+                sel = selected["value"]
+                if len(sel) == len(segs) or len(sel) == 0:
+                    state.set_active_segments(None)
+                else:
+                    state.set_active_segments(set(sel))
+        except Exception:
+            pass
         _close_dlg(page, dlg_ref.get("dlg"))
 
     def _clear(_e):

@@ -221,7 +221,6 @@ class AppState:
         # ──────────────────────────────────────────────────────────────
         self.show_dual: bool = False       # False= solo Lista, True= doble activa
         self.dual_mode: str = "lista"      # lista|doble|preview (SegmentedButton)
-        self._dual_scope: str = "visible"  # Todo|Visibles|Seleccionadas para Organizar/Dividir
 
         # ──────────────────────────────────────────────────────────────
         # CONFIG PERSISTENTE ORGANIZAR (re-apertura recuerda selección)
@@ -232,6 +231,7 @@ class AppState:
         self.organize_second_key: str = "none"
         self.organize_third_key: str = "none"
         self.organize_advanced: bool = False
+        self.split_key: str = "artist"               # persistencia Agrupar (Dividir) artist|album
 
         # ──────────────────────────────────────────────────────────────
         # CIRCUIT BREAKERS POR PLATAFORMA
@@ -866,21 +866,38 @@ class AppState:
         """
         Agrupa siempre sobre toda la playlist (sin alcance) — alcance ya lo definen filtros.
         Preserva active si sigue válido; primer key es 1ª aparición O(n) §12, no alfabético.
+        Persiste split_key para re-apertura.
         """
         # scope ignorado (siempre toda la playlist)
+        self.split_key = key if key in ("artist", "album") else "artist"
         src = self.tracks
         new_segments = split_tracks(src, key)
         if not new_segments:
             self.segments = {}
+            self.active_segment_keys = None
             self.active_segment_key = None
             self.show_dual = False
             self.dual_mode = "lista"
             self.apply_search(self.search_query)
             return
-        # siempre Todos por defecto tras agrupar (si no elige cuales → todos §16)
+        # preserva active multi si sigue válido (§16) — si reagrupa tras Organizar
+        prev_multi = set(self.active_segment_keys) if self.active_segment_keys is not None else None
+        prev_single = self.active_segment_key
         self.segments = new_segments
-        self.active_segment_keys = None  # Todos
-        self.active_segment_key = None  # compat
+        if prev_multi is not None:
+            kept = {k for k in prev_multi if k in new_segments}
+            if kept:
+                self.active_segment_keys = kept
+                self.active_segment_key = next(iter(kept)) if len(kept) == 1 else None
+            else:
+                self.active_segment_keys = None
+                self.active_segment_key = None
+        elif prev_single is not None and prev_single in new_segments:
+            self.active_segment_keys = {prev_single}
+            self.active_segment_key = prev_single
+        else:
+            self.active_segment_keys = None  # Todos por defecto §16
+            self.active_segment_key = None
         self.show_dual = True
         self.dual_mode = "doble"
         self.apply_search(self.search_query)
