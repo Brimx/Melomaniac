@@ -754,9 +754,59 @@ class MusicApiService:
             ))
         return out
 
+    @staticmethod
+    def _apple_track_count(item: dict) -> int:
+        """Cuenta canciones: attributes.trackCount o relationships.tracks.
+
+        La API de biblioteca no expone trackCount en attributes; el total
+        real vive en relationships.tracks.meta.total (con include=tracks)
+        o se deriva de len(relationships.tracks.data).
+        """
+        attrs = item.get("attributes") or {}
+        try:
+            direct = int(attrs.get("trackCount") or attrs.get("track_count") or 0)
+            if direct:
+                return direct
+        except Exception:
+            pass
+        rels = item.get("relationships") or {}
+        tracks_rel = rels.get("tracks") or {}
+        try:
+            meta_total = int((tracks_rel.get("meta") or {}).get("total") or 0)
+            if meta_total:
+                return meta_total
+        except Exception:
+            pass
+        try:
+            data = tracks_rel.get("data")
+            if isinstance(data, list) and data:
+                return len(data)
+        except Exception:
+            pass
+        return 0
+
+    def _apple_tracks_total(self, pid: str) -> int:
+        """Fallback: GET .../tracks?limit=1 y lee meta.total sin cargar tracks."""
+        try:
+            r = self._am_request(
+                "get",
+                f"{APPLE_API_BASE}/me/library/playlists/{pid}/tracks",
+                params={"limit": 1}, timeout=10,
+            )
+            self._am_check_status(r)
+            data = r.json()
+            meta = data.get("meta") or {}
+            total = int(meta.get("total") or 0)
+            if total:
+                return total
+            items = data.get("data")
+            return len(items) if isinstance(items, list) else 0
+        except Exception:
+            return 0
+
     def _sync_list_apple(self) -> list[PlaylistSummary]:
         url = f"{APPLE_API_BASE}/me/library/playlists"
-        params = {"limit": 100}
+        params = {"limit": 100, "include": "tracks"}
         out: list[PlaylistSummary] = []
         next_url: Optional[str] = url
         while next_url:
@@ -776,12 +826,10 @@ class MusicApiService:
                     continue
                 name = str(attrs.get("name") or "Playlist").strip()
                 desc = _as_text(attrs.get("description"))
-                # track count puede venir como trackCount o playParams?
-                count = 0
-                try:
-                    count = int(attrs.get("trackCount") or attrs.get("track_count") or 0)
-                except Exception:
-                    count = 0
+                count = self._apple_track_count(item)
+                if not count:
+                    # último recurso: meta.total sin descargar tracks
+                    count = self._apple_tracks_total(pid)
                 art = attrs.get("artwork") or {}
                 art_url = self._apple_cover_normalized(str(art.get("url") or ""), 400)
                 # fallback: si no hay artwork en listado, dejar vacío (detail puede enriquecer con 4 covers)
@@ -808,9 +856,10 @@ class MusicApiService:
         if not self._sp_login:
             raise RuntimeError("Spotify no autenticado. Revisa config/spotify_cookies.json.")
         try:
-            # PrivatePlaylist.get_library() es privado; normaliza y filtra carpetas
-            pl = PrivatePlaylist(client=self._sp_cfg.client)  # type: ignore[attr-defined]
-            raw = pl.get_library()  # type: ignore[union-attr]
+            # PrivatePlaylist(login, playlist=None): requiere Login, no client
+            # (PublicPlaylist sí acepta client=). get_library(limit) es posicional.
+            pl = PrivatePlaylist(self._sp_login)
+            raw = pl.get_library(100)
         except Exception as exc:
             raise RuntimeError(f"Spotify get_library falló: {exc}") from exc
         # raw puede ser dict con data/me/playlists o lista; normaliza defensivo

@@ -286,6 +286,81 @@ class PreviewSkeletonRow(ft.Container):
             pass
 
 
+class LibrarySkeletonRow(ft.Container):
+    """
+    Skeleton Biblioteca — clon de SkeletonRow con zonas adaptadas al detail.
+
+    Inicio tiene [#][thumb][title][album][dur][status][chk]; Biblioteca
+    detail tiene [#][thumb48][title][album][dur][open-btn]: se atenúan esas
+    6 zonas (sin status/chk). Mismo Shimmer + scale 0.98↔1.0 600ms stagger
+    e ITEM_H para paridad exacta con Inicio.
+    """
+
+    def __init__(self, _index: int):
+        self._pulse_task: Optional[asyncio.Task] = None
+        self._index = _index
+        self._num = ft.Container(width=28, height=10, border_radius=3, bgcolor=BG_SURFACE)
+        self._thumb = ft.Container(width=48, height=48, border_radius=6, bgcolor=BG_SURFACE)
+        self._title = ft.Container(expand=3, height=10, border_radius=3, bgcolor=BG_SURFACE)
+        self._album = ft.Container(expand=2, height=10, border_radius=3, bgcolor=BG_SURFACE)
+        self._dur = ft.Container(width=48, height=10, border_radius=3, bgcolor=BG_SURFACE)
+        self._action = ft.Container(width=32, height=10, border_radius=3, bgcolor=BG_SURFACE)
+        _row = ft.Row(
+            controls=[self._num, self._thumb, self._title, self._album, self._dur, self._action],
+            spacing=16, vertical_alignment=ft.CrossAxisAlignment.CENTER,
+        )
+        try:
+            _shimmer = ft.Shimmer(
+                base_color=ft.Colors.with_opacity(0.35, SKELETON_DARK),
+                highlight_color=ft.Colors.with_opacity(0.9, BG_SURFACE),
+                content=_row,
+            )
+        except Exception:
+            _shimmer = _row
+        super().__init__(
+            height=ITEM_H,
+            padding=ft.Padding.symmetric(horizontal=12, vertical=8),
+            border=ft.Border.only(bottom=ft.BorderSide(0.5, BORDER_ROW)),
+            content=_shimmer,
+            opacity=1.0,
+            scale=0.98,
+            animate_scale=ft.Animation(600, ft.AnimationCurve.EASE_IN_OUT),
+        )
+
+    async def start_pulse(self) -> None:
+        """Zoom sutil 0.98↔1.0 (600ms, stagger 60ms) — idéntico a SkeletonRow."""
+        self._pulse_task = asyncio.current_task()
+        try:
+            await asyncio.sleep(0.06 * self._index)
+        except asyncio.CancelledError:
+            return
+        try:
+            while True:
+                self.scale = 1.0
+                try:
+                    self.update()
+                except Exception:
+                    pass
+                await asyncio.sleep(0.6)
+                self.scale = 0.98
+                try:
+                    self.update()
+                except Exception:
+                    pass
+                await asyncio.sleep(0.6)
+        except asyncio.CancelledError:
+            pass
+
+    def stop_pulse(self) -> None:
+        if self._pulse_task:
+            self._pulse_task.cancel()
+            self._pulse_task = None
+        try:
+            self.scale = 1.0
+        except Exception:
+            pass
+
+
 class SongRow(ft.Container):
     """
     Fila interactiva de canción con hover, thumbnail, metadatos y controles.
