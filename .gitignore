@@ -26,3 +26,4 @@ config/*
 exports/
 transfer_failed_report.txt
 .DS_Store
+AGENTS.md
