@@ -2,6 +2,7 @@
 .vscode/
 .kiro/
 .opencode/
+opencode.json
 .envsitter/
 .flet/
 .venv/

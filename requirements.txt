@@ -6,8 +6,8 @@ charset-normalizer==3.4.9
 colorama==0.4.6
 curl_cffi==0.16.0
 dnspython==2.8.0
-flet==0.86.5
-flet-desktop==0.86.5
+flet==1.0.1
+flet-desktop==1.0.1
 fonttools==4.63.0
 h11==0.16.0
 httpcore==1.0.9
