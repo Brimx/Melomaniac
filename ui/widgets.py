@@ -61,6 +61,28 @@ def app_text(
     return ft.Text(text, size=size, color=color, font_family=font_family, **kwargs)
 
 
+def input_border(
+    border_color: str = BORDER_LIGHT,
+    focused_color: str = ACCENT,
+    radius: float = 10,
+    width: float = 1.0,
+) -> dict:
+    """Borde canónico OLED para TextField/Dropdown (Flet 1.0+: border=OutlineInputBorder).
+
+    Reemplaza las props deprecadas border_color/focused_border_color/border_radius.
+    """
+    return {
+        ft.ControlState.DEFAULT: ft.OutlineInputBorder(
+            side=ft.BorderSide(color=border_color, width=width),
+            border_radius=radius,
+        ),
+        ft.ControlState.FOCUSED: ft.OutlineInputBorder(
+            side=ft.BorderSide(color=focused_color, width=width),
+            border_radius=radius,
+        ),
+    }
+
+
 def app_text_field(
     label: str | None = None,
     hint_text: str | None = None,
@@ -77,6 +99,7 @@ def app_text_field(
     on_submit=None,
     content_padding=None,
     text_style: ft.TextStyle | None = None,
+    border_radius: float = 10,
     **kwargs,
 ) -> ft.TextField:
     """TextField canónico OLED. Base: playlist_meta (radius 10, dense).
@@ -84,6 +107,11 @@ def app_text_field(
     Unifica playlist_meta._field_style + wizard._field_style/_make_field
     + main_ui paste/id/name fields.
     """
+    # Traduce props deprecadas si algún caller aún las pasa
+    _bc = kwargs.pop("border_color", BORDER_LIGHT)
+    _fbc = kwargs.pop("focused_border_color", ACCENT)
+    _br = kwargs.pop("border", None)
+    border = _br if _br is not None else input_border(_bc, _fbc, border_radius)
     return ft.TextField(
         label=label,
         hint_text=hint_text,
@@ -98,14 +126,12 @@ def app_text_field(
         autofocus=autofocus,
         on_submit=on_submit,
         bgcolor=BG_INPUT,
-        border_color=BORDER_LIGHT,
-        focused_border_color=ACCENT,
+        border=border,
         hint_style=ft.TextStyle(color=TEXT_DIM, size=11),
         label_style=ft.TextStyle(color=TEXT_MUTED, size=10, font_family=FONT_HEADLINE),
         text_style=text_style or ft.TextStyle(color=TEXT_PRIMARY, size=12, font_family=FONT_TEXT),
         text_size=12,
         dense=True,
-        border_radius=10,
         content_padding=content_padding or ft.Padding.symmetric(horizontal=12, vertical=8),
         **kwargs,
     )
@@ -172,7 +198,7 @@ def organize_dropdown(
     return ft.Dropdown(
         options=[ft.dropdown.Option(key=k, text=t) for k, t in options],
         value=value, label=label, width=width,
-        bgcolor=_IN, border_color=_BL, focused_border_color=_AC,
+        bgcolor=_IN, border=input_border(_BL, _AC, 10),
         label_style=ft.TextStyle(color=_TM, size=11, font_family=FONT_HEADLINE),
         text_style=ft.TextStyle(color=_TP, size=12, font_family=FONT_TEXT),
     )

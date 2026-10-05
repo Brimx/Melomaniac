@@ -102,18 +102,16 @@ class PlaylistMetaDialog(DialogMixin):
     @staticmethod
     def _field_style() -> dict:
         # Compat: estilo canónico vive en widgets.app_text_field.
-        from ui.widgets import app_text_field
+        from ui.widgets import app_text_field, input_border
         probe = app_text_field(label="x")
         return {
             "bgcolor": probe.bgcolor,
-            "border_color": probe.border_color,
-            "focused_border_color": probe.focused_border_color,
+            "border": input_border(),
             "hint_style": probe.hint_style,
             "label_style": probe.label_style,
             "text_style": probe.text_style,
             "text_size": probe.text_size,
             "dense": True,
-            "border_radius": probe.border_radius,
             "content_padding": probe.content_padding,
         }
 
@@ -152,22 +150,21 @@ class PlaylistMetaDialog(DialogMixin):
             for div in self._divisions:
                 self._per_div_dests[div] = "Mantener"
             self._visited.add(self._divisions[0])
+            from ui.widgets import input_border as _ib
             self._div_switch = ft.Dropdown(
                 label="División", value=self._divisions[0], width=CONTENT_W, height=38,
-                bgcolor=BG_INPUT, border_color=BORDER_LIGHT, focused_border_color=ACCENT,
+                bgcolor=BG_INPUT, border=_ib(),
                 label_style=ft.TextStyle(color=TEXT_MUTED, size=10, font_family="IBM Plex Sans"),
                 text_style=ft.TextStyle(color=TEXT_PRIMARY, size=11, font_family="IBM Plex Sans"),
-                border_radius=10,
                 options=[ft.dropdown.Option(d, d) for d in self._divisions],
             )
             from core.config import PLATFORMS as _PLATS
             dest_opts = ["Mantener"] + [p for p in _PLATS if p != self._global_destination]
             self._dest_dd = ft.Dropdown(
                 label="Destino para esta división", value="Mantener", width=CONTENT_W, height=38,
-                bgcolor=BG_INPUT, border_color=BORDER_LIGHT, focused_border_color=ACCENT,
+                bgcolor=BG_INPUT, border=_ib(),
                 label_style=ft.TextStyle(color=TEXT_MUTED, size=10, font_family="IBM Plex Sans"),
                 text_style=ft.TextStyle(color=TEXT_PRIMARY, size=11, font_family="IBM Plex Sans"),
-                border_radius=10,
                 options=[ft.dropdown.Option(o, o) for o in dest_opts],
             )
             def _on_div_change(e):

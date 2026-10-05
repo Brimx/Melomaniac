@@ -72,6 +72,7 @@ from ui.telemetry import TelemetryDrawer
 from ui.widgets import (
     _primary_btn, _ghost_btn, _section_label, _status_icon,
     app_text_field, dialog_action, app_dialog, DialogMixin, notify,
+    input_border,
 )
 
 from ui.tokens import (
@@ -158,7 +159,7 @@ class PlaylistManagerUI(DialogMixin):
             dd = ft.Dropdown(
                 value=current,
                 width=200, height=38,
-                bgcolor=BG_INPUT, border_color=BORDER_LIGHT, focused_border_color=ACCENT,
+                bgcolor=BG_INPUT, border=input_border(),
                 text_style=ft.TextStyle(color=TEXT_PRIMARY, size=11, font_family=FONT_TEXT),
                 content_padding=ft.Padding.symmetric(horizontal=10, vertical=0),
                 options=[
@@ -192,7 +193,7 @@ class PlaylistManagerUI(DialogMixin):
             return ft.Dropdown(
                 value=current,
                 width=180, height=38,
-                bgcolor=BG_INPUT, border_color=BORDER_LIGHT, focused_border_color=ACCENT,
+                bgcolor=BG_INPUT, border=input_border(),
                 text_style=ft.TextStyle(color=TEXT_PRIMARY, size=11, font_family=FONT_TEXT),
                 content_padding=ft.Padding.symmetric(horizontal=10, vertical=0),
                 options=[
@@ -375,20 +376,20 @@ class PlaylistManagerUI(DialogMixin):
             if is_dual:
                 # izq = Playlist original base (§1), der = División activa §6
                 self._lista_header_text.value = "PLAYLIST ORIGINAL"
-                self._lista_header_icon.name = ft.Icons.HISTORY
+                self._lista_header_icon.icon = ft.Icons.HISTORY
                 if s.segments:
                     seg = s.active_segment_key or ""
                     # §6 una División a la vez; §7 División activa vs seleccionadas
                     self._preview_header_text.value = f"DIVISIÓN — {seg}" if seg else f"DIVISIONES — {len(s.segments)} divisiones"
-                    self._preview_header_icon.name = ft.Icons.CALL_SPLIT
+                    self._preview_header_icon.icon = ft.Icons.CALL_SPLIT
                 else:
                     self._preview_header_text.value = "RESULTADO — organizado"
-                    self._preview_header_icon.name = ft.Icons.SORT
+                    self._preview_header_icon.icon = ft.Icons.SORT
             else:
                 self._lista_header_text.value = "PLAYLIST ORIGINAL"
-                self._lista_header_icon.name = ft.Icons.LIST_ALT
+                self._lista_header_icon.icon = ft.Icons.LIST_ALT
                 self._preview_header_text.value = "DIVISIÓN ACTIVA — preview"
-                self._preview_header_icon.name = ft.Icons.VISIBILITY_OUTLINED
+                self._preview_header_icon.icon = ft.Icons.VISIBILITY_OUTLINED
             self._lista_header_text.update(); self._lista_header_icon.update()
             self._preview_header_text.update(); self._preview_header_icon.update()
         except Exception:
@@ -904,10 +905,10 @@ class PlaylistManagerUI(DialogMixin):
         ], spacing=0)
 
         _dd_style = dict(
-            bgcolor=BG_INPUT, border_color=BORDER_LIGHT,
+            bgcolor=BG_INPUT, border=input_border(),
             label_style=ft.TextStyle(color=TEXT_MUTED, size=10, font_family=FONT_HEADLINE),
             text_style=ft.TextStyle(color=TEXT_PRIMARY, size=12, font_family=FONT_TEXT),
-            border_radius=10, expand=True,
+            expand=True,
         )
 
         def _on_src_select(e) -> None:
@@ -1074,7 +1075,7 @@ class PlaylistManagerUI(DialogMixin):
                         segments=[ft.Segment(value="original", label=ft.Text("Mantener orden", size=10)), ft.Segment(value="az", label=ft.Text("A → Z", size=11)), ft.Segment(value="za", label=ft.Text("Z → A", size=11))],
                         on_change=lambda e: _orden.__setitem__("value", list(e.control.selected)[0] if hasattr(e.control,"selected") and e.control.selected else e.control.value))
                 except Exception:
-                    _seg = ft.Dropdown(value=_orden["value"], width=240, bgcolor=BG_INPUT, border_color=BORDER_LIGHT, focused_border_color=ACCENT, options=[ft.dropdown.Option("original","Mantener orden"), ft.dropdown.Option("az","A → Z"), ft.dropdown.Option("za","Z → A")], on_select=lambda e: _orden.__setitem__("value", e.control.value))
+                    _seg = ft.Dropdown(value=_orden["value"], width=240, bgcolor=BG_INPUT, border=input_border(), options=[ft.dropdown.Option("original","Mantener orden"), ft.dropdown.Option("az","A → Z"), ft.dropdown.Option("za","Z → A")], on_select=lambda e: _orden.__setitem__("value", e.control.value))
                 def _ap(_e):
                     # persist fallback también
                     try:
@@ -1274,8 +1275,14 @@ class PlaylistManagerUI(DialogMixin):
         active = s.active_segment_key or next(iter(s.segments.keys()))
         src_tracks = getattr(s, "source_tracks", s.tracks) or s.tracks
         div_tracks = s.segments.get(active, [])
-        # nombre editable de la división (playlist derivada)
-        name_field = app_text_field(value=active, label="Nombre división", hint_text=active, expand=True, height=36, content_padding=ft.Padding.symmetric(horizontal=8, vertical=4))
+        # nombre editable de la división (playlist derivada) — sin expand vertical: ancho fijo
+        name_field = app_text_field(value=active, label="Nombre división", hint_text=active, width=780, height=36, content_padding=ft.Padding.symmetric(horizontal=8, vertical=4))
+        # alto de listas adaptado a la ventana (sin flex vertical: alturas explícitas, sin huecos)
+        try:
+            _win_h = self.page.height or self.page.window.height or 700  # type: ignore
+        except Exception:
+            _win_h = 700
+        lv_h = max(200, min(320, int(_win_h - 420)))
         def _on_name(e):
             new = (e.control.value or "").strip()
             if new and new != active and new not in s.segments:
@@ -1298,8 +1305,8 @@ class PlaylistManagerUI(DialogMixin):
         right_sel: set[str] = set()
         left_search = app_text_field(hint_text="Buscar en ORIGINAL…", prefix_icon=ft.Icons.SEARCH, expand=True, height=32, content_padding=ft.Padding.symmetric(horizontal=8, vertical=4))
         right_search = app_text_field(hint_text="Buscar en División…", prefix_icon=ft.Icons.SEARCH, expand=True, height=32, content_padding=ft.Padding.symmetric(horizontal=8, vertical=4))
-        left_lv = ft.ListView(spacing=4, padding=ft.Padding.all(6), expand=True)
-        right_lv = ft.ListView(spacing=4, padding=ft.Padding.all(6), expand=True)
+        left_lv = ft.ListView(spacing=4, padding=ft.Padding.all(6), height=lv_h)
+        right_lv = ft.ListView(spacing=4, padding=ft.Padding.all(6), height=lv_h)
 
         def _rebuild_left(q: str = ""):
             ql = (q or "").strip().lower()
@@ -1358,23 +1365,10 @@ class PlaylistManagerUI(DialogMixin):
             try: right_lv.update()
             except: pass
 
-        # IconButton + ContextMenu a la IZQUIERDA de cada buscador, icono cambia según criterio
-        add_icon_btn = ft.IconButton(icon=ft.Icons.MUSIC_NOTE, icon_size=16, icon_color=ACCENT, tooltip="Añadir por")
-        remove_icon_btn = ft.IconButton(icon=ft.Icons.MUSIC_NOTE, icon_size=16, icon_color=WARNING, tooltip="Eliminar por")
-        def _set_add_crit(v: str):
-            add_criterion["value"] = v
-            add_icon_btn.icon = _icon_for(v)
-            try: add_icon_btn.update()
-            except: pass
-            _rebuild_left(left_search.value or "")
-        def _set_remove_crit(v: str):
-            remove_criterion["value"] = v
-            remove_icon_btn.icon = _icon_for(v)
-            try: remove_icon_btn.update()
-            except: pass
-            _rebuild_right(right_search.value or "")
+        # IconButton + ContextMenu a la IZQUIERDA de cada buscador, icono cambia según criterio.
+        # Se usa el icon nativo de PopupMenuButton (sin IconButton anidado, que consumía el click).
         add_popup = ft.PopupMenuButton(
-            content=add_icon_btn,
+            icon=ft.Icons.MUSIC_NOTE, icon_size=16, icon_color=ACCENT, tooltip="Añadir por",
             items=[
                 ft.PopupMenuItem(content=ft.Text("Artista"), icon=ft.Icons.PERSON, on_click=lambda _: _set_add_crit("artist")),
                 ft.PopupMenuItem(content=ft.Text("Álbum"), icon=ft.Icons.ALBUM, on_click=lambda _: _set_add_crit("album")),
@@ -1382,13 +1376,25 @@ class PlaylistManagerUI(DialogMixin):
             ],
         )
         remove_popup = ft.PopupMenuButton(
-            content=remove_icon_btn,
+            icon=ft.Icons.MUSIC_NOTE, icon_size=16, icon_color=WARNING, tooltip="Eliminar por",
             items=[
                 ft.PopupMenuItem(content=ft.Text("Artista"), icon=ft.Icons.PERSON, on_click=lambda _: _set_remove_crit("artist")),
                 ft.PopupMenuItem(content=ft.Text("Álbum"), icon=ft.Icons.ALBUM, on_click=lambda _: _set_remove_crit("album")),
                 ft.PopupMenuItem(content=ft.Text("Canción"), icon=ft.Icons.MUSIC_NOTE, on_click=lambda _: _set_remove_crit("song")),
             ],
         )
+        def _set_add_crit(v: str):
+            add_criterion["value"] = v
+            add_popup.icon = _icon_for(v)
+            try: add_popup.update()
+            except: pass
+            _rebuild_left(left_search.value or "")
+        def _set_remove_crit(v: str):
+            remove_criterion["value"] = v
+            remove_popup.icon = _icon_for(v)
+            try: remove_popup.update()
+            except: pass
+            _rebuild_right(right_search.value or "")
 
         left_search.on_change = lambda e: _rebuild_left(e.control.value or "")
         right_search.on_change = lambda e: _rebuild_right(e.control.value or "")
@@ -1455,19 +1461,22 @@ class PlaylistManagerUI(DialogMixin):
         dlg_ref: dict = {}
         dlg = app_dialog(
             f"Editar división — {active}",
-            ft.Column([
-                name_field,
-                ft.Row([
-                    ft.Column([ft.Row([add_popup, left_search], spacing=4), ft.Container(content=left_lv, bgcolor=CHIP_BG, border=ft.Border.all(0.5, BORDER_LIGHT), border_radius=8, expand=True), ft.TextButton("Agregar →", icon=ft.Icons.ARROW_FORWARD, on_click=_add_to_division, style=ft.ButtonStyle(color=ACCENT))], expand=True, spacing=6),
-                    ft.Column([ft.Row([remove_popup, right_search], spacing=4), ft.Container(content=right_lv, bgcolor=CHIP_BG, border=ft.Border.all(0.5, BORDER_LIGHT), border_radius=8, expand=True), ft.TextButton("← Quitar", icon=ft.Icons.ARROW_BACK, on_click=_remove_from_division, style=ft.ButtonStyle(color=WARNING))], expand=True, spacing=6),
-                ], spacing=10, expand=True),
-            ], tight=True, spacing=8, expand=True),
+            ft.Container(
+                content=ft.Column([
+                    name_field,
+                    ft.Row([
+                        ft.Column([ft.Row([add_popup, left_search], spacing=4, vertical_alignment=ft.CrossAxisAlignment.CENTER), ft.Container(content=left_lv, bgcolor=CHIP_BG, border=ft.Border.all(0.5, BORDER_LIGHT), border_radius=8, height=lv_h + 12, width=390), ft.TextButton("Agregar →", icon=ft.Icons.ARROW_FORWARD, on_click=_add_to_division, style=ft.ButtonStyle(color=ACCENT))], spacing=6, width=390),
+                        ft.Column([ft.Row([remove_popup, right_search], spacing=4, vertical_alignment=ft.CrossAxisAlignment.CENTER), ft.Container(content=right_lv, bgcolor=CHIP_BG, border=ft.Border.all(0.5, BORDER_LIGHT), border_radius=8, height=lv_h + 12, width=390), ft.TextButton("← Quitar", icon=ft.Icons.ARROW_BACK, on_click=_remove_from_division, style=ft.ButtonStyle(color=WARNING))], spacing=6, width=390),
+                    ], spacing=10, vertical_alignment=ft.CrossAxisAlignment.START),
+                ], tight=True, spacing=8),
+                width=820,
+            ),
             [
                 dialog_action("Cerrar", lambda _: self._close_dlg(dlg_ref.get("dlg")), kind="muted"),
                 dialog_action("Revertir", _revert_edit, kind="muted"),
                 dialog_action("Aplicar", _apply_edit, kind="primary"),
             ],
-            width=720, bgcolor=BG_SURFACE, radius=10,
+            width=820, bgcolor=BG_SURFACE, radius=10,
         )
         dlg_ref["dlg"] = dlg
         self.page.show_dialog(dlg)
@@ -1489,7 +1498,7 @@ class PlaylistManagerUI(DialogMixin):
         )
         self._segment_dd = ft.Dropdown(
             width=160, height=38,
-            bgcolor=BG_INPUT, border_color=BORDER_LIGHT, focused_border_color=ACCENT,
+            bgcolor=BG_INPUT, border=input_border(),
             text_style=ft.TextStyle(color=TEXT_PRIMARY, size=12, font_family=FONT_TEXT),
             content_padding=ft.Padding.symmetric(horizontal=10, vertical=0),
             on_select=lambda e: self.state.set_active_segment(e.control.value),
@@ -1806,9 +1815,10 @@ class PlaylistManagerUI(DialogMixin):
             self._empty_hint_text.update()
         dest_needs_confirm = is_local_src and not s.destination_confirmed
         new_dst_border = WARNING if dest_needs_confirm else BORDER_LIGHT
-        if self._dst_dd.border_color != new_dst_border:
-            self._dst_dd.border_color = new_dst_border
-            self._dst_dd.focused_border_color = ACCENT if not dest_needs_confirm else WARNING
+        new_dst_focused = WARNING if dest_needs_confirm else ACCENT
+        if getattr(self._dst_dd, "_last_border_key", None) != (new_dst_border, new_dst_focused):
+            self._dst_dd.border = input_border(new_dst_border, new_dst_focused)
+            self._dst_dd._last_border_key = (new_dst_border, new_dst_focused)
             self._dst_dd.update()
 
     def _sync_titles(self, s) -> None:
@@ -2065,8 +2075,8 @@ class PlaylistManagerUI(DialogMixin):
         src = self.state.source
         if src in AppState.LOCAL_SOURCES and not self.state.destination_confirmed:
             self._snack("⚠ Selecciona primero una plataforma de Destino", error=True)
-            self._dst_dd.border_color         = WARNING
-            self._dst_dd.focused_border_color = WARNING
+            self._dst_dd.border = input_border(WARNING, WARNING)
+            self._dst_dd._last_border_key = (WARNING, WARNING)
             self._dst_dd.update()
             return
         if src == "Archivo Local":
@@ -2271,8 +2281,8 @@ class PlaylistManagerUI(DialogMixin):
             return
         if self.state.source in AppState.LOCAL_SOURCES and not self.state.destination_confirmed:
             self._snack("⚠ Selecciona una plataforma de destino antes de transferir", error=True)
-            self._dst_dd.border_color         = WARNING
-            self._dst_dd.focused_border_color = WARNING
+            self._dst_dd.border = input_border(WARNING, WARNING)
+            self._dst_dd._last_border_key = (WARNING, WARNING)
             self._dst_dd.update()
             return
         # División: si hay divisiones, se transfiere por división; si no, selección global
@@ -2378,7 +2388,7 @@ class PlaylistManagerUI(DialogMixin):
         fmt_dd = ft.Dropdown(
             label="Formato", value=fmt_val,
             width=160, height=38,
-            bgcolor=BG_INPUT, border_color=BORDER_LIGHT, focused_border_color=ACCENT,
+            bgcolor=BG_INPUT, border=input_border(),
             text_style=ft.TextStyle(color=TEXT_PRIMARY, size=11, font_family=FONT_TEXT),
             content_padding=ft.Padding.symmetric(horizontal=10, vertical=0),
             options=[ft.dropdown.Option(k, k.upper()) for k in EXPORT_FORMATS],

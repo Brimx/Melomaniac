@@ -804,15 +804,13 @@ class ConfigWizard(DialogMixin):
     def _field_style() -> dict:
         # Compat: ahora canónico en widgets.app_text_field. Se mantiene
         # para llamadas externas, pero _make_field ya no lo usa.
-        from ui.widgets import app_text_field
+        from ui.widgets import app_text_field, input_border
         probe = app_text_field(label="x")
         return {
             "bgcolor": probe.bgcolor,
-            "border_color": probe.border_color,
-            "focused_border_color": probe.focused_border_color,
+            "border": input_border(),
             "label_style": probe.label_style,
             "text_style": probe.text_style,
-            "border_radius": probe.border_radius,
         }
 
     @staticmethod

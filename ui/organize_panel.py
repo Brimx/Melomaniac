@@ -17,7 +17,7 @@ from __future__ import annotations
 import flet as ft
 
 from ui.tokens import BG_SURFACE, BG_INPUT, BORDER_LIGHT, ACCENT, TEXT_PRIMARY, TEXT_MUTED, TEXT_DIM, CHIP_BG
-from ui.widgets import dialog_action, app_dialog, organize_dropdown
+from ui.widgets import dialog_action, app_dialog, organize_dropdown, input_border
 from engine.organizer import split_tracks
 
 
@@ -75,7 +75,7 @@ def show_organize_dialog(page: ft.Page, state) -> None:
             on_change=lambda e: orden.__setitem__("value", list(e.control.selected)[0] if hasattr(e.control, "selected") and e.control.selected else e.control.value),
         )
     except Exception:
-        seg_orden = ft.Dropdown(value=orden["value"], width=240, height=38, bgcolor=BG_INPUT, border_color=BORDER_LIGHT, focused_border_color=ACCENT, text_style=ft.TextStyle(color=TEXT_PRIMARY, size=11, font_family="IBM Plex Sans"), options=[ft.dropdown.Option("original","Mantener orden"), ft.dropdown.Option("az","A → Z"), ft.dropdown.Option("za","Z → A")], on_select=lambda e: orden.__setitem__("value", e.control.value))
+        seg_orden = ft.Dropdown(value=orden["value"], width=240, height=38, bgcolor=BG_INPUT, border=input_border(), text_style=ft.TextStyle(color=TEXT_PRIMARY, size=11, font_family="IBM Plex Sans"), options=[ft.dropdown.Option("original","Mantener orden"), ft.dropdown.Option("az","A → Z"), ft.dropdown.Option("za","Z → A")], on_select=lambda e: orden.__setitem__("value", e.control.value))
 
     # Agrupar estable: trae dispersos juntos (5+1) §12-15; ninguno = sin agrupar
     try:
@@ -86,7 +86,7 @@ def show_organize_dialog(page: ft.Page, state) -> None:
             on_change=lambda e: group_by.__setitem__("value", list(e.control.selected)[0] if hasattr(e.control, "selected") and e.control.selected else e.control.value),
         )
     except Exception:
-        seg_group = ft.Dropdown(value=group_by["value"], width=300, height=38, bgcolor=BG_INPUT, border_color=BORDER_LIGHT, focused_border_color=ACCENT, text_style=ft.TextStyle(color=TEXT_PRIMARY, size=11, font_family="IBM Plex Sans"), options=[ft.dropdown.Option("none","Sin agrupar"), ft.dropdown.Option("artist","Artista"), ft.dropdown.Option("album","Álbum"), ft.dropdown.Option("release_date","Fecha")], on_select=lambda e: group_by.__setitem__("value", e.control.value))
+        seg_group = ft.Dropdown(value=group_by["value"], width=300, height=38, bgcolor=BG_INPUT, border=input_border(), text_style=ft.TextStyle(color=TEXT_PRIMARY, size=11, font_family="IBM Plex Sans"), options=[ft.dropdown.Option("none","Sin agrupar"), ft.dropdown.Option("artist","Artista"), ft.dropdown.Option("album","Álbum"), ft.dropdown.Option("release_date","Fecha")], on_select=lambda e: group_by.__setitem__("value", e.control.value))
 
     # Avanzado — muestra 2ª/3ª clave para jerarquía manual
     dd_second = organize_dropdown([("none","—"), ("artist","Artista"), ("album","Álbum"), ("name","Título"), ("release_date","Fecha")], second_key["value"], "2ª clave")
@@ -292,16 +292,16 @@ def show_group_dialog(page: ft.Page, state) -> None:
     def _build_division_panel(div_key: str):
         st = divisions_state[div_key]
         # nombre editable
-        name_tf = ft.TextField(value=st["name"], label=f"Nombre {div_key}", width=360, height=36, bgcolor=BG_INPUT, border_color=BORDER_LIGHT, focused_border_color=ACCENT, text_style=ft.TextStyle(size=11, color=TEXT_PRIMARY), label_style=ft.TextStyle(size=9, color=TEXT_MUTED))
+        name_tf = ft.TextField(value=st["name"], label=f"Nombre {div_key}", width=360, height=36, bgcolor=BG_INPUT, border=input_border(), text_style=ft.TextStyle(size=11, color=TEXT_PRIMARY), label_style=ft.TextStyle(size=9, color=TEXT_MUTED))
         def _on_name(e, _k=div_key):
             divisions_state[_k]["name"] = (e.control.value or _k).strip() or _k
         name_tf.on_change = _on_name
         name_fields[div_key] = name_tf
 
         # buscadores + listas por tipo
-        art_search = ft.TextField(hint_text="Buscar artista…", prefix_icon=ft.Icons.SEARCH, width=360, height=32, bgcolor=BG_INPUT, border_color=BORDER_LIGHT, dense=True, content_padding=ft.Padding.symmetric(horizontal=8, vertical=4), text_style=ft.TextStyle(size=11))
-        alb_search = ft.TextField(hint_text="Buscar álbum…", prefix_icon=ft.Icons.SEARCH, width=360, height=32, bgcolor=BG_INPUT, border_color=BORDER_LIGHT, dense=True, content_padding=ft.Padding.symmetric(horizontal=8, vertical=4), text_style=ft.TextStyle(size=11))
-        song_search = ft.TextField(hint_text="Buscar canción…", prefix_icon=ft.Icons.SEARCH, width=360, height=36, bgcolor=BG_INPUT, border_color=BORDER_LIGHT, dense=True, content_padding=ft.Padding.symmetric(horizontal=8, vertical=4), text_style=ft.TextStyle(size=11))
+        art_search = ft.TextField(hint_text="Buscar artista…", prefix_icon=ft.Icons.SEARCH, width=360, height=32, bgcolor=BG_INPUT, border=input_border(), dense=True, content_padding=ft.Padding.symmetric(horizontal=8, vertical=4), text_style=ft.TextStyle(size=11))
+        alb_search = ft.TextField(hint_text="Buscar álbum…", prefix_icon=ft.Icons.SEARCH, width=360, height=32, bgcolor=BG_INPUT, border=input_border(), dense=True, content_padding=ft.Padding.symmetric(horizontal=8, vertical=4), text_style=ft.TextStyle(size=11))
+        song_search = ft.TextField(hint_text="Buscar canción…", prefix_icon=ft.Icons.SEARCH, width=360, height=36, bgcolor=BG_INPUT, border=input_border(), dense=True, content_padding=ft.Padding.symmetric(horizontal=8, vertical=4), text_style=ft.TextStyle(size=11))
 
         art_lv = ft.ListView(height=140, spacing=4, padding=ft.Padding.all(4), expand=False)
         alb_lv = ft.ListView(height=140, spacing=4, padding=ft.Padding.all(4), expand=False)

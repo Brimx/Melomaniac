@@ -45,7 +45,7 @@ from ui.tokens import (
     ACCENT, BG_SURFACE, BORDER_ROW,
     BG_INPUT, BORDER_LIGHT,
 )
-from ui.widgets import _status_icon
+from ui.widgets import _status_icon, input_border
 
 # Altura fija de fila para cálculos de virtualización
 ITEM_H = 64
@@ -476,9 +476,9 @@ class SongRow(ft.Container):
                 value=str(index), width=32, height=28,
                 text_align=ft.TextAlign.CENTER,
                 text_style=ft.TextStyle(size=11, color=TEXT_MUTED, font_family=mono_family("light")),
-                bgcolor=BG_INPUT, border_color=ft.Colors.TRANSPARENT, focused_border_color=ACCENT,
+                bgcolor=BG_INPUT, border=input_border(ft.Colors.TRANSPARENT, ACCENT, 6),
                 content_padding=ft.Padding.symmetric(horizontal=2, vertical=4),
-                dense=True, border_radius=6,
+                dense=True,
                 on_submit=_on_num_submit,
                 on_blur=_on_num_submit,
             )
