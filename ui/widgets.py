@@ -1,6 +1,6 @@
 """
 ╔══════════════════════════════════════════════════════════════════════╗
-║                    Melomaniac v4.5.1                               ║
+║                    Melomaniac v4.5.2                               ║
 ║                  Widgets UI Reutilizables                            ║
 ╚══════════════════════════════════════════════════════════════════════╝
 
@@ -24,7 +24,7 @@ Sistema de Diseño:
     - Elevación y sombras para jerarquía visual
 
 Autor: Melomaniac Team
-Versión: 4.5.1
+Versión: 4.5.2
 Fecha: 2026
 """
 

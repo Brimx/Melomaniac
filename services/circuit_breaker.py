@@ -1,6 +1,6 @@
 """
 ╔══════════════════════════════════════════════════════════════════════╗
-║                    Melomaniac v4.5.1                               ║
+║                    Melomaniac v4.5.2                               ║
 ║                  Patrón Circuit Breaker                              ║
 ╚══════════════════════════════════════════════════════════════════════╝
 
@@ -26,7 +26,7 @@ Estrategia de Diseño:
     con feedback visual del tiempo de espera.
 
 Autor: Melomaniac Team
-Versión: 4.5.1
+Versión: 4.5.2
 Fecha: 2026
 """
 

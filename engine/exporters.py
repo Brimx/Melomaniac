@@ -1,6 +1,6 @@
 """
 ╔══════════════════════════════════════════════════════════════════════╗
-║                    Melomaniac v4.5.1                                 ║
+║                    Melomaniac v4.5.2                                 ║
 ║              Exportadores de Playlists Locales                       ║
 ╚══════════════════════════════════════════════════════════════════════╝
 
@@ -18,7 +18,7 @@ Formatos:
  - XSPF: XML con <title>/<creator>/<album>
 
 Autor: Melomaniac Team
-Versión: 4.5.1
+Versión: 4.5.2
 """
 
 from __future__ import annotations
