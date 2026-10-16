@@ -42,7 +42,7 @@ FONTS_DIR  = ASSETS_DIR / "fonts"
 
 async def main(page: ft.Page) -> None:
     """
-    Función principal asíncrona de la aplicación Melomaniac.
+    Función principal asíncrona de la aplicación j.
     
     Inicializa y orquesta todos los componentes del sistema:
     - Configuración de la ventana y tema visual

@@ -785,28 +785,31 @@ class MusicApiService:
             pass
         return 0
 
-    def _apple_tracks_total(self, pid: str) -> int:
-        """Fallback: GET .../tracks?limit=1 y lee meta.total sin cargar tracks."""
+    def _apple_playlist_total(self, pid: str) -> int:
+        """Total via single-fetch ?include=tracks (meta.total).
+
+        El listado no admite include=tracks (400 salvo recurso único);
+        el endpoint .../tracks?limit=1 tampoco devuelve meta.total.
+        El único total fiable es relationships.tracks.meta.total del
+        fetch individual.
+        """
         try:
             r = self._am_request(
                 "get",
-                f"{APPLE_API_BASE}/me/library/playlists/{pid}/tracks",
-                params={"limit": 1}, timeout=10,
+                f"{APPLE_API_BASE}/me/library/playlists/{pid}",
+                params={"include": "tracks"}, timeout=10,
             )
             self._am_check_status(r)
-            data = r.json()
-            meta = data.get("meta") or {}
-            total = int(meta.get("total") or 0)
-            if total:
-                return total
-            items = data.get("data")
-            return len(items) if isinstance(items, list) else 0
+            data = r.json().get("data") or []
+            if not data:
+                return 0
+            return self._apple_track_count(data[0])
         except Exception:
             return 0
 
     def _sync_list_apple(self) -> list[PlaylistSummary]:
         url = f"{APPLE_API_BASE}/me/library/playlists"
-        params = {"limit": 100, "include": "tracks"}
+        params = {"limit": 100}
         out: list[PlaylistSummary] = []
         next_url: Optional[str] = url
         while next_url:
@@ -828,8 +831,8 @@ class MusicApiService:
                 desc = _as_text(attrs.get("description"))
                 count = self._apple_track_count(item)
                 if not count:
-                    # último recurso: meta.total sin descargar tracks
-                    count = self._apple_tracks_total(pid)
+                    # listado sin relationships: single-fetch ?include=tracks
+                    count = self._apple_playlist_total(pid)
                 art = attrs.get("artwork") or {}
                 art_url = self._apple_cover_normalized(str(art.get("url") or ""), 400)
                 # fallback: si no hay artwork en listado, dejar vacío (detail puede enriquecer con 4 covers)
@@ -848,6 +851,74 @@ class MusicApiService:
             next_url = data.get("next")
         return out
 
+    def _spotify_library_page(self, limit: int, offset: int) -> dict:
+        """Una página libraryV3 con offset (get_library fija offset=0)."""
+        import json as _json
+        base = PrivatePlaylist(self._sp_login).base
+        url = "https://api-partner.spotify.com/pathfinder/v1/query"
+        params = {
+            "operationName": "libraryV3",
+            "variables": _json.dumps(
+                {
+                    "filters": [],
+                    "order": None,
+                    "textFilter": "",
+                    "features": ["LIKED_SONGS", "YOUR_EPISODES", "PRERELEASES"],
+                    "limit": limit,
+                    "offset": offset,
+                    "flatten": False,
+                    "expandedFolders": [],
+                    "folderUri": None,
+                    "includeFoldersWhenFlattening": True,
+                }
+            ),
+            "extensions": _json.dumps(
+                {
+                    "persistedQuery": {
+                        "version": 1,
+                        "sha256Hash": base.part_hash("libraryV3"),
+                    }
+                }
+            ),
+        }
+        resp = self._sp_login.client.post(url, params=params, authenticate=True)
+        if resp.fail:
+            raise RuntimeError(f"Spotify libraryV3 offset={offset} falló: {resp.error}")
+        return resp.response if isinstance(resp.response, dict) else {}
+
+    @staticmethod
+    def _spotify_image_best(data: dict) -> str:
+        """Cover de libraryV3: data.images.items[0].sources o data.image.sources (pseudo)."""
+        try:
+            imgs = (data.get("images") or {}).get("items") or []
+            if imgs and isinstance(imgs[0], dict):
+                sources = imgs[0].get("sources") or []
+                if sources and isinstance(sources[0], dict):
+                    best = max(sources, key=lambda s: (s.get("width") or 0) if isinstance(s.get("width"), int) else 0)
+                    if best.get("url"):
+                        return str(best["url"])
+                    return str(sources[0].get("url") or "")
+            img = data.get("image") or {}
+            sources = img.get("sources") or []
+            if sources and isinstance(sources[0], dict):
+                best = max(sources, key=lambda s: (s.get("width") or 0) if isinstance(s.get("width"), int) else 0)
+                return str(best.get("url") or sources[0].get("url") or "")
+        except Exception:
+            pass
+        return ""
+
+    def _spotify_playlist_meta(self, pid: str) -> tuple[int, str]:
+        """Count + cover canónica via fetchPlaylist limit=1 (libraryV3 no trae count)."""
+        try:
+            pp = PublicPlaylist(pid, client=self._sp_cfg.client)
+            info = pp.get_playlist_info(limit=1)
+            plv2 = (info.get("data") or {}).get("playlistV2") or {}
+            total = int((plv2.get("content") or {}).get("totalCount") or 0)
+            cover = self._spotify_image_best(plv2) if isinstance(plv2, dict) else ""
+            return total, cover
+        except Exception:
+            return 0, ""
+
     def _sync_list_spotify(self) -> list[PlaylistSummary]:
         if not HAS_SPOTIFY:
             raise RuntimeError("SpotAPI no disponible. Instala spotapi.")
@@ -855,93 +926,70 @@ class MusicApiService:
             self._sync_init_spotify()
         if not self._sp_login:
             raise RuntimeError("Spotify no autenticado. Revisa config/spotify_cookies.json.")
+        # libraryV3 mezcla artistas/álbumes/playlists: paginar y filtrar solo playlists
+        entries: list[dict] = []
         try:
-            # PrivatePlaylist(login, playlist=None): requiere Login, no client
-            # (PublicPlaylist sí acepta client=). get_library(limit) es posicional.
-            pl = PrivatePlaylist(self._sp_login)
-            raw = pl.get_library(100)
+            offset, total = 0, None
+            while True:
+                page = self._spotify_library_page(100, offset)
+                lib = ((page.get("data") or {}).get("me") or {}).get("libraryV3") or {}
+                if total is None:
+                    try:
+                        total = int(lib.get("totalCount") or 0)
+                    except Exception:
+                        total = 0
+                batch = lib.get("items") or []
+                entries.extend([b for b in batch if isinstance(b, dict)])
+                offset += len(batch)
+                if not batch or len(batch) < 100:
+                    break
+                if total and offset >= total:
+                    break
+                if offset >= 600:  # tope seguridad
+                    break
         except Exception as exc:
             raise RuntimeError(f"Spotify get_library falló: {exc}") from exc
-        # raw puede ser dict con data/me/playlists o lista; normaliza defensivo
-        items = []
-        if isinstance(raw, dict):
-            # intenta varias formas conocidas
-            if "data" in raw:
-                # posible estructura: data/me/library/playlists/items o data/...
-                d = raw.get("data") or {}
-                # SpotAPI privado: d.get("me", {}).get("library", {}).get("playlists")
-                for key in ("me", "user", "currentUser"):
-                    if isinstance(d.get(key), dict):
-                        d = d[key]
-                        break
-                # busca lista
-                for k in ("playlists", "items", "library"):
-                    v = d.get(k)
-                    if isinstance(v, list):
-                        items = v
-                        break
-                    if isinstance(v, dict) and isinstance(v.get("items"), list):
-                        items = v["items"]
-                        break
-                if not items and isinstance(raw.get("items"), list):
-                    items = raw["items"]
-            elif isinstance(raw.get("items"), list):
-                items = raw["items"]
-            elif isinstance(raw.get("playlists"), list):
-                items = raw["playlists"]
-        elif isinstance(raw, list):
-            items = raw
         out: list[PlaylistSummary] = []
-        for it in items or []:
-            # filtra carpetas: solo playlists con id/uri y typename playlist
-            if not isinstance(it, dict):
+        for it in entries:
+            inner = it.get("item") if isinstance(it.get("item"), dict) else {}
+            data = inner.get("data") if isinstance(inner.get("data"), dict) else {}
+            if not data:
                 continue
-            # carpeta suele tener type folder o sin uri
-            if str(it.get("type") or it.get("__typename") or "").lower() == "folder":
+            inner_tn = str(inner.get("__typename") or "")
+            data_tn = str(data.get("__typename") or "")
+            if inner_tn == "LibraryPseudoPlaylistResponseWrapper" and data_tn == "PseudoPlaylist":
+                # Liked Songs / episodios: solo Liked Songs como playlist
+                uri = str(data.get("uri") or inner.get("_uri") or "")
+                if "collection:tracks" not in uri and "Liked" not in str(data.get("name") or ""):
+                    continue
+                name = str(data.get("name") or "Liked Songs").strip()
+                try:
+                    count = int(data.get("count") or 0)
+                except Exception:
+                    count = 0
+                cover = self._spotify_image_best(data)
+                out.append(PlaylistSummary(
+                    platform="Spotify",
+                    id="collection:tracks",
+                    name=name,
+                    description="",
+                    track_count=count,
+                    cover_urls=[cover] if cover else [],
+                    external_url="https://open.spotify.com/collection/tracks",
+                ))
                 continue
-            data = it.get("data") if isinstance(it.get("data"), dict) else it
-            uri = str(data.get("uri") or it.get("uri") or "")
-            pid = uri.split(":")[-1] if ":" in uri else str(data.get("id") or it.get("id") or "").strip()
+            if inner_tn != "PlaylistResponseWrapper" or data_tn not in ("Playlist", "PrivatePlaylist"):
+                continue  # artistas, álbumes, NotFound, carpetas
+            uri = str(data.get("uri") or "")
+            pid = uri.split(":")[-1] if ":" in uri else ""
             if not pid:
                 continue
-            # valida que sea playlist (typename Playlist o uri contiene playlist)
-            typename = str(data.get("__typename") or it.get("__typename") or "")
-            if typename and typename.lower() not in ("playlist", "privateplaylist"):
-                # si typename es Folder/Track etc, salta
-                if "folder" in typename.lower():
-                    continue
-            if uri and "playlist" not in uri.lower() and not data.get("name"):
-                continue
-            name = str(data.get("name") or it.get("name") or "Playlist").strip()
-            desc = _as_text(data.get("description") or it.get("description"))
-            count = 0
-            try:
-                count = int((data.get("content") or {}).get("totalCount") or data.get("trackCount") or it.get("trackCount") or 0)
-            except Exception:
-                count = 0
-            # cover
-            sources = None
-            for cand in (data.get("images"), data.get("coverArt"), (data.get("images") or {}).get("items") if isinstance(data.get("images"), dict) else None):
-                if cand:
-                    sources = cand
-                    break
-            if isinstance(sources, dict) and isinstance(sources.get("sources"), list):
-                sources = sources["sources"]
-            cover = ""
-            if isinstance(sources, list) and sources:
-                # sources puede ser lista de dicts con url/width o lista de urls
-                if isinstance(sources[0], dict):
-                    cover = self._spotify_cover_best(sources)
-                elif isinstance(sources[0], str):
-                    cover = sources[0]
-            if not cover:
-                # fallback: images[0].url
-                try:
-                    imgs = data.get("images") or it.get("images") or []
-                    if isinstance(imgs, list) and imgs and isinstance(imgs[0], dict):
-                        cover = str(imgs[0].get("url") or "")
-                except Exception:
-                    pass
+            name = str(data.get("name") or "Playlist").strip()
+            desc = _as_text(data.get("description"))
+            cover = self._spotify_image_best(data)
+            count, canon_cover = self._spotify_playlist_meta(pid)
+            if canon_cover:
+                cover = canon_cover
             out.append(PlaylistSummary(
                 platform="Spotify",
                 id=pid,
