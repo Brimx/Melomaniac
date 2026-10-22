@@ -10,6 +10,10 @@
 - Añade exportación local en `TXT`, `CSV`, `M3U`, `M3U8` y `XSPF`, con orden artista-título o título-artista y destino `Archivo Local (Exportar)`.
 - Sincroniza la documentación bilingüe con la estructura actual y amplía `.gitignore` para entornos virtuales, herramientas locales, cachés y salidas generadas.
 - Mantiene la serie mayor `4.5.2` sin fijar todavía un número minor/parche de publicación.
+- 2026-10-22: Apple Music pasa a `httpx.Client` y las playlists de más de 100 pistas se paginan por `offset` en paralelo (`APPLE_PAGE_WORKERS=5`), reutilizando la primera página de `include=tracks`. Lectura de 1.022 pistas: 8,5 s → 2,1 s con resultado y orden idénticos. `requests` se mantiene para YouTube Music porque `ytmusicapi` exige `requests.Session`.
+- 2026-10-22: reporte de cierre de transferencia siempre visible (`ui/transfer_report.py`): nombre/descripción, confirmadas, tiempo y faltantes agrupados (`not_found`, `revision`, `api_rejected`, `error`). Permite re-buscar alternativas con consulta editable e insertarlas en la playlist recién creada. Historial append-only en `config/transfer_history.jsonl`.
+- 2026-10-22: Apple verifica la playlist creada (`_am_playlist_track_ids`) y devuelve los IDs realmente rechazados; las playlists de catálogo sin `meta.total` se paginan por olas hasta la primera página incompleta.
+- 2026-10-22: retira `spotipy`, `pymemcache` y `fonttools` de `requirements.txt` (sin imports ni dependencias activas).
 
 ## 4.0.0 — 2026-09-19 · Export local + orden configurable + preparación navegación
 

@@ -51,8 +51,10 @@ Fecha: 2026
 from __future__ import annotations
 
 import asyncio
+import time
 import traceback
 import uuid
+from datetime import datetime
 from typing import Callable, Optional
 
 from core.availability import (
@@ -68,7 +70,14 @@ from core.config import (
     get_transfer_concurrency,
 )
 from core.models import Track, SearchResult, LoadState, TransferState, PlaylistMeta
-from core.transfer import failure_reason_from_exc, search_with_rate_limit_backoff
+from core.transfer import (
+    TransferReport,
+    append_transfer_log,
+    build_transfer_report,
+    failure_reason_from_exc,
+    search_with_rate_limit_backoff,
+)
+from services.authentication import TRANSFER_HISTORY_JSONL
 from engine.normalizer import clean_metadata
 from engine.match import _duration_to_seconds, FUZZY_REVISION_THRESHOLD, FUZZY_IDEAL
 from engine.organizer import sort_tracks, split_tracks
@@ -189,6 +198,14 @@ class AppState:
         self.transfer_total:    int           = 0
         self.log_lines:         list[str]     = []
         self.failed_tracks:     list[Track]   = []
+        # Reporte de cierre: tiempos, playlist creada e incidencias deduplicadas.
+        self.transfer_started_at:   float = 0.0
+        self.transfer_finished_at:  float = 0.0
+        self.transfer_started_iso:  str   = ""
+        self.last_created_playlist_id: str = ""
+        self.last_created_title:       str = ""
+        self.last_created_description: str = ""
+        self.last_report: Optional[TransferReport] = None
 
         # ──────────────────────────────────────────────────────────────
         # CONTADORES DE TRACKING
@@ -409,6 +426,11 @@ class AppState:
         self.transfer_state    = TransferState.IDLE
         self.transfer_progress = 0
         self.transfer_total    = 0
+        self.last_report       = None
+        self.last_created_playlist_id = ""
+        self.transfer_started_at  = 0.0
+        self.transfer_finished_at = 0.0
+        self.transfer_started_iso = ""
         self.notify()
 
         def _progress(_fetched: int, total: int, name: str) -> None:
@@ -494,6 +516,13 @@ class AppState:
         self.pending_review_tracks = []
         self.transfer_error_tracks = []
         self.log_lines             = []
+        self.last_report           = None
+        self.last_created_playlist_id = ""
+        self.last_created_title       = ""
+        self.last_created_description = ""
+        self.transfer_started_at   = 0.0
+        self.transfer_finished_at  = 0.0
+        self.transfer_started_iso  = ""
         self.destination_confirmed = True
         self.notify()
 
@@ -507,9 +536,24 @@ class AppState:
                      else self.playlist_name).strip()
         eff_description = (description_override if description_override is not None
                            else self.playlist_description)
+        self.transfer_started_at  = time.monotonic()
+        self.transfer_finished_at = 0.0
+        self.transfer_started_iso = datetime.now().astimezone().isoformat(timespec="seconds")
+        self.last_report = None
+        self.last_created_playlist_id = ""
+        self.last_created_title       = eff_title
+        self.last_created_description = eff_description
         if not eff_title:
             self._log("[ERROR] Título de playlist vacío; se cancela la transferencia.")
+            self.transfer_total = len(selected)
+            self.transfer_progress = 0
+            self._prepare_transfer_tracks(selected)
+            for track in selected:
+                track.transfer_status = "error"
+                track.failure_reason = "No procesada: título de playlist vacío"
+                self.transfer_error_tracks.append(track)
             self.transfer_state = TransferState.ERROR
+            self._finalize_transfer_report(detected=len(selected))
             self.notify()
             return
 
@@ -520,14 +564,7 @@ class AppState:
         self.transfer_state        = TransferState.RUNNING
         self.transfer_progress     = 0
         self.transfer_total        = len(selected)
-        self.failed_tracks         = []
-        self.api_rejected_tracks   = []
-        self.pending_review_tracks = []
-        self.transfer_error_tracks = []
-        self.count_detected        = len(selected)
-        self.count_candidates      = 0
-        self.count_processed       = 0
-        self.count_confirmed       = 0
+        self._prepare_transfer_tracks(selected)
         self._log(
             f"[INFO] Iniciando transferencia · "
             f"{self.count_detected} detectadas → {self.destination}"
@@ -752,11 +789,16 @@ class AppState:
                 if ok:
                     self.count_confirmed   = confirmed_count
                     self.transfer_progress = confirmed_count
+                    if msg and msg != "Playlist creada":
+                        self.last_created_playlist_id = msg
                     for vid in rejected_ids:
                         t = dest_id_to_track.get(vid)
                         if t:
                             t.transfer_status = "error"
+                            t.failure_reason  = "La API del destino no confirmó la inserción"
                             self._log(f"[ERROR] ⚠ No insertada por API ({self.destination}): {t.name[:42]}")
+                            if t in self.failed_tracks:
+                                self.failed_tracks.remove(t)
                             if t not in self.api_rejected_tracks:
                                 self.api_rejected_tracks.append(t)
                     self._log(
@@ -778,13 +820,125 @@ class AppState:
 
         except RateLimitError as e:
             self.cb[e.platform].trip(e.retry_after)
+            self._absorb_partial_playlist(e, dest_id_to_track)
             self._log(f"[ERROR] ⚠ Rate limit en {e.platform}: espera {e.retry_after}s")
             self.transfer_state = TransferState.ERROR
         except Exception as e:  # pylint: disable=broad-exception-caught
+            self._absorb_partial_playlist(e, dest_id_to_track)
             self._log(f"[ERROR] ✗ Error general: {e}")
             self.transfer_state = TransferState.ERROR
         finally:
+            self._finalize_transfer_report()
             self.notify()
+
+    def _prepare_transfer_tracks(self, selected: list[Track]) -> None:
+        """Limpia contadores y estados de una transferencia anterior.
+
+        Sin este reset, una pista que quedó ``found`` en un intento previo
+        podría no listarse en el reporte si el nuevo intento se interrumpe
+        antes de volver a procesarla.
+        """
+        self.failed_tracks         = []
+        self.api_rejected_tracks   = []
+        self.pending_review_tracks = []
+        self.transfer_error_tracks = []
+        self.count_detected        = len(selected)
+        self.count_candidates      = 0
+        self.count_processed       = 0
+        self.count_confirmed       = 0
+        for track in selected:
+            track.transfer_status = "pending"
+            track.failure_reason = ""
+
+    def _absorb_partial_playlist(self, exc: BaseException,
+                                 dest_id_to_track: dict[str, Track]) -> None:
+        """Recupera el contexto de una playlist creada antes de un fallo.
+
+        ``_am_create`` adjunta ``playlist_id``/``confirmed_ids``/``pending_ids``
+        cuando un lote posterior falla. Así el reporte conserva el enlace y
+        puede listar y resolver las pistas que no llegaron a insertarse.
+        """
+        playlist_id = getattr(exc, "playlist_id", "")
+        if playlist_id:
+            self.last_created_playlist_id = playlist_id
+        confirmed_ids = getattr(exc, "confirmed_ids", None)
+        if confirmed_ids is None:
+            return
+        self.count_confirmed = len(confirmed_ids)
+        for vid in getattr(exc, "pending_ids", []):
+            track = dest_id_to_track.get(vid)
+            if track is None:
+                continue
+            track.transfer_status = "error"
+            track.failure_reason = "Inserción interrumpida por error de API"
+            if track in self.failed_tracks:
+                self.failed_tracks.remove(track)
+            if track not in self.api_rejected_tracks:
+                self.api_rejected_tracks.append(track)
+
+    def _finalize_transfer_report(self, detected: Optional[int] = None) -> None:
+        """Construye y persiste el reporte al cerrar la transferencia.
+
+        Se ejecuta tanto en DONE como en ERROR para no perder las
+        incidencias parciales. ``last_report`` hace de snapshot estable:
+        las listas de trabajo pueden limpiarse después sin afectarlo.
+        """
+        if self.last_report is not None:
+            return
+        if self.transfer_state not in (TransferState.DONE, TransferState.ERROR):
+            return
+        finished_mono = time.monotonic()
+        self.transfer_finished_at = finished_mono
+        started_mono = self.transfer_started_at or finished_mono
+        finished_iso = datetime.now().astimezone().isoformat(timespec="seconds")
+        status = "DONE" if self.transfer_state == TransferState.DONE else "ERROR"
+        errored = list(self.transfer_error_tracks)
+        if self.transfer_state == TransferState.ERROR:
+            # Un corte a mitad deja pistas sin procesar: se listan también
+            # para que el reporte no parezca más limpio de lo que fue.
+            known = {
+                id(track)
+                for track in (
+                    *self.failed_tracks,
+                    *self.pending_review_tracks,
+                    *self.api_rejected_tracks,
+                    *errored,
+                )
+            }
+            for track in self.tracks:
+                if not track.selected or id(track) in known:
+                    continue
+                if track.transfer_status in ("pending", "searching"):
+                    track.failure_reason = "No procesada: transferencia interrumpida"
+                    errored.append(track)
+                elif track.transfer_status == "found" and not self.last_created_playlist_id:
+                    # Se encontró en el destino pero la playlist no llegó a
+                    # crearse (o se desconoce su ID): no está en ningún lado.
+                    track.transfer_status = "error"
+                    track.failure_reason = "No insertada: no se creó la playlist de destino"
+                    errored.append(track)
+        report = build_transfer_report(
+            started_at=self.transfer_started_iso or finished_iso,
+            finished_at=finished_iso,
+            elapsed_s=max(0.0, finished_mono - started_mono),
+            destination=self.destination,
+            status=status,
+            title=self.last_created_title or self.playlist_name,
+            description=self.last_created_description or self.playlist_description,
+            playlist_id=self.last_created_playlist_id,
+            detected=self.count_detected if detected is None else detected,
+            processed=self.count_processed,
+            confirmed=self.count_confirmed,
+            failed=self.failed_tracks,
+            pending_review=self.pending_review_tracks,
+            api_rejected=self.api_rejected_tracks,
+            errored=errored,
+        )
+        self.last_report = report
+        try:
+            append_transfer_log(report, TRANSFER_HISTORY_JSONL)
+        except OSError as exc:
+            self._log(f"[WARN] No se pudo escribir el historial de transferencia: {exc}")
 
     async def _ensure_auth(self, platform: str) -> bool:
         if platform == "YouTube Music":

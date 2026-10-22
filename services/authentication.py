@@ -22,6 +22,9 @@ ENV_FILE = CONFIG_DIR / ".env"
 BROWSER_JSON = CONFIG_DIR / "browser.json"
 SPOTIFY_COOKIES_JSON = CONFIG_DIR / "spotify_cookies.json"
 SEARCH_CACHE_JSON = CONFIG_DIR / "search_cache.json"
+# Historial append-only de transferencias y resoluciones manuales (JSONL).
+TRANSFER_HISTORY_JSONL = CONFIG_DIR / "transfer_history.jsonl"
+TRANSFER_REPORTS_DIR = CONFIG_DIR / "transfer_reports"
 
 BROWSER_JSON_FIXED: dict[str, str] = {
     "Accept": "*/*",

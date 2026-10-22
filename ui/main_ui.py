@@ -69,6 +69,7 @@ from ui.fonts import (
     brand_family, font_family_for, mono_family,
 )
 from ui.telemetry import TelemetryDrawer
+from ui.transfer_report import TransferReportDialog
 from ui.widgets import (
     _primary_btn, _ghost_btn, _section_label, _status_icon,
     app_text_field, dialog_action, app_dialog, DialogMixin, notify,
@@ -513,6 +514,7 @@ class PlaylistManagerUI(DialogMixin):
         self._preview_skeleton_tasks: list[asyncio.Task]     = []
         self._row_cache:              dict[str, SongRow]     = {}
         self._failed_dialog_shown:    bool  = False
+        self._report_dialog_shown:    bool  = False
         self._transfer_start:         float = 0.0
         self._completion_snack_shown: bool  = False
         self._pm_cleared_for_load:    bool  = False
@@ -1788,6 +1790,7 @@ class PlaylistManagerUI(DialogMixin):
         idle_xfer = s.transfer_state == TransferState.IDLE
         show_progress = xfer_active or is_scan_run or (is_scan_done and idle_xfer)
         self._sync_progress(s, is_transferring, xfer_active, is_scan_run, is_scan_done, idle_xfer, show_progress)
+        self._sync_report_dialog(s)
         self._sync_telemetry(s, xfer_active, is_loading)
         net_blocked = any(cb.is_open for cb in s.cb.values())
         rule4_blocked = is_local_src and not s.destination_confirmed
@@ -1991,6 +1994,24 @@ class PlaylistManagerUI(DialogMixin):
             self._content_eta_label.value = eta_text
             self._content_progress.border = ft.Border.all(0.8, BORDER_LIGHT)
 
+    def _sync_report_dialog(self, s) -> None:
+        """Abre el reporte una sola vez al cerrar la transferencia."""
+        if s.transfer_state == TransferState.RUNNING:
+            self._report_dialog_shown = False
+            return
+        if s.transfer_state not in (TransferState.DONE, TransferState.ERROR):
+            return
+        if self._report_dialog_shown:
+            return
+        report = getattr(s, "last_report", None)
+        if report is None:
+            return
+        self._report_dialog_shown = True
+        try:
+            TransferReportDialog(self.page, s, report).show()
+        except Exception as exc:  # pylint: disable=broad-exception-caught
+            self.state.log(f"[WARN] No se pudo abrir el reporte de transferencia: {exc}")
+
     def _sync_telemetry(self, s, xfer_active: bool, is_loading: bool) -> None:
         if xfer_active:
             self._telemetry.update_counters(
@@ -1998,7 +2019,17 @@ class PlaylistManagerUI(DialogMixin):
                 s.count_confirmed, len(s.api_rejected_tracks),
             )
         self._telemetry.update_log(s.log_lines)
-        if s.transfer_state == TransferState.DONE:
+        report = getattr(s, "last_report", None)
+        if report is not None:
+            self._telemetry.update_postmortem(
+                [issue.track for issue in report.missing],
+                destination=report.destination,
+                confirmed=report.confirmed,
+                detected=report.detected,
+                elapsed_s=report.elapsed_s,
+                title=report.title,
+            )
+        elif s.transfer_state == TransferState.DONE:
             self._telemetry.update_postmortem(
                 list(getattr(s, "failed_tracks", []))
                 + list(getattr(s, "api_rejected_tracks", []))
@@ -2288,6 +2319,9 @@ class PlaylistManagerUI(DialogMixin):
         # División: si hay divisiones, se transfiere por división; si no, selección global
         has_divisions = bool(getattr(self.state, 'segments', {}))
         if has_divisions:
+            # El flujo por divisiones crea varias playlists y no genera un
+            # reporte único; evita que un reporte anterior se reabra.
+            self._report_dialog_shown = True
             # para divisiones, cuenta seleccionadas para transferir = divisiones seleccionadas
             sel_divs = self.state.active_segment_keys if self.state.active_segment_keys is not None else set(self.state.segments.keys())
             if not sel_divs:

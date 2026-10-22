@@ -8,7 +8,6 @@ curl_cffi==0.16.0
 dnspython==2.8.0
 flet==1.0.1
 flet-desktop==1.0.1
-fonttools==4.63.0
 h11==0.16.0
 httpcore==1.0.9
 httpx==0.28.1
@@ -21,7 +20,6 @@ oauthlib==3.3.8
 pillow==12.3.0
 pycparser==3.0
 Pygments==2.20.0
-pymemcache==4.0.0
 pymongo==4.17.0
 PyOTP==2.10.0
 python-dotenv==1.2.2
@@ -34,7 +32,6 @@ rich==15.0.0
 six==1.17.0
 soupsieve==2.9.2
 spotapi==1.2.8
-spotipy==2.26.0
 typing_extensions==4.16.0
 urllib3==2.7.0
 validators==0.35.0

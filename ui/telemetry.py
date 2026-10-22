@@ -252,22 +252,29 @@ class TelemetryDrawer:
 
     def _do_export(self) -> None:
         import datetime as _dt
+        from services.authentication import TRANSFER_REPORTS_DIR
+
         tracks = self._last_failed
         if not tracks:
             self._snack("No hay datos de Post-Mortem para exportar.")
             return
-        meta     = self._pm_meta
-        log_path = "transfer_failed_report.txt"
-        lines    = [
+        meta = self._pm_meta
+        stamp = _dt.datetime.now().strftime("%Y%m%d_%H%M%S")
+        log_path = TRANSFER_REPORTS_DIR / f"postmortem_{stamp}.txt"
+        elapsed = meta.get("elapsed_s") or 0
+        lines = [
             "# Melomaniac — Reporte Post-Mortem\n",
             f"# Fecha: {_dt.datetime.now().isoformat()}\n",
             f"# Destino: {meta.get('destination', '?')}\n",
+            f"# Playlist: {meta.get('title', '?')}\n",
+            f"# Tiempo: {int(elapsed // 60):02d}:{int(elapsed % 60):02d}\n",
             f"# Confirmadas: {meta.get('confirmed', 0)} / Detectadas: {meta.get('detected', 0)}\n\n",
         ]
         for t in tracks:
             reason = (getattr(t, "failure_reason", "") or "").strip()
             lines.append(f"{t.name} | {t.artist} | {reason or '—'}\n")
         try:
+            TRANSFER_REPORTS_DIR.mkdir(parents=True, exist_ok=True)
             with open(log_path, "w", encoding="utf-8") as f:
                 f.writelines(lines)
             self._snack(f"✓ Reporte guardado → {log_path}")
@@ -326,9 +333,13 @@ class TelemetryDrawer:
                     ft.Text(f"› {line}", size=9, color=col, font_family=mono_family(), opacity=1.0)
                 )
 
-    def update_postmortem(self, failed_tracks, *, destination="", confirmed=0, detected=0) -> None:
+    def update_postmortem(self, failed_tracks, *, destination="", confirmed=0,
+                          detected=0, elapsed_s=0.0, title="") -> None:
         self._last_failed = list(failed_tracks)
-        self._pm_meta     = dict(destination=destination, confirmed=confirmed, detected=detected)
+        self._pm_meta = dict(
+            destination=destination, confirmed=confirmed, detected=detected,
+            elapsed_s=elapsed_s, title=title,
+        )
         has = bool(self._last_failed)
         for lst, ph in self._pm_pairs():
             lst.controls.clear()

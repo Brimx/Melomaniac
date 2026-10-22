@@ -60,8 +60,10 @@ import os
 import random
 import threading
 import time
+from concurrent.futures import ThreadPoolExecutor
 from typing import Callable, Optional
 
+import httpx
 import requests
 from services.authentication import (
     BROWSER_JSON,
@@ -81,6 +83,8 @@ from core.config import (
     APPLE_TRANSFER_BATCH,
     APPLE_REQUEST_BURST,
     APPLE_REQUEST_PAUSE,
+    APPLE_PAGE_WORKERS,
+    APPLE_PAGE_SIZE,
 )
 from services.circuit_breaker import CircuitBreaker, RateLimitError
 from engine.normalizer import (
@@ -153,7 +157,7 @@ class AppleRequestLimiter:
     """Limitador compartido entre búsquedas, lectura y escritura Apple.
 
     El contador se aplica a peticiones salientes, no a canciones encontradas.
-    Es síncrono porque las peticiones requests se ejecutan en threads; así
+    Es síncrono porque las peticiones HTTP se ejecutan en threads; así
     también protege llamadas que no pasan por un hunter async.
     """
 
@@ -292,8 +296,13 @@ class MusicApiService:
             "AppleWebKit/537.36 (KHTML, like Gecko) "
             "Chrome/131.0.0.0 Safari/537.36 Edg/131.0.0.0"
         )
-        self._http_session = requests.Session()
-        self._http_session.headers.update({"User-Agent": _am_ua})
+        self._http_session = httpx.Client(
+            headers={"User-Agent": _am_ua},
+            timeout=10.0,          # requests usaba timeout por llamada; aquí es defensa por defecto
+            follow_redirects=True,  # requests seguía redirecciones por defecto
+        )
+        # YouTube Music se queda en requests: ytmusicapi exige
+        # isinstance(requests_session, requests.Session) (ytmusic.py:226).
         self._yt_http_session = requests.Session()
 
     # ══════════════════════════════════════════════════════════════════
@@ -451,7 +460,14 @@ class MusicApiService:
             return False
         except Exception as exc:  # pylint: disable=broad-exception-caught
             msg = str(exc)
-            if "Name or service not known" in msg or "Failed to resolve" in msg or "amp-api.music.apple.com" in msg:
+            # httpx.ConnectError no comparte base con requests: se reconoce por
+            # mensaje y por nombre de clase para conservar el arranque offline.
+            if (
+                isinstance(exc, (httpx.ConnectError, httpx.ConnectTimeout))
+                or "Name or service not known" in msg
+                or "Failed to resolve" in msg
+                or "amp-api.music.apple.com" in msg
+            ):
                 print(f"[Apple Music] init offline (storefront no resuelto) — fallback us")
                 self._am_headers    = am_headers
                 self._http_session.headers.update(am_headers)
@@ -561,60 +577,163 @@ class MusicApiService:
         )
         name = "Apple Music Playlist"
         description = ""
+        total = 0
+        first_page: list[dict] = []
         try:
-            r = self._am_request("get", info_url, timeout=10)
+            # include=tracks entrega relationships.tracks.meta.total, el único
+            # total fiable de Apple (ver _apple_playlist_total), y la primera
+            # página ya resuelta (idéntica a ?offset=0, verificado).
+            r = self._am_request("get", info_url, params={"include": "tracks"}, timeout=10)
             self._am_check_status(r)
-            if r.ok:
-                attrs = (r.json()["data"][0].get("attributes") or {})
+            if r.is_success:
+                item = (r.json().get("data") or [{}])[0]
+                attrs = item.get("attributes") or {}
                 name = attrs.get("name", name)
                 description = _as_text(attrs.get("description"))
+                total = self._apple_track_count(item)
+                rel = item.get("relationships") or {}
+                first_page = (rel.get("tracks") or {}).get("data") or []
         except RateLimitError:
             raise
         except Exception:  # pylint: disable=broad-exception-caught
             pass
 
-        tracks, url = [], f"{info_url}/tracks"
+        tracks_url = f"{info_url}/tracks"
+        try:
+            if total > APPLE_PAGE_SIZE:
+                tracks = self._apple_collect_parallel(tracks_url, total, first_page, name, cb)
+            elif total >= APPLE_PAGE_SIZE and len(first_page) >= APPLE_PAGE_SIZE:
+                # Catálogo: include=tracks no expone meta.total y el primer
+                # bloque viene lleno. Se piden olas por offset hasta que una
+                # página llegue incompleta; así también se paraleliza.
+                tracks = self._apple_collect_waves(tracks_url, first_page, name, cb)
+            else:
+                tracks = self._apple_collect_sequential(tracks_url, name, cb)
+        except (RateLimitError, AppleAuthError):
+            raise
+        except Exception:  # pylint: disable=broad-exception-caught
+            # Cualquier rareza del paginado por offset vuelve al camino
+            # secuencial por `next`, que es el comportamiento histórico.
+            tracks = self._apple_collect_sequential(tracks_url, name, cb)
+        return PlaylistMeta(name=name, description=description), tracks
+
+    @staticmethod
+    def _apple_track_from_item(item: dict) -> Track:
+        attrs  = item.get("attributes", {})
+        ms     = attrs.get("durationInMillis", 0)
+        arturl = attrs.get("artwork", {}).get("url", "")
+        if arturl:
+            arturl = arturl.replace("{w}", "400").replace("{h}", "400")
+        # releaseDate puede venir como "2023-05-12" o ISO; se guarda como string para criterio release_date
+        rel = (attrs.get("releaseDate") or attrs.get("release_date") or "").strip() if isinstance(attrs.get("releaseDate") or attrs.get("release_date"), str) else str(attrs.get("releaseDate") or attrs.get("release_date") or "").strip()
+        # género independiente por canción/álbum/artista §2 — Apple más completo
+        genre = ""
+        try:
+            gnames = attrs.get("genreNames") or []
+            if isinstance(gnames, list) and gnames:
+                genre = str(gnames[0]).strip()
+            if not genre:
+                genre = str(attrs.get("genre") or "").strip()
+        except Exception:
+            genre = ""
+        return Track(
+            id=item["id"], name=attrs.get("name", "Unknown"),
+            artist=attrs.get("artistName", "Unknown"),
+            album=attrs.get("albumName", "Unknown"),
+            duration=f"{int(ms/60000)}:{int((ms/1000)%60):02d}" if ms else "0:00",
+            img_url=arturl, platform="Apple Music",
+            duration_ms=int(ms) if ms else 0,
+            is_explicit=bool(attrs.get("contentRating") == "explicit"),
+            isrc=normalize_isrc(attrs.get("isrc")),
+            release_date=rel,
+            source_url=attrs.get("url") or f"https://music.apple.com/song/{item['id']}",
+            genre=genre,
+        )
+
+    def _apple_track_page(self, url: str, offset: int) -> list[dict]:
+        r = self._am_request(
+            "get", url,
+            params={"limit": APPLE_PAGE_SIZE, "offset": offset},
+            timeout=15,
+        )
+        self._am_check_status(r)
+        if r.status_code == 404 and offset > 0:
+            # Apple responde 404 —no página vacía— al pasarse del final.
+            # Solo se tolera en páginas posteriores: un 404 en la primera
+            # significa playlist inexistente y debe propagarse.
+            return []
+        r.raise_for_status()
+        return r.json().get("data") or []
+
+    def _apple_collect_parallel(
+        self, url: str, total: int, first_page: list[dict], name: str, cb
+    ) -> list[Track]:
+        """Pide las páginas por offset en paralelo respetando el limitador Apple.
+
+        Apple acepta `offset` tanto en biblioteca como en catálogo (verificado)
+        y devuelve las páginas en orden independiente del orden de llegada;
+        `ThreadPoolExecutor.map` conserva el índice, así que el orden de la
+        playlist se mantiene intacto. `first_page` son las pistas que ya trajo
+        `include=tracks` (idénticas a offset=0), así no se piden dos veces.
+        """
+        tracks = [self._apple_track_from_item(i) for i in (first_page or [])]
+        if cb and tracks:
+            cb(len(tracks), total, name)
+        offsets = range(len(tracks), total, APPLE_PAGE_SIZE)
+        with ThreadPoolExecutor(max_workers=APPLE_PAGE_WORKERS) as pool:
+            for page in pool.map(lambda off: self._apple_track_page(url, off), offsets):
+                tracks.extend(self._apple_track_from_item(i) for i in page)
+                if cb:
+                    cb(len(tracks), total, name)
+        return tracks
+
+    def _apple_collect_waves(
+        self, url: str, first_page: list[dict], name: str, cb
+    ) -> list[Track]:
+        """Pagina por offset sin conocer el total (playlists de catálogo).
+
+        Se piden ``APPLE_PAGE_WORKERS`` páginas por ola y se conserva el
+        orden de ``pool.map``. La primera página incompleta (o vacía por el
+        404 de fin de lista) cierra la paginación.
+        """
+        tracks = [self._apple_track_from_item(i) for i in (first_page or [])]
+        if cb and tracks:
+            cb(len(tracks), 0, name)
+        offset = len(tracks)
+        wave = max(1, APPLE_PAGE_WORKERS)
+        while True:
+            offsets = [offset + i * APPLE_PAGE_SIZE for i in range(wave)]
+            with ThreadPoolExecutor(max_workers=wave) as pool:
+                pages = list(pool.map(lambda off: self._apple_track_page(url, off), offsets))
+            stop = False
+            for page in pages:
+                if not page:
+                    stop = True
+                    break
+                tracks.extend(self._apple_track_from_item(i) for i in page)
+                if len(page) < APPLE_PAGE_SIZE:
+                    stop = True
+                    break
+            if cb:
+                cb(len(tracks), 0, name)
+            if stop:
+                break
+            offset += wave * APPLE_PAGE_SIZE
+        return tracks
+
+    def _apple_collect_sequential(self, url: str, name: str, cb) -> list[Track]:
+        tracks: list[Track] = []
         while url:
             full = url if url.startswith("http") else f"https://amp-api.music.apple.com{url}"
             r    = self._am_request("get", full, timeout=10)
             self._am_check_status(r)
             r.raise_for_status()
             data = r.json()
-            for item in data.get("data", []):
-                attrs  = item.get("attributes", {})
-                ms     = attrs.get("durationInMillis", 0)
-                arturl = attrs.get("artwork", {}).get("url", "")
-                if arturl:
-                    arturl = arturl.replace("{w}", "400").replace("{h}", "400")
-                # releaseDate puede venir como "2023-05-12" o ISO; se guarda como string para criterio release_date
-                rel = (attrs.get("releaseDate") or attrs.get("release_date") or "").strip() if isinstance(attrs.get("releaseDate") or attrs.get("release_date"), str) else str(attrs.get("releaseDate") or attrs.get("release_date") or "").strip()
-                # género independiente por canción/álbum/artista §2 — Apple más completo
-                genre = ""
-                try:
-                    gnames = attrs.get("genreNames") or []
-                    if isinstance(gnames, list) and gnames:
-                        genre = str(gnames[0]).strip()
-                    if not genre:
-                        genre = str(attrs.get("genre") or "").strip()
-                except Exception:
-                    genre = ""
-                tracks.append(Track(
-                    id=item["id"], name=attrs.get("name", "Unknown"),
-                    artist=attrs.get("artistName", "Unknown"),
-                    album=attrs.get("albumName", "Unknown"),
-                    duration=f"{int(ms/60000)}:{int((ms/1000)%60):02d}" if ms else "0:00",
-                    img_url=arturl, platform="Apple Music",
-                    duration_ms=int(ms) if ms else 0,
-                    is_explicit=bool(attrs.get("contentRating") == "explicit"),
-                    isrc=normalize_isrc(attrs.get("isrc")),
-                    release_date=rel,
-                    source_url=attrs.get("url") or f"https://music.apple.com/song/{item['id']}",
-                    genre=genre,
-                ))
+            tracks.extend(self._apple_track_from_item(i) for i in data.get("data", []))
             url = data.get("next")
             if cb:
                 cb(len(tracks), 0, name)
-        return PlaylistMeta(name=name, description=description), tracks
+        return tracks
 
     def _sync_fetch_spotify(self, pid: str, cb) -> tuple[PlaylistMeta, list[Track]]:
         if not HAS_SPOTIFY:
@@ -1041,6 +1160,29 @@ class MusicApiService:
             )
         return SearchResult(None, False)
 
+    async def search_candidates(self, platform: str, query: str,
+                                limit: int = 5) -> list[Track]:
+        """Devuelve hasta ``limit`` resultados crudos para elegir a mano.
+
+        A diferencia de ``search_track``, no aplica fuzzy ni elige un único
+        ganador: el usuario ve las alternativas y decide. Reutiliza los
+        mismos clientes, semáforo global y circuit breaker.
+        """
+        query = (query or "").strip()
+        if not query:
+            return []
+        self._cb[platform].check_or_raise()
+        if platform == "Spotify" and not self._sp_cfg:
+            await asyncio.to_thread(self._sync_init_spotify)
+        async with GLOBAL_API_SEMAPHORE:
+            if platform == "YouTube Music":
+                return await asyncio.to_thread(self._yt_search_candidates_sync, query, limit)
+            if platform == "Apple Music":
+                return await asyncio.to_thread(self._am_search_candidates_sync, query, limit)
+            if platform == "Spotify":
+                return await asyncio.to_thread(self._sp_search_candidates_sync, query, limit)
+        return []
+
     async def search_with_fallback(
         self,
         platform: str,
@@ -1109,6 +1251,43 @@ class MusicApiService:
             return []
         r = self._ytm.search(query, filter="songs", limit=5)
         return list(r) if r else []
+
+    def _yt_search_candidates_sync(self, query: str, limit: int = 5) -> list[Track]:
+        if not self._ytm:
+            return []
+        try:
+            raw = self._ytm.search(query, filter="songs", limit=max(1, min(limit, 10)))
+        except Exception as exc:  # pylint: disable=broad-exception-caught
+            self.youtube_auth_error = str(exc)
+            if _is_ytm_unauthorized(exc):
+                raise RuntimeError("Sesion YouTube Music expirada (401).") from exc
+            raise
+        out: list[Track] = []
+        for item in raw or []:
+            vid = item.get("videoId") or ""
+            if not vid:
+                continue
+            artists = ", ".join(
+                a.get("name", "") for a in (item.get("artists") or [])
+                if isinstance(a, dict) and a.get("name")
+            )
+            album = item.get("album") or {}
+            dur_s = item.get("duration_seconds")
+            if dur_s is None:
+                dur_s = _duration_to_seconds(item.get("duration", "0:00"))
+            out.append(Track(
+                id=vid,
+                name=item.get("title", "Unknown"),
+                artist=artists or "Unknown",
+                album=album.get("name", "") if isinstance(album, dict) else "",
+                duration=item.get("duration", "0:00"),
+                img_url=self._ytm_cover_best(item.get("thumbnails") or []),
+                platform="YouTube Music",
+                duration_ms=int(dur_s * 1000) if dur_s else 0,
+                is_explicit=bool(item.get("isExplicit")),
+                source_url=f"https://music.youtube.com/watch?v={vid}",
+            ))
+        return out
 
     async def _yt_hunter_async(self, ct, ca, orig_name, orig_artist, local_duration_s) -> SearchResult:
         if not self._ytm:
@@ -1209,6 +1388,27 @@ class MusicApiService:
                 retry = max(retry, 120)
             raise RateLimitError("Apple Music", retry)
 
+    def _am_search_items(self, term: str, limit: int = 5) -> list[dict]:
+        """Una llamada de catálogo; devuelve los items crudos de canciones."""
+        r = self._am_request(
+            "get",
+            f"{APPLE_API_BASE}/catalog/{self._am_storefront}/search",
+            params={"term": term, "types": "songs", "limit": max(1, min(limit, 10))},
+            timeout=10,
+        )
+        self._am_check_status(r)
+        r.raise_for_status()
+        return r.json().get("results", {}).get("songs", {}).get("data", []) or []
+
+    def _am_search_candidates_sync(self, term: str, limit: int = 5) -> list[Track]:
+        out: list[Track] = []
+        for item in self._am_search_items(term, limit=limit):
+            try:
+                out.append(self._apple_track_from_item(item))
+            except Exception:  # pylint: disable=broad-exception-caught
+                continue
+        return out
+
     def _am_candidates_for_term(self, term: str) -> list[tuple[str, str, tuple[str, str, int, str]]]:
         """
         Busca canciones en el catálogo web de Apple Music vía
@@ -1220,16 +1420,7 @@ class MusicApiService:
         búsquedas exactas por ISRC en el futuro. El trackId devuelto es el mismo
         song ID del catálogo que usa la API para crear playlists.
         """
-        r = self._am_request(
-            "get",
-            f"{APPLE_API_BASE}/catalog/{self._am_storefront}/search",
-            params={"term": term, "types": "songs", "limit": 5},
-            timeout=10,
-        )
-        self._am_check_status(r)
-        print(f"[AM-SEARCH] {r.status_code} · term='{term[:40]}'")
-        songs = r.json().get("results", {}).get("songs", {}).get("data", [])
-        print(f"[AM-SEARCH] {len(songs)} resultados para '{term[:40]}'")
+        songs = self._am_search_items(term, limit=5)
         return [
             (
                 f"{a.get('name', '')} - {a.get('artistName', '')}",
@@ -1378,6 +1569,46 @@ class MusicApiService:
         except (KeyError, TypeError):
             return []
 
+    def _sp_track_from_item(self, data: dict) -> Optional[Track]:
+        """Convierte un item de búsqueda de Spotify en Track para la UI."""
+        tid = str(data.get("id") or "")
+        if not tid:
+            return None
+        artists = ", ".join(
+            a["profile"]["name"] for a in (data.get("artists") or {}).get("items", [])
+            if a.get("profile", {}).get("name")
+        )
+        album = data.get("albumOfTrack") or {}
+        ms = int((data.get("duration") or {}).get("totalMilliseconds", 0) or 0)
+        covers = ((album.get("coverArt") or {}).get("sources") or [])
+        rel = ""
+        date_obj = album.get("date") or {}
+        if isinstance(date_obj, dict):
+            rel = str(date_obj.get("isoString") or date_obj.get("year") or "").strip()
+        return Track(
+            id=tid,
+            name=data.get("name", "Unknown"),
+            artist=artists or "Unknown",
+            album=album.get("name", "Unknown"),
+            duration=f"{ms // 60000}:{(ms // 1000) % 60:02d}" if ms else "0:00",
+            img_url=self._spotify_cover_best(covers),
+            platform="Spotify",
+            duration_ms=ms,
+            is_explicit=bool(data.get("explicit")),
+            isrc=self._extract_spotify_isrc(data),
+            release_date=rel,
+            source_url=f"https://open.spotify.com/track/{tid}",
+        )
+
+    def _sp_search_candidates_sync(self, query: str, limit: int = 5) -> list[Track]:
+        out: list[Track] = []
+        for item in self._sp_search_items(query, limit=limit):
+            data = (item.get("item") or {}).get("data") or {}
+            track = self._sp_track_from_item(data)
+            if track is not None:
+                out.append(track)
+        return out
+
     @staticmethod
     def _extract_spotify_isrc(data: dict) -> str | None:
         """Lee ISRC solo del payload ya recibido de Spotify/SpotAPI."""
@@ -1498,6 +1729,78 @@ class MusicApiService:
             return await asyncio.to_thread(self._sp_create, title, track_ids, description)
         return False, "Platform not supported", 0, []
 
+    async def add_track(self, platform: str, playlist_id: str,
+                        track_id: str) -> tuple[bool, str]:
+        """Inserta una sola canción en una playlist ya creada.
+
+        Se usa desde el reporte de cierre para aplicar una alternativa
+        elegida manualmente, respetando el circuit breaker y el limitador
+        de cada plataforma.
+        """
+        self._cb[platform].check_or_raise()
+        if not playlist_id or not track_id:
+            return False, "Playlist o canción sin identificador"
+        if platform == "YouTube Music":
+            return await asyncio.to_thread(self._yt_add_track, playlist_id, track_id)
+        if platform == "Apple Music":
+            return await asyncio.to_thread(self._am_add_track, playlist_id, track_id)
+        if platform == "Spotify":
+            return await asyncio.to_thread(self._sp_add_track, playlist_id, track_id)
+        return False, "Platform not supported"
+
+    def _yt_add_track(self, playlist_id: str, track_id: str) -> tuple[bool, str]:
+        if not self._ytm:
+            self._sync_init_youtube()
+        if not self._ytm:
+            return False, "YouTube Music no disponible"
+        try:
+            status = self._ytm.add_playlist_items(playlist_id, [track_id])
+            if status == "STATUS_SUCCEEDED":
+                return True, playlist_id
+            return False, str(status or "YouTube Music no confirmó la inserción")
+        except Exception as exc:  # pylint: disable=broad-exception-caught
+            self.youtube_auth_error = str(exc)
+            if _is_ytm_unauthorized(exc):
+                raise RuntimeError("Sesion YouTube Music expirada (401).") from exc
+            raise
+
+    def _am_add_track(self, playlist_id: str, track_id: str) -> tuple[bool, str]:
+        response = self._am_request(
+            "post", f"{APPLE_API_BASE}/me/library/playlists/{playlist_id}/tracks",
+            json={"data": [{"id": track_id, "type": "songs"}]}, timeout=15,
+        )
+        response.raise_for_status()
+        try:
+            present = self._am_playlist_track_ids(playlist_id)
+        except (RateLimitError, AppleAuthError):
+            raise
+        except Exception:  # pylint: disable=broad-exception-caught
+            return True, "Insertada (sin verificación posterior)"
+        if track_id in present:
+            return True, playlist_id
+        return False, "Apple Music no confirmó la inserción (canción no disponible)"
+
+    def _sp_add_track(self, playlist_id: str, track_id: str) -> tuple[bool, str]:
+        if not HAS_SPOTIFY:
+            return False, "SpotAPI no disponible"
+        if not self._sp_login:
+            self._sync_init_spotify()
+        if not self._sp_login:
+            return False, "Spotify no disponible. Comprueba config/spotify_cookies.json."
+        try:
+            pl = PrivatePlaylist(self._sp_login, playlist_id)
+            rejected = self._sp_add_tracks(pl, [track_id])
+            if rejected:
+                return False, "Spotify rechazó la inserción"
+            return True, playlist_id
+        except RateLimitError:
+            raise
+        except Exception as exc:  # pylint: disable=broad-exception-caught
+            self.spotify_auth_error = str(exc)
+            if self._sp_is_rate_limited(exc):
+                raise RateLimitError("Spotify", 60) from exc
+            raise
+
     def _yt_create(self, title: str, ids: list[str], description: str = "") -> tuple[bool, str, int, list[str]]:
         try:
             pl_id = self._ytm.create_playlist(title, description or "", video_ids=ids)
@@ -1535,15 +1838,92 @@ class MusicApiService:
             raise RuntimeError("Apple Music no devolvió el ID de la playlist para continuar los lotes")
 
         confirmed = len(first)
-        for chunk in chunks[1:]:
-            response = self._am_request(
-                "post", f"{APPLE_API_BASE}/me/library/playlists/{playlist_id}/tracks",
-                json={"data": [{"id": i, "type": "songs"} for i in chunk]},
-                timeout=15,
-            )
-            response.raise_for_status()
-            confirmed += len(chunk)
+        added = list(first)
+        try:
+            for chunk in chunks[1:]:
+                response = self._am_request(
+                    "post", f"{APPLE_API_BASE}/me/library/playlists/{playlist_id}/tracks",
+                    json={"data": [{"id": i, "type": "songs"} for i in chunk]},
+                    timeout=15,
+                )
+                response.raise_for_status()
+                confirmed += len(chunk)
+                added.extend(chunk)
+        except Exception as exc:  # pylint: disable=broad-exception-caught
+            # La playlist ya existe aunque un lote posterior falle. Se adjunta
+            # el contexto para que el reporte pueda enlazarla y listar lo
+            # que quedó pendiente.
+            try:
+                added_set = set(added)
+                setattr(exc, "playlist_id", playlist_id)
+                setattr(exc, "confirmed_ids", list(added))
+                setattr(exc, "pending_ids", [i for i in ids if i not in added_set])
+            except Exception:
+                pass
+            raise
+        # Apple acepta el POST aunque una canción no esté disponible en el
+        # storefront y la descarta en silencio. Solo una lectura posterior
+        # permite saber cuáles entraron de verdad.
+        if playlist_id:
+            try:
+                present = self._am_playlist_track_ids(playlist_id, expected=len(ids))
+                unique_ids = set(ids)
+                if sum(1 for tid in unique_ids if tid in present) < len(unique_ids):
+                    # Consistencia eventual de la biblioteca: una lectura
+                    # inmediata puede no ver aún las últimas inserciones.
+                    time.sleep(1.5)
+                    present = self._am_playlist_track_ids(playlist_id, expected=len(ids))
+                rejected = [tid for tid in ids if tid not in present]
+                confirmed = len(ids) - len(rejected)
+                return True, playlist_id, confirmed, rejected
+            except (RateLimitError, AppleAuthError):
+                raise
+            except Exception:  # pylint: disable=broad-exception-caught
+                # La playlist ya existe: no se invalida la transferencia por
+                # un fallo de verificación. Se conservan los contadores
+                # optimistas y el estado queda registrado en el log.
+                pass
         return True, playlist_id or "Playlist creada", confirmed, []
+
+    @staticmethod
+    def _apple_identity_ids(item: dict) -> set[str]:
+        """IDs útiles de una pista Apple: biblioteca y catálogo.
+
+        Las pistas de una playlist de biblioteca suelen venir como
+        ``library-songs`` con ``id`` tipo ``i.xxx``; el ID de catálogo que
+        usa la API de creación vive en ``attributes.playParams.id``. La
+        verificación debe aceptar ambos para no marcar falsos rechazos.
+        """
+        ids: set[str] = set()
+        raw = str(item.get("id") or "").strip()
+        if raw:
+            ids.add(raw)
+        attrs = item.get("attributes") or {}
+        play_params = attrs.get("playParams") or {}
+        if isinstance(play_params, dict):
+            for key in ("id", "catalogId"):
+                value = play_params.get(key)
+                if value:
+                    ids.add(str(value))
+        return ids
+
+    def _am_playlist_track_ids(self, playlist_id: str, *, expected: int = 0) -> set[str]:
+        """Lee los IDs reales de una playlist de biblioteca paginando por offset."""
+        url = f"{APPLE_API_BASE}/me/library/playlists/{playlist_id}/tracks"
+        found: set[str] = set()
+        offset = 0
+        while True:
+            page = self._apple_track_page(url, offset)
+            if not page:
+                break
+            for item in page:
+                found.update(self._apple_identity_ids(item))
+            if len(page) < APPLE_PAGE_SIZE:
+                break
+            offset += APPLE_PAGE_SIZE
+            if expected and offset >= expected + APPLE_PAGE_SIZE:
+                break
+        return found
 
     def _sp_create(self, title: str, ids: list[str], description: str = "") -> tuple[bool, str, int, list[str]]:
         # SpotAPI (PrivatePlaylist.create_playlist) solo acepta título:
