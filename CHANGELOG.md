@@ -2,14 +2,18 @@
 
 ## 4.5.2 — 2026-10-05 · F6 + migración Flet 1.0
 
+> Versión de trabajo documentada; no se ha creado un tag `v4.5.2`.
+
 - Migra a `flet==1.0.1`: helper canónico `input_border()` en `ui/widgets.py`, `Icon.name` → `Icon.icon`, `PopupMenuButton` con `icon=` nativo.
 - Corrige `NameError` por import faltante de `input_border` en `ui/song_row.py` que rompía `_sync_list_view`.
 
-- Añade los modos **Lista**, **Doble** y **Preview** para Organizar/Dividir, con `AnimatedSwitcher`, skeleton responsive y navegación `NavigationRail`.
-- Permite aplicar Organizar/Dividir al alcance **Todo**, **Visibles** o **Seleccionadas**; `platform` deja de ser un criterio disponible.
-- Añade exportación local en `TXT`, `CSV`, `M3U`, `M3U8` y `XSPF`, con orden artista-título o título-artista y destino `Archivo Local (Exportar)`.
-- Sincroniza la documentación bilingüe con la estructura actual y amplía `.gitignore` para entornos virtuales, herramientas locales, cachés y salidas generadas.
-- Mantiene la serie mayor `4.5.2` sin fijar todavía un número minor/parche de publicación.
+- Refina las vistas **Lista**, **Doble** y **Preview**, los skeletons responsive y la navegación `NavigationRail`.
+- Mejora Organizar/Dividir: preview por división, transferencia secuencial por división, y aplicar/revertir ajustes; la UI actual no tiene selector de alcance y `platform` no es criterio.
+- Corrige la Biblioteca existente: skeletons, metadatos de álbum, conteo Apple Music, inicialización Spotify y apertura de URLs externas; Descargas sigue en desarrollo.
+- Migra a Flet 1.0.1 y corrige compatibilidad de controles, incluido `PopupMenuItem`.
+- Actualiza reglas locales de `AGENTS.md`, `.gitignore` y documentación bilingüe para reflejar el estado vigente.
+- Documenta `4.5.2` como versión de trabajo actual.
+- 2026-10-16: corrige errores de Biblioteca relacionados con Spotify y Apple Music.
 - 2026-10-22: Apple Music pasa a `httpx.Client` y las playlists de más de 100 pistas se paginan por `offset` en paralelo (`APPLE_PAGE_WORKERS=5`), reutilizando la primera página de `include=tracks`. Lectura de 1.022 pistas: 8,5 s → 2,1 s con resultado y orden idénticos. `requests` se mantiene para YouTube Music porque `ytmusicapi` exige `requests.Session`.
 - 2026-10-22: reporte de cierre de transferencia siempre visible (`ui/transfer_report.py`): nombre/descripción, confirmadas, tiempo y faltantes agrupados (`not_found`, `revision`, `api_rejected`, `error`). Permite re-buscar alternativas con consulta editable e insertarlas en la playlist recién creada. Historial append-only en `config/transfer_history.jsonl`.
 - 2026-10-22: Apple verifica la playlist creada (`_am_playlist_track_ids`) y devuelve los IDs realmente rechazados; las playlists de catálogo sin `meta.total` se paginan por olas hasta la primera página incompleta.

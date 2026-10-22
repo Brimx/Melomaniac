@@ -2,7 +2,7 @@
 
 Melomaniac separates the Flet UI, application state, platform services, and metadata normalization/matching engine. The current version supports YouTube Music, Apple Music, Spotify, and two local inputs: file and pasted text.
 
-The working version remains in the `4.5.2` series; the exact minor/patch number will be fixed when this change cycle is closed.
+The documented working version is `4.5.2`. It is not a provisional series number; a version bump should happen only when a new version is chosen.
 
 ## Layers and dependencies
 
@@ -11,7 +11,8 @@ app.py
 ├── AppState                 # reactive state, progress, transfer
 ├── MusicApiService          # APIs, cache, sessions, playlist creation
 ├── AuthManager              # pre-flight, wizard, hot reload
-└── PlaylistManagerUI        # Flet, events, rows, telemetry
+└── PlaylistManagerUI        # Flet, navigation, events, telemetry
+    └── LibraryState         # Library metadata synchronization/cache
 
 ui ───────> core / engine / services
 core ─────> engine / services.circuit_breaker
@@ -33,6 +34,8 @@ service.auth_manager = auth_manager
 
 `AppState` creates the circuit breakers once and shares them with `MusicApiService`. Loading, searching, and playlist creation therefore use the same per-platform cooldown.
 
+`LibraryState` is separate from transfers. `PlaylistManagerUI` creates it for the Library, and `app.py` injects the real `MusicApiService`; the Library keeps playlist summaries by platform while details load tracks on demand.
+
 ## Structure
 
 ```text
@@ -43,6 +46,8 @@ Melomaniac/
 │   ├── availability.py             # lazy scan and Apple ISRC preload
 │   ├── cache.py                    # make_cache_key and legacy compatibility
 │   ├── config.py                  # platforms, limits, batch sizes
+│   ├── library_models.py           # PlaylistSummary, LibrarySnapshot, states
+│   ├── library_store.py            # atomic local metadata persistence
 │   ├── models.py                  # Track, PlaylistMeta, SearchResult, enums
 │   ├── state.py                   # AppState and BLoC/Observer workflow
 │   └── transfer.py                # rate-limit aware search and short errors
@@ -56,24 +61,30 @@ Melomaniac/
 ├── services/
 │   ├── api_service.py             # YouTube/Apple/Spotify facade
 │   ├── authentication.py           # runtime files and pre-flight
-│   └── circuit_breaker.py          # RateLimitError and cooldowns
+│   ├── circuit_breaker.py          # RateLimitError and cooldowns
+│   ├── cover_cache.py              # cover cache
+│   └── library_state.py            # Library synchronization
 ├── ui/
 │   ├── auth_manager.py            # authentication coordination
 │   ├── config_wizard.py            # credential editing
 │   ├── main_ui.py                 # main window
+│   ├── organize_panel.py           # Organize/Split/Reorder dialogs
+│   ├── library_view.py             # Library playlists and Downloads tab
+│   ├── playlist_card.py            # playlist cards
+│   ├── playlist_detail_view.py     # details and on-demand track loading
 │   ├── playlist_meta_dialog.py     # playlist name/description
 │   ├── song_row.py                # rows and skeletons
 │   ├── telemetry.py               # Monitor, Console, Post-Mortem
 │   ├── fonts.py                   # Unicode classification and font registry
 │   ├── tokens.py                  # design tokens
 │   └── widgets.py                 # reusable controls
-├── resources/fonts/               # IBM Plex Sans w300–w700; optional CJK
+├── resources/fonts/               # Stack Sans and IBM Plex; optional CJK
 └── tests/                          # reserved for unittest regressions
 ```
 
 ## Models and state
 
-`Track` is the universal track model. In addition to title, artist, album, duration, platform, and artwork, it may include `duration_ms`, `is_explicit`, `isrc`, `source_path`, `album_artist`, `track_number`, and `release_date`.
+`Track` is the universal track model. In addition to title, artist, album, duration, platform, and artwork, it may include `duration_ms`, `is_explicit`, `isrc`, `source_path`, `source_url`, `genre`, `album_artist`, `track_number`, and `release_date`. `PlaylistSummary` and `LibrarySnapshot` store Library metadata only; they do not persist tracks.
 
 `PlaylistMeta` preserves the source playlist name and description. `SearchResult` preserves `track_id`, `needs_review`, `low_confidence`, and `isrc`.
 
@@ -83,9 +94,9 @@ Main states:
 - `TransferState`: `IDLE → RUNNING → DONE` or `ERROR`.
 - `Track.transfer_status`: `pending`, `searching`, `found`, `not_found`, `revision_necesaria`, `transferred`, `error`, and `local_pending`.
 
-`AppState` owns the master list, filter, segments, selection, counters, logs, failures, review candidates, and session flags. It also provides `visible_tracks()` and `selected_in_scope()` so Organize, Split, transfer, and export share the same scope. `dual_mode` controls the `list`, `dual`, and `preview` modes; the UI subscribes through `subscribe()` and receives updates through `notify()`.
+`AppState` owns the working list, `source_tracks`, filters, segments, selection, progress, logs, failures, and review candidates. It provides `visible_tracks()` and `selected_in_scope()`; the current Organize/Split UI has no explicit All/Visible/Selected scope selector. `dual_mode` controls `list`, `dual`, and `preview`; the UI listens for changes through `subscribe()`/`notify()`.
 
-`engine.organizer` limits sorting keys to `artist`, `album`, `name`, and `duration_ms`. `split_tracks` normalizes keys, trims whitespace, and groups empty values under `Desconocido`. `platform` is no longer offered as an Organize/Split key.
+`engine.organizer` supports internal sort keys `artist`, `album`, `name`, `duration_ms`, `release_date`, `track_number`, `original_position`, and `genre`. `split_tracks` supports `artist`, `album`, `release_date`, `genre`, and `name`; empty values are grouped as `Desconocido`. The UI exposes a subset: stable grouping, sorting, artist/album reordering, and 2–5 manual divisions by artist, album, or track. `platform` is not a criterion.
 
 ## Platforms and authentication
 
@@ -157,7 +168,7 @@ The shared matcher uses these thresholds:
 
 For local tracks, a `low_confidence` result is also rejected to avoid ambiguous transfers.
 
-During Organize/Split, the UI offers `All`, `Visible`, and `Selected` scopes. Applying an operation updates the segments and opens dual view; the user can show the list, preview, or both columns. `NavigationRail` organizes the Home, Library, Downloads, and Config modules and adapts to the available space.
+The Organize dialog can preserve the current order or sort A→Z/Z→A, then group by artist, album, or release date. Split creates 2–5 manual divisions by selecting artists, albums, or tracks. These operations apply to the playlist as a whole. The user can show the list, preview, or both columns. The responsive `NavigationRail` exposes Home, Library, Downloads, and Config. Library syncs and caches playlist metadata; Downloads remains a placeholder.
 
 ## Concurrency, caching, and resilience
 
@@ -204,4 +215,4 @@ Melomaniac is not affiliated with, sponsored by, or endorsed by Spotify, Apple, 
 python -m compileall -q app.py core engine services ui
 ```
 
-The Flet UI is validated manually, including List/Dual/Preview modes, Organize/Split scope, responsive navigation, animated skeletons, and local export. The `tests/` directory remains available for future regressions.
+The Flet UI is validated manually, including List/Dual/Preview modes, Organize/Split dialogs, responsive navigation, animated skeletons, and local export. The `tests/` directory remains available for future regressions.

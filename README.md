@@ -2,7 +2,7 @@
 
 Melomaniac es una aplicación de escritorio para reconstruir playlists entre **YouTube Music, Apple Music y Spotify**. También permite importar una lista local o una canción individual, buscar cada pista en el destino y crear una nueva playlist.
 
-La versión de trabajo pertenece a la serie `4.5.2`: se conserva la versión mayor 4 mientras se consolidan los cambios funcionales y correcciones antes de fijar el siguiente número minor/parche.
+La versión de trabajo documentada es `4.5.2`. Los cambios de esta versión se resumen en [`CHANGELOG.md`](CHANGELOG.md).
 
 El matching combina normalización de metadatos, RapidFuzz, artista/título, duración, contenido explícito e ISRC cuando está disponible. Los resultados dudosos se conservan en el Post-Mortem para revisión.
 
@@ -14,8 +14,8 @@ El matching combina normalización de metadatos, RapidFuzz, artista/título, dur
 - Busca con Hunter Recovery y tres pasadas de consulta: metadatos limpios, valores originales y título normalizado.
 - Usa ISRC para coincidencias exactas en Apple Music y conserva el valor en la caché.
 - Compara la duración; Spotify añade el indicador `explicit` al scoring.
-- Permite buscar, seleccionar, ordenar y dividir la lista por artista, álbum, título o duración. El alcance puede ser **Todo**, **Visibles** o **Seleccionadas**.
-- Ofrece los modos **Lista**, **Doble** y **Preview** durante Organizar/Dividir, con una vista responsive y navegación por **Inicio**, **Biblioteca**, **Descargas** y **Config**.
+- Permite buscar y seleccionar canciones; ordenar por artista, álbum, título, duración o fecha de lanzamiento; agrupar por artista, álbum o fecha; y crear de 2 a 5 divisiones seleccionando artistas, álbumes o canciones.
+- Ofrece los modos **Lista**, **Doble** y **Preview** durante las transformaciones, una navegación responsive y las secciones **Inicio**, **Biblioteca**, **Descargas** y **Config**. Biblioteca sincroniza playlists por plataforma y conserva sus metadatos localmente; Descargas sigue en desarrollo.
 - Muestra título, artista, álbum, duración, portada y estado de cada pista.
 - Exporta la selección o el alcance visible a `TXT`, `CSV`, `M3U`, `M3U8` y `XSPF`, con orden artista-título o título-artista.
 - Permite editar nombre y descripción antes de crear la playlist. En Spotify, SpotAPI solo permite guardar el nombre; la descripción se informa como no soportada.
@@ -29,7 +29,7 @@ El matching combina normalización de metadatos, RapidFuzz, artista/título, dur
 | Python | 3.10 o superior |
 | Dependencias | Versiones fijadas en [`requirements.txt`](requirements.txt) |
 | Credenciales | `config/browser.json`, `config/.env` y `config/spotify_cookies.json` según el destino |
-| Interfaz | Flet Desktop; la aplicación configura tema oscuro y fuentes IBM Plex Sans locales |
+| Interfaz | Flet Desktop 1.0.1; tema oscuro, Stack Sans, IBM Plex y fallback CJK opcional |
 
 ## Instalación
 
@@ -102,7 +102,7 @@ En fuentes locales debes elegir explícitamente el destino antes de transferir. 
 ### Revisar y transferir
 
 1. Revisa las canciones y desmarca las que no quieras transferir.
-2. Opcionalmente usa **Organizar** o **Dividir**, elige el alcance de la operación y cambia el segmento visible. La vista puede alternarse entre **Lista**, **Doble** y **Preview**.
+2. Opcionalmente usa **Organizar** para ordenar/agrupar o **Dividir** para crear divisiones manuales; cambia el segmento visible y alterna entre **Lista**, **Doble** y **Preview**.
 3. Pulsa **Transferir**, confirma o edita el nombre y la descripción.
 4. Revisa el progreso, la consola y la pestaña **Post-Mortem**.
 
@@ -143,6 +143,8 @@ Melomaniac/
 │   ├── availability.py            # Escaneo de disponibilidad e ISRC en Apple
 │   ├── cache.py                   # Claves y compatibilidad de caché
 │   ├── config.py                  # Plataformas, concurrencia y lotes
+│   ├── library_models.py          # Resúmenes y estados de Biblioteca
+│   ├── library_store.py           # Persistencia local de metadatos de playlists
 │   ├── models.py                  # Track, PlaylistMeta, SearchResult y estados
 │   ├── state.py                   # Estado BLoC y flujo de transferencia
 │   └── transfer.py                # Búsqueda y errores de rate limit
@@ -156,24 +158,28 @@ Melomaniac/
 ├── services/
 │   ├── api_service.py             # Fachada de APIs y sesiones HTTP
 │   ├── authentication.py           # Rutas, credenciales y pre-flight
-│   └── circuit_breaker.py          # Cooldowns y RateLimitError
+│   ├── circuit_breaker.py          # Cooldowns y RateLimitError
+│   ├── cover_cache.py              # Caché de portadas
+│   └── library_state.py            # Sincronización y estado de Biblioteca
 ├── ui/
 │   ├── auth_manager.py            # Comprobaciones y hot reload
 │   ├── config_wizard.py            # Asistente de credenciales
 │   ├── main_ui.py                 # Ventana y eventos principales
+│   ├── organize_panel.py           # Diálogos para organizar, dividir y reordenar
+│   ├── library_view.py             # Playlists sincronizadas y navegación Biblioteca
+│   ├── playlist_card.py            # Tarjetas de playlist
+│   ├── playlist_detail_view.py     # Detalle y carga bajo demanda de pistas
 │   ├── playlist_meta_dialog.py     # Nombre y descripción de destino
 │   ├── song_row.py                # Filas de canciones y skeletons
 │   ├── telemetry.py               # Monitor, consola y Post-Mortem
 │   ├── fonts.py                    # Clasificación Unicode y registro dinámico
 │   └── widgets.py / tokens.py      # Componentes y tokens visuales
-└── resources/fonts/               # IBM Plex Sans w300–w700; CJK opcional
+└── resources/fonts/               # Stack Sans e IBM Plex; CJK opcional
 ```
 
-Los títulos y artistas se clasifican por bloques Unicode al crear cada
-control de texto: CJK tiene prioridad, después cirílico y finalmente latino.
-La aplicación busca `NotoSansCJK-Regular.ttc` en los assets o en rutas
-estándar del sistema; si no está disponible, conserva IBM Plex Sans y deja que
-el fallback nativo del motor de texto resuelva los glifos.
+La tipografía se elige por escritura: Stack Sans para texto latino, IBM Plex
+Sans para cirílico, IBM Plex Mono para datos técnicos y Noto CJK si está
+disponible. Sin una fuente CJK registrada, Flet usa el fallback nativo.
 
 ## Verificación
 
@@ -183,7 +189,7 @@ La comprobación rápida de los módulos Python es:
 python -m compileall -q app.py core engine services ui
 ```
 
-La UI Flet se valida manualmente, en especial los modos de vista, el alcance de Organizar/Dividir, la navegación responsive y el diálogo de exportación. La carpeta `tests/` queda reservada para regresiones futuras.
+La UI Flet se valida manualmente, en especial los modos de vista, los diálogos de Organizar/Dividir, la navegación responsive y el diálogo de exportación. La carpeta `tests/` queda reservada para regresiones futuras.
 
 ## Aviso legal
 

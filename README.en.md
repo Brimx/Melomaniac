@@ -2,7 +2,7 @@
 
 Melomaniac is a desktop application for rebuilding playlists between **YouTube Music, Apple Music, and Spotify**. It can also import a local playlist or a single audio file, find each track on the destination, and create a new playlist.
 
-The working version belongs to the `4.5.2` series: major version 4 is retained while the latest functional changes and fixes are consolidated before the next minor/patch number is fixed.
+The documented working version is `4.5.2`. Changes in this version are summarized in [`CHANGELOG.md`](CHANGELOG.md).
 
 Matching combines metadata normalization, RapidFuzz, title/artist similarity, duration, explicit metadata, and ISRC when available. Uncertain results are preserved in the Post-Mortem view for review.
 
@@ -14,8 +14,8 @@ Matching combines metadata normalization, RapidFuzz, title/artist similarity, du
 - Search with Hunter Recovery using three query passes: cleaned metadata, original values, and a normalized title.
 - Use ISRC for exact Apple Music matches and retain it in the search cache.
 - Compare duration; Spotify also includes the `explicit` flag in its scoring.
-- Search, select, sort, and split tracks by artist, album, title, or duration. The operation scope can be **All**, **Visible**, or **Selected**.
-- Use **List**, **Dual**, and **Preview** modes while organizing/splitting, with responsive layout and navigation for **Home**, **Library**, **Downloads**, and **Config**.
+- Search and select tracks; sort by artist, album, title, duration, or release date; group by artist, album, or date; and create 2–5 divisions by selecting artists, albums, or tracks.
+- Use **List**, **Dual**, and **Preview** modes during transformations, with responsive navigation for **Home**, **Library**, **Downloads**, and **Config**. Library syncs playlists by platform and stores their metadata locally; Downloads is still in development.
 - Show title, artist, album, duration, artwork, and transfer status for each track.
 - Export the selected tracks or visible scope to `TXT`, `CSV`, `M3U`, `M3U8`, and `XSPF`, using artist-title or title-artist order.
 - Edit the playlist name and description before creating it. Spotify's SpotAPI integration only saves the name; the description is reported as unsupported.
@@ -29,7 +29,7 @@ Matching combines metadata normalization, RapidFuzz, title/artist similarity, du
 | Python | 3.10 or newer |
 | Dependencies | Pinned in [`requirements.txt`](requirements.txt) |
 | Credentials | `config/browser.json`, `config/.env`, and `config/spotify_cookies.json` as needed |
-| UI | Flet Desktop; the app configures a dark theme and local IBM Plex Sans fonts |
+| UI | Flet Desktop 1.0.1; dark theme, Stack Sans, IBM Plex, and optional CJK fallback |
 
 ## Installation
 
@@ -102,7 +102,7 @@ For local sources, select the destination explicitly before transferring. The so
 ### Review and transfer
 
 1. Review the tracks and deselect anything you do not want to transfer.
-2. Optionally use **Organize** or **Split**, choose the operation scope, and change the visible segment. The view can switch between **List**, **Dual**, and **Preview**.
+2. Optionally use **Organize** to sort/group or **Split** to create manual divisions; change the visible segment and switch between **List**, **Dual**, and **Preview**.
 3. Click **Transfer**, and confirm or edit the name and description.
 4. Review progress, the console, and the **Post-Mortem** tab.
 
@@ -143,6 +143,8 @@ Melomaniac/
 │   ├── availability.py            # Availability scan and Apple ISRC preload
 │   ├── cache.py                   # Cache keys and compatibility helpers
 │   ├── config.py                  # Platforms, concurrency, and batch sizes
+│   ├── library_models.py          # Library summaries and states
+│   ├── library_store.py           # Local playlist metadata persistence
 │   ├── models.py                  # Track, PlaylistMeta, SearchResult, states
 │   ├── state.py                   # BLoC state and transfer workflow
 │   └── transfer.py                # Search and rate-limit error helpers
@@ -156,24 +158,28 @@ Melomaniac/
 ├── services/
 │   ├── api_service.py             # API facade and HTTP sessions
 │   ├── authentication.py           # Paths, credentials, pre-flight
-│   └── circuit_breaker.py          # Cooldowns and RateLimitError
+│   ├── circuit_breaker.py          # Cooldowns and RateLimitError
+│   ├── cover_cache.py              # Cover cache
+│   └── library_state.py            # Library synchronization and state
 ├── ui/
 │   ├── auth_manager.py            # Checks and hot reload
 │   ├── config_wizard.py            # Credential wizard
 │   ├── main_ui.py                 # Main window and events
+│   ├── organize_panel.py           # Organize, split, and reorder dialogs
+│   ├── library_view.py             # Synced playlists and Library navigation
+│   ├── playlist_card.py            # Playlist cards
+│   ├── playlist_detail_view.py     # Details and on-demand track loading
 │   ├── playlist_meta_dialog.py     # Destination name and description
 │   ├── song_row.py                # Track rows and skeletons
 │   ├── telemetry.py               # Monitor, console, Post-Mortem
 │   ├── fonts.py                    # Unicode classification and font registry
 │   └── widgets.py / tokens.py      # Components and visual tokens
-└── resources/fonts/               # IBM Plex Sans w300–w700; optional CJK
+└── resources/fonts/               # Stack Sans and IBM Plex; optional CJK
 ```
 
-Track titles, artists, and albums are classified by Unicode block when their
-text controls are created: CJK has priority, followed by Cyrillic and Latin.
-The app looks for `NotoSansCJK-Regular.ttc` in bundled assets or standard
-system paths; if it is unavailable, it keeps IBM Plex Sans and relies on the
-native text fallback for missing glyphs.
+Fonts are selected by script: Stack Sans for Latin text, IBM Plex Sans for
+Cyrillic, IBM Plex Mono for technical data, and Noto CJK when available.
+Without a registered CJK font, Flet uses the native fallback.
 
 ## Verification
 
@@ -183,7 +189,7 @@ The quick Python module check is:
 python -m compileall -q app.py core engine services ui
 ```
 
-The Flet UI is validated manually, especially the view modes, Organize/Split scope, responsive navigation, and export dialog. The `tests/` directory remains available for future regressions.
+The Flet UI is validated manually, especially the view modes, Organize/Split dialogs, responsive navigation, and export dialog. The `tests/` directory remains available for future regressions.
 
 ## Legal notice
 

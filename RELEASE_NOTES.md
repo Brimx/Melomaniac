@@ -1,6 +1,6 @@
 # Release Notes — Melomaniac
 
-Notas de versión generadas a partir de los commits taggeados. Enfoque en **qué cambió para el usuario**, no en código.
+Notas históricas enfocadas en **qué cambió para el usuario**, no en código. Este archivo llega hasta `v4.4.3`; el tag más reciente comprobado es `v4.5.1` y la versión de trabajo `4.5.2` está documentada en [`CHANGELOG.md`](CHANGELOG.md). No asumir que el último bloque de este archivo corresponde a `HEAD`.
 
 ---
 
@@ -179,9 +179,9 @@ Feature release más grande de la serie 4.x.
 
 ---
 
-## v4.4.3 — Sidebar colapsable + Organizar/Agrupar separados (2026-09-22) `64b706d` — HEAD
+## v4.4.3 — Sidebar colapsable + Organizar/Agrupar separados (2026-09-22) `64b706d`
 
-Última versión en `main`. Acumula 4 commits intermedios sin bump (`73d3914`, `f429fee`, `91beb2d`, `4044525`) más el bump final.
+Último bloque documentado en este archivo; no representa el estado actual de `main`. Acumuló 4 commits intermedios sin bump (`73d3914`, `f429fee`, `91beb2d`, `4044525`) más el bump final.
 
 **Novedades:**
 - **Sidebar colapsable (opción A)**: `NavigationRail` animado `300ms EASE_IN_OUT`, portada con `Stack Sans` según módulo.
