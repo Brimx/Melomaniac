@@ -278,6 +278,9 @@ class MusicApiService:
         # y hashes JS (~5-8 requests) cada vez que se construye un BaseClient.
         # Reutilizarla reduce cada búsqueda a 1 solo request.
         self._sp_song  = None
+        # Serializa inserciones manuales sobre el Song reutilizado; el
+        # BaseClient ya trae sesión/token/hashes calientes de la búsqueda.
+        self._sp_insert_lock = threading.Lock()
         self._search_cache: dict[str, SearchResult] = self._load_search_cache()
         self._am_rate_limiter = AppleRequestLimiter()
         self._shutdown_cleaned: bool = False
@@ -1789,7 +1792,16 @@ class MusicApiService:
             return False, "Spotify no disponible. Comprueba config/spotify_cookies.json."
         try:
             pl = PrivatePlaylist(self._sp_login, playlist_id)
-            rejected = self._sp_add_tracks(pl, [track_id])
+            # Reutiliza el Song de búsqueda: SpotAPI vuelve a pedir sesión,
+            # client token y hashes JS (~5-8 requests) por cada BaseClient
+            # nuevo; eso era el retraso de ~10 s al insertar una alternativa.
+            song = self._sp_song
+            if song is None:
+                song = Song(client=self._sp_cfg.client)
+                self._sp_song = song
+            with self._sp_insert_lock:
+                song.playlist = pl
+                rejected = self._sp_add_tracks(pl, [track_id], song=song)
             if rejected:
                 return False, "Spotify rechazó la inserción"
             return True, playlist_id
@@ -2019,7 +2031,7 @@ class MusicApiService:
             return False, str(exc)
 
     @staticmethod
-    def _sp_add_tracks(pl, ids: list[str]) -> list[str]:
+    def _sp_add_tracks(pl, ids: list[str], song=None) -> list[str]:
         """
         Añade las canciones a la playlist por lotes de SPOTIFY_ADD_CHUNK.
 
@@ -2030,15 +2042,19 @@ class MusicApiService:
         Args:
             pl: PrivatePlaylist con playlist_id ya asignado.
             ids: Track IDs de Spotify a insertar.
+            song: Song reutilizable con BaseClient caliente. Si se omite,
+                se construye uno nuevo para mantener el flujo de creación.
 
         Returns:
             Lista de track_ids que NO se pudieron insertar.
         """
         if not ids:
             return []
-        song = Song(pl)
+        if song is None:
+            song = Song(pl)
         rejected: list[str] = []
-        for start in range(0, len(ids), SPOTIFY_ADD_CHUNK):
+        starts = list(range(0, len(ids), SPOTIFY_ADD_CHUNK))
+        for index, start in enumerate(starts):
             chunk = ids[start:start + SPOTIFY_ADD_CHUNK]
             wait = 1.5
             for attempt in range(4):
@@ -2056,5 +2072,7 @@ class MusicApiService:
                     wait *= 2
                     if rl:
                         wait = max(wait, 3.0)
-            time.sleep(random.uniform(0.4, 0.8))
+            # Solo espacia lotes consecutivos; no penaliza una inserción suelta.
+            if index < len(starts) - 1:
+                time.sleep(random.uniform(0.4, 0.8))
         return rejected

@@ -344,7 +344,12 @@ class TelemetryDrawer:
             for line in snapshot:
                 col = (SUCCESS if "[SUCCESS]" in line else ERROR_COL if "[ERROR]" in line else TEXT_MUTED)
                 lst.controls.append(
-                    ft.Text(f"› {line}", size=9, color=col, font_family=mono_family(), opacity=1.0)
+                    ft.Text(
+                        f"› {line}", size=9, color=col,
+                        font_family=mono_family(), opacity=1.0,
+                        max_lines=1, overflow=ft.TextOverflow.ELLIPSIS,
+                        tooltip=line,
+                    )
                 )
 
     def update_postmortem(self, failed_tracks, *, destination="", confirmed=0,

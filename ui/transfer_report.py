@@ -447,7 +447,7 @@ class TransferReportDialog(DialogMixin):
             insert = _primary_btn(
                 "Insertar", ft.Icons.ADD,
                 lambda _e, t=track: self.page.run_task(self._insert, t),
-                width=104, height=36,
+                width=124, height=36,
             )
             self._results.controls.append(ft.Row([
                 ft.Container(content=preview, expand=True),

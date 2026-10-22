@@ -919,7 +919,8 @@ class PlaylistManagerUI(DialogMixin):
         _dd_style = dict(
             bgcolor=BG_INPUT, border=input_border(),
             label_style=ft.TextStyle(color=TEXT_MUTED, size=10, font_family=FONT_HEADLINE),
-            text_style=ft.TextStyle(color=TEXT_PRIMARY, size=12, font_family=FONT_TEXT),
+            text_style=ft.TextStyle(color=TEXT_PRIMARY, size=11, font_family=FONT_TEXT),
+            content_padding=ft.Padding.symmetric(horizontal=8, vertical=0),
             expand=True,
         )
 
