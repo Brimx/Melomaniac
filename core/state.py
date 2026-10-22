@@ -55,7 +55,7 @@ import time
 import traceback
 import uuid
 from datetime import datetime
-from typing import Callable, Optional
+from typing import Callable, Iterable, Optional
 
 from core.availability import (
     apply_availability_status,
@@ -1146,32 +1146,62 @@ class AppState:
         return self.active_segment_keys
 
     # ── Divisiones — excepciones manuales §4 (agregar/quitar/mover) ─────────
+    def add_tracks_to_division(
+        self, track_ids: Iterable[str], division: str, notify: bool = True,
+    ) -> int:
+        """Agrega varias canciones a División y notifica una sola vez.
+
+        ``notify=False`` deja la mutación en memoria para que un diálogo
+        agrupe varias operaciones y refresque la UI al aplicar.
+        """
+        if division not in self.segments:
+            return 0
+        by_id: dict[str, Track] = {}
+        for t in self.tracks:
+            by_id.setdefault(t.id, t)
+        for t in getattr(self, "source_tracks", []):
+            by_id.setdefault(t.id, t)
+
+        existing = {t.id for t in self.segments[division]}
+        added = 0
+        for track_id in track_ids:
+            if track_id in existing:
+                continue
+            tr = by_id.get(track_id)
+            if tr is None:
+                continue
+            self.segments[division].append(tr)
+            existing.add(track_id)
+            added += 1
+        if added and notify:
+            self.apply_search(self.search_query)
+        return added
+
     def add_track_to_division(self, track_id: str, division: str) -> bool:
         """Agrega canción a División aunque no cumpla criterio inicial §3."""
+        return self.add_tracks_to_division([track_id], division) > 0
+
+    def remove_tracks_from_division(
+        self, track_ids: Iterable[str], division: str, notify: bool = True,
+    ) -> int:
+        """Quita varias canciones de División y notifica una sola vez."""
         if division not in self.segments:
-            return False
-        tr = next((t for t in self.tracks if t.id == track_id), None)
-        if tr is None:
-            tr = next((t for t in getattr(self, "source_tracks", []) if t.id == track_id), None)
-        if tr is None:
-            return False
-        if any(t.id == track_id for t in self.segments[division]):
-            return False
-        self.segments[division].append(tr)
-        self.apply_search(self.search_query)
-        return True
+            return 0
+        ids = set(track_ids)
+        if not ids:
+            return 0
+        current = self.segments[division]
+        kept = [t for t in current if t.id not in ids]
+        removed = len(current) - len(kept)
+        if removed:
+            self.segments[division] = kept
+            if notify:
+                self.apply_search(self.search_query)
+        return removed
 
     def remove_track_from_division(self, track_id: str, division: str) -> bool:
         """Quita canción de División §4."""
-        if division not in self.segments:
-            return False
-        lst = self.segments[division]
-        for i, t in enumerate(lst):
-            if t.id == track_id:
-                lst.pop(i)
-                self.apply_search(self.search_query)
-                return True
-        return False
+        return self.remove_tracks_from_division([track_id], division) > 0
 
     def move_track_between_divisions(self, track_id: str, from_div: str, to_div: str) -> bool:
         """Mueve canción entre Divisiones (reasignación §9)."""

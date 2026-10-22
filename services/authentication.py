@@ -290,19 +290,30 @@ def auth_failure_tooltip(result: PreFlightResult) -> str:
     return f"{tag}{hints.get(result.platform, result.platform)} · {result.error}"[:500]
 
 
-async def run_preflight() -> list[PreFlightResult]:
-    """Run all platform checks concurrently in the configured order."""
+async def run_preflight(platforms: list[str] | None = None) -> list[PreFlightResult]:
+    """Run platform checks concurrently in the configured order.
+
+    ``platforms`` permite validar solo la plataforma que el usuario acaba de
+    seleccionar; por defecto conserva el preflight completo.
+    """
     checks = {
         "YouTube Music": _preflight_youtube,
         "Apple Music": _preflight_apple,
         "Spotify": _preflight_spotify,
     }
+    wanted = set(platforms) if platforms is not None else None
+    selected = [
+        platform for platform in PLATFORM_ORDER
+        if platform in checks and (wanted is None or platform in wanted)
+    ]
+    if not selected:
+        return []
     results = await asyncio.gather(
-        *(asyncio.to_thread(checks[platform]) for platform in PLATFORM_ORDER),
+        *(asyncio.to_thread(checks[platform]) for platform in selected),
         return_exceptions=True,
     )
     output: list[PreFlightResult] = []
-    for platform, result in zip(PLATFORM_ORDER, results):
+    for platform, result in zip(selected, results):
         if isinstance(result, Exception):
             failure = PreFlightResult(platform)
             failure.error = str(result)

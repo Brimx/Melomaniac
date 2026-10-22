@@ -406,6 +406,10 @@ class SongRow(ft.Container):
         self._on_toggle = on_toggle
         self._on_move = on_move
         self._index = index
+        # Último estado pintado: permite refrescar solo lo que cambió.
+        self._last_selected = track.selected
+        self._last_album = track.album or "—"
+        self._last_status = track.transfer_status
 
         # ──────────────────────────────────────────────────────────────
         # THUMBNAIL DE ÁLBUM CON FALLBACK
@@ -523,6 +527,9 @@ class SongRow(ft.Container):
         # ──────────────────────────────────────────────────────────────
         # Estructura: [#] [Thumb] [Título/Artista] [Álbum] [Duración] [Estado] [✓]
 
+        self._status_cell = ft.Container(
+            content=self._status_icon, width=26, alignment=ft.Alignment.CENTER,
+        )
         row_content = ft.Row(
             controls=[
                 ft.Container(content=num_label, width=32, alignment=ft.Alignment.CENTER),
@@ -536,7 +543,7 @@ class SongRow(ft.Container):
                 ),
                 ft.Container(content=album_text,         expand=2, alignment=ft.Alignment.CENTER_LEFT),
                 ft.Container(content=dur_text,          width=48, alignment=ft.Alignment.CENTER),
-                ft.Container(content=self._status_icon, width=26, alignment=ft.Alignment.CENTER),
+                self._status_cell,
                 ft.Container(content=self._chk,         width=32, alignment=ft.Alignment.CENTER),
             ],
             spacing=16,
@@ -567,24 +574,41 @@ class SongRow(ft.Container):
         self.bgcolor = BG_HOVER if e.data == "true" else BG_LIST
         self.update()
 
-    def refresh(self, track: Track) -> None:
+    def refresh(self, track: Track, notify: bool = True) -> bool:
         """
         Actualiza la fila con nuevos datos del track.
-        
-        Usado para reflejar cambios en el estado de la canción sin recrear
-        toda la fila. Actualiza checkbox y icono de estado eficientemente.
-        
+
+        Solo pinta los campos que cambiaron respecto al último render. En
+        listas largas esto evita reemplazar el icono de estado y publicar una
+        actualización por cada fila cuando solo cambió una selección.
+
         Args:
             track: Instancia actualizada de Track.
-        
-        Note:
-            Solo actualiza los elementos que típicamente cambian durante
-            una transferencia (selected, transfer_status). Título, artista
-            y thumbnail permanecen constantes.
+            notify: Si es True publica el cambio de esta fila. Los llamadores
+                que actualizan muchas filas pueden pasar False y agrupar.
+
+        Returns:
+            True si algún campo visual cambió.
         """
-        self.track       = track
-        self._chk.value  = track.selected
-        self._album_text.value = track.album or "—"
-        status_cell      = self.content.controls[5]
-        status_cell.content = _status_icon(track.transfer_status)
-        self.update()
+        dirty = False
+
+        if self._last_selected != track.selected:
+            self._last_selected = track.selected
+            self._chk.value = track.selected
+            dirty = True
+
+        album = track.album or "—"
+        if self._last_album != album:
+            self._last_album = album
+            self._album_text.value = album
+            dirty = True
+
+        if self._last_status != track.transfer_status:
+            self._last_status = track.transfer_status
+            self._status_cell.content = _status_icon(track.transfer_status)
+            dirty = True
+
+        self.track = track
+        if dirty and notify:
+            self.update()
+        return dirty

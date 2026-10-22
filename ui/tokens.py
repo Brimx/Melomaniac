@@ -48,3 +48,7 @@ WARN_BORDER  = "#30FFA500"
 TEXT_PRIMARY = "#FFF2F6FF"
 TEXT_MUTED   = "#FF7A8499"
 TEXT_DIM     = "#FF3D4455"
+
+# Listas de selección en diálogos: se muestran por tramos para no construir
+# cientos de checkboxes de golpe. El buscador sigue filtrando el total.
+DIALOG_OPTION_LIMIT = 80

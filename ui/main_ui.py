@@ -22,11 +22,12 @@ Estrategia de Diseño - Arquitectura Reactiva:
        Usuario → UI → State → Services → State → UI
        
     3. Actualización Reactiva:
-       - State.notify() → _on_state_changed() → actualiza UI
+       - State.notify() → _schedule_state_render() → actualiza UI
        - Circuit breakers → _on_circuit_change() → deshabilita controles
     
     4. Gestión de Recursos:
-       - Caché de filas (SongRow) para evitar recreación
+       - Actualización por diferencias de las filas visibles
+       - Preview construido solo cuando está visible
        - Skeleton screens durante carga
        - Tareas asyncio cancelables para búsquedas
     
@@ -73,7 +74,7 @@ from ui.transfer_report import TransferReportDialog
 from ui.widgets import (
     _primary_btn, _ghost_btn, _section_label, _status_icon,
     app_text_field, dialog_action, app_dialog, DialogMixin, notify,
-    input_border,
+    input_border, debounce, limit_label,
 )
 
 from ui.tokens import (
@@ -83,7 +84,12 @@ from ui.tokens import (
     ACCENT, ACCENT_DIM, ACCENT_HALO,
     SUCCESS, WARNING, ERROR_COL,
     TEXT_PRIMARY, TEXT_MUTED, TEXT_DIM, SKELETON_DARK,
+    DIALOG_OPTION_LIMIT,
 )
+
+# Por encima de este número conviene un único update del ListView en vez de
+# publicar una actualización por fila (transferencias masivas, reordenamientos).
+_ROW_UPDATE_BATCH_THRESHOLD = 16
 
 
 class PlaylistManagerUI(DialogMixin):
@@ -105,14 +111,13 @@ class PlaylistManagerUI(DialogMixin):
         _content: Área principal con lista de canciones
         _telemetry: Panel de telemetría y logs
         _file_picker: Selector de archivos del sistema
-        _row_cache: Caché de SongRow para evitar recreación
         _skeleton_tasks: Tareas de animación de skeleton screens
     
     Flujo de Datos:
         1. Usuario interactúa con UI (click, input, etc)
         2. UI llama métodos de AppState
         3. AppState ejecuta lógica y actualiza su estado interno
-        4. AppState.notify() dispara _on_state_changed()
+        4. AppState.notify() dispara _schedule_state_render()
         5. UI se actualiza reflejando el nuevo estado
     
     Example:
@@ -369,7 +374,6 @@ class PlaylistManagerUI(DialogMixin):
         try:
             has_transform = bool(s.segments) or s.show_dual or mode in ("doble", "preview")
             self._mode_bar.visible = bool(is_dual or has_transform)
-            self._mode_bar.update()
         except Exception:
             pass
         # headers SOURCE|RESULT + Divisiones §1,6
@@ -391,17 +395,13 @@ class PlaylistManagerUI(DialogMixin):
                 self._lista_header_icon.icon = ft.Icons.LIST_ALT
                 self._preview_header_text.value = "DIVISIÓN ACTIVA — preview"
                 self._preview_header_icon.icon = ft.Icons.VISIBILITY_OUTLINED
-            self._lista_header_text.update(); self._lista_header_icon.update()
-            self._preview_header_text.update(); self._preview_header_icon.update()
         except Exception:
             pass
         try:
             if hasattr(self._mode_seg, 'selected'):
                 self._mode_seg.selected = [mode]
-                self._mode_seg.update()
             else:
                 self._mode_seg.value = mode
-                self._mode_seg.update()
         except Exception:
             pass
         # Row persistente con ambos paneles — solo cambia visible (preserva ListView virtualizado)
@@ -425,19 +425,7 @@ class PlaylistManagerUI(DialogMixin):
                 self._dual_row.visible = True
             # asegura _list_area contenido estable (evita duplicar controles)
             if getattr(self._list_area, "content", None) is not self._dual_row:
-                try:
-                    self._list_area.content = self._dual_row
-                    self._list_area.update()
-                except Exception:
-                    pass
-            else:
-                # solo refrescar visibilidad hijos
-                try:
-                    self._lista_panel.update()
-                    self._preview_panel.update()
-                    self._dual_row.update()
-                except Exception:
-                    pass
+                self._list_area.content = self._dual_row
         except Exception:
             pass
         try:
@@ -452,6 +440,15 @@ class PlaylistManagerUI(DialogMixin):
     def _sync_preview(self, s) -> None:
         """Preview readonly: SOURCE|RESULT (§25) cuando hay transformación, si no selected_in_scope."""
         try:
+            # En modo Lista el panel está oculto: no construir ni actualizar
+            # controles que el usuario no puede ver.
+            preview_panel = getattr(self, "_preview_panel", None)
+            if preview_panel is None or not preview_panel.visible:
+                self._preview_sig = None
+                if self._preview_list_view.controls:
+                    self._preview_list_view.controls.clear()
+                return
+
             is_dual = bool(getattr(s, 'show_dual', False) or getattr(s, 'dual_mode', 'lista') in ("doble", "preview"))
             has_transform = bool(getattr(s, 'segments', {})) or bool(getattr(s, 'show_dual', False))
             # Si hay transformación (organizar/dividir), preview es RESULT (display_tracks con segmento activo)
@@ -461,30 +458,38 @@ class PlaylistManagerUI(DialogMixin):
             else:
                 preview_tracks = s.selected_in_scope("visible") if hasattr(s, 'selected_in_scope') else [t for t in s.tracks if t.selected]
                 label_suffix = f"{len(preview_tracks)} seleccionadas"
+            if self._preview_count.value != label_suffix:
+                self._preview_count.value = label_suffix
+
             if not preview_tracks:
                 self._preview_view_wrap.visible = False
                 self._preview_empty_wrap.visible = True
-                # mantiene count visible incluso vacío para contexto
-                self._preview_count.value = label_suffix
-            else:
-                self._preview_empty_wrap.visible = False
-                self._preview_view_wrap.visible = True
-                self._preview_count.value = label_suffix
-                # preview espejo 1:1 de SongRow sin Estado/Sel (DRY via build_preview_row)
-                self._preview_list_view.controls = []
-                for i, tr in enumerate(preview_tracks, 1):
-                    self._preview_list_view.controls.append(build_preview_row(tr, i))
-                self._preview_list_view.update()
-                self._preview_count.update()
-                self._preview_empty_wrap.update()
-                self._preview_view_wrap.update()
-                # mantener skeleton oculto cuando hay contenido (shimmer lo muestra temporalmente)
-                if hasattr(self, '_preview_skeleton_wrap') and self._preview_skeleton_wrap.visible:
-                    try:
-                        self._preview_skeleton_wrap.visible = False
-                        self._preview_skeleton_wrap.update()
-                    except Exception:
-                        pass
+                self._preview_sig = None
+                if self._preview_list_view.controls:
+                    self._preview_list_view.controls.clear()
+                return
+
+            self._preview_empty_wrap.visible = False
+            self._preview_view_wrap.visible = True
+
+            # Firma de lo que pinta la fila: evita reconstruir el preview en
+            # cambios de selección, auth, progreso o telemetría.
+            signature = tuple(
+                (t.id, t.name, t.artist, t.album, t.duration, t.img_url, t.source_url)
+                for t in preview_tracks
+            )
+            if signature == self._preview_sig:
+                return
+
+            self._preview_list_view.controls = [
+                build_preview_row(tr, i) for i, tr in enumerate(preview_tracks, 1)
+            ]
+            self._preview_sig = signature
+            self._preview_list_view.update()
+
+            # mantener skeleton oculto cuando hay contenido (shimmer lo muestra temporalmente)
+            if hasattr(self, '_preview_skeleton_wrap') and self._preview_skeleton_wrap.visible:
+                self._preview_skeleton_wrap.visible = False
         except Exception:
             pass
 
@@ -512,7 +517,8 @@ class PlaylistManagerUI(DialogMixin):
         self._search_task:            Optional[asyncio.Task] = None
         self._skeleton_tasks:         list[asyncio.Task]     = []
         self._preview_skeleton_tasks: list[asyncio.Task]     = []
-        self._row_cache:              dict[str, SongRow]     = {}
+        self._preview_sig:            tuple | None = None
+        self._render_scheduled:       bool = False
         self._failed_dialog_shown:    bool  = False
         self._report_dialog_shown:    bool  = False
         self._transfer_start:         float = 0.0
@@ -809,7 +815,7 @@ class PlaylistManagerUI(DialogMixin):
         # ──────────────────────────────────────────────────────────────
         # Conecta la UI al sistema reactivo de estado y circuit breakers
         
-        state.subscribe(self._on_state_changed)
+        state.subscribe(self._schedule_state_render)
         for platform, cb in state.cb.items():
             cb.subscribe(lambda is_open, rem, p=platform: self._on_circuit_change(p, is_open, rem))
         def _on_resize(_):
@@ -836,9 +842,13 @@ class PlaylistManagerUI(DialogMixin):
 
     # ── Auth helpers ───────────────────────────────────────────────────
 
-    async def _refresh_auth_live(self) -> None:
+    async def _refresh_auth_live(self, platform: str | None = None) -> None:
         am = getattr(self, "auth_manager", None)
-        if am:
+        if not am:
+            return
+        if platform in AppState.PLATFORMS:
+            await am.refresh_session_icons([platform])
+        else:
             await am.refresh_session_icons()
 
     async def _on_auth_probe(self, platform: str) -> None:
@@ -847,7 +857,7 @@ class PlaylistManagerUI(DialogMixin):
             return
         self.state.log(f"[INFO] ⏳ Revalidando sesión de {platform}...")
         self.page.update()
-        results = await am.check_all_sessions()
+        results = await am.check_sessions([platform])
         am.ingest_preflight_results(results)
         for r in results:
             if r.platform != platform:
@@ -920,8 +930,8 @@ class PlaylistManagerUI(DialogMixin):
                 asyncio.create_task(self._do_local_pick())
             elif val == "Pegar Texto":
                 self._open_paste_dialog()
-            else:
-                asyncio.create_task(self._refresh_auth_live())
+            elif val in AppState.PLATFORMS:
+                asyncio.create_task(self._refresh_auth_live(val))
 
         def _on_dst_select(e) -> None:
             val = e.control.value
@@ -937,10 +947,10 @@ class PlaylistManagerUI(DialogMixin):
                 try:
                     self._transfer_btn.content.value = "Transferir"  # type: ignore
                     self._transfer_btn.icon = ft.Icons.SWAP_HORIZ  # type: ignore
-                    self._transfer_btn.update()
                 except Exception:
                     pass
-            asyncio.create_task(self._refresh_auth_live())
+            if val in AppState.PLATFORMS:
+                asyncio.create_task(self._refresh_auth_live(val))
 
         self._src_dd = ft.Dropdown(
             label="Origen", value=s.source,
@@ -1286,17 +1296,20 @@ class PlaylistManagerUI(DialogMixin):
             _win_h = 700
         lv_h = max(200, min(320, int(_win_h - 420)))
         def _on_name(e):
+            nonlocal active
             new = (e.control.value or "").strip()
             if new and new != active and new not in s.segments:
                 s.segments[new] = s.segments.pop(active)
                 if s.active_segment_key == active:
                     s.active_segment_key = new
                     s.active_segment_keys = {new}
-                s.notify()
+                # Sin notify por tecla: la UI de fondo se actualiza al aplicar.
+                active = new
         name_field.on_change = _on_name
         name_field.on_submit = _on_name
-        import copy as _copy
-        _snapshot = _copy.deepcopy(s.segments.get(active, []))
+        # Solo se restauran los miembros de la división; no hace falta copiar
+        # los Track completos (deepcopy de 1.000 pistas era costoso).
+        _snapshot = list(s.segments.get(active, []))
         # criterio añadir / eliminar: artista/álbum/canción (canción default)
         add_criterion = {"value": "song"}
         remove_criterion = {"value": "song"}
@@ -1309,35 +1322,52 @@ class PlaylistManagerUI(DialogMixin):
         right_search = app_text_field(hint_text="Buscar en División…", prefix_icon=ft.Icons.SEARCH, expand=True, height=32, content_padding=ft.Padding.symmetric(horizontal=8, vertical=4))
         left_lv = ft.ListView(spacing=4, padding=ft.Padding.all(6), height=lv_h)
         right_lv = ft.ListView(spacing=4, padding=ft.Padding.all(6), height=lv_h)
+        left_limit = ft.Text("", size=9, color=TEXT_DIM, font_family=FONT_TEXT)
+        right_limit = ft.Text("", size=9, color=TEXT_DIM, font_family=FONT_TEXT)
 
         def _rebuild_left(q: str = ""):
             ql = (q or "").strip().lower()
             left_lv.controls.clear()
             crit = add_criterion["value"]
             if crit == "artist":
-                artists = sorted(set(t.artist for t in src_tracks if t.artist), key=lambda x: x.lower())
-                for a in artists:
-                    if ql and ql not in a.lower(): continue
+                artists = sorted(
+                    (a for a in set(t.artist for t in src_tracks if t.artist)
+                     if not ql or ql in a.lower()),
+                    key=lambda x: x.lower(),
+                )
+                shown = artists[:DIALOG_OPTION_LIMIT]
+                left_limit.value = limit_label(len(shown), len(artists))
+                for a in shown:
                     # cuenta canciones de ese artista en ORIGINAL
                     cnt = sum(1 for t in src_tracks if t.artist == a)
                     label = f"{a} ({cnt})"
                     chk = ft.Checkbox(label=label, value=a in left_sel, fill_color={ft.ControlState.SELECTED: ACCENT}, check_color=TEXT_PRIMARY, label_style=ft.TextStyle(size=10, color=TEXT_PRIMARY if a in left_sel else TEXT_MUTED), border_side=ft.BorderSide(1.0, ACCENT if a in left_sel else TEXT_DIM), data=a, on_change=lambda e, _a=a: (left_sel.add(_a) if e.control.value else left_sel.discard(_a)))
                     left_lv.controls.append(chk)
             elif crit == "album":
-                albums = sorted(set(t.album for t in src_tracks if t.album), key=lambda x: x.lower())
-                for a in albums:
-                    if ql and ql not in a.lower(): continue
+                albums = sorted(
+                    (a for a in set(t.album for t in src_tracks if t.album)
+                     if not ql or ql in a.lower()),
+                    key=lambda x: x.lower(),
+                )
+                shown = albums[:DIALOG_OPTION_LIMIT]
+                left_limit.value = limit_label(len(shown), len(albums))
+                for a in shown:
                     cnt = sum(1 for t in src_tracks if t.album == a)
                     label = f"{a} ({cnt})"
                     chk = ft.Checkbox(label=label, value=a in left_sel, fill_color={ft.ControlState.SELECTED: ACCENT}, check_color=TEXT_PRIMARY, label_style=ft.TextStyle(size=10, color=TEXT_PRIMARY if a in left_sel else TEXT_MUTED), border_side=ft.BorderSide(1.0, ACCENT if a in left_sel else TEXT_DIM), data=a, on_change=lambda e, _a=a: (left_sel.add(_a) if e.control.value else left_sel.discard(_a)))
                     left_lv.controls.append(chk)
             else:
+                matches = []
                 for t in src_tracks:
                     label = f"{t.name[:24]} — {t.artist[:16]}"
-                    if ql and ql not in label.lower(): continue
+                    if not ql or ql in label.lower():
+                        matches.append((t, label))
+                shown = matches[:DIALOG_OPTION_LIMIT]
+                left_limit.value = limit_label(len(shown), len(matches))
+                for t, label in shown:
                     chk = ft.Checkbox(label=label, value=t.id in left_sel, fill_color={ft.ControlState.SELECTED: ACCENT}, check_color=TEXT_PRIMARY, label_style=ft.TextStyle(size=10, color=TEXT_PRIMARY if t.id in left_sel else TEXT_MUTED), border_side=ft.BorderSide(1.0, ACCENT if t.id in left_sel else TEXT_DIM), data=t.id, on_change=lambda e, _tid=t.id: (left_sel.add(_tid) if e.control.value else left_sel.discard(_tid)))
                     left_lv.controls.append(chk)
-            try: left_lv.update()
+            try: left_lv.update(); left_limit.update()
             except: pass
 
         def _rebuild_right(q: str = ""):
@@ -1345,26 +1375,41 @@ class PlaylistManagerUI(DialogMixin):
             right_lv.controls.clear()
             crit = remove_criterion["value"]
             if crit == "artist":
-                artists = sorted(set(t.artist for t in div_tracks if t.artist), key=lambda x: x.lower())
-                for a in artists:
-                    if ql and ql not in a.lower(): continue
+                artists = sorted(
+                    (a for a in set(t.artist for t in div_tracks if t.artist)
+                     if not ql or ql in a.lower()),
+                    key=lambda x: x.lower(),
+                )
+                shown = artists[:DIALOG_OPTION_LIMIT]
+                right_limit.value = limit_label(len(shown), len(artists))
+                for a in shown:
                     cnt = sum(1 for t in div_tracks if t.artist == a)
                     chk = ft.Checkbox(label=f"{a} ({cnt})", value=a in right_sel, fill_color={ft.ControlState.SELECTED: ACCENT}, check_color=TEXT_PRIMARY, label_style=ft.TextStyle(size=10, color=TEXT_PRIMARY if a in right_sel else TEXT_MUTED), border_side=ft.BorderSide(1.0, ACCENT if a in right_sel else TEXT_DIM), data=a, on_change=lambda e, _a=a: (right_sel.add(_a) if e.control.value else right_sel.discard(_a)))
                     right_lv.controls.append(chk)
             elif crit == "album":
-                albums = sorted(set(t.album for t in div_tracks if t.album), key=lambda x: x.lower())
-                for a in albums:
-                    if ql and ql not in a.lower(): continue
+                albums = sorted(
+                    (a for a in set(t.album for t in div_tracks if t.album)
+                     if not ql or ql in a.lower()),
+                    key=lambda x: x.lower(),
+                )
+                shown = albums[:DIALOG_OPTION_LIMIT]
+                right_limit.value = limit_label(len(shown), len(albums))
+                for a in shown:
                     cnt = sum(1 for t in div_tracks if t.album == a)
                     chk = ft.Checkbox(label=f"{a} ({cnt})", value=a in right_sel, fill_color={ft.ControlState.SELECTED: ACCENT}, check_color=TEXT_PRIMARY, label_style=ft.TextStyle(size=10, color=TEXT_PRIMARY if a in right_sel else TEXT_MUTED), border_side=ft.BorderSide(1.0, ACCENT if a in right_sel else TEXT_DIM), data=a, on_change=lambda e, _a=a: (right_sel.add(_a) if e.control.value else right_sel.discard(_a)))
                     right_lv.controls.append(chk)
             else:
+                matches = []
                 for t in div_tracks:
                     label = f"{t.name[:24]} — {t.artist[:16]}"
-                    if ql and ql not in label.lower(): continue
+                    if not ql or ql in label.lower():
+                        matches.append((t, label))
+                shown = matches[:DIALOG_OPTION_LIMIT]
+                right_limit.value = limit_label(len(shown), len(matches))
+                for t, label in shown:
                     chk = ft.Checkbox(label=label, value=t.id in right_sel, fill_color={ft.ControlState.SELECTED: ACCENT}, check_color=TEXT_PRIMARY, label_style=ft.TextStyle(size=10, color=TEXT_PRIMARY if t.id in right_sel else TEXT_MUTED), border_side=ft.BorderSide(1.0, ACCENT if t.id in right_sel else TEXT_DIM), data=t.id, on_change=lambda e, _tid=t.id: (right_sel.add(_tid) if e.control.value else right_sel.discard(_tid)))
                     right_lv.controls.append(chk)
-            try: right_lv.update()
+            try: right_lv.update(); right_limit.update()
             except: pass
 
         # IconButton + ContextMenu a la IZQUIERDA de cada buscador, icono cambia según criterio.
@@ -1398,26 +1443,26 @@ class PlaylistManagerUI(DialogMixin):
             except: pass
             _rebuild_right(right_search.value or "")
 
-        left_search.on_change = lambda e: _rebuild_left(e.control.value or "")
-        right_search.on_change = lambda e: _rebuild_right(e.control.value or "")
+        left_search.on_change = lambda e: debounce(
+            "edit_division_left",
+            lambda: _rebuild_left(left_search.value or ""),
+        )
+        right_search.on_change = lambda e: debounce(
+            "edit_division_right",
+            lambda: _rebuild_right(right_search.value or ""),
+        )
         _rebuild_left("")
         _rebuild_right("")
 
         def _add_to_division(_e):
             crit = add_criterion["value"]
             if crit == "artist":
-                for a in list(left_sel):
-                    for t in src_tracks:
-                        if t.artist == a:
-                            s.add_track_to_division(t.id, active)
+                target_ids = [t.id for t in src_tracks if t.artist in left_sel]
             elif crit == "album":
-                for a in list(left_sel):
-                    for t in src_tracks:
-                        if t.album == a:
-                            s.add_track_to_division(t.id, active)
+                target_ids = [t.id for t in src_tracks if t.album in left_sel]
             else:
-                for tid in list(left_sel):
-                    s.add_track_to_division(tid, active)
+                target_ids = list(left_sel)
+            s.add_tracks_to_division(target_ids, active, notify=False)
             left_sel.clear()
             nonlocal div_tracks
             div_tracks = s.segments.get(active, [])
@@ -1426,27 +1471,27 @@ class PlaylistManagerUI(DialogMixin):
             self.page.update()
 
         def _remove_from_division(_e):
+            nonlocal div_tracks
             crit = remove_criterion["value"]
             if crit == "artist":
-                for a in list(right_sel):
-                    for t in list(div_tracks):
-                        if t.artist == a:
-                            s.remove_track_from_division(t.id, active)
+                target_ids = [t.id for t in list(div_tracks) if t.artist in right_sel]
             elif crit == "album":
-                for a in list(right_sel):
-                    for t in list(div_tracks):
-                        if t.album == a:
-                            s.remove_track_from_division(t.id, active)
+                target_ids = [t.id for t in list(div_tracks) if t.album in right_sel]
             else:
-                for tid in list(right_sel):
-                    s.remove_track_from_division(tid, active)
+                target_ids = list(right_sel)
+            s.remove_tracks_from_division(target_ids, active, notify=False)
             right_sel.clear()
             div_tracks = s.segments.get(active, [])
             _rebuild_right(right_search.value or "")
             self.page.update()
 
         def _apply_edit(_e):
-            s.notify()
+            s.apply_search(s.search_query)
+            self._close_dlg(dlg_ref.get("dlg"))
+
+        def _close_edit(_e):
+            # Cerrar conserva los cambios, igual que el flujo anterior.
+            s.apply_search(s.search_query)
             self._close_dlg(dlg_ref.get("dlg"))
 
         def _revert_edit(_e):
@@ -1467,14 +1512,14 @@ class PlaylistManagerUI(DialogMixin):
                 content=ft.Column([
                     name_field,
                     ft.Row([
-                        ft.Column([ft.Row([add_popup, left_search], spacing=4, vertical_alignment=ft.CrossAxisAlignment.CENTER), ft.Container(content=left_lv, bgcolor=CHIP_BG, border=ft.Border.all(0.5, BORDER_LIGHT), border_radius=8, height=lv_h + 12, width=390), ft.TextButton("Agregar →", icon=ft.Icons.ARROW_FORWARD, on_click=_add_to_division, style=ft.ButtonStyle(color=ACCENT))], spacing=6, width=390),
-                        ft.Column([ft.Row([remove_popup, right_search], spacing=4, vertical_alignment=ft.CrossAxisAlignment.CENTER), ft.Container(content=right_lv, bgcolor=CHIP_BG, border=ft.Border.all(0.5, BORDER_LIGHT), border_radius=8, height=lv_h + 12, width=390), ft.TextButton("← Quitar", icon=ft.Icons.ARROW_BACK, on_click=_remove_from_division, style=ft.ButtonStyle(color=WARNING))], spacing=6, width=390),
+                        ft.Column([ft.Row([add_popup, left_search], spacing=4, vertical_alignment=ft.CrossAxisAlignment.CENTER), left_limit, ft.Container(content=left_lv, bgcolor=CHIP_BG, border=ft.Border.all(0.5, BORDER_LIGHT), border_radius=8, height=lv_h + 12, width=390), ft.TextButton("Agregar →", icon=ft.Icons.ARROW_FORWARD, on_click=_add_to_division, style=ft.ButtonStyle(color=ACCENT))], spacing=6, width=390),
+                        ft.Column([ft.Row([remove_popup, right_search], spacing=4, vertical_alignment=ft.CrossAxisAlignment.CENTER), right_limit, ft.Container(content=right_lv, bgcolor=CHIP_BG, border=ft.Border.all(0.5, BORDER_LIGHT), border_radius=8, height=lv_h + 12, width=390), ft.TextButton("← Quitar", icon=ft.Icons.ARROW_BACK, on_click=_remove_from_division, style=ft.ButtonStyle(color=WARNING))], spacing=6, width=390),
                     ], spacing=10, vertical_alignment=ft.CrossAxisAlignment.START),
                 ], tight=True, spacing=8),
                 width=820,
             ),
             [
-                dialog_action("Cerrar", lambda _: self._close_dlg(dlg_ref.get("dlg")), kind="muted"),
+                dialog_action("Cerrar", _close_edit, kind="muted"),
                 dialog_action("Revertir", _revert_edit, kind="muted"),
                 dialog_action("Aplicar", _apply_edit, kind="primary"),
             ],
@@ -1769,6 +1814,23 @@ class PlaylistManagerUI(DialogMixin):
 
     # ── STATE REACTIONS ────────────────────────────────────────────────
 
+    def _schedule_state_render(self) -> None:
+        """Coalesce ráfagas de notify() en un solo render por tick."""
+        if self._render_scheduled:
+            return
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            # Notify desde un hilo sin loop: conserva el comportamiento previo.
+            self._on_state_changed()
+            return
+        self._render_scheduled = True
+        loop.call_soon(self._flush_state_render)
+
+    def _flush_state_render(self) -> None:
+        self._render_scheduled = False
+        self._on_state_changed()
+
     def _on_state_changed(self) -> None:
         s = self.state
         is_local_src = s.source in AppState.LOCAL_SOURCES
@@ -1864,9 +1926,12 @@ class PlaylistManagerUI(DialogMixin):
         # actualiza label del botón transferir/exportar según destino
         try:
             is_export = s.destination == EXPORT_DEST_LABEL
-            self._transfer_btn.content.value = "Exportar" if is_export else "Transferir"  # type: ignore
-            self._transfer_btn.icon = ft.Icons.SAVE_ALT if is_export else ft.Icons.SWAP_HORIZ  # type: ignore
-            self._transfer_btn.update()
+            label = "Exportar" if is_export else "Transferir"
+            icon = ft.Icons.SAVE_ALT if is_export else ft.Icons.SWAP_HORIZ
+            if self._transfer_btn.content.value != label:  # type: ignore[attr-defined]
+                self._transfer_btn.content.value = label  # type: ignore[attr-defined]
+            if self._transfer_btn.icon != icon:
+                self._transfer_btn.icon = icon
         except Exception:
             pass
         return dest_ok
@@ -1893,33 +1958,18 @@ class PlaylistManagerUI(DialogMixin):
         self._organize_btn.disabled = not has_tracks
         self._split_btn.disabled = not has_tracks
         self._reorganize_btn.disabled = not has_tracks
-        # compat: _segment_dd siempre oculto (movido junto a Vista) — mantener sync silencioso
-        try:
-            self._segment_dd.visible = False
-            self._segment_dd.update()
-        except Exception:
-            pass
+        # compat: _segment_dd siempre oculto (movido junto a Vista)
+        self._segment_dd.visible = False
         # selector División activa — Outlined + Popup dinámico junto a Vista
         try:
             if s.segments:
                 self._refresh_division_popup()
                 self._edit_division_btn.visible = True
-                self._edit_division_btn.update()
             else:
-                try:
-                    self._division_popup.visible = False
-                    self._division_col.visible = False
-                    self._division_popup.update()
-                    self._division_col.update()
-                except Exception:
-                    pass
+                self._division_popup.visible = False
+                self._division_col.visible = False
                 self._edit_division_btn.visible = False
-                self._edit_division_btn.update()
-            try:
-                self._partition_btn.visible = False
-                self._partition_btn.update()
-            except Exception:
-                pass
+            self._partition_btn.visible = False
         except Exception:
             pass
 
@@ -2076,28 +2126,41 @@ class PlaylistManagerUI(DialogMixin):
             except Exception:
                 pass
             lv.controls.clear()
-            self._row_cache.clear()
             for i, track in enumerate(tracks, 1):
-                row = SongRow(track, i, self.state.toggle_track, on_move=self.state.move_track_to_position)
-                self._row_cache[track.id] = row
-                lv.controls.append(row)
+                lv.controls.append(
+                    SongRow(
+                        track, i, self.state.toggle_track,
+                        on_move=self.state.move_track_to_position,
+                    )
+                )
             try:
                 lv.update()
             except Exception:
                 pass
-        else:
-            track_map = {t.id: t for t in tracks}
-            for tid, row in self._row_cache.items():
-                current = track_map.get(tid)
-                if current:
-                    try:
-                        row.refresh(current)
-                    except Exception:
-                        pass
+            return
+
+        # Mismo orden: refresca solo las filas cuyo contenido cambió. El zip
+        # conserva la correspondencia incluso si la fuente trae IDs repetidos.
+        changed: list[SongRow] = []
+        for row, current in zip(lv.controls, tracks):
+            if not hasattr(row, "refresh"):
+                continue
             try:
-                lv.update()
+                if row.refresh(current, notify=False):
+                    changed.append(row)
             except Exception:
                 pass
+        if not changed:
+            return
+        try:
+            if len(changed) <= _ROW_UPDATE_BATCH_THRESHOLD:
+                for row in changed:
+                    row.update()
+            else:
+                # Un solo mensaje para transferencias/reordenamientos masivos.
+                lv.update()
+        except Exception:
+            pass
 
 
     # ── EVENT HANDLERS ─────────────────────────────────────────────────

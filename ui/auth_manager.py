@@ -61,15 +61,29 @@ class AuthManager:
         """Parallel pre-flight on all platforms."""
         return await run_preflight()
 
+    async def check_sessions(self, platforms: list[str]) -> list[PreFlightResult]:
+        """Pre-flight only the requested platforms."""
+        return await run_preflight(platforms)
+
     def ingest_preflight_results(self, results: list[PreFlightResult]) -> None:
-        """Cache results, update AppState auth flags and notify the UI."""
-        self._last_results = results
+        """Merge results, update AppState auth flags and notify the UI."""
+        merged = {r.platform: r for r in self._last_results}
+        merged.update({r.platform: r for r in results})
+        self._last_results = [
+            merged[platform] for platform in PLATFORM_ORDER if platform in merged
+        ]
         self._sync_auth_ui_state(results)
         self.state.notify()
 
-    async def refresh_session_icons(self) -> list[PreFlightResult]:
-        """Re-run check_all_sessions and push results to the UI icons."""
-        results = await self.check_all_sessions()
+    async def refresh_session_icons(
+        self, platforms: list[str] | None = None,
+    ) -> list[PreFlightResult]:
+        """Re-run the requested checks and push results to the UI icons."""
+        results = (
+            await self.check_sessions(platforms)
+            if platforms is not None
+            else await self.check_all_sessions()
+        )
         self.ingest_preflight_results(results)
         return results
 

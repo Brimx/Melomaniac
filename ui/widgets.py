@@ -14,6 +14,8 @@ Componentes:
     - _primary_btn: Botón primario con fondo de acento y elevación
     - _ghost_btn: Botón secundario con borde y fondo transparente
     - _status_icon: Iconos de estado para tracking de transferencias
+    - debounce: Agrupador de eventos para buscadores que reconstruyen listas
+    - limit_label: Texto de ayuda para listas de diálogo truncadas
 
 Sistema de Diseño:
     Implementa un sistema de tokens de diseño consistente con:
@@ -29,6 +31,9 @@ Fecha: 2026
 """
 
 from __future__ import annotations
+
+import asyncio
+from typing import Any, Callable
 
 import flet as ft
 
@@ -48,6 +53,45 @@ FONT = FONT_TEXT
 FONT_BOLD = FONT_HEADLINE_BOLD
 FONT_MEDIUM = FONT_TEXT_MEDIUM
 FONT_SEMI = FONT_TEXT_SEMI
+
+_DEBOUNCE_TASKS: dict[Any, asyncio.Task] = {}
+
+
+def debounce(key: Any, fn: Callable[[], None], delay: float = 0.25) -> None:
+    """Ejecuta ``fn`` una vez tras ``delay``; cancela la llamada previa de ``key``.
+
+    Se usa en buscadores de diálogos que reconstruyen listas de controles.
+    Si no hay loop activo, ejecuta de inmediato para no perder el evento.
+    """
+    previous = _DEBOUNCE_TASKS.get(key)
+    if previous is not None and not previous.done():
+        previous.cancel()
+
+    async def _run() -> None:
+        try:
+            await asyncio.sleep(delay)
+        except asyncio.CancelledError:
+            return
+        finally:
+            if _DEBOUNCE_TASKS.get(key) is asyncio.current_task():
+                _DEBOUNCE_TASKS.pop(key, None)
+        try:
+            fn()
+        except Exception:
+            pass
+
+    try:
+        _DEBOUNCE_TASKS[key] = asyncio.create_task(_run())
+    except RuntimeError:
+        fn()
+
+
+def limit_label(shown: int, total: int) -> str:
+    """Texto de ayuda canónico para listas de diálogo truncadas."""
+    return (
+        f"Mostrando {shown} de {total} — escribe para filtrar"
+        if shown < total else ""
+    )
 
 
 def app_text(

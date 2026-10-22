@@ -43,6 +43,10 @@ class TelemetryDrawer:
 
         self._last_failed: list = []
         self._pm_meta:     dict = {}
+        # Firmas para evitar reconstruir listas cuando el estado no cambió.
+        self._counter_sig: tuple | None = None
+        self._log_snapshot: tuple[str, ...] | None = None
+        self._pm_signature: tuple | None = None
 
         d_body, self._d_panels, self._d_tab_btns = self._build_body(
             self._d_cnts, self._d_log, self._d_pm, self._d_pm_ph)
@@ -242,6 +246,7 @@ class TelemetryDrawer:
     def clear_postmortem(self) -> None:
         self._last_failed = []
         self._pm_meta     = {}
+        self._pm_signature = None
         for lst, ph in self._pm_pairs():
             lst.controls.clear()
             ph.visible = True
@@ -316,6 +321,11 @@ class TelemetryDrawer:
 
     def update_counters(self, detected: int, candidates: int, processed: int,
                         confirmed: int, rejected: int) -> None:
+        signature = (detected, candidates, processed, confirmed, rejected)
+        if signature == self._counter_sig:
+            return
+        self._counter_sig = signature
+
         def _f(n): return str(n) if n else "—"
         for c in self._cnt_pairs():
             c["detected"].value   = _f(detected)
@@ -325,9 +335,13 @@ class TelemetryDrawer:
             c["rejected"].value   = _f(rejected)
 
     def update_log(self, log_lines: list[str]) -> None:
+        snapshot = tuple(log_lines[-80:])
+        if snapshot == self._log_snapshot:
+            return
+        self._log_snapshot = snapshot
         for lst in self._log_pairs():
             lst.controls.clear()
-            for line in log_lines[-80:]:
+            for line in snapshot:
                 col = (SUCCESS if "[SUCCESS]" in line else ERROR_COL if "[ERROR]" in line else TEXT_MUTED)
                 lst.controls.append(
                     ft.Text(f"› {line}", size=9, color=col, font_family=mono_family(), opacity=1.0)
@@ -335,7 +349,23 @@ class TelemetryDrawer:
 
     def update_postmortem(self, failed_tracks, *, destination="", confirmed=0,
                           detected=0, elapsed_s=0.0, title="") -> None:
-        self._last_failed = list(failed_tracks)
+        failed = list(failed_tracks)
+        signature = (
+            tuple(
+                (
+                    getattr(t, "id", ""),
+                    getattr(t, "name", ""),
+                    getattr(t, "artist", ""),
+                    (getattr(t, "failure_reason", "") or "").strip(),
+                )
+                for t in failed
+            ),
+            destination, confirmed, detected, elapsed_s, title,
+        )
+        if signature == self._pm_signature:
+            return
+        self._pm_signature = signature
+        self._last_failed = failed
         self._pm_meta = dict(
             destination=destination, confirmed=confirmed, detected=detected,
             elapsed_s=elapsed_s, title=title,

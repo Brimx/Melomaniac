@@ -16,8 +16,14 @@ from __future__ import annotations
 
 import flet as ft
 
-from ui.tokens import BG_SURFACE, BG_INPUT, BORDER_LIGHT, ACCENT, TEXT_PRIMARY, TEXT_MUTED, TEXT_DIM, CHIP_BG
-from ui.widgets import dialog_action, app_dialog, organize_dropdown, input_border
+from ui.tokens import (
+    BG_SURFACE, BG_INPUT, BORDER_LIGHT, ACCENT, TEXT_PRIMARY, TEXT_MUTED,
+    TEXT_DIM, CHIP_BG, DIALOG_OPTION_LIMIT,
+)
+from ui.widgets import (
+    dialog_action, app_dialog, organize_dropdown, input_border, debounce,
+    limit_label,
+)
 from engine.organizer import split_tracks
 
 
@@ -302,6 +308,9 @@ def show_group_dialog(page: ft.Page, state) -> None:
         art_search = ft.TextField(hint_text="Buscar artista…", prefix_icon=ft.Icons.SEARCH, width=360, height=32, bgcolor=BG_INPUT, border=input_border(), dense=True, content_padding=ft.Padding.symmetric(horizontal=8, vertical=4), text_style=ft.TextStyle(size=11))
         alb_search = ft.TextField(hint_text="Buscar álbum…", prefix_icon=ft.Icons.SEARCH, width=360, height=32, bgcolor=BG_INPUT, border=input_border(), dense=True, content_padding=ft.Padding.symmetric(horizontal=8, vertical=4), text_style=ft.TextStyle(size=11))
         song_search = ft.TextField(hint_text="Buscar canción…", prefix_icon=ft.Icons.SEARCH, width=360, height=36, bgcolor=BG_INPUT, border=input_border(), dense=True, content_padding=ft.Padding.symmetric(horizontal=8, vertical=4), text_style=ft.TextStyle(size=11))
+        art_limit = ft.Text("", size=9, color=TEXT_DIM, font_family="IBM Plex Sans")
+        alb_limit = ft.Text("", size=9, color=TEXT_DIM, font_family="IBM Plex Sans")
+        song_limit = ft.Text("", size=9, color=TEXT_DIM, font_family="IBM Plex Sans")
 
         art_lv = ft.ListView(height=140, spacing=4, padding=ft.Padding.all(4), expand=False)
         alb_lv = ft.ListView(height=140, spacing=4, padding=ft.Padding.all(4), expand=False)
@@ -322,48 +331,57 @@ def show_group_dialog(page: ft.Page, state) -> None:
 
         def _rebuild_art(q=""):
             ql = (q or "").lower()
+            matches = [a for a in artists_all if not ql or ql in a.lower()]
+            shown = matches[:DIALOG_OPTION_LIMIT]
+            art_limit.value = limit_label(len(shown), len(matches))
             art_lv.controls.clear()
-            for a in artists_all:
-                if ql and ql not in a.lower(): continue
+            for a in shown:
                 def _on_art(e, _a=a):
                     if e.control.value: st["artists"].add(_a)
                     else: st["artists"].discard(_a)
                     _update_headers()
                 chk = ft.Checkbox(label=a, value=a in st["artists"], fill_color={ft.ControlState.SELECTED: ACCENT}, check_color=TEXT_PRIMARY, label_style=ft.TextStyle(size=11, color=TEXT_PRIMARY if a in st["artists"] else TEXT_MUTED), border_side=ft.BorderSide(1.0, ACCENT if a in st["artists"] else TEXT_DIM), on_change=_on_art)
                 art_lv.controls.append(chk)
-            try: art_lv.update()
+            try: art_lv.update(); art_limit.update()
             except: pass
         def _rebuild_alb(q=""):
             ql = (q or "").lower()
+            matches = [a for a in albums_all if not ql or ql in a.lower()]
+            shown = matches[:DIALOG_OPTION_LIMIT]
+            alb_limit.value = limit_label(len(shown), len(matches))
             alb_lv.controls.clear()
-            for a in albums_all:
-                if ql and ql not in a.lower(): continue
+            for a in shown:
                 def _on_alb(e, _a=a):
                     if e.control.value: st["albums"].add(_a)
                     else: st["albums"].discard(_a)
                     _update_headers()
                 chk = ft.Checkbox(label=a, value=a in st["albums"], fill_color={ft.ControlState.SELECTED: ACCENT}, check_color=TEXT_PRIMARY, label_style=ft.TextStyle(size=11, color=TEXT_PRIMARY if a in st["albums"] else TEXT_MUTED), border_side=ft.BorderSide(1.0, ACCENT if a in st["albums"] else TEXT_DIM), on_change=_on_alb)
                 alb_lv.controls.append(chk)
-            try: alb_lv.update()
+            try: alb_lv.update(); alb_limit.update()
             except: pass
         def _rebuild_song(q=""):
             ql = (q or "").lower()
-            song_lv.controls.clear()
+            matches = []
             for t in songs_all:
                 label = f"{t.name} — {t.artist}"
-                if ql and ql not in label.lower(): continue
+                if not ql or ql in label.lower():
+                    matches.append((t, label))
+            shown = matches[:DIALOG_OPTION_LIMIT]
+            song_limit.value = limit_label(len(shown), len(matches))
+            song_lv.controls.clear()
+            for t, label in shown:
                 def _on_song(e, _tid=t.id):
                     if e.control.value: st["songs"].add(_tid)
                     else: st["songs"].discard(_tid)
                     _update_headers()
                 chk = ft.Checkbox(label=label, value=t.id in st["songs"], fill_color={ft.ControlState.SELECTED: ACCENT}, check_color=TEXT_PRIMARY, label_style=ft.TextStyle(size=11, color=TEXT_PRIMARY if t.id in st["songs"] else TEXT_MUTED), border_side=ft.BorderSide(1.0, ACCENT if t.id in st["songs"] else TEXT_DIM), on_change=_on_song)
                 song_lv.controls.append(chk)
-            try: song_lv.update()
+            try: song_lv.update(); song_limit.update()
             except: pass
 
-        art_search.on_change = lambda e: _rebuild_art(e.control.value or "")
-        alb_search.on_change = lambda e: _rebuild_alb(e.control.value or "")
-        song_search.on_change = lambda e: _rebuild_song(e.control.value or "")
+        art_search.on_change = lambda e: debounce((div_key, "art"), lambda: _rebuild_art(art_search.value or ""))
+        alb_search.on_change = lambda e: debounce((div_key, "alb"), lambda: _rebuild_alb(alb_search.value or ""))
+        song_search.on_change = lambda e: debounce((div_key, "song"), lambda: _rebuild_song(song_search.value or ""))
         _rebuild_art(""); _rebuild_alb(""); _rebuild_song("")
 
         # ExpansionPanelList con 3 paneles — más grandes para legibilidad
@@ -374,17 +392,17 @@ def show_group_dialog(page: ft.Page, state) -> None:
             controls=[
                 ft.ExpansionPanel(
                     header=ft.ListTile(title=art_header),
-                    content=ft.Column([art_search, ft.Container(content=art_lv, height=170, bgcolor=CHIP_BG, border=ft.Border.all(0.5, BORDER_LIGHT), border_radius=8)], tight=True, spacing=6),
+                    content=ft.Column([art_search, art_limit, ft.Container(content=art_lv, height=170, bgcolor=CHIP_BG, border=ft.Border.all(0.5, BORDER_LIGHT), border_radius=8)], tight=True, spacing=6),
                     bgcolor=BG_SURFACE, can_tap_header=True,
                 ),
                 ft.ExpansionPanel(
                     header=ft.ListTile(title=alb_header),
-                    content=ft.Column([alb_search, ft.Container(content=alb_lv, height=170, bgcolor=CHIP_BG, border=ft.Border.all(0.5, BORDER_LIGHT), border_radius=8)], tight=True, spacing=6),
+                    content=ft.Column([alb_search, alb_limit, ft.Container(content=alb_lv, height=170, bgcolor=CHIP_BG, border=ft.Border.all(0.5, BORDER_LIGHT), border_radius=8)], tight=True, spacing=6),
                     bgcolor=BG_SURFACE, can_tap_header=True,
                 ),
                 ft.ExpansionPanel(
                     header=ft.ListTile(title=song_header),
-                    content=ft.Column([song_search, ft.Container(content=song_lv, height=200, bgcolor=CHIP_BG, border=ft.Border.all(0.5, BORDER_LIGHT), border_radius=8)], tight=True, spacing=6),
+                    content=ft.Column([song_search, song_limit, ft.Container(content=song_lv, height=200, bgcolor=CHIP_BG, border=ft.Border.all(0.5, BORDER_LIGHT), border_radius=8)], tight=True, spacing=6),
                     bgcolor=BG_SURFACE, can_tap_header=True,
                 ),
             ],
