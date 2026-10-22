@@ -72,6 +72,7 @@ from services.authentication import (
     ensure_config_dir,
     load_runtime_env,
 )
+from core.cache import make_cache_key
 from core.library_models import PlaylistSummary
 from core.models import Track, SearchResult, PlaylistMeta
 from core.config import (
@@ -355,6 +356,25 @@ class MusicApiService:
             elif isinstance(val, str):  # Legacy: solo track_id
                 cache[key] = SearchResult(val, False)
         return cache
+
+    def remember_resolution(
+        self, name: str, artist: str, destination: str,
+        track_id: str, *, isrc: str | None = None,
+    ) -> None:
+        """Fija una resolución manual como acierto para próximas transferencias.
+
+        Evita que una canción resuelta desde el reporte vuelva a aparecer como
+        ``needs_review`` en la siguiente ejecución por culpa de la caché.
+        """
+        if not track_id:
+            return
+        self._search_cache[make_cache_key(name, artist, destination)] = SearchResult(
+            track_id=track_id,
+            needs_review=False,
+            low_confidence=False,
+            isrc=isrc,
+        )
+        self.save_search_cache()
 
     def save_search_cache(self) -> None:
         """

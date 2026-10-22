@@ -489,6 +489,13 @@ class TransferReportDialog(DialogMixin):
             self.report.confirmed + 1, self.report.detected
         )
         try:
+            self.state.service.remember_resolution(
+                issue.track.name, issue.track.artist,
+                self.report.destination, track.id, isrc=track.isrc,
+            )
+        except Exception as exc:  # pylint: disable=broad-exception-caught
+            self.state.log(f"[WARN] No se pudo actualizar la caché: {exc}")
+        try:
             append_resolution_log(
                 self.report, issue, track, TRANSFER_HISTORY_JSONL,
                 query=self._last_query,
