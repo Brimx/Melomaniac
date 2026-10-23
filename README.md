@@ -15,7 +15,7 @@ El matching combina normalización de metadatos, RapidFuzz, artista/título, dur
 - Usa ISRC para coincidencias exactas en Apple Music y conserva el valor en la caché.
 - Compara la duración; Spotify añade el indicador `explicit` al scoring.
 - Permite buscar y seleccionar canciones; ordenar por artista, álbum, título, duración o fecha de lanzamiento; agrupar por artista, álbum o fecha; y crear de 2 a 5 divisiones seleccionando artistas, álbumes o canciones.
-- Ofrece los modos **Lista**, **Doble** y **Preview** durante las transformaciones, una navegación responsive y las secciones **Inicio**, **Biblioteca**, **Descargas** y **Config**. Biblioteca sincroniza playlists por plataforma y conserva sus metadatos localmente; Descargas sigue en desarrollo.
+- Ofrece los modos **Lista**, **Doble** y **Preview** durante las transformaciones y un rail lateral flotante que arranca colapsado (`68 px`) y se expande a `220 px`. Las secciones son **Gestión**, **Biblioteca**, **Descargas** y **Config**; Config queda fijo al fondo como módulo en desarrollo y el asistente de credenciales sigue accesible desde el engranaje. Biblioteca sincroniza playlists por plataforma y conserva sus metadatos localmente; Descargas sigue en desarrollo.
 - Muestra título, artista, álbum, duración, portada y estado de cada pista.
 - Exporta la selección o el alcance visible a `TXT`, `CSV`, `M3U`, `M3U8` y `XSPF`, con orden artista-título o título-artista.
 - Permite editar nombre y descripción antes de crear la playlist. En Spotify, SpotAPI solo permite guardar el nombre; la descripción se informa como no soportada.

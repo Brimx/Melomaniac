@@ -15,7 +15,7 @@ Matching combines metadata normalization, RapidFuzz, title/artist similarity, du
 - Use ISRC for exact Apple Music matches and retain it in the search cache.
 - Compare duration; Spotify also includes the `explicit` flag in its scoring.
 - Search and select tracks; sort by artist, album, title, duration, or release date; group by artist, album, or date; and create 2–5 divisions by selecting artists, albums, or tracks.
-- Use **List**, **Dual**, and **Preview** modes during transformations, with responsive navigation for **Home**, **Library**, **Downloads**, and **Config**. Library syncs playlists by platform and stores their metadata locally; Downloads is still in development.
+- Use **List**, **Dual**, and **Preview** modes during transformations and a floating side rail that starts collapsed (`68 px`) and expands to `220 px`. The sections are **Manage**, **Library**, **Downloads**, and **Config**; Config stays pinned at the bottom as a work-in-progress module, and the credential wizard remains available from the gear button. Library syncs playlists by platform and stores their metadata locally; Downloads is still in development.
 - Show title, artist, album, duration, artwork, and transfer status for each track.
 - Export the selected tracks or visible scope to `TXT`, `CSV`, `M3U`, `M3U8`, and `XSPF`, using artist-title or title-artist order.
 - Edit the playlist name and description before creating it. Spotify's SpotAPI integration only saves the name; the description is reported as unsupported.

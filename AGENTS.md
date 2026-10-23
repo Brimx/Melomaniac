@@ -41,7 +41,7 @@ python app.py                          # única forma de ejecutar la app
 python -m compileall -q app.py core engine services ui  # verificación rápida (README/ARCHITECTURE)
 ```
 
-- No hay `pytest`/`ruff`/`mypy`. No inventar comandos de test. La UI se valida manualmente (modos Lista/Doble/Preview, diálogos Organizar/Dividir, NavigationRail responsive, diálogo de exportación).
+- No hay `pytest`/`ruff`/`mypy`. No inventar comandos de test. La UI se valida manualmente (modos Lista/Doble/Preview, diálogos Organizar/Dividir, rail flotante responsive, diálogo de exportación).
 - No hay task runner ni CI workflows que consultar.
 
 ## Arquitectura — fuentes de verdad
@@ -86,7 +86,7 @@ engine -> core.models
 
 ## UI
 
-- `ui/main_ui.py` — `PlaylistManagerUI`, `NavigationRail` (Inicio/Biblioteca/Descargas/Config), vistas Lista/Doble/Preview. Biblioteca implementa sincronización y detalle de playlists (`ui/library_view.py`); Descargas sigue como placeholder. Config usa `ui/config_wizard.py`.
+- `ui/main_ui.py` — `PlaylistManagerUI`, rail flotante docked (`68/220 px`, Gestión/Biblioteca/Descargas/Config), vistas Lista/Doble/Preview. Biblioteca implementa sincronización y detalle de playlists (`ui/library_view.py`); Descargas sigue como placeholder. Config es un módulo placeholder; el wizard de credenciales sigue en `ui/config_wizard.py` y se abre desde el engranaje del panel izquierdo.
 - `ui/song_row.py:ITEM_H=64`, skeletons con `animate_opacity/scale` 600ms.
 - `ui/fonts.py` clasifica CJK > cirílico > latino: Stack Sans para latino, IBM Plex Sans para cirílico y Noto CJK cuando está disponible; IBM Plex Mono para datos técnicos.
 

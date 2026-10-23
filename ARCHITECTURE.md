@@ -168,7 +168,7 @@ El matching común usa estos umbrales:
 
 En pistas locales, un resultado `low_confidence` también se rechaza para evitar transferencias ambiguas.
 
-El diálogo Organizar conserva el orden actual o permite ordenar A→Z/Z→A y agrupar por artista, álbum o fecha de lanzamiento. Dividir crea de 2 a 5 divisiones manuales seleccionando artistas, álbumes o canciones; ambas operaciones actúan sobre la playlist completa. El usuario puede mostrar la lista, el preview o ambas columnas. `NavigationRail` expone Inicio, Biblioteca, Descargas y Config de forma responsive. Biblioteca sincroniza y conserva metadatos de playlists; Descargas sigue como placeholder.
+El diálogo Organizar conserva el orden actual o permite ordenar A→Z/Z→A y agrupar por artista, álbum o fecha de lanzamiento. Dividir crea de 2 a 5 divisiones manuales seleccionando artistas, álbumes o canciones; ambas operaciones actúan sobre la playlist completa. El usuario puede mostrar la lista, el preview o ambas columnas. El rail lateral flotante es un control custom docked: desplaza el contenido en vez de superponerlo, arranca colapsado en `68 px` y se expande a `220 px` con labels animados. Expone Gestión, Biblioteca, Descargas y Config; Config queda al fondo como módulo en desarrollo y el asistente de credenciales se abre desde el engranaje del panel izquierdo. Biblioteca sincroniza y conserva metadatos de playlists; Descargas sigue como placeholder.
 
 ## Concurrencia, caché y resiliencia
 

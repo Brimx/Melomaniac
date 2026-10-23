@@ -168,7 +168,7 @@ The shared matcher uses these thresholds:
 
 For local tracks, a `low_confidence` result is also rejected to avoid ambiguous transfers.
 
-The Organize dialog can preserve the current order or sort A→Z/Z→A, then group by artist, album, or release date. Split creates 2–5 manual divisions by selecting artists, albums, or tracks. These operations apply to the playlist as a whole. The user can show the list, preview, or both columns. The responsive `NavigationRail` exposes Home, Library, Downloads, and Config. Library syncs and caches playlist metadata; Downloads remains a placeholder.
+The Organize dialog can preserve the current order or sort A→Z/Z→A, then group by artist, album, or release date. Split creates 2–5 manual divisions by selecting artists, albums, or tracks. These operations apply to the playlist as a whole. The user can show the list, preview, or both columns. The floating side rail is a custom docked control: it pushes the content instead of overlaying it, starts collapsed at `68 px`, and expands to `220 px` with animated labels. It exposes Manage, Library, Downloads, and Config; Config stays pinned at the bottom as a work-in-progress module, and the credential wizard opens from the gear button in the left panel. Library syncs and caches playlist metadata; Downloads remains a placeholder.
 
 ## Concurrency, caching, and resilience
 

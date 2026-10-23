@@ -8,6 +8,7 @@
 - Corrige `NameError` por import faltante de `input_border` en `ui/song_row.py` que rompía `_sync_list_view`.
 
 - Refina las vistas **Lista**, **Doble** y **Preview**, los skeletons responsive y la navegación `NavigationRail`.
+- 2026-10-22: rail de navegación flotante y docked (`68 px` colapsado / `220 px` expandido), con «Gestión» en lugar de «Inicio», Config al fondo y labels animados sin saltos. Reutiliza radios canónicos en inputs, botones y diálogos.
 - Mejora Organizar/Dividir: preview por división, transferencia secuencial por división, y aplicar/revertir ajustes; la UI actual no tiene selector de alcance y `platform` no es criterio.
 - Corrige la Biblioteca existente: skeletons, metadatos de álbum, conteo Apple Music, inicialización Spotify y apertura de URLs externas; Descargas sigue en desarrollo.
 - Migra a Flet 1.0.1 y corrige compatibilidad de controles, incluido `PopupMenuItem`.
