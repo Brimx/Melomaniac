@@ -1,8 +1,8 @@
-# Melomaniac v4.5.2 — Architecture
+# Melomaniac v4.6.0 — Architecture
 
 Melomaniac separates the Flet UI, application state, platform services, and metadata normalization/matching engine. The current version supports YouTube Music, Apple Music, Spotify, and two local inputs: file and pasted text.
 
-The documented working version is `4.5.2`. It is not a provisional series number; a version bump should happen only when a new version is chosen.
+The documented working version is `4.6.0`. It is not a provisional series number; a version bump should happen only when a new version is chosen.
 
 ## Layers and dependencies
 
@@ -151,7 +151,11 @@ selected Track
 
 1. cleaned metadata;
 2. original title/artist;
-3. normalized title.
+3. normalized title;
+4. Latin transliteration when Cyrillic is present;
+5. title only as the last resort.
+
+A per-platform, per-metadata `SingleFlight` prevents two equivalent tracks from searching at the same time. The loop keeps the best result (`no match` < `needs_review` < `low_confidence` < high confidence) and only continues while there is no match or the match needs review. The search cache is persisted every `25` entries and when the transfer closes.
 
 YouTube searches songs and validates up to the first three candidates, preferring `resultType == song` and the closest duration within five seconds. Apple searches the web catalog and selects by similarity and duration. Spotify queries `tracksV2` and scores 40 title points + 20 artist points, 30 duration points, and 10 explicit-match points.
 

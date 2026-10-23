@@ -1,6 +1,6 @@
 """
 ╔══════════════════════════════════════════════════════════════════════╗
-║                    Melomaniac v4.5.2                               ║
+║                    Melomaniac v4.6.0                               ║
 ║              Servicio Unificado de APIs Musicales                    ║
 ╚══════════════════════════════════════════════════════════════════════╝
 
@@ -48,7 +48,7 @@ Estrategia de Diseño - Patrón Facade:
        - _is_ytm_unauthorized: Detecta HTTP 401 de YouTube Music
 
 Autor: Melomaniac Team
-Versión: 4.5.2
+Versión: 4.6.0
 Fecha: 2026
 """
 
@@ -72,13 +72,14 @@ from services.authentication import (
     ensure_config_dir,
     load_runtime_env,
 )
-from core.cache import make_cache_key
+from core.cache import SingleFlight, make_cache_key, make_search_flight_key
 from core.library_models import PlaylistSummary
 from core.models import Track, SearchResult, PlaylistMeta
 from core.transfer import normalize_playlist_id
 from core.config import (
     NETWORK_CONCURRENCY as CFG_NETWORK_CONCURRENCY,
     RATE_LIMIT_BACKOFF_STEPS as CFG_RATE_LIMIT_BACKOFF_STEPS,
+    SEARCH_CACHE_FLUSH_EVERY,
     SPOTIFY_ADD_CHUNK as CFG_SPOTIFY_ADD_CHUNK,
     APPLE_API_BASE,
     APPLE_ISRC_BATCH,
@@ -90,7 +91,8 @@ from core.config import (
 )
 from services.circuit_breaker import CircuitBreaker, RateLimitError
 from engine.normalizer import (
-    clean_metadata, build_search_query, _normalize_title, normalize_isrc, FUZZY_IDEAL,
+    clean_metadata, build_search_query, build_search_variants,
+    _normalize_title, normalize_isrc, FUZZY_IDEAL,
 )
 from engine.match import (
     _fuzzy_scores_triple, _fuzzy_flags_elastic, _ideal_pass_hunter,
@@ -284,6 +286,10 @@ class MusicApiService:
         # BaseClient ya trae sesión/token/hashes calientes de la búsqueda.
         self._sp_insert_lock = threading.Lock()
         self._search_cache: dict[str, SearchResult] = self._load_search_cache()
+        # Deduplica búsquedas concurrentes de pistas equivalentes.
+        self._search_flights = SingleFlight()
+        # Escrituras pendientes de search_cache.json (ver mark_search_cache_dirty).
+        self._search_cache_dirty: int = 0
         self._am_rate_limiter = AppleRequestLimiter()
         self._shutdown_cleaned: bool = False
         self.youtube_auth_error: str = ""
@@ -377,12 +383,24 @@ class MusicApiService:
         )
         self.save_search_cache()
 
+    def mark_search_cache_dirty(self) -> None:
+        """
+        Marca la caché como modificada y persiste cada N entradas.
+
+        Evita reescribir ``search_cache.json`` completo tras cada pista.
+        ``transfer_playlist`` fuerza el flush al terminar para no perder
+        progreso si la app se cierra antes de alcanzar el umbral.
+        """
+        self._search_cache_dirty += 1
+        if self._search_cache_dirty >= SEARCH_CACHE_FLUSH_EVERY:
+            self.save_search_cache()
+
     def save_search_cache(self) -> None:
         """
         Persiste la caché de búsquedas a disco (config/search_cache.json).
 
-        Se invoca tras cada búsqueda que escribe en la caché para que el
-        progreso sobreviva reinicios y la transferencia sea reanudable.
+        Se invoca por lotes durante la transferencia y al cerrarla para que
+        el progreso sobreviva reinicios y la transferencia sea reanudable.
         """
         try:
             payload = {
@@ -399,6 +417,7 @@ class MusicApiService:
             with open(tmp, "w", encoding="utf-8") as f:
                 json.dump(payload, f, ensure_ascii=False)
             os.replace(tmp, SEARCH_CACHE_JSON)
+            self._search_cache_dirty = 0
         except Exception:  # pylint: disable=broad-exception-caught
             pass
 
@@ -1210,6 +1229,17 @@ class MusicApiService:
                 return await asyncio.to_thread(self._sp_search_candidates_sync, query, limit)
         return []
 
+    @staticmethod
+    def _search_result_rank(result: SearchResult) -> int:
+        """Calidad relativa de un resultado: 0 nada, 1 revisión, 2 baja, 3 alta."""
+        if not result.track_id:
+            return 0
+        if result.needs_review:
+            return 1
+        if result.low_confidence:
+            return 2
+        return 3
+
     async def search_with_fallback(
         self,
         platform: str,
@@ -1220,32 +1250,66 @@ class MusicApiService:
         local_is_explicit: bool = False,
         local_isrc: str | None = None,
     ) -> SearchResult:
-        base_t, base_a = clean_metadata(name, artist)
-        passes = [
-            (base_t, base_a),
-            (name.strip(), artist.strip()),
-            (_normalize_title(name), base_a),
-        ]
-        seen: set[tuple[str, str]] = set()
-        for idx, (t_pass, a_pass) in enumerate(passes):
-            t_pass = t_pass.strip()
-            if not t_pass:
-                continue
-            key = (t_pass.lower(), a_pass.strip().lower())
-            if key in seen:
-                continue
-            seen.add(key)
+        """Busca una pista probando variantes, sin duplicar búsquedas en vuelo.
+
+        La clave de singleflight incluye plataforma, metadatos limpios,
+        duración, explicit e ISRC. Si otra tarea ya está buscando la misma
+        identidad, comparte su resultado en lugar de consumir cuota extra.
+        """
+        flight_key = make_search_flight_key(
+            platform,
+            name,
+            artist,
+            duration_s=local_duration_s,
+            duration_ms=local_duration_ms,
+            is_explicit=local_is_explicit,
+            isrc=local_isrc,
+        )
+        return await self._search_flights.run(
+            flight_key,
+            lambda: self._search_with_variants(
+                platform,
+                name,
+                artist,
+                local_duration_s,
+                local_duration_ms,
+                local_is_explicit,
+                local_isrc,
+            ),
+        )
+
+    async def _search_with_variants(
+        self,
+        platform: str,
+        name: str,
+        artist: str,
+        local_duration_s: Optional[int],
+        local_duration_ms: int,
+        local_is_explicit: bool,
+        local_isrc: str | None,
+    ) -> SearchResult:
+        """Prueba variantes y conserva el mejor resultado disponible.
+
+        Solo sigue probando mientras no haya match o el match requiera
+        revisión; un resultado de baja confianza se considera aceptable,
+        igual que antes, para no multiplicar búsquedas sin necesidad.
+        """
+        best = SearchResult(None, False)
+        best_rank = 0
+        for t_pass, a_pass in build_search_variants(name, artist):
             result = await self.search_track(
                 platform, t_pass, a_pass, local_duration_s,
                 local_duration_ms=local_duration_ms,
                 local_is_explicit=local_is_explicit,
                 local_isrc=local_isrc,
             )
-            if result.track_id:
-                if idx == 0 and not result.needs_review and not result.low_confidence:
-                    return result
-                return result
-        return SearchResult(None, False)
+            rank = self._search_result_rank(result)
+            if rank > best_rank:
+                best = result
+                best_rank = rank
+            if best_rank >= 2:
+                break
+        return best
 
     # ── YouTube Music Hunter ───────────────────────────────────────────
 

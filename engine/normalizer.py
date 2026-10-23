@@ -1,6 +1,6 @@
 """
 ╔══════════════════════════════════════════════════════════════════════╗
-║                    Melomaniac v4.5.2                               ║
+║                    Melomaniac v4.6.0                               ║
 ║              Motor de Normalización de Metadatos                     ║
 ╚══════════════════════════════════════════════════════════════════════╝
 
@@ -35,7 +35,7 @@ Umbrales de Confianza:
     - ARTIST_EXACT_MIN (99%): Umbral para considerar artista exacto
 
 Autor: Melomaniac Team
-Versión: 4.5.2
+Versión: 4.6.0
 Fecha: 2026
 """
 
@@ -83,6 +83,32 @@ _PURGE_NOISE_WORDS = re.compile(
 # Detector de caracteres CJK (Chino, Japonés, Coreano) y Hangul
 # Usado para aplicar estrategias de normalización específicas para idiomas asiáticos
 _ASIAN_RE = re.compile(r'[\u4e00-\u9fff\u3040-\u30ff\u3130-\u318f]')
+
+# Detector de alfabeto cirílico para generar variantes latinas de búsqueda
+_CYRILLIC_RE = re.compile(r'[\u0400-\u04FF]')
+
+# Transliteración cirílica → latina (ruso, ucraniano, bielorruso y serbio).
+# Se usa solo como variante de búsqueda: el original se conserva primero.
+_CYRILLIC_TRANSLIT = str.maketrans({
+    'а': 'a', 'б': 'b', 'в': 'v', 'г': 'g', 'д': 'd', 'е': 'e',
+    'ё': 'yo', 'ж': 'zh', 'з': 'z', 'и': 'i', 'й': 'y', 'к': 'k',
+    'л': 'l', 'м': 'm', 'н': 'n', 'о': 'o', 'п': 'p', 'р': 'r',
+    'с': 's', 'т': 't', 'у': 'u', 'ф': 'f', 'х': 'kh', 'ц': 'ts',
+    'ч': 'ch', 'ш': 'sh', 'щ': 'shch', 'ъ': '', 'ы': 'y', 'ь': '',
+    'э': 'e', 'ю': 'yu', 'я': 'ya',
+    'і': 'i', 'ї': 'yi', 'є': 'ye', 'ґ': 'g', 'ў': 'u',
+    'ђ': 'dj', 'ј': 'j', 'љ': 'lj', 'њ': 'nj', 'ћ': 'c', 'џ': 'dz',
+    'ѕ': 'dz', 'ѐ': 'e', 'ѝ': 'i',
+    'А': 'A', 'Б': 'B', 'В': 'V', 'Г': 'G', 'Д': 'D', 'Е': 'E',
+    'Ё': 'Yo', 'Ж': 'Zh', 'З': 'Z', 'И': 'I', 'Й': 'Y', 'К': 'K',
+    'Л': 'L', 'М': 'M', 'Н': 'N', 'О': 'O', 'П': 'P', 'Р': 'R',
+    'С': 'S', 'Т': 'T', 'У': 'U', 'Ф': 'F', 'Х': 'Kh', 'Ц': 'Ts',
+    'Ч': 'Ch', 'Ш': 'Sh', 'Щ': 'Shch', 'Ъ': '', 'Ы': 'Y', 'Ь': '',
+    'Э': 'E', 'Ю': 'Yu', 'Я': 'Ya',
+    'І': 'I', 'Ї': 'Yi', 'Є': 'Ye', 'Ґ': 'G', 'Ў': 'U',
+    'Ђ': 'Dj', 'Ј': 'J', 'Љ': 'Lj', 'Њ': 'Nj', 'Ћ': 'C', 'Џ': 'Dz',
+    'Ѕ': 'Dz', 'Ѐ': 'E', 'Ѝ': 'I',
+})
 
 # Palabras que invalidan incondicionalmente un resultado de búsqueda
 # Previenen falsos positivos con covers, karaokes y parodias
@@ -234,6 +260,68 @@ def clean_metadata(title: str, artist: str) -> tuple[str, str]:
         a = str(artist).strip()
     
     return t, a
+
+
+def has_cyrillic(text: str) -> bool:
+    """Indica si ``text`` contiene al menos un carácter cirílico."""
+    return bool(_CYRILLIC_RE.search(str(text or "")))
+
+
+def transliterate_cyrillic(text: str) -> str:
+    """
+    Translitera caracteres cirílicos a latino preservando el resto.
+
+    No reemplaza el original: se usa como variante adicional cuando el
+    catálogo de destino indexa la obra en alfabeto latino.
+    """
+    return str(text or "").translate(_CYRILLIC_TRANSLIT)
+
+
+def build_search_variants(title: str, artist: str) -> list[tuple[str, str]]:
+    """
+    Genera variantes de búsqueda en orden de preferencia, sin duplicados.
+
+    Orden:
+    1. Título/artista limpios (núcleo semántico).
+    2. Original tal cual llega de la fuente.
+    3. Título normalizado + artista limpio (comportamiento previo).
+    4. Transliteración latina si hay cirílico.
+    5. Solo título limpio como último recurso.
+
+    El llamador decide cuándo detenerse según la calidad del resultado.
+    """
+    base_t, base_a = clean_metadata(title, artist)
+    original_t = str(title or "").strip()
+    original_a = str(artist or "").strip()
+    candidates: list[tuple[str, str]] = [
+        (base_t, base_a),
+        (original_t, original_a),
+        (_normalize_title(original_t), base_a),
+    ]
+    if has_cyrillic(f"{original_t}{original_a}"):
+        candidates.append((
+            transliterate_cyrillic(base_t),
+            transliterate_cyrillic(base_a),
+        ))
+        candidates.append((
+            transliterate_cyrillic(original_t),
+            transliterate_cyrillic(base_a),
+        ))
+    candidates.append((base_t, ""))
+
+    variants: list[tuple[str, str]] = []
+    seen: set[tuple[str, str]] = set()
+    for t_pass, a_pass in candidates:
+        t_pass = ' '.join(str(t_pass or "").split())
+        a_pass = ' '.join(str(a_pass or "").split())
+        if not t_pass:
+            continue
+        key = (t_pass.casefold(), a_pass.casefold())
+        if key in seen:
+            continue
+        seen.add(key)
+        variants.append((t_pass, a_pass))
+    return variants
 
 
 def build_search_query(title: str, artist: str) -> str:

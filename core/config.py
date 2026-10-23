@@ -1,5 +1,5 @@
 """
-core/config.py — Melomaniac v4.5.2 — Configuración Centralizada
+core/config.py — Melomaniac v4.6.0 — Configuración Centralizada
 ══════════════════════════════════════════════════════════════════
 Fuente única para constantes compartidas (regla 1).
 Centraliza el orden de plataformas, concurrencia y parámetros de servicios
@@ -29,6 +29,12 @@ DEFAULT_EXPORT_FORMAT: str = "txt"
 # ── Concurrencia (configurable, no forzado) ─────────────────────────
 NETWORK_CONCURRENCY: int = 2
 RATE_LIMIT_BACKOFF_STEPS: int = 10
+
+# Persistencia de la caché de búsquedas: agrupa escrituras para no reescribir
+# el JSON completo tras cada pista. El cierre de transferencia fuerza el flush.
+SEARCH_CACHE_FLUSH_EVERY: int = 25
+# Errores de red consecutivos tras agotar reintentos antes de abortar el lote.
+TRANSFER_MAX_CONSECUTIVE_ERRORS: int = 8
 
 # Transferencia: Apple más estricto, resto más paralelo
 TRANSFER_CONCURRENCY: dict[str, int] = {

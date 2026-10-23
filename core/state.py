@@ -1,6 +1,6 @@
 """
 ╔══════════════════════════════════════════════════════════════════════╗
-║                    Melomaniac v4.5.2                               ║
+║                    Melomaniac v4.6.0                               ║
 ║                    Estado Global de la Aplicación                    ║
 ╚══════════════════════════════════════════════════════════════════════╝
 
@@ -44,7 +44,7 @@ Funciones Auxiliares:
     - core.availability: resolución de disponibilidad por pista
 
 Autor: Melomaniac Team
-Versión: 4.5.2
+Versión: 4.6.0
 Fecha: 2026
 """
 
@@ -67,6 +67,7 @@ from core.config import (
     PLATFORMS as CFG_PLATFORMS,
     LOCAL_SOURCES as CFG_LOCAL_SOURCES,
     SOURCE_OPTIONS as CFG_SOURCE_OPTIONS,
+    TRANSFER_MAX_CONSECUTIVE_ERRORS,
     get_transfer_concurrency,
 )
 from core.models import Track, SearchResult, LoadState, TransferState, PlaylistMeta
@@ -83,6 +84,10 @@ from engine.normalizer import clean_metadata
 from engine.match import _duration_to_seconds, FUZZY_REVISION_THRESHOLD, FUZZY_IDEAL
 from engine.organizer import sort_tracks, split_tracks
 from services.circuit_breaker import CircuitBreaker, RateLimitError
+
+
+# Sentinela interno: la pista no llegó a procesarse porque el lote abortó.
+_TRANSFER_ABORTED = object()
 
 
 class AppState:
@@ -580,6 +585,22 @@ class AppState:
         BATCH_SIZE = 10
         batch_pending = [0]  # lista para mutar en closure
 
+        # Corte temprano ante una racha de errores de red: las pistas que
+        # todavía no entraron a _transfer_one quedan "pending" y el reporte
+        # las marca como interrumpidas, en vez de llenarse de not_found falsos.
+        abort_event = asyncio.Event()
+        network_error_streak = [0]
+
+        def _note_network_error() -> None:
+            network_error_streak[0] += 1
+            if (network_error_streak[0] >= TRANSFER_MAX_CONSECUTIVE_ERRORS
+                    and not abort_event.is_set()):
+                abort_event.set()
+                self._log(
+                    f"[ERROR] {network_error_streak[0]} errores de red "
+                    f"consecutivos; se aborta la transferencia."
+                )
+
         def _batched_notify() -> None:
             batch_pending[0] += 1
             if batch_pending[0] >= BATCH_SIZE:
@@ -588,8 +609,11 @@ class AppState:
 
         transfer_sem = asyncio.Semaphore(get_transfer_concurrency(self.destination))
 
-        async def _transfer_one(track: Track) -> Optional[str]:
+        async def _transfer_one(track: Track) -> Optional[str] | object:
             nonlocal completed_count, batch_pending
+
+            if abort_event.is_set():
+                return _TRANSFER_ABORTED
 
             cn, ca = clean_metadata(track.name, track.artist)
             if not cn.strip():
@@ -663,10 +687,21 @@ class AppState:
                         )
                         await asyncio.sleep(wait_s)
 
+            if last_exc is not None:
+                # Los errores de red no se cachean: un fallo transitorio no
+                # debe convertirse en "not_found" permanente ni reanudarse
+                # como si la búsqueda hubiera terminado.
+                _note_network_error()
+                completed_count += 1
+                self.transfer_progress = completed_count
+                _batched_notify()
+                raise last_exc
+
+            network_error_streak[0] = 0
             self.service.search_cache[cache_key] = match
             if match.isrc:
                 track.isrc = match.isrc
-            self.service.save_search_cache()
+            self.service.mark_search_cache_dirty()
 
             if match.track_id and match.needs_review:
                 track.transfer_status = "revision_necesaria"
@@ -691,7 +726,7 @@ class AppState:
                 self._log(f"[SUCCESS] ✓ Encontrada: {track.name[:42]}")
             else:
                 track.transfer_status = "not_found"
-                track.failure_reason  = failure_reason_from_exc(last_exc) if last_exc else "Sin resultados en la API del destino"
+                track.failure_reason  = "Sin resultados en la API del destino"
                 self._log(f"[ERROR]   ✗ No encontrada: {track.name[:42]}")
                 if track not in self.failed_tracks:
                     self.failed_tracks.append(track)
@@ -748,6 +783,8 @@ class AppState:
                 ))
 
             for track, result in zip(selected, results):
+                if result is _TRANSFER_ABORTED:
+                    continue
                 if isinstance(result, RateLimitError):
                     self.cb[self.destination].trip(result.retry_after)
                     track.transfer_status = "error"
@@ -767,6 +804,12 @@ class AppState:
                 elif result:
                     dest_ids.append(result)
                     dest_id_to_track[result] = track
+
+            if abort_event.is_set():
+                raise RuntimeError(
+                    f"Transferencia abortada tras {network_error_streak[0]} "
+                    f"errores de red consecutivos"
+                )
 
             self._log(
                 f"[INFO]  🔎 Resumen pre-insert · "
@@ -830,6 +873,8 @@ class AppState:
             self._log(f"[ERROR] ✗ Error general: {e}")
             self.transfer_state = TransferState.ERROR
         finally:
+            # Persiste lo acumulado aunque la transferencia haya abortado.
+            self.service.save_search_cache()
             self._finalize_transfer_report()
             self.notify()
 

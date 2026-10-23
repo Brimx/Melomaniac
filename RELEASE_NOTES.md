@@ -1,8 +1,21 @@
 # Release Notes — Melomaniac
 
-Notas históricas enfocadas en **qué cambió para el usuario**, no en código. Este archivo llega hasta `v4.4.3`; el tag más reciente comprobado es `v4.5.1` y la versión de trabajo `4.5.2` está documentada en [`CHANGELOG.md`](CHANGELOG.md). No asumir que el último bloque de este archivo corresponde a `HEAD`.
+Notas históricas enfocadas en **qué cambió para el usuario**, no en código. El tag más reciente es `v4.6.0`; las versiones `4.5.2` y `4.6.0` se detallan en [`CHANGELOG.md`](CHANGELOG.md). No asumir que el último bloque de este archivo corresponde a `HEAD`.
 
 ---
+
+## v4.6.0 — Búsqueda más precisa y transferencias más resistentes (2026-10-23)
+
+**Novedades:**
+- **Búsquedas deduplicadas:** dos pistas equivalentes ya no consumen dos búsquedas simultáneas; comparten el mismo resultado.
+- **Catálogo cirílico:** se prueba una transliteración latina cuando el título o el artista usan cirílico, además del fallback solo título.
+- **Mejor coincidencia:** si una variante devuelve una coincidencia dudosa, se siguen probando variantes y se conserva la de mayor confianza.
+- **Caché por lotes:** `search_cache.json` se guarda cada 25 entradas y al cerrar la transferencia, sin perder la reanudación.
+- **Corte temprano:** tras 8 errores de red consecutivos la transferencia se detiene; las pistas restantes quedan como no procesadas en el reporte, no como «no encontradas».
+
+**Incluye:** el reporte de cierre con alternativas, el rail flotante, la normalización de IDs/URLs, la paginación paralela de Apple Music y la migración a Flet 1.0.1 documentados en `4.5.2`.
+
+**Correcciones:** eliminación de playlists de Spotify con el ID correcto, caché de alternativas resueltas, inserciones de Spotify más rápidas y errores de Biblioteca en Spotify/Apple Music.
 
 ## v1.0 — Primera versión funcional (2026-04-21) `224df51`
 

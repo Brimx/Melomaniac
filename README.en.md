@@ -1,8 +1,8 @@
-# 🎵 Melomaniac v4.5.2
+# 🎵 Melomaniac v4.6.0
 
 Melomaniac is a desktop application for rebuilding playlists between **YouTube Music, Apple Music, and Spotify**. It can also import a local playlist or a single audio file, find each track on the destination, and create a new playlist.
 
-The documented working version is `4.5.2`. Changes in this version are summarized in [`CHANGELOG.md`](CHANGELOG.md).
+The documented working version is `4.6.0`. Changes in this version are summarized in [`CHANGELOG.md`](CHANGELOG.md).
 
 Matching combines metadata normalization, RapidFuzz, title/artist similarity, duration, explicit metadata, and ISRC when available. Uncertain results are preserved in the Post-Mortem view for review.
 
@@ -11,7 +11,7 @@ Matching combines metadata normalization, RapidFuzz, title/artist similarity, du
 - Load playlists from YouTube Music, Apple Music, and Spotify.
 - Import `TXT`, `CSV`, `M3U/M3U8`, `PLS`, `WPL`, `XSPF`, and XSPF-compatible XML playlists.
 - Import audio files (`MP3`, `FLAC`, `AAC`, `OGG`, `WAV`, `M4A`, `WMA`, `OPUS`, `AIFF/AIF`) and read their tags with Mutagen.
-- Search with Hunter Recovery using three query passes: cleaned metadata, original values, and a normalized title.
+- Search with Hunter Recovery using query variants: cleaned metadata, original values, normalized title, Cyrillic transliteration, and title only as the last resort. Deduplicates concurrent searches and keeps the best result.
 - Use ISRC for exact Apple Music matches and retain it in the search cache.
 - Compare duration; Spotify also includes the `explicit` flag in its scoring.
 - Search and select tracks; sort by artist, album, title, duration, or release date; group by artist, album, or date; and create 2–5 divisions by selecting artists, albums, or tracks.
@@ -203,7 +203,7 @@ Melomaniac is not affiliated with, sponsored by, or endorsed by Spotify, Apple, 
 
 ## Status and license
 
-The documented version is `4.5.2` on the `main` branch. This is a personal-use project; each platform and its APIs are subject to their own terms of service.
+The documented version is `4.6.0` on the `main` branch. This is a personal-use project; each platform and its APIs are subject to their own terms of service.
 
 ## Thanks
 

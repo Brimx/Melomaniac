@@ -1,4 +1,4 @@
-# AGENTS.md — Melomaniac v4.5.2
+# AGENTS.md — Melomaniac v4.6.0
 
 ## Estilo global
 
@@ -66,7 +66,7 @@ engine -> core.models
   ```
   `AppState` crea los `CircuitBreaker` una sola vez en `core/state.py:231`; `MusicApiService` debe reutilizar `state.cb` (`services/api_service.py:254`). No crear breakers duplicados — deja tasks huérfanas.
 
-- `core/config.py:1` es single-source para `PLATFORM_ORDER`, `NETWORK_CONCURRENCY=2`, `TRANSFER_CONCURRENCY` (Apple 2, resto 3), `APPLE_ISRC_BATCH=25`, `APPLE_TRANSFER_BATCH=100`, `APPLE_PAGE_SIZE=100`, `APPLE_PAGE_WORKERS=5`, `SPOTIFY_ADD_CHUNK=50`, `EXPORT_*`, `DEFAULT_COOLDOWN=60` y re-exports de umbrales fuzzy. No duplicar constantes.
+- `core/config.py:1` es single-source para `PLATFORM_ORDER`, `NETWORK_CONCURRENCY=2`, `TRANSFER_CONCURRENCY` (Apple 2, resto 3), `TRANSFER_MAX_CONSECUTIVE_ERRORS=8`, `SEARCH_CACHE_FLUSH_EVERY=25`, `APPLE_ISRC_BATCH=25`, `APPLE_TRANSFER_BATCH=100`, `APPLE_PAGE_SIZE=100`, `APPLE_PAGE_WORKERS=5`, `SPOTIFY_ADD_CHUNK=50`, `EXPORT_*`, `DEFAULT_COOLDOWN=60` y re-exports de umbrales fuzzy. No duplicar constantes.
 - `services/authentication.py:19` es single-source para rutas runtime: `CONFIG_DIR=config/`, `BROWSER_JSON`, `ENV_FILE=config/.env`, `SPOTIFY_COOKIES_JSON`, `SEARCH_CACHE_JSON`. No consultar paths legacy en raíz.
 - Ciclo de vida en `app.py:183-293` — `hard_cleanup` cancela breakers, `cancel_lazy_scan()`, tasks asyncio, `cleanup_sessions()` y fuerza `os._exit(0)`. Al añadir recursos nuevos, registrarlos ahí.
 
@@ -75,7 +75,7 @@ engine -> core.models
 - `core/models.py` `Track` universal incluye `duration_ms`, `is_explicit`, `isrc`, `source_path`, `source_url`, `genre`, `album_artist`, `track_number` y `release_date`. `SearchResult` conserva `needs_review`, `low_confidence` e `isrc`.
 - `core/state.py` `AppState` BLoC: `subscribe()`/`notify()`, `tracks` vs `source_tracks` (fuente), `segments`/`active_segment_keys`, `display_tracks`/`visible_tracks()`/`selected_in_scope(scope)`. Revisar la UI vigente antes de asumir que existe un selector de alcance para una operación.
 - Flujo carga: `AppState.load_playlist()` -> `MusicApiService.fetch_playlist()` -> `PlaylistMeta + list[Track]`. Local: `engine/parsers.py:314` -> `build_local_tracks()` (+ `Mutagen` si `source_path` es audio).
-- Flujo búsqueda: `make_cache_key()` -> caché `config/search_cache.json` (escritura atómica `.tmp` + `os.replace` en `services/api_service.py:364`) -> `search_with_fallback()` 3 pasadas (clean, original, título normalizado) -> hunter por plataforma -> `create_playlist()` agrupado. Apple: ISRC lotes de 25 secuenciales + `AppleRequestLimiter` burst 50 / pausa 60s / `423` => 120s cooldown (`services/circuit_breaker.py:139` + `services/api_service.py:151`). Spotify: inserción lotes 50 con 4 reintentos.
+- Flujo búsqueda: `make_cache_key()` -> caché `config/search_cache.json` (escritura atómica `.tmp` + `os.replace` en `services/api_service.py`; flush cada `SEARCH_CACHE_FLUSH_EVERY=25` y al cerrar la transferencia) -> `search_with_fallback()` con singleflight y variantes (clean, original, normalizada, transliteración cirílica, solo título), conservando el mejor resultado -> hunter por plataforma -> `create_playlist()` agrupado. Apple: ISRC lotes de 25 secuenciales + `AppleRequestLimiter` burst 50 / pausa 60s / `423` => 120s cooldown (`services/circuit_breaker.py:139` + `services/api_service.py:151`). Spotify: inserción lotes 50 con 4 reintentos.
 
 ## Motores
 

@@ -1,8 +1,8 @@
-# 🎵 Melomaniac v4.5.2
+# 🎵 Melomaniac v4.6.0
 
 Melomaniac es una aplicación de escritorio para reconstruir playlists entre **YouTube Music, Apple Music y Spotify**. También permite importar una lista local o una canción individual, buscar cada pista en el destino y crear una nueva playlist.
 
-La versión de trabajo documentada es `4.5.2`. Los cambios de esta versión se resumen en [`CHANGELOG.md`](CHANGELOG.md).
+La versión de trabajo documentada es `4.6.0`. Los cambios de esta versión se resumen en [`CHANGELOG.md`](CHANGELOG.md).
 
 El matching combina normalización de metadatos, RapidFuzz, artista/título, duración, contenido explícito e ISRC cuando está disponible. Los resultados dudosos se conservan en el Post-Mortem para revisión.
 
@@ -11,7 +11,7 @@ El matching combina normalización de metadatos, RapidFuzz, artista/título, dur
 - Carga playlists de YouTube Music, Apple Music y Spotify.
 - Importa `TXT`, `CSV`, `M3U/M3U8`, `PLS`, `WPL`, `XSPF` y XML compatible con XSPF.
 - Importa archivos de audio (`MP3`, `FLAC`, `AAC`, `OGG`, `WAV`, `M4A`, `WMA`, `OPUS`, `AIFF/AIF`) y lee sus tags con Mutagen.
-- Busca con Hunter Recovery y tres pasadas de consulta: metadatos limpios, valores originales y título normalizado.
+- Busca con Hunter Recovery y variantes de consulta: metadatos limpios, valores originales, título normalizado, transliteración cirílica y solo título como último recurso. Deduplica búsquedas concurrentes y conserva el mejor resultado.
 - Usa ISRC para coincidencias exactas en Apple Music y conserva el valor en la caché.
 - Compara la duración; Spotify añade el indicador `explicit` al scoring.
 - Permite buscar y seleccionar canciones; ordenar por artista, álbum, título, duración o fecha de lanzamiento; agrupar por artista, álbum o fecha; y crear de 2 a 5 divisiones seleccionando artistas, álbumes o canciones.
@@ -215,7 +215,7 @@ Melomaniac is not affiliated with, sponsored by, or endorsed by Spotify, Apple, 
 
 ## Estado y licencia
 
-La versión documentada es `4.5.2` en la rama `main`. Es un proyecto para uso personal; cada plataforma y sus APIs están sujetas a sus propios términos de servicio.
+La versión documentada es `4.6.0` en la rama `main`. Es un proyecto para uso personal; cada plataforma y sus APIs están sujetas a sus propios términos de servicio.
 
 ## Agradecimientos
 

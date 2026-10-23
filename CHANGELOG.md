@@ -1,8 +1,41 @@
 # Changelog
 
+## 4.6.0 — 2026-10-23 · Búsqueda deduplicada, variantes cirílicas y aborto temprano
+
+> Release que consolida la versión de trabajo `4.5.2` (nunca etiquetada) y los cambios posteriores. Tag anterior: `v4.5.1`.
+
+- Búsqueda: `SingleFlight` deduplica pistas equivalentes concurrentes por plataforma, metadatos limpios, duración, explicit e ISRC. Los errores no se cachean y cancelar un seguidor no cancela al líder.
+- Matching: variantes de consulta ampliadas con transliteración cirílica (ruso, ucraniano, bielorruso y serbio) y fallback solo título. Se conserva el mejor resultado y solo se sigue buscando si no hay match o hay `needs_review`.
+- Caché: `search_cache.json` se persiste cada `SEARCH_CACHE_FLUSH_EVERY=25` entradas y al cerrar la transferencia, en lugar de reescribirse por cada pista.
+- Robustez: tras `TRANSFER_MAX_CONSECUTIVE_ERRORS=8` errores de red consecutivos se aborta la transferencia; las pistas no procesadas quedan `pending` y el reporte las marca como interrumpidas. Los fallos transitorios ya no se guardan como `not_found`.
+- Consolida el trabajo de `4.5.2`: reporte de cierre con alternativas, rail flotante, normalización de IDs/URLs, paginación paralela de Apple, migración a Flet 1.0.1 y correcciones de Biblioteca/Spotify.
+
+### Commits incluidos desde v4.5.1
+
+- `a3744c4` fix: elimina playlists de Spotify con el ID correcto
+- `4f8efab` fix: normaliza IDs y URLs de playlists
+- `03c3980` docs: documenta rail flotante y siguientes pasos
+- `65ecc69` feat(ui): rail flotante colapsable con Config al fondo
+- `483a108` fix: recuerda alternativas resueltas en la caché de búsquedas
+- `8e24020` fix: acelera inserciones de Spotify y ajusta UI del reporte
+- `95fd270` perf: optimiza renders y operaciones masivas en la UI
+- `a02b392` Update documentation and design specifications for Melomaniac v4.5.2
+- `4f4784f` feat: reporte de cierre con búsqueda de alternativas y verificación Apple
+- `040bbe2` fix: Solucionados errores en la biblioteca relacionados a spotify y apple music
+- `536de83` chore: deja AGENTS.md fuera del repo (local + ignorado)
+- `9a98fbc` chore: gitignore actualized
+- `06fa308` chore: bump 4.5.1 -> 4.5.2
+- `bde17a3` docs: agrega AGENTS.md con reglas del proyecto
+- `a0247d6` chore: flet 0.86.5 -> 1.0.1 + gitignore opencode.json
+- `f132995` fix(ui): migracion Flet 1.0 con input_border canonico + import faltante en song_row
+- `8f939dc` fix(biblioteca): skeleton paridad Inicio + album + scale + Apple count + Spotify ctor + launch_url
+- `bff3cff` fix: PopupMenuItem content= en vez de text= (Flet 0.86) + Editar queda Outlined aparte
+- `11fc6d0` feat: division preview popup, transfer por division con guardar/siguiente, editar expand con aplicar/revertir
+- `c5ca5e3` fix: mejoras Dividir, correcciones, UI, lógica y experiencia
+
 ## 4.5.2 — 2026-10-05 · F6 + migración Flet 1.0
 
-> Versión de trabajo documentada; no se ha creado un tag `v4.5.2`.
+> Versión de trabajo documentada; no se creó un tag `v4.5.2`. Su contenido se consolida en `4.6.0`.
 
 - Migra a `flet==1.0.1`: helper canónico `input_border()` en `ui/widgets.py`, `Icon.name` → `Icon.icon`, `PopupMenuButton` con `icon=` nativo.
 - Corrige `NameError` por import faltante de `input_border` en `ui/song_row.py` que rompía `_sync_list_view`.
@@ -21,6 +54,7 @@
 - 2026-10-22: reporte de cierre de transferencia siempre visible (`ui/transfer_report.py`): nombre/descripción, confirmadas, tiempo y faltantes agrupados (`not_found`, `revision`, `api_rejected`, `error`). Permite re-buscar alternativas con consulta editable e insertarlas en la playlist recién creada. Historial append-only en `config/transfer_history.jsonl`.
 - 2026-10-22: Apple verifica la playlist creada (`_am_playlist_track_ids`) y devuelve los IDs realmente rechazados; las playlists de catálogo sin `meta.total` se paginan por olas hasta la primera página incompleta.
 - 2026-10-22: retira `spotipy`, `pymemcache` y `fonttools` de `requirements.txt` (sin imports ni dependencias activas).
+- 2026-10-23: adopta patrones de la investigación externa sin copiar código: singleflight de búsquedas en `MusicApiService.search_with_fallback` (clave por plataforma, metadatos limpios, duración, explicit e ISRC), persistencia de `search_cache.json` por lotes (`SEARCH_CACHE_FLUSH_EVERY=25`) con flush al cerrar la transferencia, transliteración cirílica + fallback solo título con ranking del mejor resultado, y aborto temprano tras 8 errores de red consecutivos (`TRANSFER_MAX_CONSECUTIVE_ERRORS=8`) sin cachear fallos transitorios como `not_found`. Validado con `compileall` y pruebas ad hoc; medición con playlists reales pendiente.
 
 ## 4.0.0 — 2026-09-19 · Export local + orden configurable + preparación navegación
 
