@@ -10,6 +10,7 @@
 - Refina las vistas **Lista**, **Doble** y **Preview**, los skeletons responsive y la navegación `NavigationRail`.
 - 2026-10-22: rail de navegación flotante y docked (`68 px` colapsado / `220 px` expandido), con «Gestión» en lugar de «Inicio», Config al fondo y labels animados sin saltos. Reutiliza radios canónicos en inputs, botones y diálogos.
 - 2026-10-22: normaliza IDs y URLs de playlist (`spotify:playlist:<id>`, enlaces web de Spotify/Apple/YouTube) al cargar, crear, insertar y borrar. Corrige el doble prefijo de Spotify en la inserción manual y la URL de «Abrir playlist»; la UI de carga acepta ID o URL.
+- 2026-10-22: corrige la eliminación de playlists de Spotify: `PrivatePlaylist.delete_playlist()` no recibe el ID; se construye con el ID y se invoca sin argumentos. Verificado con una playlist temporal creada y eliminada en vivo.
 - Mejora Organizar/Dividir: preview por división, transferencia secuencial por división, y aplicar/revertir ajustes; la UI actual no tiene selector de alcance y `platform` no es criterio.
 - Corrige la Biblioteca existente: skeletons, metadatos de álbum, conteo Apple Music, inicialización Spotify y apertura de URLs externas; Descargas sigue en desarrollo.
 - Migra a Flet 1.0.1 y corrige compatibilidad de controles, incluido `PopupMenuItem`.

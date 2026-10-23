@@ -2052,13 +2052,14 @@ class MusicApiService:
         try:
             if not self._sp_login:
                 self._sync_init_spotify()
-            # fallback via SpotAPI PrivatePlaylist si tiene delete
+            # SpotAPI elimina la playlist de la biblioteca. El método no
+            # recibe argumentos: usa el playlist_id del constructor.
             try:
-                from spotapi import PrivatePlaylist as _Priv
-                pl = _Priv(self._sp_login) if self._sp_login else None
-                if pl and hasattr(pl, "delete_playlist"):
-                    pl.delete_playlist(pid)
-                    return True, pid
+                if HAS_SPOTIFY and self._sp_login:
+                    pl = PrivatePlaylist(self._sp_login, pid)
+                    if hasattr(pl, "delete_playlist"):
+                        pl.delete_playlist()
+                        return True, pid
             except Exception:
                 pass
             # Web API unfollow
