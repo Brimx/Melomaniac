@@ -290,10 +290,10 @@ class LibrarySkeletonRow(ft.Container):
     """
     Skeleton Biblioteca — clon de SkeletonRow con zonas adaptadas al detail.
 
-    Inicio tiene [#][thumb][title][album][dur][status][chk]; Biblioteca
+    Gestión tiene [#][thumb][title][album][dur][status][chk]; Biblioteca
     detail tiene [#][thumb48][title][album][dur][open-btn]: se atenúan esas
     6 zonas (sin status/chk). Mismo Shimmer + scale 0.98↔1.0 600ms stagger
-    e ITEM_H para paridad exacta con Inicio.
+    e ITEM_H para paridad exacta con Gestión.
     """
 
     def __init__(self, _index: int):

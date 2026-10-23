@@ -85,6 +85,13 @@ from ui.tokens import (
     SUCCESS, WARNING, ERROR_COL,
     TEXT_PRIMARY, TEXT_MUTED, TEXT_DIM, SKELETON_DARK,
     DIALOG_OPTION_LIMIT,
+    RADIUS_BUTTON, RADIUS_RAIL, RADIUS_RAIL_ITEM,
+    RAIL_W_COLLAPSED, RAIL_W_EXPANDED, RAIL_MARGIN,
+    RAIL_PAD_H, RAIL_PAD_V, RAIL_ITEM_SPACING,
+    RAIL_ITEM_PAD_H, RAIL_ITEM_PAD_V, RAIL_ITEM_H,
+    RAIL_HEADER_H, RAIL_LABEL_W, RAIL_BRAND_W,
+    RAIL_VERSION_H, RAIL_VERSION_H_COLLAPSED,
+    RAIL_ANIM_MS, RAIL_ITEM_ANIM_MS,
 )
 
 # Por encima de este número conviene un único update del ListView en vez de
@@ -556,38 +563,30 @@ class PlaylistManagerUI(DialogMixin):
         self._build_content()
 
         # ──────────────────────────────────────────────────────────────
-        # NAVIGATION RAIL COLAPSABLE — Opción A (cookbook Flet)
-        # Anima width via Container(animate=Animation(300, EASE_IN_OUT))
-        # Labels con animate_opacity. Reusa tokens SIDEBAR_BG/ACCENT.
+        # NAVIGATION RAIL FLOTANTE — docked, desplaza el contenido
+        # Shell con margen exterior y radio de diálogo; ítems con radio de botón.
         # ──────────────────────────────────────────────────────────────
-        self._current_module = 0  # 0=Inicio, 1=Biblioteca, 2=Descargas, 3=Config
-        self._rail_collapsed = False  # no persistido (sesión)
-        self._rail_w_collapsed = 68
-        self._rail_w_expanded = 220
+        self._current_module = 0  # 0=Gestión, 1=Biblioteca, 2=Descargas, 3=Config
+        self._rail_collapsed = True  # arranca docked: solo iconos
+        self._rail_w_collapsed = RAIL_W_COLLAPSED
+        self._rail_w_expanded = RAIL_W_EXPANDED
         # metadata destinos (label, icon, selected_icon)
         self._rail_dests = [
-            ("Inicio", ft.Icons.HOME_OUTLINED, ft.Icons.HOME),
+            ("Gestión", ft.Icons.TUNE_OUTLINED, ft.Icons.TUNE),
             ("Biblioteca", ft.Icons.LIBRARY_MUSIC_OUTLINED, ft.Icons.LIBRARY_MUSIC),
             ("Descargas", ft.Icons.DOWNLOAD_OUTLINED, ft.Icons.DOWNLOAD),
             ("Config", ft.Icons.SETTINGS_OUTLINED, ft.Icons.SETTINGS),
         ]
-        self._rail_label_refs: list[ft.Text] = []
+        self._rail_label_boxes: list[ft.Container] = []
         self._rail_item_refs: list[ft.Container] = []
 
-        def _on_nav_change(e):
-            # soporta tanto NavigationRail event como custom index
-            try:
-                idx = e.control.selected_index if hasattr(e.control, "selected_index") and e.control.selected_index is not None else int(getattr(e.control, "data", 0))
-            except Exception:
-                try:
-                    idx = int(e)
-                except Exception:
-                    idx = 0
+        def _select_module(idx: int) -> None:
+            if idx == self._current_module:
+                return
             self._current_module = idx
             try:
                 for i, panel in enumerate(self._module_panels):
                     panel.visible = (i == idx)
-                self._module_stack.update()
                 self._refresh_rail_selection()
                 if idx == 0:
                     self._sync_skeleton_count()
@@ -600,13 +599,15 @@ class PlaylistManagerUI(DialogMixin):
                 idx = int(e.control.data)
             except Exception:
                 idx = 0
-            _on_nav_change(type("E", (), {"control": type("C", (), {"data": str(idx), "selected_index": idx})})())
+            _select_module(idx)
 
         # refs para animación header/version
         self._rail_header_brand: ft.Text | None = None
+        self._rail_header_brand_box: ft.Container | None = None
+        self._rail_header_box: ft.Container | None = None
         self._rail_header_row: ft.Row | None = None
         self._rail_version_text: ft.Text | None = None
-        self._rail_row_refs: list[ft.Row] = []
+        self._rail_version_box: ft.Container | None = None
 
         # builder de items (Container con animate + ink) — Headline para labels, Notch para brand
         def _rail_item(idx: int, label: str, icon_out: str, icon_sel: str) -> ft.Container:
@@ -615,115 +616,155 @@ class PlaylistManagerUI(DialogMixin):
             txt = ft.Text(
                 label, size=13, color=TEXT_PRIMARY if is_sel else TEXT_MUTED,
                 font_family=FONT_HEADLINE_MEDIUM if is_sel else FONT_HEADLINE,
+                visible=True,
+                expand=True, no_wrap=True, max_lines=1,
+                overflow=ft.TextOverflow.CLIP,
+            )
+            # La caja del label anima ancho/margen/opacidad. Así el texto no
+            # desaparece de golpe ni reacomoda la altura al colapsar.
+            label_box = ft.Container(
+                content=txt,
+                width=RAIL_LABEL_W if not self._rail_collapsed else 0,
+                height=20,
+                margin=ft.Margin.only(left=12) if not self._rail_collapsed else ft.Margin.only(left=0),
                 opacity=1.0 if not self._rail_collapsed else 0.0,
-                visible=not self._rail_collapsed,
-                animate_opacity=ft.Animation(200, ft.AnimationCurve.EASE_IN_OUT),
-                expand=True, overflow=ft.TextOverflow.CLIP,
+                alignment=ft.Alignment.CENTER_LEFT,
+                clip_behavior=ft.ClipBehavior.HARD_EDGE,
+                animate=ft.Animation(RAIL_ANIM_MS, ft.AnimationCurve.EASE_IN_OUT),
+                animate_opacity=ft.Animation(RAIL_ANIM_MS, ft.AnimationCurve.EASE_IN_OUT),
             )
-            self._rail_label_refs.append(txt)
+            self._rail_label_boxes.append(label_box)
             icon = ft.Icon(icon_sel if is_sel else icon_out, size=20, color=ACCENT if is_sel else TEXT_DIM)
-            # tight=False + expand permite centrar icono cuando colapsado
+            # Row fija: el centrado/izquierda lo resuelve el Container padre.
             row = ft.Row(
-                [icon, txt],
-                spacing=12,
+                [icon, label_box],
+                spacing=0,
                 vertical_alignment=ft.CrossAxisAlignment.CENTER,
-                tight=False,
-                alignment=ft.MainAxisAlignment.START if not self._rail_collapsed else ft.MainAxisAlignment.CENTER,
+                tight=True,
+                alignment=ft.MainAxisAlignment.START,
             )
-            self._rail_row_refs.append(row)
-            # padding centrado cuando colapsado: simétrico, sin offset de texto
-            pad_h = 12 if not self._rail_collapsed else 8
             cont = ft.Container(
                 content=row,
                 bgcolor=ACCENT_HALO if is_sel else ft.Colors.TRANSPARENT,
                 border=ft.Border.all(0.6, ACCENT if is_sel else ft.Colors.TRANSPARENT),
-                border_radius=10,
-                padding=ft.Padding.symmetric(horizontal=pad_h, vertical=10),
+                border_radius=RADIUS_RAIL_ITEM,
+                padding=ft.Padding.symmetric(horizontal=RAIL_ITEM_PAD_H, vertical=RAIL_ITEM_PAD_V),
+                height=RAIL_ITEM_H,
                 ink=True,
                 data=str(idx),
                 tooltip=label if self._rail_collapsed else None,
                 on_click=_on_rail_item_click,
-                animate=ft.Animation(200, ft.AnimationCurve.EASE_IN_OUT),
+                animate=ft.Animation(RAIL_ITEM_ANIM_MS, ft.AnimationCurve.EASE_IN_OUT),
+                animate_align=ft.Animation(RAIL_ANIM_MS, ft.AnimationCurve.EASE_IN_OUT),
                 alignment=ft.Alignment.CENTER if self._rail_collapsed else ft.Alignment.CENTER_LEFT,
             )
             self._rail_item_refs.append(cont)
             return cont
 
-        # toggle colapso (cookbook: cambia width del Container animado)
+        # toggle colapso: ancho del shell + ancho/opacidad de labels en paralelo
         def _toggle_rail(_e=None):
             self._rail_collapsed = not self._rail_collapsed
+            expanded = not self._rail_collapsed
             try:
-                self._nav_rail.width = self._rail_w_collapsed if self._rail_collapsed else self._rail_w_expanded
+                self._nav_rail.width = self._rail_w_expanded if expanded else self._rail_w_collapsed
                 # icon toggle
-                self._rail_toggle_btn.icon = ft.Icons.MENU if self._rail_collapsed else ft.Icons.MENU_OPEN
-                self._rail_toggle_btn.tooltip = "Expandir" if self._rail_collapsed else "Colapsar"
-                # header brand + version
-                if self._rail_header_brand is not None:
-                    self._rail_header_brand.visible = not self._rail_collapsed
-                    self._rail_header_brand.opacity = 1.0 if not self._rail_collapsed else 0.0
+                self._rail_toggle_btn.icon = ft.Icons.MENU_OPEN if expanded else ft.Icons.MENU
+                self._rail_toggle_btn.tooltip = "Colapsar" if expanded else "Expandir"
+                # header brand: caja que crece/decrece y se desvanece
+                if self._rail_header_brand_box is not None:
+                    self._rail_header_brand_box.width = RAIL_BRAND_W if expanded else 0
+                    self._rail_header_brand_box.margin = ft.Margin.only(left=8) if expanded else ft.Margin.only(left=0)
+                    self._rail_header_brand_box.opacity = 1.0 if expanded else 0.0
+                if self._rail_header_box is not None:
+                    self._rail_header_box.alignment = ft.Alignment.CENTER_LEFT if expanded else ft.Alignment.CENTER
                 if self._rail_version_text is not None:
-                    self._rail_version_text.visible = not self._rail_collapsed
-                    self._rail_version_text.opacity = 1.0 if not self._rail_collapsed else 0.0
-                if self._rail_header_row is not None:
-                    self._rail_header_row.alignment = ft.MainAxisAlignment.CENTER if self._rail_collapsed else ft.MainAxisAlignment.START
-                # items: labels + alineación iconos + padding centrado + tooltip
-                for i, lbl in enumerate(self._rail_label_refs):
-                    lbl.visible = not self._rail_collapsed
-                    lbl.opacity = 1.0 if not self._rail_collapsed else 0.0
+                    self._rail_version_text.opacity = 0.7 if expanded else 0.0
+                if self._rail_version_box is not None:
+                    # En compacto no deja espacio muerto bajo Config.
+                    self._rail_version_box.height = RAIL_VERSION_H if expanded else RAIL_VERSION_H_COLLAPSED
+                # items: el ancho del label y el align del ítem animan juntos
+                for i, label_box in enumerate(self._rail_label_boxes):
+                    label_box.width = RAIL_LABEL_W if expanded else 0
+                    label_box.margin = ft.Margin.only(left=12) if expanded else ft.Margin.only(left=0)
+                    label_box.opacity = 1.0 if expanded else 0.0
                     try:
-                        row = self._rail_row_refs[i]
-                        row.alignment = ft.MainAxisAlignment.CENTER if self._rail_collapsed else ft.MainAxisAlignment.START
-                        row.spacing = 0 if self._rail_collapsed else 12
                         cont = self._rail_item_refs[i]
-                        cont.tooltip = self._rail_dests[i][0] if self._rail_collapsed else None
-                        cont.padding = ft.Padding.symmetric(horizontal=8 if self._rail_collapsed else 12, vertical=10)
-                        cont.alignment = ft.Alignment.CENTER if self._rail_collapsed else ft.Alignment.CENTER_LEFT
+                        cont.tooltip = None if expanded else self._rail_dests[i][0]
+                        cont.alignment = ft.Alignment.CENTER_LEFT if expanded else ft.Alignment.CENTER
                     except Exception:
                         pass
                 self._nav_rail.update()
-                self.page.update()
             except Exception:
                 pass
 
         self._rail_toggle_btn = ft.IconButton(
-            icon=ft.Icons.MENU_OPEN, icon_size=18, icon_color=TEXT_MUTED,
-            tooltip="Colapsar", on_click=_toggle_rail,
-            style=ft.ButtonStyle(padding=4, bgcolor={ft.ControlState.HOVERED: BG_HOVER}),
+            icon=ft.Icons.MENU if self._rail_collapsed else ft.Icons.MENU_OPEN,
+            icon_size=18, icon_color=TEXT_MUTED,
+            tooltip="Expandir" if self._rail_collapsed else "Colapsar",
+            on_click=_toggle_rail,
+            style=ft.ButtonStyle(
+                padding=4,
+                bgcolor={ft.ControlState.HOVERED: BG_HOVER},
+                shape=ft.RoundedRectangleBorder(radius=RADIUS_BUTTON),
+            ),
         )
         # header del rail con toggle — Stack Sans Notch Bold, tamaño similar a sidebar (14-16)
         self._rail_header_brand = ft.Text(
             "Melomaniac", size=20, color=TEXT_PRIMARY,
             font_family=brand_family("bold"),
-            visible=not self._rail_collapsed, opacity=1.0,
-            animate_opacity=ft.Animation(200, ft.AnimationCurve.EASE_IN_OUT),
-            expand=True, overflow=ft.TextOverflow.CLIP,
+            visible=True,
+            expand=True, no_wrap=True, max_lines=1,
+            overflow=ft.TextOverflow.CLIP,
+        )
+        self._rail_header_brand_box = ft.Container(
+            content=self._rail_header_brand,
+            width=RAIL_BRAND_W if not self._rail_collapsed else 0,
+            height=20,
+            margin=ft.Margin.only(left=8) if not self._rail_collapsed else ft.Margin.only(left=0),
+            opacity=1.0 if not self._rail_collapsed else 0.0,
+            alignment=ft.Alignment.CENTER_LEFT,
+            clip_behavior=ft.ClipBehavior.HARD_EDGE,
+            animate=ft.Animation(RAIL_ANIM_MS, ft.AnimationCurve.EASE_IN_OUT),
+            animate_opacity=ft.Animation(RAIL_ANIM_MS, ft.AnimationCurve.EASE_IN_OUT),
         )
         self._rail_header_row = ft.Row(
-            [self._rail_toggle_btn, self._rail_header_brand],
-            spacing=8, vertical_alignment=ft.CrossAxisAlignment.CENTER,
-            alignment=ft.MainAxisAlignment.START if not self._rail_collapsed else ft.MainAxisAlignment.CENTER,
+            [self._rail_toggle_btn, self._rail_header_brand_box],
+            spacing=0, height=RAIL_HEADER_H, tight=True,
+            vertical_alignment=ft.CrossAxisAlignment.CENTER,
+            alignment=ft.MainAxisAlignment.START,
         )
-        rail_header = self._rail_header_row
-        # items
-        rail_items = [_rail_item(i, lbl, ico, sel) for i, (lbl, ico, sel) in enumerate(self._rail_dests)]
+        self._rail_header_box = ft.Container(
+            content=self._rail_header_row,
+            height=RAIL_HEADER_H,
+            alignment=ft.Alignment.CENTER_LEFT if not self._rail_collapsed else ft.Alignment.CENTER,
+            animate_align=ft.Animation(RAIL_ANIM_MS, ft.AnimationCurve.EASE_IN_OUT),
+        )
+        rail_header = self._rail_header_box
+        # Grupo principal: Gestión, Biblioteca y Descargas
+        rail_items = [
+            _rail_item(i, lbl, ico, sel)
+            for i, (lbl, ico, sel) in enumerate(self._rail_dests[:3])
+        ]
+        # Config queda separado al fondo, antes de la versión
+        config_item = _rail_item(3, *self._rail_dests[3])
 
-        # helper para refrescar selección (llamado en _on_nav_change)
+        # helper para refrescar selección; el update lo hace el caller una sola vez
         def _refresh_rail_selection():
             for i, cont in enumerate(self._rail_item_refs):
                 is_sel = (i == self._current_module)
                 try:
                     cont.bgcolor = ACCENT_HALO if is_sel else ft.Colors.TRANSPARENT
                     cont.border = ft.Border.all(0.6, ACCENT if is_sel else ft.Colors.TRANSPARENT)
-                    row = cont.content  # Row
-                    if row and len(row.controls) >= 1:
+                    row = cont.content  # Row([icon, label_box])
+                    if row and len(row.controls) >= 2:
                         icon_ctrl = row.controls[0]
-                        lbl_ctrl = row.controls[1] if len(row.controls) > 1 else None
+                        label_box = row.controls[1]
+                        lbl_ctrl = label_box.content if isinstance(label_box, ft.Container) else None
                         icon_ctrl.name = self._rail_dests[i][2] if is_sel else self._rail_dests[i][1]
                         icon_ctrl.color = ACCENT if is_sel else TEXT_DIM
                         if lbl_ctrl:
                             lbl_ctrl.color = TEXT_PRIMARY if is_sel else TEXT_MUTED
                             lbl_ctrl.font_family = FONT_HEADLINE_MEDIUM if is_sel else FONT_HEADLINE
-                    cont.update()
                 except Exception:
                     pass
         self._refresh_rail_selection = _refresh_rail_selection  # type: ignore
@@ -732,33 +773,58 @@ class PlaylistManagerUI(DialogMixin):
         self._rail_version_text = ft.Text(
             "v4.5.2", size=8, color=TEXT_DIM,
             font_family=mono_family("light"),
-            visible=not self._rail_collapsed, opacity=0.7,
-            animate_opacity=ft.Animation(200, ft.AnimationCurve.EASE_IN_OUT),
+            visible=True,
+            height=RAIL_VERSION_H, no_wrap=True, max_lines=1,
+            opacity=0.7 if not self._rail_collapsed else 0.0,
+            animate_opacity=ft.Animation(RAIL_ANIM_MS, ft.AnimationCurve.EASE_IN_OUT),
             text_align=ft.TextAlign.CENTER,
         )
-        # Container animado (cookbook: animate width)
+        self._rail_version_box = ft.Container(
+            content=self._rail_version_text,
+            height=RAIL_VERSION_H if not self._rail_collapsed else RAIL_VERSION_H_COLLAPSED,
+            clip_behavior=ft.ClipBehavior.HARD_EDGE,
+            animate=ft.Animation(RAIL_ANIM_MS, ft.AnimationCurve.EASE_IN_OUT),
+        )
+        rail_bottom = ft.Column(
+            controls=[config_item, self._rail_version_box],
+            spacing=2,
+            horizontal_alignment=ft.CrossAxisAlignment.STRETCH,
+        )
+        # Shell flotante: margen respecto a la ventana + radio de diálogo
         self._nav_rail = ft.Container(
             width=self._rail_w_expanded if not self._rail_collapsed else self._rail_w_collapsed,
+            margin=ft.Margin.all(RAIL_MARGIN),
             bgcolor=SIDEBAR_BG,
-            border=ft.Border.only(right=ft.BorderSide(1, BORDER_LIGHT)),
-            padding=ft.Padding.symmetric(horizontal=8, vertical=12),
-            animate=ft.Animation(300, ft.AnimationCurve.EASE_IN_OUT),  # cookbook: Animation(duration, curve)
+            border=ft.Border.all(0.8, BORDER_MUTED),
+            border_radius=RADIUS_RAIL,
+            padding=ft.Padding.symmetric(horizontal=RAIL_PAD_H, vertical=RAIL_PAD_V),
+            shadow=ft.BoxShadow(
+                blur_radius=18,
+                color=ft.Colors.with_opacity(0.45, BG_DEEP),
+                offset=ft.Offset(0, 4),
+            ),
+            animate=ft.Animation(RAIL_ANIM_MS, ft.AnimationCurve.EASE_IN_OUT),
             clip_behavior=ft.ClipBehavior.ANTI_ALIAS,
             content=ft.Column(
                 controls=[
                     rail_header,
                     ft.Divider(height=1, color=BORDER_MUTED, thickness=0.5),
-                    ft.Column(controls=rail_items, spacing=6, expand=True),
+                    ft.Column(
+                        controls=rail_items,
+                        spacing=RAIL_ITEM_SPACING,
+                        horizontal_alignment=ft.CrossAxisAlignment.STRETCH,
+                    ),
                     ft.Container(expand=True),
-                    self._rail_version_text,
+                    ft.Divider(height=1, color=BORDER_MUTED, thickness=0.5),
+                    rail_bottom,
                 ],
                 spacing=10, expand=True, horizontal_alignment=ft.CrossAxisAlignment.STRETCH,
             ),
         )
 
-        # Paneles de módulos — Inicio es Row([sidebar, content]), Biblioteca real + Descargas placeholder
-        self._panel_inicio = ft.Row(controls=[self._sidebar, self._content], spacing=0, expand=True,
-                                    vertical_alignment=ft.CrossAxisAlignment.STRETCH)
+        # Paneles de módulos — Gestión es Row([sidebar, content]), Biblioteca real + Descargas placeholder
+        self._panel_gestion = ft.Row(controls=[self._sidebar, self._content], spacing=0, expand=True,
+                                     vertical_alignment=ft.CrossAxisAlignment.STRETCH)
         # Biblioteca: LibraryView con Tabs Playlists|Descargas + selector plataforma
         try:
             from services.library_state import LibraryState
@@ -780,8 +846,8 @@ class PlaylistManagerUI(DialogMixin):
                                              content=self._make_cono_empty("Descargas", "yt-dlp + player + progreso — pronto.", visible=True))
         # Config: si hay wizard disponible se montará al abrir, si no placeholder
         self._panel_config = ft.Container(expand=True, bgcolor=BG_LIST, alignment=ft.Alignment.CENTER,
-                                          content=self._make_cono_empty("Configuración", "Auth wizard + ajustes + About — abre con ⚙ en Inicio.", visible=True))
-        self._module_panels = [self._panel_inicio, self._panel_biblioteca, self._panel_descargas, self._panel_config]
+                                          content=self._make_cono_empty("Configuración", "Configuración de la aplicación — en desarrollo.", visible=True))
+        self._module_panels = [self._panel_gestion, self._panel_biblioteca, self._panel_descargas, self._panel_config]
         # apila módulos, solo uno visible a la vez
         for i, p in enumerate(self._module_panels):
             p.visible = (i == 0)
@@ -796,12 +862,11 @@ class PlaylistManagerUI(DialogMixin):
         # ──────────────────────────────────────────────────────────────
         # ENSAMBLAJE DE LAYOUT RAÍZ
         # ──────────────────────────────────────────────────────────────
-        # Layout principal: [Rail 72 | MóduloStack]
+        # Layout principal: rail flotante + módulo; el margen del rail separa sin divider
         self.root = ft.Container(
             content=ft.Row(
                 controls=[
                     self._nav_rail,
-                    ft.VerticalDivider(width=1, color=BORDER_LIGHT),
                     self._module_stack,
                 ],
                 spacing=0, expand=True,

@@ -49,6 +49,31 @@ TEXT_PRIMARY = "#FFF2F6FF"
 TEXT_MUTED   = "#FF7A8499"
 TEXT_DIM     = "#FF3D4455"
 
+# Radios canónicos (reutilizados por botones, inputs, diálogos y rail)
+RADIUS_INPUT  = 10
+RADIUS_BUTTON = 10
+RADIUS_DIALOG = 14
+RADIUS_RAIL        = RADIUS_DIALOG
+RADIUS_RAIL_ITEM   = RADIUS_BUTTON
+
+# Medidas del rail de navegación
+RAIL_W_COLLAPSED = 68
+RAIL_W_EXPANDED  = 220
+RAIL_MARGIN      = 12
+RAIL_PAD_H       = 12
+RAIL_PAD_V       = 12
+RAIL_ITEM_SPACING = 6
+RAIL_ITEM_PAD_H   = 10
+RAIL_ITEM_PAD_V   = 10
+RAIL_ITEM_H       = 40
+RAIL_HEADER_H     = 40
+RAIL_LABEL_W      = 140
+RAIL_BRAND_W      = 140
+RAIL_VERSION_H    = 14
+RAIL_VERSION_H_COLLAPSED = 0.1
+RAIL_ANIM_MS      = 300
+RAIL_ITEM_ANIM_MS = 200
+
 # Listas de selección en diálogos: se muestran por tramos para no construir
 # cientos de checkboxes de golpe. El buscador sigue filtrando el total.
 DIALOG_OPTION_LIMIT = 80

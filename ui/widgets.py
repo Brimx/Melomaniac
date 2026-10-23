@@ -47,6 +47,7 @@ from ui.tokens import (
     ACCENT, ACCENT_HOVER, ACCENT_DIM, ACCENT_HALO, BG_HOVER,
     SUCCESS, ERROR_COL, WARNING, BORDER_MUTED, BORDER_LIGHT,
     BG_INPUT, BG_PANEL,
+    RADIUS_INPUT, RADIUS_BUTTON, RADIUS_DIALOG,
 )
 
 FONT = FONT_TEXT
@@ -108,7 +109,7 @@ def app_text(
 def input_border(
     border_color: str = BORDER_LIGHT,
     focused_color: str = ACCENT,
-    radius: float = 10,
+    radius: float = RADIUS_INPUT,
     width: float = 1.0,
 ) -> dict:
     """Borde canónico OLED para TextField/Dropdown (Flet 1.0+: border=OutlineInputBorder).
@@ -143,7 +144,7 @@ def app_text_field(
     on_submit=None,
     content_padding=None,
     text_style: ft.TextStyle | None = None,
-    border_radius: float = 10,
+    border_radius: float = RADIUS_INPUT,
     **kwargs,
 ) -> ft.TextField:
     """TextField canónico OLED. Base: playlist_meta (radius 10, dense).
@@ -206,7 +207,7 @@ def app_dialog(
     icon: str | None = None,
     actions_alignment: ft.MainAxisAlignment = ft.MainAxisAlignment.END,
     bgcolor: str = BG_PANEL,
-    radius: float = 14,
+    radius: float = RADIUS_DIALOG,
 ) -> ft.AlertDialog:
     """AlertDialog canónico OLED: modal + BG_PANEL + radius 14."""
     if isinstance(title, str):
@@ -242,7 +243,7 @@ def organize_dropdown(
     return ft.Dropdown(
         options=[ft.dropdown.Option(key=k, text=t) for k, t in options],
         value=value, label=label, width=width,
-        bgcolor=_IN, border=input_border(_BL, _AC, 10),
+        bgcolor=_IN, border=input_border(_BL, _AC, RADIUS_INPUT),
         label_style=ft.TextStyle(color=_TM, size=11, font_family=FONT_HEADLINE),
         text_style=ft.TextStyle(color=_TP, size=12, font_family=FONT_TEXT),
     )
@@ -373,7 +374,7 @@ def _primary_btn(text: str, icon: str, on_click, width=None, height=None) -> ft.
             color=TEXT_PRIMARY,
             elevation={ft.ControlState.DEFAULT: 0, ft.ControlState.HOVERED: 6},
             shadow_color={ft.ControlState.HOVERED: ACCENT_HALO},
-            shape=ft.RoundedRectangleBorder(radius=10),
+            shape=ft.RoundedRectangleBorder(radius=RADIUS_BUTTON),
             padding=ft.Padding.symmetric(horizontal=16, vertical=12),
             animation_duration=120,
         ),
@@ -430,7 +431,7 @@ def _ghost_btn(text: str, icon: str, on_click, width=None, height=None, disabled
                 ft.ControlState.DEFAULT: ft.BorderSide(0.8, BORDER_MUTED),
                 ft.ControlState.HOVERED: ft.BorderSide(0.8, ACCENT),
             },
-            shape=ft.RoundedRectangleBorder(radius=10),
+            shape=ft.RoundedRectangleBorder(radius=RADIUS_BUTTON),
             padding=ft.Padding.symmetric(horizontal=14, vertical=12),
             animation_duration=120,
         ),

@@ -49,7 +49,7 @@ class PlaylistDetailView(ft.Container):
             content=ft.Row(controls=[cover, ft.Column(controls=[self._title, self._count, self._desc, self._open_btn], spacing=6, expand=True, alignment=ft.MainAxisAlignment.CENTER)], spacing=12),
         )
 
-        # list area — skeletons dinámicos según altura disponible (paridad Inicio)
+        # list area — skeletons dinámicos según altura disponible (paridad Gestión)
         self._skeletons: list[LibrarySkeletonRow] = []
         self._skeleton_tasks: list[asyncio.Task] = []
         self._skeleton_list = ft.ListView(expand=True, spacing=0)
@@ -126,7 +126,7 @@ class PlaylistDetailView(ft.Container):
         return max(8, min(20, int(avail // ITEM_H)))
 
     def _sync_skeleton_count(self) -> None:
-        """Recrea skeletons si cambió el count (on_resize) — paridad Inicio."""
+        """Recrea skeletons si cambió el count (on_resize) — paridad Gestión."""
         try:
             new_cnt = self._calc_detail_skeleton_count()
             if new_cnt != len(self._skeletons):
@@ -212,7 +212,7 @@ class PlaylistDetailView(ft.Container):
     def _build_track_row(self, track: Track, index: int) -> ft.Container:
         """Fila Biblioteca: [#][thumb48][título/artista expand3][álbum expand2][dur48][open32].
 
-        Misma geometría que SongRow Inicio (spacing 16, ITEM_H) + columna
+        Misma geometría que SongRow Gestión (spacing 16, ITEM_H) + columna
         álbum. Hover: BG_HOVER + scale 1.01. Click: press scale 0.99 +
         opacidad 0.85 antes de abrir URL.
         """
