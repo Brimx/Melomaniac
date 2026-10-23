@@ -1052,8 +1052,8 @@ class PlaylistManagerUI(DialogMixin):
             self._id_clear_btn.update()
 
         self._id_field = app_text_field(
-            label="ID de la Playlist",
-            hint_text="pl.u-xxxx  /  PLxxxx  /  37i9dQ…",
+            label="ID o URL de la Playlist",
+            hint_text="pl.xxxx  /  PLxxxx  /  URL",
             suffix=self._id_clear_btn,
             on_change=_on_id_change,
             on_submit=lambda e: asyncio.create_task(self._do_cloud_load(e)),
@@ -1707,7 +1707,7 @@ class PlaylistManagerUI(DialogMixin):
         self._skeleton_view_wrap = ft.Container(content=self._skeleton_view, bgcolor=BG_LIST, visible=False, **_sf)
 
         self._empty_hint_text = ft.Text(
-            "Introduce el ID en el panel izquierdo y pulsa «Cargar».",
+            "Introduce el ID o la URL en el panel izquierdo y pulsa «Cargar».",
             size=12, color=TEXT_DIM, font_family=FONT_TEXT, opacity=1.0, text_align=ft.TextAlign.CENTER,
         )
         self._empty_state = ft.Container(
@@ -1940,7 +1940,7 @@ class PlaylistManagerUI(DialogMixin):
             "Archivo Local": "Pulsa \u00abCargar\u00bb para abrir el explorador de archivos.",
             "Pegar Texto": "Pulsa \u00abCargar\u00bb para pegar tu lista de canciones.",
         }
-        new_hint = _hint_map.get(s.source, "Introduce el ID en el panel izquierdo y pulsa \u00abCargar\u00bb.")
+        new_hint = _hint_map.get(s.source, "Introduce el ID o la URL en el panel izquierdo y pulsa \u00abCargar\u00bb.")
         if self._empty_hint_text.value != new_hint:
             self._empty_hint_text.value = new_hint
             self._empty_hint_text.update()
@@ -2249,7 +2249,7 @@ class PlaylistManagerUI(DialogMixin):
     async def _do_cloud_load(self, _=None) -> None:
         pid = self._id_field.value.strip()
         if not pid:
-            self._snack("Introduce un ID de playlist")
+            self._snack("Introduce un ID o una URL de playlist")
             return
         self._completion_snack_shown = False
         await self.state.load_playlist(pid)

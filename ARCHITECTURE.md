@@ -119,7 +119,7 @@ Estados principales:
 ## Flujo de carga
 
 ```text
-UI selecciona origen + ID
+UI selecciona origen + ID o URL
         │
         ├── streaming → AppState.load_playlist()
         │                 → MusicApiService.fetch_playlist()

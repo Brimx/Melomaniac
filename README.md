@@ -92,7 +92,7 @@ Las credenciales y la caché están dentro de `config/`, que está excluido por 
 
 ### Cargar una playlist
 
-- **Streaming:** selecciona la plataforma, introduce el ID de la playlist y pulsa **Cargar**.
+- **Streaming:** selecciona la plataforma, introduce el ID o la URL de la playlist y pulsa **Cargar**.
 - **Archivo Local:** selecciona un archivo de playlist compatible; la aplicación lo detecta por extensión y contenido. Los archivos XML se interpretan como XSPF.
 - **Archivo de audio:** selecciona una canción compatible; sus tags se usan como título, artista, álbum, duración, número de pista, fecha e ISRC.
 - **Pegar Texto:** pega una entrada por línea. Las líneas pueden usar el formato `Título - Artista`; también se aceptan líneas sin separador.

@@ -119,7 +119,7 @@ Main states:
 ## Loading flow
 
 ```text
-UI selects source + ID
+UI selects source + ID or URL
         │
         ├── streaming → AppState.load_playlist()
         │                 → MusicApiService.fetch_playlist()

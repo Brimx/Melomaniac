@@ -75,6 +75,7 @@ from services.authentication import (
 from core.cache import make_cache_key
 from core.library_models import PlaylistSummary
 from core.models import Track, SearchResult, PlaylistMeta
+from core.transfer import normalize_playlist_id
 from core.config import (
     NETWORK_CONCURRENCY as CFG_NETWORK_CONCURRENCY,
     RATE_LIMIT_BACKOFF_STEPS as CFG_RATE_LIMIT_BACKOFF_STEPS,
@@ -548,6 +549,9 @@ class MusicApiService:
         progress_cb: Optional[Callable[[int, int, str], None]] = None,
     ) -> tuple[PlaylistMeta, list[Track]]:
         self._cb[platform].check_or_raise()
+        playlist_id = normalize_playlist_id(platform, playlist_id)
+        if not playlist_id:
+            raise ValueError("Playlist sin identificador")
         if platform == "YouTube Music":
             return await asyncio.to_thread(self._sync_fetch_youtube, playlist_id, progress_cb)
         elif platform == "Apple Music":
@@ -1761,6 +1765,7 @@ class MusicApiService:
         de cada plataforma.
         """
         self._cb[platform].check_or_raise()
+        playlist_id = normalize_playlist_id(platform, playlist_id)
         if not playlist_id or not track_id:
             return False, "Playlist o canción sin identificador"
         if platform == "YouTube Music":
@@ -1804,6 +1809,9 @@ class MusicApiService:
         return False, "Apple Music no confirmó la inserción (canción no disponible)"
 
     def _sp_add_track(self, playlist_id: str, track_id: str) -> tuple[bool, str]:
+        playlist_id = normalize_playlist_id("Spotify", playlist_id)
+        if not playlist_id:
+            return False, "Playlist de Spotify sin identificador"
         if not HAS_SPOTIFY:
             return False, "SpotAPI no disponible"
         if not self._sp_login:
@@ -1970,7 +1978,13 @@ class MusicApiService:
             return False, "Spotify no disponible. Comprueba config/spotify_cookies.json.", 0, []
         pl = PrivatePlaylist(self._sp_login)
         try:
-            pl_id = pl.create_playlist(title)
+            # create_playlist() devuelve el URI completo
+            # (spotify:playlist:<id>); el resto de la cadena espera el ID
+            # desnudo. Normalizarlo aquí evita el doble prefijo al insertar
+            # alternativas y la URL inválida del reporte.
+            pl_id = normalize_playlist_id("Spotify", pl.create_playlist(title))
+            if not pl_id:
+                return False, "Spotify no devolvió un ID de playlist válido", 0, []
             # SpotAPI no asigna playlist_id al crear; sin set_playlist, un
             # Song(pl).add_songs_to_playlist() revienta con
             # ValueError("Playlist not set") y mata la transferencia entera.
@@ -1998,6 +2012,9 @@ class MusicApiService:
     # ── Playlist Deletion (reemplazar) §11 ───────────────────────────────
     async def delete_playlist(self, platform: str, playlist_id: str) -> tuple[bool, str]:
         self._cb[platform].check_or_raise()
+        playlist_id = normalize_playlist_id(platform, playlist_id)
+        if not playlist_id:
+            return False, "Playlist sin identificador"
         if platform == "YouTube Music":
             return await asyncio.to_thread(self._yt_delete, playlist_id)
         elif platform == "Apple Music":
@@ -2029,6 +2046,9 @@ class MusicApiService:
 
     def _sp_delete(self, pid: str) -> tuple[bool, str]:
         # Spotify: unfollow playlist = delete para usuario; SpotAPI no expone, usar Web API con cookies
+        pid = normalize_playlist_id("Spotify", pid)
+        if not pid:
+            return False, "Playlist de Spotify sin identificador"
         try:
             if not self._sp_login:
                 self._sync_init_spotify()

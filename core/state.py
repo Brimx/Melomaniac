@@ -75,6 +75,7 @@ from core.transfer import (
     append_transfer_log,
     build_transfer_report,
     failure_reason_from_exc,
+    normalize_playlist_id,
     search_with_rate_limit_backoff,
 )
 from services.authentication import TRANSFER_HISTORY_JSONL
@@ -403,9 +404,10 @@ class AppState:
     # ── Actions ────────────────────────────────────────────────────────
 
     async def load_playlist(self, playlist_id: str) -> None:
-        if not playlist_id.strip():
+        playlist_id = normalize_playlist_id(self.source, playlist_id)
+        if not playlist_id:
             return
-        self.playlist_id   = playlist_id.strip()
+        self.playlist_id   = playlist_id
         self.tracks        = []
         self.source_tracks = []
         self.filtered      = []

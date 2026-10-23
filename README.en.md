@@ -92,7 +92,7 @@ Credentials and the search cache live under `config/`, which is excluded by `.gi
 
 ### Load a playlist
 
-- **Streaming:** select the platform, enter the playlist ID, and click **Load**.
+- **Streaming:** select the platform, enter the playlist ID or URL, and click **Load**.
 - **Local File:** select a supported playlist file; the parser uses the extension and content. XML files are interpreted as XSPF.
 - **Audio File:** select a supported song; its tags provide the title, artist, album, duration, track number, date, and ISRC.
 - **Paste Text:** paste one entry per line. Lines may use `Title - Artist`; lines without a separator are also accepted.
