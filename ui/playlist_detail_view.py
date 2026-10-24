@@ -40,7 +40,8 @@ class PlaylistDetailView(ft.Container):
 
         self._title = app_text(summary.name, size=16, color=TEXT_PRIMARY, font_family=FONT_HEADLINE_BOLD)
         self._desc = app_text(summary.description or "", size=11, color=TEXT_MUTED, font_family=FONT_TEXT, max_lines=3, overflow=ft.TextOverflow.ELLIPSIS) if summary.description else ft.Container()
-        self._count = app_text(f"{summary.track_count} canciones • {summary.platform}", size=11, color=TEXT_DIM, font_family=mono_family("light"))
+        count_label = f"{summary.track_count} canciones" if summary.track_count is not None else "Conteo al abrir"
+        self._count = app_text(f"{count_label} • {summary.platform}", size=11, color=TEXT_DIM, font_family=mono_family("light"))
 
         self._open_btn = _ghost_btn("Ver playlist en plataforma", ft.Icons.OPEN_IN_NEW, lambda e: self._launch(summary.external_url), width=260, height=40) if summary.external_url else ft.Container()
 
@@ -182,6 +183,7 @@ class PlaylistDetailView(ft.Container):
             meta, tracks = await self.service.fetch_playlist(self.summary.platform, self.summary.id, None)
             self._tracks = tracks
             self._loading = False
+            self.summary.track_count = len(tracks)
             # header count real tras cargar (fix Apple count 0 en summary)
             try:
                 self._count.value = f"{len(tracks)} canciones • {self.summary.platform}"

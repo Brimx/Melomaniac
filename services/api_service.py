@@ -60,6 +60,7 @@ import os
 import random
 import threading
 import time
+from functools import partial
 from concurrent.futures import ThreadPoolExecutor
 from typing import Callable, Optional
 
@@ -82,6 +83,8 @@ from core.config import (
     RATE_LIMIT_BACKOFF_STEPS as CFG_RATE_LIMIT_BACKOFF_STEPS,
     SEARCH_CACHE_FLUSH_EVERY,
     SPOTIFY_ADD_CHUNK as CFG_SPOTIFY_ADD_CHUNK,
+    SPOTIFY_HTTP_TIMEOUT as CFG_SPOTIFY_HTTP_TIMEOUT,
+    YOUTUBE_HTTP_TIMEOUT as CFG_YOUTUBE_HTTP_TIMEOUT,
     APPLE_API_BASE,
     APPLE_ISRC_BATCH,
     APPLE_TRANSFER_BATCH,
@@ -191,7 +194,7 @@ class AppleRequestLimiter:
 
 # Mensaje de error para sesión expirada de YouTube Music
 _YTM_401_MSG = (
-    "[ERROR] YouTube Music: la sesion de config/browser.json ha expirado (401). "
+    "[ERROR] YouTube Music: la sesión de config/browser.json fue rechazada. "
     "Renueva Cookie + Authorization desde el navegador."
 )
 
@@ -219,7 +222,38 @@ def _is_ytm_unauthorized(exc: BaseException) -> bool:
         necesitan ser renovados desde el navegador.
     """
     status = youtube_http_status(exc)
-    return status == 401 if status is not None else "unauthorized" in str(exc).lower()
+    return status == 401 if status is not None else any(
+        marker in str(exc).lower() for marker in ("unauthorized", "sign in", "login")
+    )
+
+
+def _ytm_sign_in_required(response: dict) -> bool:
+    """Recognize the successful HTTP response YTMusic returns when logged out."""
+    pending = [response]
+    while pending:
+        node = pending.pop()
+        if isinstance(node, dict):
+            renderer = node.get("messageRenderer")
+            if isinstance(renderer, dict):
+                text_nodes = [renderer]
+                parts = []
+                while text_nodes:
+                    current = text_nodes.pop()
+                    if isinstance(current, dict):
+                        for key, value in current.items():
+                            if key in ("text", "simpleText") and isinstance(value, str):
+                                parts.append(value)
+                            else:
+                                text_nodes.append(value)
+                    elif isinstance(current, list):
+                        text_nodes.extend(current)
+                message = " ".join(parts).lower()
+                if any(marker in message for marker in ("sign in", "sign-in", "log in", "login")):
+                    return True
+            pending.extend(node.values())
+        elif isinstance(node, list):
+            pending.extend(node)
+    return False
 
 
 class MusicApiService:
@@ -272,6 +306,7 @@ class MusicApiService:
         ensure_config_dir()
         self._cb  = circuit_breakers
         self._ytm = None
+        self._ytm_lock = threading.RLock()
         self._am_headers:    dict = {}
         self._am_storefront: str  = "us"
         self._sp_login = None
@@ -313,6 +348,9 @@ class MusicApiService:
         # YouTube Music se queda en requests: ytmusicapi exige
         # isinstance(requests_session, requests.Session) (ytmusic.py:226).
         self._yt_http_session = requests.Session()
+        self._yt_http_session.request = partial(
+            self._yt_http_session.request, timeout=CFG_YOUTUBE_HTTP_TIMEOUT
+        )
 
     # ══════════════════════════════════════════════════════════════════
     # GESTIÓN DE SESIONES
@@ -421,10 +459,31 @@ class MusicApiService:
 
     # ── YouTube Music Auth ─────────────────────────────────────────────
 
+    def _ytm_library_playlists(self, limit: int | None):
+        """Read playlists and reject YTMusic's successful logged-out message."""
+        client = self._ytm
+        send_request = client._send_request
+
+        def _checked_request(endpoint, body, additionalParams=""):
+            response = send_request(endpoint, body, additionalParams)
+            if _ytm_sign_in_required(response):
+                raise RuntimeError("Sign in required: YouTube Music rejected the session.")
+            return response
+
+        client._send_request = _checked_request
+        try:
+            return client.get_library_playlists(limit=limit)
+        finally:
+            client._send_request = send_request
+
     async def init_youtube(self) -> bool:
         return await asyncio.to_thread(self._sync_init_youtube)
 
     def _sync_init_youtube(self) -> bool:
+        with self._ytm_lock:
+            return self._sync_init_youtube_locked()
+
+    def _sync_init_youtube_locked(self) -> bool:
         if not HAS_YTMUSIC:
             return False
         if not BROWSER_JSON.exists():
@@ -433,7 +492,7 @@ class MusicApiService:
         self.youtube_auth_error = ""
         try:
             self._ytm = YTMusic(auth=str(BROWSER_JSON), requests_session=self._yt_http_session)
-            self._ytm.get_library_playlists(limit=1)
+            self._ytm_library_playlists(limit=1)
             return True
         except Exception as exc:  # pylint: disable=broad-exception-caught
             self.youtube_auth_error = str(exc)
@@ -544,6 +603,7 @@ class MusicApiService:
                 return False
             self._sp_login = login
             self._sp_cfg   = cfg
+            self._sp_cfg.client.timeout = CFG_SPOTIFY_HTTP_TIMEOUT
             # Song cacheado sobre el MISMO TLSClient del login: el setup de
             # sesión/token/hashes se paga una sola vez, no por búsqueda.
             self._sp_song  = Song(client=cfg.client)
@@ -880,12 +940,15 @@ class MusicApiService:
             return sources[0].get("url", "") if sources else ""
 
     def _sync_list_ytm(self) -> list[PlaylistSummary]:
-        if not self._ytm:
-            self._sync_init_youtube()
-        if not self._ytm:
-            raise RuntimeError("YouTube Music no disponible. Comprueba config/browser.json.")
         try:
-            raw = self._ytm.get_library_playlists(limit=None)
+            with self._ytm_lock:
+                if not self._ytm:
+                    self._sync_init_youtube_locked()
+                if not self._ytm:
+                    raise RuntimeError(
+                        "YouTube Music no disponible. Comprueba config/browser.json."
+                    )
+                raw = self._ytm_library_playlists(limit=None)
         except Exception as exc:
             if _is_ytm_unauthorized(exc):
                 raise RuntimeError("Sesion YouTube Music expirada (401). Renueva config/browser.json.") from exc
@@ -1044,7 +1107,9 @@ class MusicApiService:
                 }
             ),
         }
-        resp = self._sp_login.client.post(url, params=params, authenticate=True)
+        resp = self._sp_login.client.post(
+            url, params=params, authenticate=True, timeout=CFG_SPOTIFY_HTTP_TIMEOUT
+        )
         if resp.fail:
             raise RuntimeError(f"Spotify libraryV3 offset={offset} falló: {resp.error}")
         return resp.response if isinstance(resp.response, dict) else {}
@@ -1069,18 +1134,6 @@ class MusicApiService:
         except Exception:
             pass
         return ""
-
-    def _spotify_playlist_meta(self, pid: str) -> tuple[int, str]:
-        """Count + cover canónica via fetchPlaylist limit=1 (libraryV3 no trae count)."""
-        try:
-            pp = PublicPlaylist(pid, client=self._sp_cfg.client)
-            info = pp.get_playlist_info(limit=1)
-            plv2 = (info.get("data") or {}).get("playlistV2") or {}
-            total = int((plv2.get("content") or {}).get("totalCount") or 0)
-            cover = self._spotify_image_best(plv2) if isinstance(plv2, dict) else ""
-            return total, cover
-        except Exception:
-            return 0, ""
 
     def _sync_list_spotify(self) -> list[PlaylistSummary]:
         if not HAS_SPOTIFY:
@@ -1150,9 +1203,11 @@ class MusicApiService:
             name = str(data.get("name") or "Playlist").strip()
             desc = _as_text(data.get("description"))
             cover = self._spotify_image_best(data)
-            count, canon_cover = self._spotify_playlist_meta(pid)
-            if canon_cover:
-                cover = canon_cover
+            content = data.get("content") or {}
+            try:
+                count = int(content.get("totalCount")) if content.get("totalCount") is not None else None
+            except (TypeError, ValueError):
+                count = None
             out.append(PlaylistSummary(
                 platform="Spotify",
                 id=pid,

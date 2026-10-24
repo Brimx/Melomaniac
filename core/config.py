@@ -47,6 +47,8 @@ def get_transfer_concurrency(destination: str) -> int:
 
 # ── Spotify chunks ───────────────────────────────────────────────────
 SPOTIFY_ADD_CHUNK: int = 50
+SPOTIFY_HTTP_TIMEOUT: int = 10
+YOUTUBE_HTTP_TIMEOUT: int = 30
 
 # ── Apple Music web endpoint / protección de ráfagas ────────────────
 APPLE_API_BASE: str = "https://amp-api.music.apple.com/v1"

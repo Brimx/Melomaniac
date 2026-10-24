@@ -171,6 +171,9 @@ async def main(page: ft.Page) -> None:
             plataformas conectadas.
             """
             await auth_manager.run_startup_check()
+            library_state = getattr(ui, "library_state", None)
+            if library_state is not None and library_state.selected_platform:
+                await library_state.sync_source(library_state.selected_platform)
             state.notify()
 
         asyncio.create_task(_startup())

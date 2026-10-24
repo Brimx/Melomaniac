@@ -24,7 +24,7 @@ def _summary_to_dict(s: PlaylistSummary) -> dict:
         "id": s.id,
         "name": s.name,
         "description": s.description or "",
-        "track_count": int(s.track_count or 0),
+        "track_count": int(s.track_count) if s.track_count is not None else None,
         "cover_urls": list(s.cover_urls or []),
         "external_url": s.external_url or "",
         "synced_at": s.synced_at or "",
@@ -37,7 +37,11 @@ def _summary_from_dict(d: dict, platform_fallback: str = "") -> PlaylistSummary:
         id=str(d.get("id") or ""),
         name=str(d.get("name") or "Playlist"),
         description=str(d.get("description") or ""),
-        track_count=int(d.get("track_count") or 0),
+        track_count=(
+            int(d["track_count"])
+            if d.get("track_count") is not None
+            else (None if "track_count" in d else 0)
+        ),
         cover_urls=list(d.get("cover_urls") or ([d["cover_url"]] if d.get("cover_url") else [])),
         external_url=str(d.get("external_url") or d.get("url") or ""),
         synced_at=str(d.get("synced_at") or ""),

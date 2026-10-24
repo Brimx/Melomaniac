@@ -28,7 +28,7 @@ class PlaylistSummary:
     id: str
     name: str
     description: str = ""
-    track_count: int = 0
+    track_count: int | None = 0
     # URLs de portada normalizadas (1 = single cover, 2-4 = grilla visual)
     cover_urls: list[str] = field(default_factory=list)
     external_url: str = ""  # abrir en plataforma

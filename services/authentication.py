@@ -170,10 +170,17 @@ def youtube_preflight_result(ok: bool, error: str = "") -> PreFlightResult:
         return result
     result.error = error or "No se pudo validar YouTube Music"
     status = youtube_http_status(error)
-    if status == 401 or (status is None and "unauthorized" in result.error.lower()):
+    if status == 401 or (
+        status is None
+        and any(word in result.error.lower() for word in ("unauthorized", "sign in", "login"))
+    ):
         result.code = AuthFailureCode.YT_EXPIRED
         result.expired = True
-        result.error = "401 — sesión de YouTube Music rechazada"
+        result.error = (
+            "401 — sesión de YouTube Music rechazada"
+            if status == 401
+            else "YouTube Music pide iniciar sesión de nuevo"
+        )
     elif status == 403:
         result.code = AuthFailureCode.YT_FORBIDDEN
         result.error = f"403 — YouTube Music rechazó la solicitud: {error[:160]}"

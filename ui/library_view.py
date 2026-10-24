@@ -44,11 +44,6 @@ class LibraryView(ft.Container):
         if PLATFORM_ORDER:
             self._platform = PLATFORM_ORDER[0]
             self.library_state.select_platform(self._platform)
-            # auto sync esa fuente
-            try:
-                asyncio.create_task(self.library_state.sync_source(self._platform))
-            except Exception:
-                pass
 
     def _build(self) -> None:
         # tabs

@@ -54,7 +54,8 @@ class PlaylistCard(ft.Container):
             badge = ft.Container(content=ft.Text("ERROR", size=8, color=TEXT_PRIMARY, font_family=FONT_HEADLINE_BOLD), bgcolor=ft.Colors.with_opacity(0.85, "#FF3D4D"), padding=ft.Padding.symmetric(horizontal=6, vertical=2), border_radius=6)
 
         name = ft.Text(summary.name, size=13, color=TEXT_PRIMARY, font_family=font_family_for(summary.name, "semibold"), max_lines=2, overflow=ft.TextOverflow.ELLIPSIS)
-        meta = ft.Text(f"{summary.track_count} canciones • {summary.platform}", size=11, color=TEXT_MUTED, font_family=FONT_TEXT, max_lines=1, overflow=ft.TextOverflow.ELLIPSIS)
+        count = f"{summary.track_count} canciones" if summary.track_count is not None else "Conteo al abrir"
+        meta = ft.Text(f"{count} • {summary.platform}", size=11, color=TEXT_MUTED, font_family=FONT_TEXT, max_lines=1, overflow=ft.TextOverflow.ELLIPSIS)
 
         # stack cover + badge top-right
         cover_stack = ft.Stack(controls=[cover] + ([ft.Container(content=badge, alignment=ft.Alignment.TOP_RIGHT, padding=ft.Padding.all(6))] if badge else []))
