@@ -532,7 +532,6 @@ class PlaylistManagerUI(DialogMixin):
         self._completion_snack_shown: bool  = False
         self._pm_cleared_for_load:    bool  = False
         self.auth_manager                   = None
-        self._auth_poll_task: Optional[asyncio.Task] = None
         self._prev_dual_mode: str = "lista"
         self._view_shimmer_task: Optional[asyncio.Task] = None
 
@@ -907,14 +906,12 @@ class PlaylistManagerUI(DialogMixin):
 
     # ── Auth helpers ───────────────────────────────────────────────────
 
-    async def _refresh_auth_live(self, platform: str | None = None) -> None:
+    async def _refresh_auth_live(self, platform: str) -> None:
         am = getattr(self, "auth_manager", None)
         if not am:
             return
-        if platform in AppState.PLATFORMS:
-            await am.refresh_session_icons([platform])
-        else:
-            await am.refresh_session_icons()
+        results = await am.check_sessions([platform])
+        am.ingest_preflight_results(results)
 
     async def _on_auth_probe(self, platform: str) -> None:
         am = getattr(self, "auth_manager", None)
@@ -929,7 +926,10 @@ class PlaylistManagerUI(DialogMixin):
                 continue
             if not r.ok:
                 self.state.log(f"[ERROR] ⚠ {platform} falló la validación: {r.error[:400]}")
-                am.open_wizard(platform)
+                if r.expired:
+                    am.open_wizard(platform)
+                else:
+                    self._snack(f"No se confirmó la sesión: {r.error[:180]}")
             else:
                 self.state.log(f"[SUCCESS] ✓ {platform} validada correctamente.")
                 self._snack(f"Sesión de {platform} válida y activa.")
@@ -1974,7 +1974,7 @@ class PlaylistManagerUI(DialogMixin):
         else:
             dest_ok = s.auth_session_ok.get(s.destination, True)
             self._dest_session_warn.visible = not dest_ok
-            self._dest_session_warn.value = "" if dest_ok else f"Sesi\u00f3n expirada en {s.destination}"
+            self._dest_session_warn.value = "" if dest_ok else f"No se confirmó la sesión en {s.destination}"
         has_transform = bool(s.segments or getattr(s, 'show_dual', False) or (getattr(s, 'source_tracks', None) and s.tracks != s.source_tracks))
         if s.source == s.destination and not has_transform:
             self._status_badge.value = "\u26a0 Origen y destino iguales"
@@ -2681,9 +2681,6 @@ class PlaylistManagerUI(DialogMixin):
             pass
         if self._search_task and not self._search_task.done():
             self._search_task.cancel()
-
-    def start_auth_poll(self, task: asyncio.Task) -> None:
-        self._auth_poll_task = task
 
     # ── Circuit breaker reactions ──────────────────────────────────────
 

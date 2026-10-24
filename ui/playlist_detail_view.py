@@ -195,6 +195,9 @@ class PlaylistDetailView(ft.Container):
             self._skeleton_wrap.visible = False
             self._list_view.visible = True
         except Exception as exc:
+            auth_manager = getattr(self.service, "auth_manager", None)
+            if auth_manager is not None:
+                auth_manager.record_operation_failure(self.summary.platform, exc)
             self._loading = False
             self._error = str(exc)[:400]
             self._stop_skeleton_pulse()

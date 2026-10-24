@@ -175,24 +175,6 @@ async def main(page: ft.Page) -> None:
 
         asyncio.create_task(_startup())
 
-        async def _auth_poll_loop() -> None:
-            """
-            Bucle de sondeo periódico de sesiones de autenticación.
-            
-            Refresca los iconos de estado de autenticación cada 90 segundos
-            para detectar expiraciones de tokens o cambios en las sesiones
-            de las plataformas (YouTube Music, Apple Music).
-            
-            Note:
-                Intervalo de 90 segundos balanceado para detectar cambios
-                sin generar tráfico excesivo a las APIs.
-            """
-            while True:
-                await asyncio.sleep(90)
-                await auth_manager.refresh_session_icons()
-
-        ui.start_auth_poll(asyncio.create_task(_auth_poll_loop()))
-
         shutdown_event = asyncio.Event()
         _shutdown_once = [False]
 

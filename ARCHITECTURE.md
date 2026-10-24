@@ -114,7 +114,7 @@ Estados principales:
 - Apple: `APPLE_AUTH_BEARER` y `APPLE_MUSIC_USER_TOKEN`.
 - Spotify: `identifier`, `cookies.sp_dc` y `cookies.sp_key`.
 
-`run_preflight()` valida las tres plataformas en paralelo. `AuthManager` refleja el resultado en `AppState.auth_session_ok` y `auth_session_hint`, inicializa los servicios válidos y abre el tab correspondiente si una sesión está ausente o expirada. Guardar en el wizard activa un hot reload sin reinicio.
+`AuthManager` valida YouTube mediante `MusicApiService` y Apple/Spotify mediante `run_preflight()`, solo al inicio o ante una acción del usuario. YouTube distingue rechazo de sesión (`401`/`403`) de límite (`429`) y fallos transitorios; estos últimos no cambian el estado de autenticación. Guardar en el wizard activa un hot reload sin reinicio.
 
 ## Flujo de carga
 

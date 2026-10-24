@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import re
 from pathlib import Path
 
 import requests
@@ -126,6 +127,9 @@ class AuthFailureCode:
     """Stable authentication failure codes consumed by the UI."""
 
     YT_EXPIRED = "YT_EXPIRED"
+    YT_FORBIDDEN = "YT_FORBIDDEN"
+    YT_RATE_LIMITED = "YT_RATE_LIMITED"
+    YT_CHECK_FAILED = "YT_CHECK_FAILED"
     APPLE_EXPIRED = "APPLE_EXPIRED"
     SPOTIFY_EXPIRED = "SPOTIFY_EXPIRED"
 
@@ -145,32 +149,45 @@ class PreFlightResult:
         return f"<PreFlight {self.platform}: {status}>"
 
 
-def _preflight_youtube() -> PreFlightResult:
-    result = PreFlightResult("YouTube Music")
-    browser = read_browser_json()
-    if not browser.get("Authorization") or not browser.get("Cookie"):
-        result.error = "config/browser.json: falta Authorization o Cookie"
-        result.expired = True
-        return result
-    if not browser.get("Authorization", "").startswith("SAPISIDHASH"):
-        result.error = "Authorization no comienza con 'SAPISIDHASH'"
-        result.expired = True
-        return result
-    try:
-        from ytmusicapi import YTMusic  # pylint: disable=import-outside-toplevel
+def youtube_http_status(error: BaseException | str) -> int | None:
+    """Extract the HTTP status exposed by ytmusicapi or requests errors."""
+    response = getattr(error, "response", None)
+    status = getattr(response, "status_code", None)
+    if isinstance(status, int):
+        return status
+    message = str(error)
+    match = re.search(r"(?:http(?:/\d(?:\.\d)?)?\s+|status code:\s*)(\d{3})", message, re.I)
+    if match is None:
+        match = re.search(r"\b(401|403|429)\b", message)
+    return int(match.group(1)) if match else None
 
-        ytm = YTMusic(str(BROWSER_JSON))
-        ytm.get_history()
-        result.ok = True
-    except Exception as exc:  # pylint: disable=broad-exception-caught
-        message = str(exc).lower()
+
+def youtube_preflight_result(ok: bool, error: str = "") -> PreFlightResult:
+    """Map a YouTube probe result without treating transient errors as expiry."""
+    result = PreFlightResult("YouTube Music")
+    result.ok = ok
+    if ok:
+        return result
+    result.error = error or "No se pudo validar YouTube Music"
+    status = youtube_http_status(error)
+    if status == 401 or (status is None and "unauthorized" in result.error.lower()):
         result.code = AuthFailureCode.YT_EXPIRED
         result.expired = True
-        result.error = (
-            "401 — token expirado o inválido"
-            if any(word in message for word in ("401", "unauthorized", "sign in", "cookie", "parse"))
-            else str(exc)[:200]
-        )
+        result.error = "401 — sesión de YouTube Music rechazada"
+    elif status == 403:
+        result.code = AuthFailureCode.YT_FORBIDDEN
+        result.error = f"403 — YouTube Music rechazó la solicitud: {error[:160]}"
+    elif status == 429:
+        result.code = AuthFailureCode.YT_RATE_LIMITED
+        result.error = f"429 — límite de solicitudes de YouTube Music: {error[:160]}"
+    elif any(term in result.error.lower() for term in (
+        "missing config/browser.json", "falta authorization", "no comienza con",
+        "cookie is missing", "cookie missing", "invalid cookie",
+    )):
+        result.code = AuthFailureCode.YT_EXPIRED
+        result.expired = True
+    else:
+        result.code = AuthFailureCode.YT_CHECK_FAILED
     return result
 
 
@@ -281,6 +298,9 @@ def auth_failure_tooltip(result: PreFlightResult) -> str:
     """Build the concise authentication hint displayed by the UI."""
     if result.ok:
         return ""
+    if result.platform == "YouTube Music" and not result.expired:
+        tag = f"[{result.code}] " if result.code else ""
+        return f"{tag}YouTube Music · {result.error}"[:500]
     hints = {
         "YouTube Music": "config/browser.json: Cookie + Authorization (SAPISIDHASH)",
         "Apple Music": "config/.env: APPLE_AUTH_BEARER + APPLE_MUSIC_USER_TOKEN",
@@ -291,13 +311,12 @@ def auth_failure_tooltip(result: PreFlightResult) -> str:
 
 
 async def run_preflight(platforms: list[str] | None = None) -> list[PreFlightResult]:
-    """Run platform checks concurrently in the configured order.
+    """Run Apple Music and Spotify checks concurrently in platform order.
 
-    ``platforms`` permite validar solo la plataforma que el usuario acaba de
-    seleccionar; por defecto conserva el preflight completo.
+    YouTube Music is checked by AuthManager through MusicApiService so the
+    probe shares the production client and request path.
     """
     checks = {
-        "YouTube Music": _preflight_youtube,
         "Apple Music": _preflight_apple,
         "Spotify": _preflight_spotify,
     }
@@ -344,4 +363,6 @@ __all__ = [
     "read_spotify_cookies",
     "write_spotify_cookies",
     "run_preflight",
+    "youtube_http_status",
+    "youtube_preflight_result",
 ]

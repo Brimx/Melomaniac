@@ -71,6 +71,7 @@ from services.authentication import (
     SPOTIFY_COOKIES_JSON as AUTH_SPOTIFY_COOKIES_JSON,
     ensure_config_dir,
     load_runtime_env,
+    youtube_http_status,
 )
 from core.cache import SingleFlight, make_cache_key, make_search_flight_key
 from core.library_models import PlaylistSummary
@@ -217,11 +218,8 @@ def _is_ytm_unauthorized(exc: BaseException) -> bool:
         Un 401 indica que los headers de config/browser.json han expirado y
         necesitan ser renovados desde el navegador.
     """
-    s = str(exc).lower()
-    if "401" in str(exc) or "status code: 401" in s or "unauthorized" in s:
-        return True
-    resp = getattr(exc, "response", None)
-    return resp is not None and getattr(resp, "status_code", None) == 401
+    status = youtube_http_status(exc)
+    return status == 401 if status is not None else "unauthorized" in str(exc).lower()
 
 
 class MusicApiService:

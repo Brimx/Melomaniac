@@ -17,7 +17,9 @@ from services.authentication import (
     PreFlightResult,
     auth_failure_tooltip,
     load_runtime_env,
+    read_browser_json,
     run_preflight,
+    youtube_preflight_result,
 )
 from ui.config_wizard import ConfigWizard
 
@@ -27,7 +29,7 @@ class AuthManager:
 
     1. run_startup_check()        — parallel pre-flight on all platforms.
     2. open_wizard(platform)      — opens ConfigWizard (routes to correct tab).
-    3. refresh_session_icons()    — revalidates and updates UI icons.
+    3. check_sessions()           — validates only when requested by an event.
     4. reload_credentials()       — hot-reloads config/.env and credential JSON files.
     """
 
@@ -58,12 +60,51 @@ class AuthManager:
     # ── Pre-flight / session management ───────────────────────────────
 
     async def check_all_sessions(self) -> list[PreFlightResult]:
-        """Parallel pre-flight on all platforms."""
-        return await run_preflight()
+        """Validate all platforms on demand, using the service client for YouTube."""
+        return await self.check_sessions(PLATFORM_ORDER)
 
     async def check_sessions(self, platforms: list[str]) -> list[PreFlightResult]:
-        """Pre-flight only the requested platforms."""
-        return await run_preflight(platforms)
+        """Validate requested platforms, sharing the production YouTube path."""
+        wanted = set(platforms)
+        selected = [p for p in PLATFORM_ORDER if p in wanted]
+        others = [p for p in selected if p != "YouTube Music"]
+        tasks = [run_preflight(others)]
+        if "YouTube Music" in selected:
+            tasks.append(self._check_youtube_session())
+        outputs = await asyncio.gather(*tasks)
+        results: list[PreFlightResult] = []
+        for output in outputs:
+            if isinstance(output, list):
+                results.extend(output)
+            else:
+                results.append(output)
+        return sorted(results, key=lambda result: PLATFORM_ORDER.index(result.platform))
+
+    async def _check_youtube_session(self) -> PreFlightResult:
+        browser = read_browser_json()
+        if not browser.get("Authorization") or not browser.get("Cookie"):
+            return youtube_preflight_result(
+                False, "config/browser.json: falta Authorization o Cookie"
+            )
+        if not browser.get("Authorization", "").startswith("SAPISIDHASH"):
+            return youtube_preflight_result(
+                False, "Authorization no comienza con 'SAPISIDHASH'"
+            )
+        try:
+            ok = await self.service.init_youtube()
+            return youtube_preflight_result(ok, self.service.youtube_auth_error)
+        except Exception as exc:  # pylint: disable=broad-exception-caught
+            return youtube_preflight_result(False, str(exc))
+
+    def record_operation_failure(self, platform: str, error: BaseException | str) -> bool:
+        """Reflect confirmed YouTube authorization failures, not transient errors."""
+        if platform != "YouTube Music":
+            return False
+        result = youtube_preflight_result(False, str(error))
+        if result.code in ("YT_EXPIRED", "YT_FORBIDDEN"):
+            self.ingest_preflight_results([result])
+            return True
+        return False
 
     def ingest_preflight_results(self, results: list[PreFlightResult]) -> None:
         """Merge results, update AppState auth flags and notify the UI."""
@@ -75,20 +116,13 @@ class AuthManager:
         self._sync_auth_ui_state(results)
         self.state.notify()
 
-    async def refresh_session_icons(
-        self, platforms: list[str] | None = None,
-    ) -> list[PreFlightResult]:
-        """Re-run the requested checks and push results to the UI icons."""
-        results = (
-            await self.check_sessions(platforms)
-            if platforms is not None
-            else await self.check_all_sessions()
-        )
-        self.ingest_preflight_results(results)
-        return results
-
     def _sync_auth_ui_state(self, results: list[PreFlightResult]) -> None:
         for r in results:
+            if r.platform == "YouTube Music" and not r.ok and r.code in (
+                "YT_RATE_LIMITED", "YT_CHECK_FAILED",
+            ):
+                self.state.auth_session_hint[r.platform] = auth_failure_tooltip(r)
+                continue
             self.state.auth_session_ok[r.platform]   = r.ok
             self.state.auth_session_hint[r.platform] = (
                 "" if r.ok else auth_failure_tooltip(r)
@@ -96,7 +130,6 @@ class AuthManager:
 
     async def run_startup_check(self) -> list[PreFlightResult]:
         """
-        Parallel pre-flight + conditional service init.
         Expired platforms open the wizard on their respective tab.
         """
         self.state_log_fn("[INFO] Pre-flight: verificando credenciales…")
@@ -141,7 +174,8 @@ class AuthManager:
         tasks = [
             init_methods[platform]()
             for platform in PLATFORM_ORDER
-            if (result_by_platform.get(platform) is not None
+            if platform != "YouTube Music"
+            and (result_by_platform.get(platform) is not None
                 and result_by_platform[platform].ok)
         ]
         if tasks:
@@ -180,15 +214,15 @@ class AuthManager:
         load_runtime_env(override=True)
 
         init_methods = {
-            "YouTube Music": self.service.init_youtube,
             "Apple Music":   self.service.init_apple,
             "Spotify":       self.service.init_spotify,
         }
+        init_platforms = [platform for platform in PLATFORM_ORDER if platform in init_methods]
         init_results = await asyncio.gather(
-            *(init_methods[platform]() for platform in PLATFORM_ORDER),
+            *(init_methods[platform]() for platform in init_platforms),
             return_exceptions=True,
         )
-        for plat, res in zip(PLATFORM_ORDER, init_results):
+        for plat, res in zip(init_platforms, init_results):
             if res is True:
                 self.state_log_fn(f"[SUCCESS] ✓ {plat}: reconectado")
             else:

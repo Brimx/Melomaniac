@@ -89,6 +89,9 @@ class LibraryState:
                 pass
         except Exception as exc:
             msg = str(exc)[:300]
+            auth_manager = getattr(self.service, "auth_manager", None)
+            if auth_manager is not None:
+                auth_manager.record_operation_failure(platform, exc)
             # auth/network falla -> STALE si había caché
             if snap.items:
                 snap.state = LibraryLoadState.STALE

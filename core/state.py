@@ -469,6 +469,7 @@ class AppState:
             self.load_state = LoadState.ERROR
             self.load_error = f"Rate limit en {e.platform}. Espera {e.retry_after}s."
         except Exception as e:  # pylint: disable=broad-exception-caught
+            self._record_auth_operation_failure(self.source, e)
             self.load_state = LoadState.ERROR
             self.load_error = str(e)
         finally:
@@ -676,7 +677,8 @@ class AppState:
                 except RateLimitError:
                     raise
                 except Exception as exc:  # pylint: disable=broad-exception-caught
-                    if getattr(exc, "status_code", None) in (401, 403):
+                    auth_rejected = self._record_auth_operation_failure(self.destination, exc)
+                    if auth_rejected or getattr(exc, "status_code", None) in (401, 403):
                         raise
                     last_exc = exc
                     wait_s = 2 ** attempt
@@ -869,6 +871,7 @@ class AppState:
             self._log(f"[ERROR] ⚠ Rate limit en {e.platform}: espera {e.retry_after}s")
             self.transfer_state = TransferState.ERROR
         except Exception as e:  # pylint: disable=broad-exception-caught
+            self._record_auth_operation_failure(self.destination, e)
             self._absorb_partial_playlist(e, dest_id_to_track)
             self._log(f"[ERROR] ✗ Error general: {e}")
             self.transfer_state = TransferState.ERROR
@@ -986,6 +989,12 @@ class AppState:
             append_transfer_log(report, TRANSFER_HISTORY_JSONL)
         except OSError as exc:
             self._log(f"[WARN] No se pudo escribir el historial de transferencia: {exc}")
+
+    def _record_auth_operation_failure(self, platform: str, error: BaseException) -> bool:
+        auth_manager = getattr(self.service, "auth_manager", None)
+        if auth_manager is not None:
+            return auth_manager.record_operation_failure(platform, error)
+        return False
 
     async def _ensure_auth(self, platform: str) -> bool:
         if platform == "YouTube Music":
