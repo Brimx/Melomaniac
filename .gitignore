@@ -7,7 +7,6 @@ opencode.json
 .flet/
 .venv/
 /AGENTS.md
-/.agents/skills/melomaniac-memory/SKILL.md
 
 # Archivos generados por Python y herramientas de calidad
 __pycache__/
