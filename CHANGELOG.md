@@ -1,5 +1,16 @@
 # Changelog
 
+## 4.7.0 — 2026-10-25 · Descargas de audio y mejoras de Biblioteca
+
+> Versión de trabajo que consolida los commits posteriores al tag `v4.6.0`.
+
+- Descargas: nueva cola de audio con `yt-dlp`; resuelve pistas en YouTube, extrae solo audio, escribe metadatos/portada y admite MP3, M4A, Opus, FLAC y WAV. La UI incluye progreso, resultados y cancelación.
+- Descargas reutiliza `source_url` para pistas de YouTube Music y la sesión existente en memoria si necesita cookies; no crea `cookies.txt`. No incluye reproducción integrada ni poda automática de caché.
+- YouTube Music: estabiliza el preflight y la renovación de sesión; corrige la Biblioteca cuando el servidor responde con pantalla de inicio de sesión.
+- Spotify: reduce el bloqueo durante la sincronización de Biblioteca al diferir la carga del detalle y aplicar timeout por página.
+- Diseño: cambia el acento principal a `#3B5AFF`.
+- Dependencias: alinea `flet`, `flet-desktop` y `flet-audio` en `1.0.5`, e incorpora `yt-dlp`.
+
 ## 4.6.0 — 2026-10-23 · Búsqueda deduplicada, variantes cirílicas y aborto temprano
 
 > Release que consolida la versión de trabajo `4.5.2` (nunca etiquetada) y los cambios posteriores. Tag anterior: `v4.5.1`.

@@ -1,8 +1,8 @@
-# Melomaniac v4.6.0 — Architecture
+# Melomaniac v4.7.0 — Architecture
 
 Melomaniac separates the Flet UI, application state, platform services, and metadata normalization/matching engine. The current version supports YouTube Music, Apple Music, Spotify, and two local inputs: file and pasted text.
 
-The documented working version is `4.6.0`. It is not a provisional series number; a version bump should happen only when a new version is chosen.
+The documented working version is `4.7.0`. This version adds audio downloads with `yt-dlp`, along with post-`v4.6.0` authentication and Library fixes.
 
 ## Layers and dependencies
 
@@ -57,6 +57,7 @@ Melomaniac/
 │   ├── normalizer.py               # cleanup, noise, ISRC
 │   ├── organizer.py                # in-memory sort_tracks/split_tracks
 │   ├── exporters.py                # multi-format local export
+│   ├── downloader.py               # yt-dlp audio resolution and download
 │   └── parsers.py                 # local formats and local Track creation
 ├── services/
 │   ├── api_service.py             # YouTube/Apple/Spotify facade
@@ -69,7 +70,8 @@ Melomaniac/
 │   ├── config_wizard.py            # credential editing
 │   ├── main_ui.py                 # main window
 │   ├── organize_panel.py           # Organize/Split/Reorder dialogs
-│   ├── library_view.py             # Library playlists and Downloads tab
+│   ├── library_view.py             # Library and entry to Downloads module
+│   ├── downloads_view.py           # download queue, progress, and results
 │   ├── playlist_card.py            # playlist cards
 │   ├── playlist_detail_view.py     # details and on-demand track loading
 │   ├── playlist_meta_dialog.py     # playlist name/description
@@ -172,7 +174,11 @@ The shared matcher uses these thresholds:
 
 For local tracks, a `low_confidence` result is also rejected to avoid ambiguous transfers.
 
-The Organize dialog can preserve the current order or sort A→Z/Z→A, then group by artist, album, or release date. Split creates 2–5 manual divisions by selecting artists, albums, or tracks. These operations apply to the playlist as a whole. The user can show the list, preview, or both columns. The floating side rail is a custom docked control: it pushes the content instead of overlaying it, starts collapsed at `68 px`, and expands to `220 px` with animated labels. It exposes Manage, Library, Downloads, and Config; Config stays pinned at the bottom as a work-in-progress module, and the credential wizard opens from the gear button in the left panel. Library syncs and caches playlist metadata; Downloads remains a placeholder.
+The Organize dialog can preserve the current order or sort A→Z/Z→A, then group by artist, album, or release date. Split creates 2–5 manual divisions by selecting artists, albums, or tracks. These operations apply to the playlist as a whole. The user can show the list, preview, or both columns. The floating side rail is a custom docked control: it pushes the content instead of overlaying it, starts collapsed at `68 px`, and expands to `220 px` with animated labels. It exposes Manage, Library, Downloads, and Config; Config stays pinned at the bottom as a work-in-progress module, and the credential wizard opens from the gear button in the left panel. Library syncs and caches playlist metadata. Downloads lets users select tracks, format, and destination, inspect progress/results, and cancel the queue.
+
+### Audio downloads
+
+`AppState.download_selected()` coordinates the queue and runs blocking `yt-dlp` calls in threads (`asyncio.to_thread`), with maximum concurrency `DOWNLOAD_CONCURRENCY=2`. `engine.downloader` reuses the source URL for YouTube Music tracks or searches YouTube for a match for other sources; it validates title and duration, extracts audio only with FFmpeg, and writes metadata/artwork. The file is published via atomic rename after passing a minimum-size check. MP3 (default), M4A, Opus, FLAC, and WAV are available. If needed, the YouTube Music session is loaded from `config/browser.json` in memory; no `cookies.txt` is written. The view does not implement playback or automatic cache pruning.
 
 ## Concurrency, caching, and resilience
 

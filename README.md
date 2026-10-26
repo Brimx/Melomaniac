@@ -1,8 +1,8 @@
-# 🎵 Melomaniac v4.6.0
+# 🎵 Melomaniac v4.7.0
 
 Melomaniac es una aplicación de escritorio para reconstruir playlists entre **YouTube Music, Apple Music y Spotify**. También permite importar una lista local o una canción individual, buscar cada pista en el destino y crear una nueva playlist.
 
-La versión de trabajo documentada es `4.6.0`. Los cambios de esta versión se resumen en [`CHANGELOG.md`](CHANGELOG.md).
+La versión de trabajo documentada es `4.7.0`. Los cambios de esta versión se resumen en [`CHANGELOG.md`](CHANGELOG.md).
 
 El matching combina normalización de metadatos, RapidFuzz, artista/título, duración, contenido explícito e ISRC cuando está disponible. Los resultados dudosos se conservan en el Post-Mortem para revisión.
 
@@ -15,7 +15,8 @@ El matching combina normalización de metadatos, RapidFuzz, artista/título, dur
 - Usa ISRC para coincidencias exactas en Apple Music y conserva el valor en la caché.
 - Compara la duración; Spotify añade el indicador `explicit` al scoring.
 - Permite buscar y seleccionar canciones; ordenar por artista, álbum, título, duración o fecha de lanzamiento; agrupar por artista, álbum o fecha; y crear de 2 a 5 divisiones seleccionando artistas, álbumes o canciones.
-- Ofrece los modos **Lista**, **Doble** y **Preview** durante las transformaciones y un rail lateral flotante que arranca colapsado (`68 px`) y se expande a `220 px`. Las secciones son **Gestión**, **Biblioteca**, **Descargas** y **Config**; Config queda fijo al fondo como módulo en desarrollo y el asistente de credenciales sigue accesible desde el engranaje. Biblioteca sincroniza playlists por plataforma y conserva sus metadatos localmente; Descargas sigue en desarrollo.
+- Ofrece los modos **Lista**, **Doble** y **Preview** durante las transformaciones y un rail lateral flotante que arranca colapsado (`68 px`) y se expande a `220 px`. Las secciones son **Gestión**, **Biblioteca**, **Descargas** y **Config**; Config queda fijo al fondo como módulo en desarrollo y el asistente de credenciales sigue accesible desde el engranaje. Biblioteca sincroniza playlists por plataforma y conserva sus metadatos localmente.
+- Descarga audio de pistas seleccionadas en MP3, M4A, Opus, FLAC o WAV. `yt-dlp` resuelve cada pista con una coincidencia en YouTube, conserva solo el audio y añade metadatos/portada; la vista muestra progreso, permite cancelar y lista resultados. No incluye reproducción integrada.
 - Muestra título, artista, álbum, duración, portada y estado de cada pista.
 - Exporta la selección o el alcance visible a `TXT`, `CSV`, `M3U`, `M3U8` y `XSPF`, con orden artista-título o título-artista.
 - Permite editar nombre y descripción antes de crear la playlist. En Spotify, SpotAPI solo permite guardar el nombre; la descripción se informa como no soportada.
@@ -30,6 +31,7 @@ El matching combina normalización de metadatos, RapidFuzz, artista/título, dur
 | Dependencias | Versiones fijadas en [`requirements.txt`](requirements.txt) |
 | Credenciales | `config/browser.json`, `config/.env` y `config/spotify_cookies.json` según el destino |
 | Interfaz | Flet Desktop 1.0.5; tema oscuro, Stack Sans, IBM Plex y fallback CJK opcional |
+| Conversión de audio | `ffmpeg` disponible en `PATH` para extracción y conversión de audio |
 
 ## Instalación
 
@@ -215,7 +217,7 @@ Melomaniac is not affiliated with, sponsored by, or endorsed by Spotify, Apple, 
 
 ## Estado y licencia
 
-La versión documentada es `4.6.0` en la rama `main`. Es un proyecto para uso personal; cada plataforma y sus APIs están sujetas a sus propios términos de servicio.
+La versión documentada es `4.7.0` en la rama `main`. Es un proyecto para uso personal; cada plataforma y sus APIs están sujetas a sus propios términos de servicio.
 
 ## Agradecimientos
 

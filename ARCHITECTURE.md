@@ -1,8 +1,8 @@
-# Melomaniac v4.6.0 — Arquitectura
+# Melomaniac v4.7.0 — Arquitectura
 
 Melomaniac separa la interfaz Flet, el estado de la aplicación, los servicios de plataforma y el motor de normalización/matching. La versión actual soporta YouTube Music, Apple Music, Spotify y dos entradas locales: archivo y texto pegado.
 
-La versión de trabajo documentada es `4.6.0`. No se debe describir como un número provisional de serie: el siguiente bump solo ocurre cuando se decida una nueva versión.
+La versión de trabajo documentada es `4.7.0`. Esta versión incorpora la descarga de audio con `yt-dlp`, junto con correcciones posteriores a `v4.6.0` en autenticación y Biblioteca.
 
 ## Capas y dependencias
 
@@ -57,6 +57,7 @@ Melomaniac/
 │   ├── normalizer.py               # limpieza, ruido e ISRC
 │   ├── organizer.py                # sort_tracks y split_tracks en memoria
 │   ├── exporters.py                # exportación local en varios formatos
+│   ├── downloader.py               # resolución y descarga de audio con yt-dlp
 │   └── parsers.py                  # formatos locales y Track local
 ├── services/
 │   ├── api_service.py              # fachada YouTube/Apple/Spotify
@@ -69,7 +70,8 @@ Melomaniac/
 │   ├── config_wizard.py             # edición de credenciales
 │   ├── main_ui.py                  # ventana principal
 │   ├── organize_panel.py            # diálogos Organizar/Dividir/Reorganizar
-│   ├── library_view.py              # Biblioteca: playlists y pestaña Descargas
+│   ├── library_view.py              # Biblioteca y acceso al módulo Descargas
+│   ├── downloads_view.py            # cola, progreso y resultados de descargas
 │   ├── playlist_card.py             # tarjetas de playlist
 │   ├── playlist_detail_view.py       # detalle y carga de pistas bajo demanda
 │   ├── playlist_meta_dialog.py      # nombre/descripción de playlist
@@ -172,7 +174,11 @@ El matching común usa estos umbrales:
 
 En pistas locales, un resultado `low_confidence` también se rechaza para evitar transferencias ambiguas.
 
-El diálogo Organizar conserva el orden actual o permite ordenar A→Z/Z→A y agrupar por artista, álbum o fecha de lanzamiento. Dividir crea de 2 a 5 divisiones manuales seleccionando artistas, álbumes o canciones; ambas operaciones actúan sobre la playlist completa. El usuario puede mostrar la lista, el preview o ambas columnas. El rail lateral flotante es un control custom docked: desplaza el contenido en vez de superponerlo, arranca colapsado en `68 px` y se expande a `220 px` con labels animados. Expone Gestión, Biblioteca, Descargas y Config; Config queda al fondo como módulo en desarrollo y el asistente de credenciales se abre desde el engranaje del panel izquierdo. Biblioteca sincroniza y conserva metadatos de playlists; Descargas sigue como placeholder.
+El diálogo Organizar conserva el orden actual o permite ordenar A→Z/Z→A y agrupar por artista, álbum o fecha de lanzamiento. Dividir crea de 2 a 5 divisiones manuales seleccionando artistas, álbumes o canciones; ambas operaciones actúan sobre la playlist completa. El usuario puede mostrar la lista, el preview o ambas columnas. El rail lateral flotante es un control custom docked: desplaza el contenido en vez de superponerlo, arranca colapsado en `68 px` y se expande a `220 px` con labels animados. Expone Gestión, Biblioteca, Descargas y Config; Config queda al fondo como módulo en desarrollo y el asistente de credenciales se abre desde el engranaje del panel izquierdo. Biblioteca sincroniza y conserva metadatos de playlists. Descargas permite seleccionar pistas, formato y destino, consultar el progreso/resultados y cancelar la cola.
+
+### Descargas de audio
+
+`AppState.download_selected()` coordina la cola y ejecuta las llamadas bloqueantes de `yt-dlp` en hilos (`asyncio.to_thread`), con concurrencia máxima `DOWNLOAD_CONCURRENCY=2`. `engine.downloader` reutiliza la URL de origen para pistas de YouTube Music o busca una coincidencia en YouTube para las demás fuentes; valida título y duración, extrae solo audio con FFmpeg y escribe metadatos/portada. El archivo se publica mediante renombrado atómico tras superar el tamaño mínimo. Se ofrecen MP3 (predeterminado), M4A, Opus, FLAC y WAV. Si se necesita, la sesión de YouTube Music se carga desde `config/browser.json` en memoria; no se crea `cookies.txt`. La vista no implementa reproducción ni poda automática de caché.
 
 ## Concurrencia, caché y resiliencia
 

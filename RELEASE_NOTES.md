@@ -1,8 +1,21 @@
 # Release Notes — Melomaniac
 
-Notas históricas enfocadas en **qué cambió para el usuario**, no en código. El tag más reciente es `v4.6.0`; las versiones `4.5.2` y `4.6.0` se detallan en [`CHANGELOG.md`](CHANGELOG.md). No asumir que el último bloque de este archivo corresponde a `HEAD`.
+Notas enfocadas en **qué cambió para el usuario**, no en detalles internos. La versión de trabajo documentada es `4.7.0`; el último tag publicado sigue siendo `v4.6.0`. El detalle técnico está en [`CHANGELOG.md`](CHANGELOG.md).
 
 ---
+
+## v4.7.0 — Descargas de audio y mejoras de Biblioteca (2026-10-25)
+
+**Novedades:**
+- **Descargas de audio:** selecciona pistas de una playlist y guárdalas como MP3, M4A, Opus, FLAC o WAV. La app encuentra una coincidencia en YouTube, conserva solo el audio y añade metadatos y portada.
+- **Control de la cola:** muestra el progreso y los resultados, y permite cancelar las descargas pendientes.
+- **Acento visual:** el azul principal cambia a `#3B5AFF`.
+
+**Correcciones:**
+- Se estabiliza la autenticación de YouTube Music y se recupera la carga de su Biblioteca ante respuestas de sesión caducada.
+- La sincronización de playlists de Spotify deja de consultar secuencialmente cada detalle al cargar el catálogo.
+
+**Alcance actual:** Descargas no incluye reproductor integrado ni poda automática de caché. El último tag sigue siendo `v4.6.0`; `4.7.0` es la versión de trabajo documentada.
 
 ## v4.6.0 — Búsqueda más precisa y transferencias más resistentes (2026-10-23)
 
