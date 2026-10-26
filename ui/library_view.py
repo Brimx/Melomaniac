@@ -29,11 +29,14 @@ PLATFORM_ICONS = {
 
 
 class LibraryView(ft.Container):
-    def __init__(self, page: ft.Page, library_state: LibraryState, service):
+    def __init__(self, page: ft.Page, library_state: LibraryState, service,
+                 app_state=None, on_open_downloads=None):
         super().__init__(expand=True, bgcolor=BG_LIST)
         self._page_ref = page
         self.library_state = library_state
         self.service = service
+        self.app_state = app_state
+        self._on_open_downloads = on_open_downloads
         self.library_state.set_service(service)
         self._tab = "playlists"  # playlists | downloads
         self._platform: str | None = None
@@ -78,12 +81,16 @@ class LibraryView(ft.Container):
         ], horizontal_alignment=ft.CrossAxisAlignment.CENTER, spacing=8))
         self._loading_bar = ft.ProgressBar(visible=False, color=ACCENT, bgcolor=BG_SURFACE)
 
-        self._downloads_placeholder = ft.Container(expand=True, visible=False, bgcolor=BG_LIST, alignment=ft.Alignment.CENTER, content=ft.Column(controls=[
-            ft.Container(content=ft.Icon(ft.Icons.CONSTRUCTION, size=52, color=TEXT_DIM), bgcolor=BG_SURFACE, border=ft.Border.all(0.8, BORDER_LIGHT), border_radius=20, padding=ft.Padding.all(20)),
+        downloads_controls = [
+            ft.Container(content=ft.Icon(ft.Icons.DOWNLOAD_OUTLINED, size=52, color=TEXT_DIM), bgcolor=BG_SURFACE, border=ft.Border.all(0.8, BORDER_LIGHT), border_radius=20, padding=ft.Padding.all(20)),
             app_text("Descargas", size=18, color=TEXT_PRIMARY, font_family=FONT_HEADLINE_BOLD),
-            app_text("yt-dlp + player + progreso — pronto.", size=12, color=TEXT_MUTED, font_family=FONT_TEXT, text_align=ft.TextAlign.CENTER),
-            app_text("Función en desarrollo", size=11, color=TEXT_DIM, font_family=FONT_TEXT),
-        ], horizontal_alignment=ft.CrossAxisAlignment.CENTER, spacing=8))
+            app_text("La cola de descargas de audio vive en el módulo Descargas del rail.", size=12, color=TEXT_MUTED, font_family=FONT_TEXT, text_align=ft.TextAlign.CENTER),
+        ]
+        if self._on_open_downloads is not None:
+            downloads_controls.append(
+                _ghost_btn("Abrir Descargas", ft.Icons.DOWNLOAD, self._handle_open_downloads, width=180)
+            )
+        self._downloads_placeholder = ft.Container(expand=True, visible=False, bgcolor=BG_LIST, alignment=ft.Alignment.CENTER, content=ft.Column(controls=downloads_controls, horizontal_alignment=ft.CrossAxisAlignment.CENTER, spacing=8))
 
         self._list_stack = ft.Stack(controls=[self._grid, self._empty, self._downloads_placeholder], expand=True)
 
@@ -132,6 +139,13 @@ class LibraryView(ft.Container):
         self._sync_tab_visibility()
         try:
             self.update()
+        except Exception:
+            pass
+
+    def _handle_open_downloads(self, e=None) -> None:
+        try:
+            if self._on_open_downloads is not None:
+                self._on_open_downloads()
         except Exception:
             pass
 

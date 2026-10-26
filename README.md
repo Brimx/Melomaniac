@@ -29,7 +29,7 @@ El matching combina normalización de metadatos, RapidFuzz, artista/título, dur
 | Python | 3.10 o superior |
 | Dependencias | Versiones fijadas en [`requirements.txt`](requirements.txt) |
 | Credenciales | `config/browser.json`, `config/.env` y `config/spotify_cookies.json` según el destino |
-| Interfaz | Flet Desktop 1.0.1; tema oscuro, Stack Sans, IBM Plex y fallback CJK opcional |
+| Interfaz | Flet Desktop 1.0.5; tema oscuro, Stack Sans, IBM Plex y fallback CJK opcional |
 
 ## Instalación
 

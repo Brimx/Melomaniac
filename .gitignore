@@ -25,5 +25,6 @@ config/*
 # Logs, exportaciones y temporales
 *.log
 exports/
+downloads/
 transfer_failed_report.txt
 .DS_Store

@@ -293,9 +293,25 @@ class AppState:
         self.lazy_scan_done:    bool = False
 
         # ──────────────────────────────────────────────────────────────
+        # DESCARGAS DE AUDIO (yt-dlp)
+        # ──────────────────────────────────────────────────────────────
+        # Progreso propio: no comparte contadores con transfer_playlist para
+        # que la UI pueda mostrar ambas operaciones sin mezclarlas.
+        self.download_state:     TransferState = TransferState.IDLE
+        self.download_progress:  int           = 0
+        self.download_total:     int           = 0
+        self.download_current:   str           = ""
+        self.download_done:      list[dict]    = []
+        self.download_failed:    list[dict]    = []
+        self.download_dir:       str           = ""
+        self.audio_format:       str           = ""
+        self._download_task: Optional[asyncio.Task] = None
+        self._download_cancel: Optional[asyncio.Event] = None
+
+        # ──────────────────────────────────────────────────────────────
         # PATRÓN OBSERVER
         # ──────────────────────────────────────────────────────────────
-        
+
         self._listeners: list[Callable[[], None]] = []
         self._lazy_task: Optional[asyncio.Task]   = None
 
@@ -670,7 +686,8 @@ class AppState:
                         local_duration_s=local_dur_s,
                         local_duration_ms=track.duration_ms,
                         local_is_explicit=track.is_explicit,
-                        local_isrc=track.isrc,
+                        # Apple ISRCs were already checked in batches above.
+                        local_isrc=None if self.destination == "Apple Music" else track.isrc,
                         log=self._log,
                     )
                     break
@@ -879,6 +896,155 @@ class AppState:
             # Persiste lo acumulado aunque la transferencia haya abortado.
             self.service.save_search_cache()
             self._finalize_transfer_report()
+            self.notify()
+
+    # ══════════════════════════════════════════════════════════════════
+    # DESCARGAS DE AUDIO (yt-dlp)
+    # ══════════════════════════════════════════════════════════════════
+
+    def download_selected(
+        self,
+        *,
+        audio_format: str = "",
+        destination_dir: str = "",
+    ) -> asyncio.Task:
+        """Lanza la descarga de audio de las pistas seleccionadas.
+
+        Cada pista se resuelve como *coincidencia en YouTube*: si la pista
+        viene de YouTube Music se reutiliza su ``source_url``; si viene de
+        Apple Music o Spotify se busca la grabación equivalente. Nunca se
+        descarga desde la plataforma de origen.
+
+        El trabajo pesado corre con ``asyncio.to_thread`` porque ``yt_dlp``
+        es bloqueante. El estado se muta solo en el hilo de la UI.
+
+        Args:
+            audio_format: Formato de salida (``mp3``, ``m4a``, ``opus``,
+                ``flac``, ``wav``). Vacío usa ``DEFAULT_AUDIO_FORMAT``.
+            destination_dir: Directorio destino. Vacío usa la resolución
+                por defecto de ``engine.downloader``.
+
+        Returns:
+            La tarea creada. Si ya hay una descarga en curso, devuelve esa
+            misma tarea sin lanzar otra.
+        """
+        if self._download_task is not None and not self._download_task.done():
+            return self._download_task
+        self._download_task = asyncio.create_task(
+            self._run_downloads(
+                audio_format=audio_format, destination_dir=destination_dir
+            )
+        )
+        return self._download_task
+
+    def cancel_downloads(self) -> None:
+        """Marca la descarga en curso para que se detenga en la próxima pista."""
+        if self._download_cancel is not None:
+            self._download_cancel.set()
+
+    async def _run_downloads(
+        self, *, audio_format: str = "", destination_dir: str = ""
+    ) -> None:
+        """Ejecuta la cola de descargas con concurrencia acotada.
+
+        Implementa la fase 1 del pendiente de Descargas: módulo de descarga
+        con ``yt_dlp`` como librería, caché en disco y cancelación. El
+        progreso se publica por pista para que la UI muestre avance real.
+        """
+        from core.config import (
+            AUDIO_BITRATES,
+            DEFAULT_AUDIO_FORMAT,
+            DOWNLOAD_CONCURRENCY,
+        )
+        from engine.downloader import download_audio, resolve_download_dir
+
+        selected = [t for t in self.tracks if t.selected]
+        if not selected:
+            return
+
+        fmt = (audio_format or DEFAULT_AUDIO_FORMAT).lower().lstrip(".")
+        if fmt not in AUDIO_BITRATES:
+            fmt = DEFAULT_AUDIO_FORMAT
+        target_dir = resolve_download_dir(destination_dir or None)
+
+        self.audio_format      = fmt
+        self.download_dir      = str(target_dir)
+        self.download_state    = TransferState.RUNNING
+        self.download_progress = 0
+        self.download_total    = len(selected)
+        self.download_current  = ""
+        self.download_done     = []
+        self.download_failed   = []
+        self._download_cancel  = asyncio.Event()
+        cancel = self._download_cancel
+        self._log(
+            f"[INFO] Descargas · {len(selected)} pistas → {fmt.upper()} en {target_dir}"
+        )
+        self.notify()
+
+        semaphore = asyncio.Semaphore(max(1, DOWNLOAD_CONCURRENCY))
+        lock = asyncio.Lock()
+
+        async def _one(track: Track) -> None:
+            async with semaphore:
+                if cancel.is_set():
+                    return
+                async with lock:
+                    self.download_current = f"{track.artist} — {track.name}"[:80]
+                    self.notify()
+                try:
+                    result = await asyncio.to_thread(
+                        download_audio,
+                        track,
+                        destination_dir=target_dir,
+                        audio_format=fmt,
+                    )
+                except Exception as exc:  # noqa: BLE001 - nunca debe tumbar la cola
+                    result = None
+                    error = str(exc)
+                else:
+                    error = getattr(result, "error", "") or ""
+
+                async with lock:
+                    if result is not None and result.ok:
+                        track.source_path = result.path
+                        self.download_done.append(
+                            {
+                                "name": track.name,
+                                "artist": track.artist,
+                                "path": result.path,
+                                "video_id": result.video_id,
+                            }
+                        )
+                    else:
+                        self.download_failed.append(
+                            {
+                                "name": track.name,
+                                "artist": track.artist,
+                                "error": error or "Error desconocido",
+                            }
+                        )
+                        self._log(
+                            f"[ERROR] ✗ Descarga · {track.name[:42]}: {error[:90]}"
+                        )
+                    self.download_progress += 1
+                    self.notify()
+
+        try:
+            await asyncio.gather(*(_one(t) for t in selected))
+            cancelled = cancel.is_set()
+            self.download_state = TransferState.DONE
+            summary = (
+                f"Descargas {'canceladas' if cancelled else 'completas'} · "
+                f"OK: {len(self.download_done)} · Fallidas: {len(self.download_failed)}"
+            )
+            self._log(f"[INFO] {summary}")
+        except Exception as exc:  # noqa: BLE001
+            self.download_state = TransferState.ERROR
+            self._log(f"[ERROR] Descargas interrumpidas: {exc}")
+        finally:
+            self.download_current = ""
+            self._download_cancel = None
             self.notify()
 
     def _prepare_transfer_tracks(self, selected: list[Track]) -> None:

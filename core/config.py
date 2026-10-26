@@ -66,6 +66,36 @@ APPLE_PAGE_SIZE: int = 100
 # ── Defaults ─────────────────────────────────────────────────────────
 DEFAULT_COOLDOWN: int = 60
 
+# ── Descargas (yt-dlp como librería) ─────────────────────────────────
+# Directorio de caché de audio. Se resuelve contra ~/Documentos/Melomaniac
+# con fallback a ./downloads si Documentos no existe (misma lógica que Exports).
+DOWNLOADS_DIR_NAME: str = "Descargas"
+# Formatos de audio ofrecidos. Solo audio: nunca se conserva el contenedor
+# de video que entrega YouTube.
+AUDIO_FORMATS: tuple[str, ...] = ("mp3", "m4a", "opus", "flac", "wav")
+DEFAULT_AUDIO_FORMAT: str = "mp3"
+# Calidades por formato. "0" es la mejor disponible en el encoder.
+AUDIO_BITRATES: dict[str, str] = {
+    "mp3": "192",
+    "m4a": "256",
+    "opus": "128",
+    "flac": "0",
+    "wav": "0",
+}
+# El cliente `android` es el único que hoy entrega URL de audio con la
+# sesión SABR activa. Los formatos de audio puro quedan ocultos, así que
+# se pide el contenedor con audio (18) y se extrae con FFmpeg.
+YOUTUBE_PLAYER_CLIENT: str = "android"
+# Selector de formato: primero audio puro si existe; si la sesión SABR lo
+# oculta, cae al contenedor 18 (360p con audio) y a `best` como último
+# recurso. El video nunca se conserva: FFmpeg extrae solo el audio.
+YTDLP_FORMAT_SELECTOR: str = "bestaudio/18/best"
+# Tamaño mínimo para considerar válido un archivo descargado (bytes).
+DOWNLOAD_MIN_BYTES: int = 64 * 1024
+# Tope de descargas simultáneas. yt-dlp ya limita por sí mismo; mantenerlo
+# bajo reduce el riesgo de throttling.
+DOWNLOAD_CONCURRENCY: int = 2
+
 # ── Re-export umbrales fuzzy para conveniencia ───────────────────────
 try:
     from engine.normalizer import (

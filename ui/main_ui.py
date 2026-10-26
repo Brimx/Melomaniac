@@ -832,7 +832,12 @@ class PlaylistManagerUI(DialogMixin):
             lib_state = LibraryState(service=getattr(state, "service", None) or getattr(self.state, "service", None))
             # si service aún None (init temprano), se inyectará luego via app.py/ui.library_state
             self.library_state = lib_state  # type: ignore
-            self._panel_biblioteca = LibraryView(page, lib_state, getattr(state, "service", None) or getattr(self.state, "service", None))
+            self._panel_biblioteca = LibraryView(
+                page, lib_state,
+                getattr(state, "service", None) or getattr(self.state, "service", None),
+                app_state=state,
+                on_open_downloads=lambda: _select_module(2),
+            )
         except Exception as exc:
             # fallback placeholder no rompe app
             try:
@@ -841,8 +846,16 @@ class PlaylistManagerUI(DialogMixin):
                 pass
             self._panel_biblioteca = ft.Container(expand=True, bgcolor=BG_LIST, alignment=ft.Alignment.CENTER,
                                                   content=self._make_cono_empty("Biblioteca", "Colección local, historial 20 y portadas — pronto.", visible=True))
-        self._panel_descargas = ft.Container(expand=True, bgcolor=BG_LIST, alignment=ft.Alignment.CENTER,
-                                             content=self._make_cono_empty("Descargas", "yt-dlp + player + progreso — pronto.", visible=True))
+        try:
+            from ui.downloads_view import DownloadsView
+            self._panel_descargas = DownloadsView(page, state)
+        except Exception as exc:
+            try:
+                state.log(f"[WARN] Descargas fallback: {exc}")  # type: ignore
+            except Exception:
+                pass
+            self._panel_descargas = ft.Container(expand=True, bgcolor=BG_LIST, alignment=ft.Alignment.CENTER,
+                                                 content=self._make_cono_empty("Descargas", "yt-dlp + progreso — no disponible.", visible=True))
         # Config: si hay wizard disponible se montará al abrir, si no placeholder
         self._panel_config = ft.Container(expand=True, bgcolor=BG_LIST, alignment=ft.Alignment.CENTER,
                                           content=self._make_cono_empty("Configuración", "Configuración de la aplicación — en desarrollo.", visible=True))
