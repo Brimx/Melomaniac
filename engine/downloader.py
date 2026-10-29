@@ -197,40 +197,36 @@ def _target_stem(track: Any) -> str:
 # ──────────────────────────────────────────────────────────────────────
 
 def _load_cookie_jar() -> Optional[Any]:
-    """Construye un cookie jar en memoria desde ``config/browser.json``.
+    """Construye un cookie jar en memoria desde ``browser_session.youtube_cookies()``.
 
     La decisión de Descargas prohíbe introducir un ``cookies.txt`` en disco.
-    Se reutiliza la sesión de YouTube Music ya autenticada y se inyecta el
-    header ``Cookie`` directamente en el jar. Si el archivo no existe o no
-    tiene cookies, se devuelve ``None`` y yt-dlp trabaja sin sesión.
+    Se reutilizan las cookies de YouTube resueltas desde el navegador o desde
+    ``config/browser.json`` como fallback. Si no hay cookies, devuelve ``None``.
 
     El jar se mantiene en memoria: nunca se serializa a disco.
     """
     try:
-        from services.authentication import read_browser_json
+        from services.browser_session import youtube_cookies
         from yt_dlp.cookies import YoutubeDLCookieJar
     except ImportError:
         return None
 
-    data = read_browser_json()
-    raw_cookie = str(data.get("Cookie", "") or "").strip()
-    if not raw_cookie:
+    cookies = youtube_cookies()
+    if not cookies:
         return None
 
     jar = YoutubeDLCookieJar()
     http_cookiejar = yt_dlp.cookies.http.cookiejar
-    for chunk in raw_cookie.split(";"):
-        piece = chunk.strip()
-        if not piece or "=" not in piece:
+    for name, value in cookies.items():
+        if not name or not value:
             continue
-        name, _, value = piece.partition("=")
         for domain in (".youtube.com", ".google.com"):
             try:
                 jar.set_cookie(
                     http_cookiejar.Cookie(
                         version=0,
                         name=name.strip(),
-                        value=unquote(value.strip()),
+                        value=unquote(str(value).strip()),
                         port=None,
                         port_specified=False,
                         domain=domain,
