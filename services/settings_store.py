@@ -18,6 +18,11 @@ from services.authentication import SETTINGS_JSON, ensure_config_dir
 
 _KEY_DOWNLOAD_DIR = "download_dir"
 _KEY_LOCAL_FOLDERS = "local_folders"
+_KEY_VOLUME = "volume"
+_KEY_MUTE = "mute"
+_KEY_SHUFFLE = "shuffle"
+_KEY_REPEAT = "repeat"
+_VALID_REPEAT = ("off", "all", "one")
 
 
 def load_settings() -> dict[str, Any]:
@@ -81,3 +86,63 @@ def remove_local_folder(path: str | Path) -> bool:
     data[_KEY_LOCAL_FOLDERS] = [f for f in folders if f != value]
     save_settings(data)
     return True
+
+
+def get_volume() -> float:
+    """Volumen del reproductor entre 0.0 y 1.0 (por defecto 1.0)."""
+    raw = load_settings().get(_KEY_VOLUME, 1.0)
+    try:
+        return max(0.0, min(1.0, float(raw)))
+    except (TypeError, ValueError):
+        return 1.0
+
+
+def set_volume(volume: float) -> None:
+    """Persiste el volumen del reproductor entre 0.0 y 1.0."""
+    data = load_settings()
+    try:
+        val = max(0.0, min(1.0, float(volume)))
+    except (TypeError, ValueError):
+        val = 1.0
+    data[_KEY_VOLUME] = round(val, 4)
+    save_settings(data)
+
+
+def get_mute() -> bool:
+    """Estado de silencio del reproductor (por defecto False)."""
+    return bool(load_settings().get(_KEY_MUTE, False))
+
+
+def set_mute(muted: bool) -> None:
+    """Persiste el estado de silencio del reproductor."""
+    data = load_settings()
+    data[_KEY_MUTE] = bool(muted)
+    save_settings(data)
+
+
+def get_shuffle() -> bool:
+    """Estado de reproducción aleatoria (por defecto False)."""
+    return bool(load_settings().get(_KEY_SHUFFLE, False))
+
+
+def set_shuffle(enabled: bool) -> None:
+    """Persiste el estado de reproducción aleatoria."""
+    data = load_settings()
+    data[_KEY_SHUFFLE] = bool(enabled)
+    save_settings(data)
+
+
+def get_repeat() -> str:
+    """Modo de repetición ('off', 'all', 'one')."""
+    raw = str(load_settings().get(_KEY_REPEAT, "off") or "off").lower()
+    return raw if raw in _VALID_REPEAT else "off"
+
+
+def set_repeat(mode: str) -> None:
+    """Persiste el modo de repetición ('off', 'all', 'one')."""
+    val = str(mode or "off").lower()
+    if val not in _VALID_REPEAT:
+        val = "off"
+    data = load_settings()
+    data[_KEY_REPEAT] = val
+    save_settings(data)
