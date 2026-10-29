@@ -10,7 +10,7 @@ colors:
   hover: "#1E1E28"
   sidebar: "#0E0E15"
   chip: "#1A1A22"
-  primary: "#3B5AFF"
+  primary: "#4F8BFF"
   primary-hover: "#6BA3FF"
   primary-pressed: "#2D5FCC"
   primary-halo: "#2A3F5C"
@@ -159,7 +159,7 @@ El acento y sus estados:
 
 | Token | Hex | Uso |
 |---|---|---|
-| `primary` | `#3B5AFF` | Botón primario, icono seleccionado |
+| `primary` | `#4F8BFF` | Botón primario, icono seleccionado |
 | `primary-hover` | `#6BA3FF` | Botón primario en hover |
 | `primary-pressed` | `#2D5FCC` | Botón primario presionado |
 | `primary-halo` | `#2A3F5C` | Halo de elevación del botón primario en hover |
@@ -239,8 +239,8 @@ Regla: los elementos con radio grande son interactivos y redondeados; las filas 
 - **Do:** jerarquía por espacio y por tono de superficie, no por cajas y sombras.
 - **Do:** un solo elemento memorable por pantalla; el resto se queda quieto.
 - **Don't:** añadir tarjetas alrededor de cada elemento de una lista.
-- **Don't:** usar el acento como color decorativo: `#3B5AFF` significa "accionable".
+- **Don't:** usar el acento como color decorativo: `#4F8BFF` significa "accionable".
 - **Don't:** usar `text-dim` para texto que se debe leer.
 - **Don't:** animar con curvas elásticas o rebote.
 - **Don't:** variar la duración de la misma animación entre pantallas.
-- **Contraste del botón primario:** `text-primary` sobre `#3B5AFF` alcanza aproximadamente 4.7:1; en hover sobre `#6BA3FF` baja a 2.3:1. El estado hover queda por debajo de AA para texto normal. El icono de placeholder también queda por debajo de AA a propósito (es decorativo, no informativo).
+- **Contraste del botón primario:** `text-primary` sobre `#4F8BFF` alcanza aproximadamente 3.0:1; en hover sobre `#6BA3FF` baja a 2.3:1. El estado hover queda por debajo de AA para texto normal. El icono de placeholder también queda por debajo de AA a propósito (es decorativo, no informativo).

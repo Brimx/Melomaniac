@@ -9,7 +9,7 @@ Notas enfocadas en **qué cambió para el usuario**, no en detalles internos. La
 **Novedades:**
 - **Descargas de audio:** selecciona pistas de una playlist y guárdalas como MP3, M4A, Opus, FLAC o WAV. La app encuentra una coincidencia en YouTube, conserva solo el audio y añade metadatos y portada.
 - **Control de la cola:** muestra el progreso y los resultados, y permite cancelar las descargas pendientes.
-- **Acento visual:** el azul principal cambia a `#3B5AFF`.
+- **Acento visual:** se restaura el azul principal original `#4F8BFF` tras probar alternativas.
 
 **Correcciones:**
 - Se estabiliza la autenticación de YouTube Music y se recupera la carga de su Biblioteca ante respuestas de sesión caducada.
