@@ -258,7 +258,9 @@ def preflight_result(platform: str, ok: bool, error: str = "", source: str = "")
 
     if platform == "Apple Music":
         result.error = raw_error or "No se pudo validar Apple Music"
-        if status in (401, 403) or any(w in lower for w in ("401", "403", "expired", "token")):
+        if status in (401, 403) or any(
+            w in lower for w in ("401", "403", "expired", "token", "rechazada", "bloquea")
+        ):
             result.code = AuthFailureCode.APPLE_EXPIRED
             result.expired = True
         return result

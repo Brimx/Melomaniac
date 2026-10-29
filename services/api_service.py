@@ -1176,7 +1176,14 @@ class MusicApiService:
         )
         if resp.fail:
             raise RuntimeError(f"Spotify libraryV3 offset={offset} falló: {resp.error}")
-        return resp.response if isinstance(resp.response, dict) else {}
+        body = resp.response if isinstance(resp.response, dict) else {}
+        errors = body.get("errors")
+        if isinstance(errors, list) and errors:
+            first_msg = str((errors[0] or {}).get("message") or "unauthorized")
+            raise RuntimeError(f"401 — Spotify libraryV3 rechazó la sesión: {first_msg}")
+        if (body.get("data") or {}).get("me") is None:
+            raise RuntimeError("401 — Spotify libraryV3 devolvió me=None (sesión no autorizada)")
+        return body
 
     @staticmethod
     def _spotify_image_best(data: dict) -> str:
