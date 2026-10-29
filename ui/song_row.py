@@ -133,6 +133,20 @@ class SkeletonRow(ft.Container):
             pass
 
 
+def _thumb_content_for(img_url: str, *, size: int = 20, icon_size: int = 18) -> ft.Control:
+    """Contenido de miniatura con respaldo de icono. Nunca queda vacío."""
+    if img_url:
+        return ft.Image(
+            src=img_url,
+            fit=ft.BoxFit.COVER,
+            error_content=ft.Icon(ft.Icons.MUSIC_NOTE, color=TEXT_DIM, size=icon_size),
+        )
+    return ft.Container(
+        content=ft.Icon(ft.Icons.MUSIC_NOTE, color=TEXT_DIM, size=size),
+        alignment=ft.Alignment.CENTER,
+    )
+
+
 def build_preview_row(track: Track, index: int) -> ft.Container:
     """
     Fila Preview readonly — espejo 1:1 de SongRow sin columna Estado/Sel.
@@ -427,23 +441,14 @@ class SongRow(ft.Container):
         self._last_selected = track.selected
         self._last_album = track.album or "—"
         self._last_status = track.transfer_status
+        self._last_img_url = track.img_url
 
         # ──────────────────────────────────────────────────────────────
         # THUMBNAIL DE ÁLBUM CON FALLBACK
         # ──────────────────────────────────────────────────────────────
         # Intenta cargar imagen de álbum, fallback a icono si falla
         
-        if track.img_url:
-            _thumb_content = ft.Image(
-                src=track.img_url,
-                fit=ft.BoxFit.COVER,
-                error_content=ft.Icon(ft.Icons.MUSIC_NOTE, color=TEXT_DIM, size=18),
-            )
-        else:
-            _thumb_content = ft.Container(
-                content=ft.Icon(ft.Icons.MUSIC_NOTE, color=TEXT_DIM, size=20),
-                alignment=ft.Alignment.CENTER,
-            )
+        _thumb_content = _thumb_content_for(track.img_url)
 
         self._thumb = ft.Container(
             width=55, height=55,
@@ -665,6 +670,13 @@ class SongRow(ft.Container):
         if self._last_album != album:
             self._last_album = album
             self._album_text.value = album
+            dirty = True
+
+        # La portada puede resolverse después del primer render (descarga o
+        # lectura local). Sin esto la fila se queda con el icono de respaldo.
+        if self._last_img_url != track.img_url:
+            self._last_img_url = track.img_url
+            self._thumb.content = _thumb_content_for(track.img_url)
             dirty = True
 
         status_changed = self._last_status != track.transfer_status

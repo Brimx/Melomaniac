@@ -21,7 +21,7 @@ import flet as ft
 
 from core.config import AUDIO_FORMATS, DEFAULT_AUDIO_FORMAT
 from core.models import TransferState
-from engine.downloader import open_in_file_manager, resolve_download_dir
+from engine.downloader import ffmpeg_available, open_in_file_manager, resolve_download_dir
 from engine.parsers import list_audio_files
 from services import settings_store
 from ui.fonts import FONT_HEADLINE, FONT_HEADLINE_BOLD, FONT_TEXT, mono_family
@@ -31,6 +31,7 @@ from ui.tokens import (
 )
 from ui.widgets import (
     _ghost_btn, _primary_btn, app_text, notify, organize_dropdown, section_label,
+    status_banner,
 )
 
 _HISTORY_LIMIT = 500
@@ -62,6 +63,7 @@ class DownloadsView(ft.Container):
         self._history_dir = ""
         self._history_paths: list[str] = []
         self._done_sig = -1
+        self._skipped_sig = -1
         self._failed_sig = -1
         try:
             self._default_dir = str(resolve_download_dir(create=False))
@@ -84,10 +86,11 @@ class DownloadsView(ft.Container):
     def _build(self) -> None:
         self._format_dd = organize_dropdown(
             [(fmt, fmt.upper()) for fmt in AUDIO_FORMATS],
-            DEFAULT_AUDIO_FORMAT,
+            settings_store.get_download_format(),
             "Formato",
             width=140,
         )
+        self._format_dd.on_change = self._on_format_change
         self._dir_text = app_text("", size=11, color=TEXT_PRIMARY, font_family=mono_family("light"),
                                   max_lines=1, overflow=ft.TextOverflow.ELLIPSIS)
         self._count_text = app_text("", size=11, color=TEXT_MUTED, font_family=FONT_TEXT)
@@ -194,6 +197,13 @@ class DownloadsView(ft.Container):
             ),
         ], spacing=2)
 
+        # Condición persistente que el usuario debe resolver; no un toast.
+        self._ffmpeg_banner = status_banner(
+            "FFmpeg no está disponible. Instálalo y añádelo al PATH para descargar audio.",
+            icon=ft.Icons.WARNING_AMBER_ROUNDED,
+            kind="warning",
+        )
+
         controls = ft.Row(controls=[
             self._format_dd,
             ft.Container(content=self._count_text, expand=True, padding=ft.Padding.only(left=6)),
@@ -205,6 +215,7 @@ class DownloadsView(ft.Container):
             content=ft.Column(controls=[
                 header,
                 ft.Divider(height=1, color=BORDER_MUTED),
+                self._ffmpeg_banner,
                 controls,
                 destination,
                 self._progress_area,
@@ -215,6 +226,12 @@ class DownloadsView(ft.Container):
         )
 
     # ── acciones ───────────────────────────────────────────────────────
+
+    def _on_format_change(self, e=None) -> None:
+        """Persiste el formato elegido para que Config y la próxima cola lo usen."""
+        settings_store.set_download_format(
+            str(getattr(e.control, "value", "") or "")
+        )
 
     def _on_start(self, e=None) -> None:
         fmt = (self._format_dd.value or DEFAULT_AUDIO_FORMAT).lower()
@@ -378,6 +395,11 @@ class DownloadsView(ft.Container):
                 bar.value, bar.color = 0, ERROR_COL
                 pct.value = item["error"][:12] if item["error"] == "Cancelada" else "Error"
                 icon.icon, icon.color = ft.Icons.ERROR_OUTLINE, ERROR_COL
+            elif status == "skipped":
+                # Ya existía en disco; no se reescribió.
+                bar.value, bar.color = 1, TEXT_MUTED
+                pct.value = "Omitida"
+                icon.icon, icon.color = ft.Icons.SKIP_NEXT_ROUNDED, TEXT_MUTED
             elif status == "running":
                 bar.color = ACCENT
                 # indeterminado hasta que yt-dlp reporte bytes
@@ -390,6 +412,11 @@ class DownloadsView(ft.Container):
 
     # ── refresco ───────────────────────────────────────────────────────
 
+    def refresh(self) -> None:
+        """Recarga preferencias externas (formato por defecto desde Config)."""
+        self._format_dd.value = settings_store.get_download_format()
+        self._refresh()
+
     def _refresh(self) -> None:
         st = self.app_state
         state = st.download_state
@@ -399,8 +426,13 @@ class DownloadsView(ft.Container):
         done = st.download_done
         failed = st.download_failed
 
+        ffmpeg_ok = ffmpeg_available()
+        self._ffmpeg_banner.visible = not ffmpeg_ok
         self._format_dd.disabled = running
-        self._start_btn.disabled = running or st.selected_count == 0
+        self._start_btn.disabled = running or st.selected_count == 0 or not ffmpeg_ok
+        self._start_btn.tooltip = (
+            None if ffmpeg_ok else "Instala FFmpeg y añádelo al PATH para descargar"
+        )
         self._cancel_btn.disabled = not running or self._cancel_requested
         self._pick_dir_btn.disabled = running
         self._reset_dir_btn.disabled = running
@@ -431,11 +463,12 @@ class DownloadsView(ft.Container):
             )
         elif state == TransferState.DONE:
             cancelled = total > 0 and progress < total
-            self._current_text.value = (
-                f"Cancelado · OK {len(done)} · Fallidas {len(failed)}"
-                if cancelled
-                else f"Completado · OK {len(done)} · Fallidas {len(failed)}"
+            omitted = len(getattr(st, "download_skipped", []) or [])
+            tail = (
+                f" · OK {len(done)} · Fallidas {len(failed)}"
+                + (f" · Omitidas {omitted}" if omitted else "")
             )
+            self._current_text.value = ("Cancelado" if cancelled else "Completado") + tail
         elif state == TransferState.ERROR:
             self._current_text.value = "Descargas interrumpidas"
         else:
@@ -453,10 +486,24 @@ class DownloadsView(ft.Container):
                 self._rebuild_queue(items)
             self._sync_queue()
 
-        # terminadas y fallidas de la última tanda sobre el historial
-        if not running and len(done) != self._done_sig:
-            self._done_sig = len(done)
+        # terminadas, omitidas y fallidas de la última tanda sobre el historial
+        skipped = list(getattr(st, "download_skipped", []) or [])
+        if not running and (len(done) != self._done_sig or len(skipped) != self._skipped_sig):
+            self._done_sig, self._skipped_sig = len(done), len(skipped)
             self._done_col.controls = [
+                self._result_row(
+                    title=f"{d.get('artist', '')} — {d.get('name', '')}",
+                    detail="Ya existía · sin cambios",
+                    kind="skipped",
+                    on_play=(
+                        (lambda _e, p=str(d.get("path", "")): self._play_path(p))
+                        if d.get("path")
+                        else None
+                    ),
+                )
+                for d in skipped
+                if d.get("path")
+            ] + [
                 self._result_row(
                     title=f"{d.get('artist', '')} — {d.get('name', '')}",
                     detail=str(d.get("path", "") or ""),
@@ -501,8 +548,21 @@ class DownloadsView(ft.Container):
         title: str,
         detail: str,
         ok: bool = False,
+        kind: str = "",
         on_play=None,
     ) -> ft.Container:
+        """Fila de resultado de la última tanda.
+
+        ``kind`` distingue el éxito real (``""``/``done``) de una pista omitida
+        porque ya existía: ambas son ``ok`` pero no significan lo mismo.
+        """
+        skipped = kind == "skipped"
+        lead_icon = (
+            ft.Icons.SKIP_NEXT_ROUNDED if skipped
+            else ft.Icons.CHECK_CIRCLE_OUTLINE if ok
+            else ft.Icons.ERROR_OUTLINE
+        )
+        lead_color = TEXT_MUTED if skipped else SUCCESS if ok else ERROR_COL
         lead = (
             ft.IconButton(
                 icon=ft.Icons.PLAY_ARROW_ROUNDED,
@@ -512,11 +572,7 @@ class DownloadsView(ft.Container):
                 on_click=on_play,
             )
             if ok and on_play is not None
-            else ft.Icon(
-                ft.Icons.CHECK_CIRCLE_OUTLINE if ok else ft.Icons.ERROR_OUTLINE,
-                size=18,
-                color=SUCCESS if ok else ERROR_COL,
-            )
+            else ft.Icon(lead_icon, size=18, color=lead_color)
         )
         return ft.Container(
             bgcolor=BG_SURFACE,

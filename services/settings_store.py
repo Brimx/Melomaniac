@@ -22,6 +22,8 @@ _KEY_VOLUME = "volume"
 _KEY_MUTE = "mute"
 _KEY_SHUFFLE = "shuffle"
 _KEY_REPEAT = "repeat"
+_KEY_DOWNLOAD_FORMAT = "download_format"
+_KEY_COVERS_ONLINE = "covers_online"
 _VALID_REPEAT = ("off", "all", "one")
 
 
@@ -129,6 +131,36 @@ def set_shuffle(enabled: bool) -> None:
     """Persiste el estado de reproducción aleatoria."""
     data = load_settings()
     data[_KEY_SHUFFLE] = bool(enabled)
+    save_settings(data)
+
+
+def get_download_format() -> str:
+    """Formato de audio por defecto para Descargas."""
+    from core.config import AUDIO_FORMATS, DEFAULT_AUDIO_FORMAT
+
+    raw = str(load_settings().get(_KEY_DOWNLOAD_FORMAT) or "").lower()
+    return raw if raw in AUDIO_FORMATS else DEFAULT_AUDIO_FORMAT
+
+
+def set_download_format(fmt: str) -> None:
+    """Persiste el formato de audio por defecto; un valor inválido cae al default."""
+    from core.config import AUDIO_FORMATS, DEFAULT_AUDIO_FORMAT
+
+    value = str(fmt or "").lower()
+    data = load_settings()
+    data[_KEY_DOWNLOAD_FORMAT] = value if value in AUDIO_FORMATS else DEFAULT_AUDIO_FORMAT
+    save_settings(data)
+
+
+def get_covers_online() -> bool:
+    """Si se permite consultar proveedores de portada en red (por defecto sí)."""
+    return bool(load_settings().get(_KEY_COVERS_ONLINE, True))
+
+
+def set_covers_online(enabled: bool) -> None:
+    """Persiste el permiso para resolver portadas online."""
+    data = load_settings()
+    data[_KEY_COVERS_ONLINE] = bool(enabled)
     save_settings(data)
 
 

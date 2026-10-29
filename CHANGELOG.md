@@ -5,10 +5,16 @@
 > Versión de trabajo que consolida los commits posteriores al tag `v4.6.0`.
 
 - Descargas: nueva cola de audio con `yt-dlp`; resuelve pistas en YouTube, extrae solo audio, escribe metadatos/portada y admite MP3, M4A, Opus, FLAC y WAV. La UI incluye progreso, resultados y cancelación.
+- Descargas: preflight de FFmpeg. Sin `ffmpeg` en `PATH` la cola falla en bloque con un banner accionable y el botón de descarga deshabilitado, en lugar de fallar pista por pista. `DownloadResult.code` expone `NO_FFMPEG`.
+- Portadas: nueva cadena de resolución por álbum (`services/covers.py`) sobre `services/cover_cache.py`: portada de la plataforma (subiendo la resolución del CDN de YouTube), ISRC en MusicBrainz/CAA, iTunes y Deezer, con validación de álbum/artista para descartar homónimos. Una sola consulta por `album_artist|album|año`.
+- Portadas: todo se normaliza a JPEG cuadrado de 800 px. Una imagen no cuadrada se rellena con fondo neutro, nunca se recorta: un thumbnail 16:9 de YouTube ya no se usa como artwork.
+- Portadas: `read_cover` lee el APIC de cualquier MP3 real (antes solo lo hacía si el objeto cargado ya era `ID3`) y `write_cover_sidecar` deja `cover.jpg` en Opus y WAV, que no admiten portada incrustada fiable.
+- Descargas: estado «omitida» para archivos que ya existían, con resumen `OK / Fallidas / Omitidas`, y el formato elegido se persiste en `settings.json`.
+- Config: el cuarto destino del rail deja de ser un placeholder. Ajusta formato de descarga, permiso de portadas online, carpeta destino y limpieza del caché de portadas. El wizard de credenciales sigue en el engranaje.
 - Descargas reutiliza `source_url` para pistas de YouTube Music y la sesión existente en memoria si necesita cookies; no crea `cookies.txt`. No incluye reproducción integrada ni poda automática de caché.
 - YouTube Music: estabiliza el preflight y la renovación de sesión; corrige la Biblioteca cuando el servidor responde con pantalla de inicio de sesión.
 - Spotify: reduce el bloqueo durante la sincronización de Biblioteca al diferir la carga del detalle y aplicar timeout por página.
-- Diseño: cambia el acento principal a `#3B5AFF`.
+- Diseño: se probaron `#3B5AFF`, `#214AFF` y `#1B4CB6`; se restauró el acento original `#4F8BFF`.
 - Dependencias: alinea `flet`, `flet-desktop` y `flet-audio` en `1.0.5`, e incorpora `yt-dlp`.
 
 ## 4.6.0 — 2026-10-23 · Búsqueda deduplicada, variantes cirílicas y aborto temprano

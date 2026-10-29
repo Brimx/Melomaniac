@@ -586,6 +586,10 @@ class PlaylistManagerUI(DialogMixin):
             try:
                 for i, panel in enumerate(self._module_panels):
                     panel.visible = (i == idx)
+                    # Config lee preferencias al mostrarse: otra vista pudo
+                    # cambiarlas mientras estaba oculto.
+                    if i == idx and hasattr(panel, "refresh"):
+                        panel.refresh()
                 self._refresh_rail_selection()
                 if idx == 0:
                     self._sync_skeleton_count()
@@ -875,9 +879,18 @@ class PlaylistManagerUI(DialogMixin):
                 pass
             self._panel_descargas = ft.Container(expand=True, bgcolor=BG_LIST, alignment=ft.Alignment.CENTER,
                                                  content=self._make_cono_empty("Descargas", "yt-dlp + progreso — no disponible.", visible=True))
-        # Config: si hay wizard disponible se montará al abrir, si no placeholder
-        self._panel_config = ft.Container(expand=True, bgcolor=BG_LIST, alignment=ft.Alignment.CENTER,
-                                          content=self._make_cono_empty("Configuración", "Configuración de la aplicación — en desarrollo.", visible=True))
+        # Config: preferencias persistentes. El wizard de credenciales sigue
+        # abriéndose desde el engranaje del panel izquierdo.
+        try:
+            from ui.config_view import ConfigView
+            self._panel_config = ConfigView(page, on_change=self._on_config_changed)
+        except Exception as exc:
+            try:
+                state.log(f"[WARN] Config fallback: {exc}")  # type: ignore
+            except Exception:
+                pass
+            self._panel_config = ft.Container(expand=True, bgcolor=BG_LIST, alignment=ft.Alignment.CENTER,
+                                              content=self._make_cono_empty("Configuración", "Preferencias no disponibles.", visible=True))
         self._module_panels = [self._panel_gestion, self._panel_biblioteca, self._panel_descargas, self._panel_config]
         # apila módulos, solo uno visible a la vez
         for i, p in enumerate(self._module_panels):
@@ -2756,6 +2769,22 @@ class PlaylistManagerUI(DialogMixin):
                 sk.stop_pulse()
             except Exception:
                 pass
+
+    def _on_config_changed(self) -> None:
+        """Propaga un cambio de preferencias a las vistas que las leen.
+
+        Descargas lee el formato por defecto en su constructor, así que hay
+        que refrescarla para que un cambio en Config se vea al volver.
+        """
+        for panel in getattr(self, "_module_panels", []):
+            if panel is getattr(self, "_panel_config", None):
+                continue
+            refresh = getattr(panel, "refresh", None) or getattr(panel, "_refresh", None)
+            if callable(refresh):
+                try:
+                    refresh()
+                except Exception:
+                    pass
 
     def stop(self) -> None:
         self._stop_skeleton_pulse()

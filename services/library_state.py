@@ -12,7 +12,7 @@ from typing import Callable, Dict, Optional
 from core.config import LOCAL_LIBRARY_LABEL, PLATFORM_ORDER
 from core.library_models import LibraryLoadState, LibrarySnapshot, PlaylistSummary
 from core.library_store import load_library, save_library
-from engine.parsers import list_audio_files
+from engine.parsers import _folder_cover_data_uri, list_audio_files
 from services import settings_store
 from services.circuit_breaker import RateLimitError
 
@@ -60,10 +60,12 @@ class LibraryState:
         """Una ``PlaylistSummary`` por carpeta local (id = ruta absoluta)."""
         out: list[PlaylistSummary] = []
         for folder in self.local_folders:
+            cover = _folder_cover_data_uri(folder)
             out.append(PlaylistSummary(
                 platform=LOCAL_LIBRARY_LABEL, id=folder,
                 name=Path(folder).name or folder, description=folder,
                 track_count=len(list_audio_files(folder)),
+                cover_urls=[cover] if cover else [],
             ))
         return out
 

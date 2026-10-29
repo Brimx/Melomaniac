@@ -432,12 +432,102 @@ def parse_local_playlist_with_paths(
     return [(artist, title, path) for (artist, title), path in zip(pairs, paths)]
 
 
-def build_local_tracks(pairs: list[tuple[str, str] | tuple[str, str, str]]) -> list[Track]:
-    """Convierte pares locales en Track y lee metadatos si hay ruta de audio."""
+def _coerce_local_entry(item: str | os.PathLike | tuple[str, str] | tuple[str, str, str]) -> tuple[str, str, str]:
+    """Normaliza una entrada local a ``(artist, title, source_path)``.
+
+    Acepta también una ruta suelta (``str``/``Path``): antes se indexaba con
+    ``[:2]``, que tomaba los dos primeros caracteres del path como artista y
+    título. Una ruta suelta no aporta artista ni título; los tags los ponen.
+    """
+    if isinstance(item, (str, os.PathLike)):
+        path = str(item)
+        return "", os.path.splitext(os.path.basename(path))[0] or path, path
+    artist, title = item[:2]
+    source_path = item[2] if len(item) >= 3 else ""
+    return artist, title, source_path
+
+
+_SIDECAR_COVER_NAMES = ("cover.jpg", "folder.jpg", "front.jpg")
+
+
+def _folder_cover_data_uri(folder: str, *, target_px: int = 320) -> str:
+    """Portada sidecar de una carpeta como data URI, para la tarjeta de Biblioteca."""
+    return _sidecar_data_uri(_folder_cover(folder), target_px=target_px)
+
+
+def _sidecar_data_uri(path: str, *, target_px: int = 300) -> str:
+    """Lee un sidecar ``cover.jpg`` y lo devuelve como data URI (o ``""``)."""
+    if not path:
+        return ""
+    try:
+        with open(path, "rb") as fh:
+            raw = fh.read()
+    except OSError:
+        return ""
+    try:
+        from engine.covers import normalize_cover
+    except ImportError:
+        return ""
+    normalized = normalize_cover(raw, target_px=target_px)
+    if not normalized:
+        return ""
+    import base64
+    return "data:image/jpeg;base64," + base64.b64encode(normalized).decode("ascii")
+
+
+def _extract_embedded_cover(path: str, *, target_px: int = 300) -> str:
+    """Portada incrustada como data URI, lista para ``ft.Image``.
+
+    ``ft.Image`` acepta URL, asset, base64 o bytes, pero **no** rutas
+    absolutas (``flet/controls/core/image.py:33-43``), así que la portada
+    local viaja como ``data:image/jpeg;base64,...``. Se reescala a
+    ``target_px`` porque solo se usa como miniatura de fila.
+    """
+    try:
+        from engine.audio_metadata import read_cover
+        from engine.covers import normalize_cover
+    except ImportError:
+        return ""
+    raw = read_cover(path)
+    if not raw:
+        return ""
+    normalized = normalize_cover(raw, target_px=target_px)
+    if not normalized:
+        return ""
+    import base64
+    return "data:image/jpeg;base64," + base64.b64encode(normalized).decode("ascii")
+
+
+def _folder_cover(folder: str) -> str:
+    """Primera portada sidecar de la carpeta, si existe (``""`` si no)."""
+    if not folder:
+        return ""
+    try:
+        names = set(os.listdir(folder))
+    except OSError:
+        return ""
+    for wanted in _SIDECAR_COVER_NAMES:
+        for name in names:
+            if name.lower() == wanted:
+                return os.path.join(folder, name)
+    return ""
+
+
+def build_local_tracks(
+    pairs: list[str | os.PathLike | tuple[str, str] | tuple[str, str, str]],
+) -> list[Track]:
+    """Convierte pares locales en Track y lee metadatos si hay ruta de audio.
+
+    La portada se resuelve una vez por carpeta (sidecar ``cover.jpg``/
+    ``folder.jpg``/``front.jpg``) antes de recorrer las pistas y, si no hay,
+    con una lectura por archivo de la portada incrustada. Se cachea por
+    carpeta para no releer cientos de archivos del mismo álbum.
+    """
     tracks = []
+    sidecars: dict[str, str] = {}
+    embedded: dict[str, str] = {}
     for item in pairs:
-        artist, title = item[:2]
-        source_path = item[2] if len(item) >= 3 else ""
+        artist, title, source_path = _coerce_local_entry(item)
         if not title.strip():
             continue
         metadata = read_audio_metadata(source_path) if source_path else {}
@@ -449,13 +539,26 @@ def build_local_tracks(pairs: list[tuple[str, str] | tuple[str, str, str]]) -> l
             track_number = int(str(metadata.get("track_number", "0")).split("/", 1)[0] or 0)
         except ValueError:
             track_number = 0
+
+        img_url = ""
+        if source_path:
+            folder = os.path.dirname(os.path.abspath(source_path))
+            if folder not in sidecars:
+                sidecars[folder] = _sidecar_data_uri(_folder_cover(folder))
+            img_url = sidecars[folder]
+            if not img_url:
+                img_url = embedded.get(source_path, "")
+                if not img_url:
+                    img_url = _extract_embedded_cover(source_path)
+                    embedded[source_path] = img_url
+
         tracks.append(Track(
             id=f"local_{uuid.uuid4().hex[:12]}",
             name=name,
             artist=track_artist,
             album=album,
             duration=f"{duration_ms // 60000}:{(duration_ms // 1000) % 60:02d}" if duration_ms else "",
-            img_url="",
+            img_url=img_url,
             platform="local",
             selected=True,
             transfer_status="local_pending",
