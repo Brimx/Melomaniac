@@ -589,6 +589,10 @@ class PlaylistManagerUI(DialogMixin):
                 self._refresh_rail_selection()
                 if idx == 0:
                     self._sync_skeleton_count()
+                if hasattr(self, "player_bar") and self.player_bar is not None:
+                    self.player_bar.log_audio_services_count(
+                        f"vista={self._rail_dests[idx][0]}"
+                    )
                 self.page.update()
             except Exception:
                 pass
@@ -846,9 +850,22 @@ class PlaylistManagerUI(DialogMixin):
                 pass
             self._panel_biblioteca = ft.Container(expand=True, bgcolor=BG_LIST, alignment=ft.Alignment.CENTER,
                                                   content=self._make_cono_empty("Biblioteca", "Colección local, historial 20 y portadas — pronto.", visible=True))
+        self._auto_play_download_ids: set[str] = set()
+        from ui.player_bar import PlayerBar
+        from ui.player_queue import PlayerQueuePanel
+
+        self.player_bar = PlayerBar(
+            page,
+            state,
+            on_toggle_queue=lambda: self.player_queue.toggle(),
+        )
+        self.player_queue = PlayerQueuePanel(page, self.player_bar)
+        self.player_bar.log_audio_services_count("init")
+
         try:
             from ui.downloads_view import DownloadsView
             self._panel_descargas = DownloadsView(page, state, library_state=getattr(self, "library_state", None))
+            self._panel_descargas.player_bar = self.player_bar  # type: ignore[attr-defined]
         except Exception as exc:
             try:
                 state.log(f"[WARN] Descargas fallback: {exc}")  # type: ignore
@@ -874,15 +891,22 @@ class PlaylistManagerUI(DialogMixin):
         # ──────────────────────────────────────────────────────────────
         # ENSAMBLAJE DE LAYOUT RAÍZ
         # ──────────────────────────────────────────────────────────────
-        # Layout principal: rail flotante + módulo; el margen del rail separa sin divider
+        # Layout principal: rail flotante + módulo + cola lateral, barra de reproducción abajo
         self.root = ft.Container(
-            content=ft.Row(
+            content=ft.Column(
                 controls=[
-                    self._nav_rail,
-                    self._module_stack,
+                    ft.Row(
+                        controls=[
+                            self._nav_rail,
+                            self._module_stack,
+                            self.player_queue,
+                        ],
+                        spacing=0, expand=True,
+                        vertical_alignment=ft.CrossAxisAlignment.STRETCH,
+                    ),
+                    self.player_bar,
                 ],
                 spacing=0, expand=True,
-                vertical_alignment=ft.CrossAxisAlignment.STRETCH,
             ),
             bgcolor=BG_LIST, expand=True,
         )
@@ -2194,6 +2218,23 @@ class PlaylistManagerUI(DialogMixin):
 
     def _sync_list_view(self, tracks: list[Track]) -> None:
         lv = self._list_view
+        download_busy = self.state.download_state == TransferState.RUNNING
+        done_by_id = {
+            d.get("id"): d
+            for d in getattr(self.state, "download_done", [])
+            if isinstance(d, dict) and d.get("id")
+        }
+        if self._auto_play_download_ids and not download_busy:
+            for tid in list(self._auto_play_download_ids):
+                entry = done_by_id.get(tid)
+                if entry and entry.get("path"):
+                    self._auto_play_download_ids.discard(tid)
+                    tr = next((t for t in self.state.tracks if t.id == tid), None)
+                    if hasattr(self, "player_bar") and self.player_bar is not None:
+                        self.player_bar.play_file(str(entry["path"]), tr)
+            if self.state.download_state in (TransferState.DONE, TransferState.ERROR):
+                self._auto_play_download_ids.clear()
+
         # compara orden además de conjunto para detectar reorden (SOURCE vs RESULT §25)
         existing_order = [c.track.id for c in lv.controls if hasattr(c, "track")]
         incoming_order = [t.id for t in tracks]
@@ -2210,6 +2251,9 @@ class PlaylistManagerUI(DialogMixin):
                     SongRow(
                         track, i, self.state.toggle_track,
                         on_move=self.state.move_track_to_position,
+                        on_download=self._on_row_download,
+                        download_busy=download_busy,
+                        download_done=(track.id in done_by_id),
                     )
                 )
             try:
@@ -2225,7 +2269,12 @@ class PlaylistManagerUI(DialogMixin):
             if not hasattr(row, "refresh"):
                 continue
             try:
-                if row.refresh(current, notify=False):
+                if row.refresh(
+                    current,
+                    notify=False,
+                    download_busy=download_busy,
+                    download_done=(current.id in done_by_id),
+                ):
                     changed.append(row)
             except Exception:
                 pass
@@ -2240,6 +2289,27 @@ class PlaylistManagerUI(DialogMixin):
                 lv.update()
         except Exception:
             pass
+
+    def _on_row_download(self, track_id: str) -> None:
+        if self.state.download_state == TransferState.RUNNING:
+            self._snack("Descarga en curso", error=True)
+            return
+        target = next((t for t in self.state.tracks if t.id == track_id), None)
+        if target is None:
+            target = next((t for t in self.state.source_tracks if t.id == track_id), None)
+        if target is None:
+            return
+        from services import settings_store
+        self._auto_play_download_ids.add(target.id)
+        try:
+            self.state.download_tracks(
+                [target],
+                destination_dir=settings_store.get_download_dir(),
+            )
+            self._snack(f"Descargando: {target.artist} — {target.name}")
+        except Exception as exc:  # noqa: BLE001
+            self._auto_play_download_ids.discard(target.id)
+            self._snack(f"No se pudo iniciar la descarga: {exc}", error=True)
 
 
     # ── EVENT HANDLERS ─────────────────────────────────────────────────
@@ -2687,6 +2757,11 @@ class PlaylistManagerUI(DialogMixin):
 
     def stop(self) -> None:
         self._stop_skeleton_pulse()
+        try:
+            if hasattr(self, "player_bar") and self.player_bar is not None:
+                self.player_bar.release()
+        except Exception:
+            pass
         try:
             if self._view_shimmer_task and not self._view_shimmer_task.done():
                 self._view_shimmer_task.cancel()
