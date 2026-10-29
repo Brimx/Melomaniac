@@ -74,6 +74,7 @@ from services.authentication import (
     load_runtime_env,
     youtube_http_status,
 )
+from services import browser_session
 from core.cache import SingleFlight, make_cache_key, make_search_flight_key
 from core.library_models import PlaylistSummary
 from core.models import Track, SearchResult, PlaylistMeta
@@ -326,7 +327,14 @@ class MusicApiService:
         self._am_rate_limiter = AppleRequestLimiter()
         self._shutdown_cleaned: bool = False
         self.youtube_auth_error: str = ""
+        self.apple_auth_error: str = ""
         self.spotify_auth_error: str = ""
+        self.youtube_session_source: str = ""
+        self.apple_session_source: str = ""
+        self.spotify_session_source: str = ""
+        self.youtube_preferred_source: Optional[str] = None
+        self.apple_preferred_source: Optional[str] = None
+        self.spotify_preferred_source: Optional[str] = None
         self.auth_manager = None
 
         # ──────────────────────────────────────────────────────────────
@@ -476,32 +484,46 @@ class MusicApiService:
         finally:
             client._send_request = send_request
 
-    async def init_youtube(self) -> bool:
-        return await asyncio.to_thread(self._sync_init_youtube)
+    async def init_youtube(self, creds: Optional[dict] = None) -> bool:
+        return await asyncio.to_thread(self._sync_init_youtube, creds)
 
-    def _sync_init_youtube(self) -> bool:
+    def _sync_init_youtube(self, creds: Optional[dict] = None) -> bool:
         with self._ytm_lock:
-            return self._sync_init_youtube_locked()
+            return self._sync_init_youtube_locked(creds)
 
-    def _sync_init_youtube_locked(self) -> bool:
+    def _sync_init_youtube_locked(self, creds: Optional[dict] = None) -> bool:
         if not HAS_YTMUSIC:
+            self.youtube_auth_error = "ytmusicapi no instalado"
             return False
-        if not BROWSER_JSON.exists():
-            self.youtube_auth_error = "missing config/browser.json"
-            return False
-        self.youtube_auth_error = ""
-        try:
-            self._ytm = YTMusic(auth=str(BROWSER_JSON), requests_session=self._yt_http_session)
-            self._ytm_library_playlists(limit=1)
-            return True
-        except Exception as exc:  # pylint: disable=broad-exception-caught
-            self.youtube_auth_error = str(exc)
-            if _is_ytm_unauthorized(exc):
-                print(_YTM_401_MSG)
-            else:
-                print(f"[YouTube Music] init failed: {exc}")
+        candidates = (
+            [("manual", creds)]
+            if creds is not None
+            else list(browser_session.youtube_candidates(self.youtube_preferred_source))
+        )
+        if not candidates:
+            self.youtube_auth_error = "missing credentials (sin sesión en navegador ni config/browser.json)"
+            self.youtube_session_source = ""
             self._ytm = None
             return False
+
+        last_err = ""
+        for source, headers in candidates:
+            try:
+                self._ytm = YTMusic(auth=headers, requests_session=self._yt_http_session)
+                self._ytm_library_playlists(limit=1)
+                self.youtube_auth_error = ""
+                self.youtube_session_source = source
+                return True
+            except Exception as exc:  # pylint: disable=broad-exception-caught
+                last_err = str(exc)
+                if _is_ytm_unauthorized(exc):
+                    print(_YTM_401_MSG)
+                else:
+                    print(f"[YouTube Music] init failed ({source}): {exc}")
+                self._ytm = None
+        self.youtube_auth_error = last_err or "No se pudo validar YouTube Music"
+        self.youtube_session_source = ""
+        return False
 
     # ── Apple Music Auth ───────────────────────────────────────────────
 
@@ -526,95 +548,137 @@ class MusicApiService:
         except (TypeError, ValueError, AttributeError):
             return APPLE_REQUEST_PAUSE
 
-    async def init_apple(self) -> bool:
-        return await asyncio.to_thread(self._sync_init_apple)
+    async def init_apple(self, creds: Optional[dict] = None) -> bool:
+        return await asyncio.to_thread(self._sync_init_apple, creds)
 
-    def _sync_init_apple(self) -> bool:
-        raw  = os.getenv("APPLE_AUTH_BEARER", "").strip()
-        utok = os.getenv("APPLE_MUSIC_USER_TOKEN", "").strip()
-        if not raw or not utok:
+    def _sync_init_apple(self, creds: Optional[dict] = None) -> bool:
+        candidates = (
+            [("manual", creds)]
+            if creds is not None
+            else list(browser_session.apple_candidates(self.apple_preferred_source))
+        )
+        if not candidates:
+            self.apple_auth_error = "missing credentials (sin sesión en navegador ni config/.env)"
+            self.apple_session_source = ""
             return False
-        bearer = raw if raw.startswith("Bearer ") else f"Bearer {raw}"
-        am_headers = {
-            "Authorization":            bearer,
-            "media-user-token":         utok,
-            "x-apple-music-user-token": utok,
-            "Origin":  "https://music.apple.com",
-            "Referer": "https://music.apple.com/",
-            "Accept":  "application/json",
-        }
-        try:
-            resp = self._am_request(
-                "get",
-                f"{APPLE_API_BASE}/me/storefront",
-                headers=am_headers, timeout=10,
-            )
-            if resp.status_code == 200:
-                self._am_headers    = am_headers
-                self._http_session.headers.update(am_headers)
-                self._am_storefront = resp.json().get("data", [{}])[0].get("id", "us")
-                return True
-            return False
-        except (AppleAuthError, RateLimitError) as exc:
-            print(f"[Apple Music] init failed: {exc}")
-            return False
-        except Exception as exc:  # pylint: disable=broad-exception-caught
-            msg = str(exc)
-            # httpx.ConnectError no comparte base con requests: se reconoce por
-            # mensaje y por nombre de clase para conservar el arranque offline.
-            if (
-                isinstance(exc, (httpx.ConnectError, httpx.ConnectTimeout))
-                or "Name or service not known" in msg
-                or "Failed to resolve" in msg
-                or "amp-api.music.apple.com" in msg
-            ):
-                print(f"[Apple Music] init offline (storefront no resuelto) — fallback us")
-                self._am_headers    = am_headers
-                self._http_session.headers.update(am_headers)
-                self._am_storefront = "us"
-                return True
-            print(f"[Apple Music] init failed: {exc}")
-            return False
+
+        last_err = ""
+        for source, cand in candidates:
+            raw = str(cand.get("bearer", "") or "").strip()
+            utok = str(cand.get("user_token", "") or "").strip()
+            if not raw or not utok:
+                last_err = "APPLE_AUTH_BEARER or APPLE_MUSIC_USER_TOKEN missing"
+                continue
+            bearer = raw if raw.startswith("Bearer ") else f"Bearer {raw}"
+            am_headers = {
+                "Authorization":            bearer,
+                "media-user-token":         utok,
+                "x-apple-music-user-token": utok,
+                "Origin":  "https://music.apple.com",
+                "Referer": "https://music.apple.com/",
+                "Accept":  "application/json",
+            }
+            try:
+                resp = self._am_request(
+                    "get",
+                    f"{APPLE_API_BASE}/me/storefront",
+                    headers=am_headers, timeout=10,
+                )
+                if resp.status_code == 200:
+                    self._am_headers    = am_headers
+                    self._http_session.headers.update(am_headers)
+                    self._am_storefront = resp.json().get("data", [{}])[0].get("id", "us")
+                    self.apple_auth_error = ""
+                    self.apple_session_source = source
+                    return True
+                last_err = f"Unexpected HTTP {resp.status_code}"
+            except (AppleAuthError, RateLimitError) as exc:
+                last_err = str(exc)
+                print(f"[Apple Music] init failed ({source}): {exc}")
+            except Exception as exc:  # pylint: disable=broad-exception-caught
+                msg = str(exc)
+                # httpx.ConnectError no comparte base con requests: se reconoce por
+                # mensaje y por nombre de clase para conservar el arranque offline.
+                if (
+                    isinstance(exc, (httpx.ConnectError, httpx.ConnectTimeout))
+                    or "Name or service not known" in msg
+                    or "Failed to resolve" in msg
+                    or "amp-api.music.apple.com" in msg
+                ):
+                    print("[Apple Music] init offline (storefront no resuelto) — fallback us")
+                    self._am_headers    = am_headers
+                    self._http_session.headers.update(am_headers)
+                    self._am_storefront = "us"
+                    self.apple_auth_error = ""
+                    self.apple_session_source = source
+                    return True
+                last_err = msg
+                print(f"[Apple Music] init failed ({source}): {exc}")
+        self.apple_auth_error = last_err or "401 — Apple Music token expired"
+        self.apple_session_source = ""
+        return False
 
 
     # ── Spotify Auth ───────────────────────────────────────────────────
 
-    async def init_spotify(self) -> bool:
-        return await asyncio.to_thread(self._sync_init_spotify)
+    async def init_spotify(self, creds: Optional[dict] = None) -> bool:
+        return await asyncio.to_thread(self._sync_init_spotify, creds)
 
-    def _sync_init_spotify(self) -> bool:
+    def _sync_init_spotify(self, creds: Optional[dict] = None) -> bool:
         if not HAS_SPOTIFY:
             self.spotify_auth_error = "spotapi no instalado"
             return False
-        path = os.path.normpath(SPOTIFY_COOKIES_JSON)
-        if not os.path.exists(path):
-            self.spotify_auth_error = "missing config/spotify_cookies.json"
-            return False
-        try:
-            import json  # pylint: disable=import-outside-toplevel
-            dump = json.loads(open(path, encoding="utf-8").read())
-            if not dump.get("identifier") or not dump.get("cookies"):
-                self.spotify_auth_error = "config/spotify_cookies.json: falta identifier o cookies"
-                return False
-            cfg = Config(logger=NoopLogger())
-            login = Login.from_cookies(dump, cfg)
-            if not login.logged_in:
-                self.spotify_auth_error = "cookies inválidas (login falló)"
-                return False
-            self._sp_login = login
-            self._sp_cfg   = cfg
-            self._sp_cfg.client.timeout = CFG_SPOTIFY_HTTP_TIMEOUT
-            # Song cacheado sobre el MISMO TLSClient del login: el setup de
-            # sesión/token/hashes se paga una sola vez, no por búsqueda.
-            self._sp_song  = Song(client=cfg.client)
-            self.spotify_auth_error = ""
-            return True
-        except Exception as exc:  # pylint: disable=broad-exception-caught
-            self.spotify_auth_error = str(exc)
-            print(f"[Spotify] init failed: {exc}")
+        candidates = (
+            [("manual", creds)]
+            if creds is not None
+            else list(browser_session.spotify_candidates(self.spotify_preferred_source))
+        )
+        if not candidates:
+            self.spotify_auth_error = "missing credentials (sin sesión en navegador ni config/spotify_cookies.json)"
+            self.spotify_session_source = ""
             self._sp_login = None
-            self._sp_song  = None
+            self._sp_song = None
             return False
+
+        last_err = ""
+        for source, dump in candidates:
+            try:
+                cookies = dump.get("cookies") if isinstance(dump, dict) else None
+                if not isinstance(cookies, dict) or not cookies.get("sp_dc") or not cookies.get("sp_key"):
+                    last_err = "config/spotify_cookies.json: falta sp_dc o sp_key"
+                    continue
+                payload = {
+                    "identifier": str(dump.get("identifier") or "browser"),
+                    "cookies": {
+                        "sp_dc": str(cookies["sp_dc"]),
+                        "sp_key": str(cookies["sp_key"]),
+                    },
+                }
+                cfg = Config(logger=NoopLogger())
+                login = Login.from_cookies(payload, cfg)
+                if not login.logged_in:
+                    last_err = "401 — cookies inválidas (login falló)"
+                    continue
+                self._sp_login = login
+                self._sp_cfg   = cfg
+                self._sp_cfg.client.timeout = CFG_SPOTIFY_HTTP_TIMEOUT
+                # Sonda real a libraryV3: Login.from_cookies fija logged_in=True sin verificar.
+                self._spotify_library_page(limit=1, offset=0)
+                # Song cacheado sobre el MISMO TLSClient del login: el setup de
+                # sesión/token/hashes se paga una sola vez, no por búsqueda.
+                self._sp_song  = Song(client=cfg.client)
+                self.spotify_auth_error = ""
+                self.spotify_session_source = source
+                return True
+            except Exception as exc:  # pylint: disable=broad-exception-caught
+                last_err = f"401 — {exc}" if "401" not in str(exc) else str(exc)
+                print(f"[Spotify] init failed ({source}): {exc}")
+                self._sp_login = None
+                self._sp_cfg   = None
+                self._sp_song  = None
+        self.spotify_auth_error = last_err or "401 — cookies de Spotify rechazadas"
+        self.spotify_session_source = ""
+        return False
 
 
     # ── Playlist Fetching ──────────────────────────────────────────────
