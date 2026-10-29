@@ -31,9 +31,11 @@ class PlaylistDetailView(ft.Container):
     def __init__(self, page: ft.Page, summary: PlaylistSummary, service, on_back: Callable[[], None],
                  app_state=None, loader: Optional[Callable] = None,
                  on_remove: Optional[Callable[[], None]] = None,
-                 on_open_downloads: Optional[Callable[[], None]] = None):
+                 on_open_downloads: Optional[Callable[[], None]] = None,
+                 player_bar=None):
         super().__init__(expand=True, bgcolor=BG_LIST)
         self.app_state = app_state
+        self.player_bar = player_bar
         self._loader = loader
         self._on_open_downloads = on_open_downloads
         self._is_local = summary.platform == LOCAL_LIBRARY_LABEL
@@ -60,12 +62,16 @@ class PlaylistDetailView(ft.Container):
         self._open_btn = _ghost_btn("Ver playlist en plataforma", ft.Icons.OPEN_IN_NEW, lambda e: self._launch(summary.external_url), width=260, height=40) if summary.external_url else ft.Container()
 
         if self._is_local:
+            self._play_all_btn = _primary_btn("Reproducir", ft.Icons.PLAY_ARROW_ROUNDED, self._on_play_all, height=40)
+            self._play_all_btn.disabled = True
             actions = [
+                self._play_all_btn,
                 _ghost_btn("Abrir carpeta", ft.Icons.FOLDER_OPEN, lambda e: self._open_folder(), height=40),
                 _ghost_btn("Quitar de la Biblioteca", ft.Icons.REMOVE_CIRCLE_OUTLINE, lambda e: on_remove() if on_remove else None, height=40),
             ]
             self._download_btn = None
         else:
+            self._play_all_btn = None
             self._download_btn = _primary_btn("Descargar", ft.Icons.DOWNLOAD, self._on_download, height=40)
             self._download_btn.disabled = True
             actions = [self._download_btn]
@@ -210,6 +216,8 @@ class PlaylistDetailView(ft.Container):
             self._tracks = tracks
             if self._download_btn is not None:
                 self._download_btn.disabled = not tracks
+            if self._play_all_btn is not None:
+                self._play_all_btn.disabled = not tracks
             self._loading = False
             self.summary.track_count = len(tracks)
             # header count real tras cargar (fix Apple count 0 en summary)
@@ -242,25 +250,66 @@ class PlaylistDetailView(ft.Container):
         except Exception:
             pass
 
+    def _on_play_all(self, _e=None) -> None:
+        """Reproduce todas las pistas locales disponibles en el reproductor."""
+        paths = [t.source_path for t in self._tracks if t.source_path and os.path.isfile(t.source_path)]
+        if not paths:
+            notify(self._page_ref, "No hay archivos disponibles en disco", kind="error")
+            return
+        if self.player_bar is not None and hasattr(self.player_bar, "play_files"):
+            self.player_bar.play_files(paths, start_index=0)
+            notify(self._page_ref, f"Reproduciendo {len(paths)} canciones")
+        elif self.player_bar is not None and hasattr(self.player_bar, "play_file"):
+            self.player_bar.play_file(paths[0])
+
+    def _play_single_track(self, track: Track, index: int) -> None:
+        """Reproduce una sola pista local en el reproductor encolando la lista."""
+        if not track.source_path or not os.path.isfile(track.source_path):
+            notify(self._page_ref, "Archivo no encontrado en disco", kind="error")
+            return
+        paths = [t.source_path for t in self._tracks if t.source_path and os.path.isfile(t.source_path)]
+        if self.player_bar is not None and hasattr(self.player_bar, "play_files") and paths:
+            try:
+                start_idx = paths.index(track.source_path)
+            except ValueError:
+                start_idx = max(0, min(len(paths) - 1, index - 1))
+            self.player_bar.play_files(paths, start_index=start_idx)
+        elif self.player_bar is not None and hasattr(self.player_bar, "play_file"):
+            self.player_bar.play_file(track.source_path)
+
     def _open_track(self, track: Track) -> None:
-        """Pista local → su carpeta en el explorador; plataforma → su URL."""
-        if self._is_local and track.source_path:
+        """Pista local → reproducir si hay archivo; si no, abrir explorador. Plataforma → su URL."""
+        if self._is_local and track.source_path and os.path.isfile(track.source_path):
+            self._play_single_track(track, 1)
+        elif self._is_local and track.source_path:
             open_in_file_manager(track.source_path)
         else:
             self._launch(track.source_url or "")
 
     def _build_track_row(self, track: Track, index: int) -> ft.Container:
-        """Fila Biblioteca: [#][thumb48][título/artista expand3][álbum expand2][dur48][open32].
+        """Fila Biblioteca: [#][thumb48][título/artista expand3][álbum expand2][dur48][open/play 32].
 
         Misma geometría que SongRow Gestión (spacing 16, ITEM_H) + columna
         álbum. Hover: BG_HOVER + scale 1.01. Click: press scale 0.99 +
-        opacidad 0.85 antes de abrir URL.
+        opacidad 0.85 antes de abrir URL o reproducir.
         """
         thumb = ft.Container(width=48, height=48, border_radius=6, bgcolor=SKELETON_DARK, clip_behavior=ft.ClipBehavior.ANTI_ALIAS, content=ft.Image(src=track.img_url, fit=ft.BoxFit.COVER, error_content=ft.Icon(ft.Icons.MUSIC_NOTE, color=TEXT_DIM, size=16)) if track.img_url else ft.Container(content=ft.Icon(ft.Icons.MUSIC_NOTE, color=TEXT_DIM, size=16), alignment=ft.Alignment.CENTER))
         title = ft.Text(track.name, size=13, color=TEXT_PRIMARY, font_family=font_family_for(track.name, "semibold"), max_lines=1, overflow=ft.TextOverflow.ELLIPSIS)
         artist = ft.Text(track.artist, size=11, color=TEXT_MUTED, font_family=font_family_for(track.artist), max_lines=1, overflow=ft.TextOverflow.ELLIPSIS)
         album = ft.Text(track.album or "—", size=11, color=TEXT_MUTED, font_family=font_family_for(track.album or ""), max_lines=1, overflow=ft.TextOverflow.ELLIPSIS)
         dur = ft.Text(track.duration, size=11, color=TEXT_DIM, font_family=mono_family("light"))
+
+        action_icon = ft.Container(
+            content=ft.Icon(
+                ft.Icons.PLAY_ARROW_ROUNDED if self._is_local else ft.Icons.OPEN_IN_NEW,
+                size=16,
+                color=ACCENT if self._is_local else TEXT_DIM,
+            ),
+            width=32,
+            alignment=ft.Alignment.CENTER,
+            tooltip="Reproducir" if self._is_local else "Abrir en plataforma",
+        )
+
         row = ft.Container(
             height=ITEM_H, bgcolor=BG_LIST, border=ft.Border.only(bottom=ft.BorderSide(0.5, BORDER_ROW)), padding=ft.Padding.symmetric(horizontal=12, vertical=8),
             ink=True,
@@ -273,7 +322,7 @@ class PlaylistDetailView(ft.Container):
                 ft.Column(controls=[title, artist], spacing=1, expand=3, tight=True, alignment=ft.MainAxisAlignment.CENTER),
                 ft.Container(content=album, expand=2, alignment=ft.Alignment.CENTER_LEFT),
                 ft.Container(content=dur, width=48, alignment=ft.Alignment.CENTER),
-                ft.Container(content=ft.Icon(ft.Icons.FOLDER_OPEN if self._is_local else ft.Icons.OPEN_IN_NEW, size=14, color=TEXT_DIM), width=32, alignment=ft.Alignment.CENTER),
+                action_icon,
             ], spacing=16, vertical_alignment=ft.CrossAxisAlignment.CENTER),
         )
 
@@ -287,7 +336,7 @@ class PlaylistDetailView(ft.Container):
                 pass
 
         def _on_click(_e) -> None:
-            async def _press_and_open() -> None:
+            async def _press_and_act() -> None:
                 try:
                     row.scale = 0.99
                     row.opacity = 0.85
@@ -304,13 +353,21 @@ class PlaylistDetailView(ft.Container):
                     row.update()
                 except Exception:
                     pass
-                self._open_track(track)
+                if self._is_local:
+                    self._play_single_track(track, index)
+                else:
+                    self._open_track(track)
 
             try:
-                asyncio.create_task(_press_and_open())
+                asyncio.create_task(_press_and_act())
             except Exception:
-                self._open_track(track)
+                if self._is_local:
+                    self._play_single_track(track, index)
+                else:
+                    self._open_track(track)
 
         row.on_hover = _on_hover
+        row.on_click = _on_click
+        return row
         row.on_click = _on_click
         return row

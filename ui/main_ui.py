@@ -861,6 +861,8 @@ class PlaylistManagerUI(DialogMixin):
         )
         self.player_queue = PlayerQueuePanel(page, self.player_bar)
         self.player_bar.log_audio_services_count("init")
+        if hasattr(self, "_panel_biblioteca") and self._panel_biblioteca is not None:
+            self._panel_biblioteca.player_bar = self.player_bar
 
         try:
             from ui.downloads_view import DownloadsView

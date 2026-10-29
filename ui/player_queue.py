@@ -193,7 +193,7 @@ class PlayerQueuePanel(ft.Container):
                         title,
                         size=12,
                         color=ACCENT if is_current else TEXT_PRIMARY,
-                        font_family=font_family_for(title, bold=is_current),
+                        font_family=font_family_for(title, "bold" if is_current else "regular"),
                         max_lines=1,
                         overflow=ft.TextOverflow.ELLIPSIS,
                     ),

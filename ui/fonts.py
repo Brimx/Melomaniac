@@ -80,8 +80,10 @@ def _family_alias(family: str, weight: str) -> str:
     return family if label == "Regular" else f"{family} {label}"
 
 
-def font_family_for(text: str | None, weight: str = "regular") -> str:
+def font_family_for(text: str | None, weight: str = "regular", bold: bool | None = None) -> str:
     """Selecciona Stack Text, IBM Plex Sans o CJK según la escritura."""
+    if bold:
+        weight = "bold"
     script = classify_script(text)
     if script == "cjk" and _CJK_REGISTERED:
         return FONT_CJK

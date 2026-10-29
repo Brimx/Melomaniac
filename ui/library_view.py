@@ -33,13 +33,14 @@ SOURCES = (*PLATFORM_ORDER, LOCAL_LIBRARY_LABEL)
 
 class LibraryView(ft.Container):
     def __init__(self, page: ft.Page, library_state: LibraryState, service,
-                 app_state=None, on_open_downloads=None):
+                 app_state=None, on_open_downloads=None, player_bar=None):
         super().__init__(expand=True, bgcolor=BG_LIST)
         self._page_ref = page
         self.library_state = library_state
         self.service = service
         self.app_state = app_state
         self._on_open_downloads = on_open_downloads
+        self.player_bar = player_bar
         self._picker = ft.FilePicker()
         page.services.append(self._picker)
         self.library_state.set_service(service)
@@ -163,6 +164,7 @@ class LibraryView(ft.Container):
             loader=_load_local if local else None,
             on_remove=_remove_local if local else None,
             on_open_downloads=self._on_open_downloads,
+            player_bar=getattr(self, "player_bar", None),
         )
         self.content = self._detail
         try:

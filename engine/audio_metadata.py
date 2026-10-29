@@ -32,7 +32,7 @@ def _tag(tags: Any, *keys: str) -> str:
                 value = _text(tags[key])
                 if value:
                     return value
-        except (KeyError, TypeError):
+        except (KeyError, TypeError, ValueError):
             continue
     return ""
 

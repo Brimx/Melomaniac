@@ -279,11 +279,12 @@ class PlayerBar(ft.Container):
         )
         self._progress_track = ft.Container(
             height=PLAYER_PROGRESS_H,
-            bgcolor=BG_SURFACE,
+            bgcolor=BORDER_MUTED,
             border_radius=PLAYER_PROGRESS_H / 2,
             alignment=ft.Alignment.CENTER_LEFT,
             on_size_change=self._on_track_size_change,
             content=self._progress_fill,
+            expand=True,
         )
         self._progress_gesture = ft.GestureDetector(
             mouse_cursor=ft.MouseCursor.CLICK,
@@ -294,6 +295,7 @@ class PlayerBar(ft.Container):
             content=ft.Container(
                 padding=ft.Padding.symmetric(vertical=8),
                 content=self._progress_track,
+                expand=True,
             ),
             expand=True,
         )
@@ -858,7 +860,7 @@ class PlayerBar(ft.Container):
             title = tr.name or os.path.basename(cur.path)
             artist = tr.artist or "Archivo local"
             self._title_txt.value = title
-            self._title_txt.font_family = font_family_for(title, bold=True)
+            self._title_txt.font_family = font_family_for(title, "bold")
             self._artist_txt.value = artist
             self._artist_txt.font_family = font_family_for(artist)
             if tr.img_url:
