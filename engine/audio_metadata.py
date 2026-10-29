@@ -42,15 +42,15 @@ def _normalize_isrc(value: str) -> str | None:
     return normalize_isrc(value)
 
 
-def read_audio_metadata(path: str) -> dict[str, Any]:
-    """Lee tags comunes e ISRC (`TSRC`) sin fallar por archivos inválidos."""
+def _load_mutagen_file(path: str) -> tuple[Any, Any]:
+    """Abre ``path`` con Mutagen una sola vez sin duplicar imports ni fallbacks."""
     if not path or not os.path.isfile(path):
-        return {}
+        return None, None
     try:
         from mutagen import File as MutagenFile
         from mutagen.id3 import ID3
     except ImportError:
-        return {}
+        return None, None
 
     try:
         audio = MutagenFile(path, easy=False)
@@ -60,11 +60,17 @@ def read_audio_metadata(path: str) -> dict[str, Any]:
         try:
             audio = ID3(path)
         except Exception:
-            return {}
+            return None, None
+    return audio, ID3
+
+
+def read_audio_metadata(path: str) -> dict[str, Any]:
+    """Lee tags comunes e ISRC (`TSRC`) sin fallar por archivos inválidos."""
+    audio, id3_cls = _load_mutagen_file(path)
     if audio is None:
         return {}
 
-    tags = audio if isinstance(audio, ID3) else getattr(audio, "tags", None)
+    tags = audio if (id3_cls is not None and isinstance(audio, id3_cls)) else getattr(audio, "tags", None)
     result: dict[str, Any] = {}
     values = {
         "title": ("TIT2", "©nam", "TITLE", "title"),
@@ -86,6 +92,88 @@ def read_audio_metadata(path: str) -> dict[str, Any]:
     if length:
         result["duration_ms"] = int(length * 1000)
     return result
+
+
+def _detect_wav_codec(info: Any) -> str:
+    fmt = int(getattr(info, "audio_format", 1) or 1)
+    bits = int(getattr(info, "bits_per_sample", 16) or 16)
+    if fmt == 3:
+        return f"pcm_f{bits}le"
+    if fmt == 1:
+        if bits == 8:
+            return "pcm_u8"
+        return f"pcm_s{bits}le"
+    if fmt == 6:
+        return "pcm_alaw"
+    if fmt == 7:
+        return "pcm_mulaw"
+    return f"pcm_{bits}"
+
+
+def read_stream_info(path: str) -> dict[str, Any]:
+    """Lee formato real (contenedor, códec, bitrate, sample_rate) desde ``mutagen.File(path).info``."""
+    audio, _ = _load_mutagen_file(path)
+    if audio is None:
+        return {}
+    info = getattr(audio, "info", None)
+    if info is None:
+        return {}
+
+    cls_name = type(audio).__name__.lower()
+    info_name = type(info).__name__.lower()
+    raw_codec = _text(getattr(info, "codec", "")).lower()
+    codec_desc = _text(getattr(info, "codec_description", "")).lower()
+
+    if "mp3" in cls_name or "mpeg" in info_name:
+        layer = int(getattr(info, "layer", 3) or 3)
+        container = "mp3"
+        codec = f"mp{layer}" if layer in (1, 2, 3) else "mp3"
+    elif "mp4" in cls_name or "mp4" in info_name:
+        container = "m4a"
+        if raw_codec.startswith("mp4a") or "aac" in codec_desc:
+            codec = "aac"
+        elif raw_codec == "alac" or "alac" in codec_desc:
+            codec = "alac"
+        else:
+            codec = raw_codec or "aac"
+    elif "oggopus" in cls_name or "opus" in info_name:
+        container = "opus"
+        codec = "opus"
+    elif "oggvorbis" in cls_name or "vorbis" in info_name:
+        container = "ogg"
+        codec = "vorbis"
+    elif "flac" in cls_name or "flac" in info_name:
+        container = "flac"
+        codec = "flac"
+    elif "wave" in cls_name or "wave" in info_name:
+        container = "wav"
+        codec = _detect_wav_codec(info)
+    elif "aiff" in cls_name or "aiff" in info_name:
+        container = "aiff"
+        bits = int(getattr(info, "bits_per_sample", 16) or 16)
+        codec = f"pcm_s{bits}be"
+    else:
+        mime_list = getattr(audio, "mime", None) or []
+        mime_head = _text(mime_list[0]).lower() if mime_list else ""
+        container = mime_head.split("/")[-1].replace("x-", "") if "/" in mime_head else cls_name
+        codec = raw_codec or container
+
+    bitrate_raw = int(getattr(info, "bitrate", 0) or 0)
+    bitrate_kbps = round(bitrate_raw / 1000) if bitrate_raw > 0 else None
+    sample_rate_raw = int(getattr(info, "sample_rate", 0) or 0)
+    if sample_rate_raw <= 0 and codec == "opus":
+        sample_rate_raw = 48000
+    sample_rate = sample_rate_raw if sample_rate_raw > 0 else None
+    length = float(getattr(info, "length", 0.0) or 0.0)
+    duration_ms = int(length * 1000) if length > 0 else 0
+
+    return {
+        "container": container,
+        "codec": codec,
+        "bitrate_kbps": bitrate_kbps,
+        "sample_rate": sample_rate,
+        "duration_ms": duration_ms,
+    }
 
 
 def write_audio_metadata(
