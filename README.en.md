@@ -31,7 +31,7 @@ Matching combines metadata normalization, RapidFuzz, title/artist similarity, du
 | Dependencies | Pinned in [`requirements.txt`](requirements.txt) |
 | Credentials | `config/browser.json`, `config/.env`, and `config/spotify_cookies.json` as needed |
 | UI | Flet Desktop 1.0.5; dark theme, Stack Sans, IBM Plex, and optional CJK fallback |
-| Audio conversion | `ffmpeg` available on `PATH` for audio extraction and conversion |
+| Audio conversion | `ffmpeg` 6+ on `PATH` for audio extraction and conversion. Downloads needs at least one encoder per format: `libmp3lame` (MP3), native `aac` or `libfdk_aac` (M4A), `libvorbis` (Opus/Ogg) and `flac` (FLAC). Without FFmpeg, the Downloads view warns and disables downloading |
 
 ## Installation
 

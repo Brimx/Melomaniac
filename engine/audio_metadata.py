@@ -94,6 +94,77 @@ def read_audio_metadata(path: str) -> dict[str, Any]:
     return result
 
 
+def read_cover(path: str) -> bytes | None:
+    """Devuelve la portada incrustada (APIC, ``covr`` o FLAC ``Picture``).
+
+    Devuelve ``None`` si el archivo no tiene portada o no se puede leer. La
+    imagen se devuelve tal cual está guardada: puede ser JPEG, PNG o WebP.
+    """
+    audio, id3_cls = _load_mutagen_file(path)
+    if audio is None:
+        return None
+
+    try:
+        from mutagen.flac import Picture as FlacPicture
+        from mutagen.id3 import APIC
+        from mutagen.mp4 import MP4Cover
+    except ImportError:
+        return None
+
+    try:
+        # Un MP3 real llega como ``MP3`` y sus tags son el ``ID3``; solo un
+        # archivo con únicamente tags llega ya como ``ID3``. Antes se exigía
+        # ``isinstance(audio, ID3)`` y el APIC de todo MP3 se perdía.
+        id3_tags = audio if id3_cls is not None and isinstance(audio, id3_cls) else getattr(audio, "tags", None)
+        if id3_cls is not None and isinstance(id3_tags, id3_cls):
+            for frame in id3_tags.getall("APIC"):
+                if isinstance(frame, APIC) and frame.data:
+                    return bytes(frame.data)
+            return None
+
+        pictures = getattr(audio, "pictures", None)
+        if pictures:
+            for pic in pictures:
+                if isinstance(pic, FlacPicture) and pic.data:
+                    return bytes(pic.data)
+            return None
+
+        tags = getattr(audio, "tags", None)
+        covers = tags.get("covr") if tags is not None else None
+        if covers:
+            first = covers[0]
+            if isinstance(first, MP4Cover):
+                return bytes(first)
+            if isinstance(first, (bytes, bytearray)):
+                return bytes(first)
+    except Exception:
+        return None
+    return None
+
+
+# Formatos cuyo reproductor no lee la portada incrustada de forma fiable.
+# Opus (OggOpus) no implementa ``add_picture`` en mutagen 1.48.1 y muchos
+# reproductores ignoran el APIC de WAV.
+SIDECAR_COVER_FORMATS = frozenset({"opus", "wav"})
+
+SIDECAR_COVER_NAME = "cover.jpg"
+
+
+def write_cover_sidecar(path: str, data: bytes) -> str:
+    """Escribe ``cover.jpg`` junto al audio. Devuelve la ruta o ``""`` si falla."""
+    if not path or not data:
+        return ""
+    try:
+        target = os.path.join(os.path.dirname(os.path.abspath(path)), SIDECAR_COVER_NAME)
+        tmp = f"{target}.tmp"
+        with open(tmp, "wb") as fh:
+            fh.write(data)
+        os.replace(tmp, target)
+        return target
+    except OSError:
+        return ""
+
+
 def _detect_wav_codec(info: Any) -> str:
     fmt = int(getattr(info, "audio_format", 1) or 1)
     bits = int(getattr(info, "bits_per_sample", 16) or 16)

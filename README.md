@@ -31,7 +31,7 @@ El matching combina normalización de metadatos, RapidFuzz, artista/título, dur
 | Dependencias | Versiones fijadas en [`requirements.txt`](requirements.txt) |
 | Credenciales | `config/browser.json`, `config/.env` y `config/spotify_cookies.json` según el destino |
 | Interfaz | Flet Desktop 1.0.5; tema oscuro, Stack Sans, IBM Plex y fallback CJK opcional |
-| Conversión de audio | `ffmpeg` disponible en `PATH` para extracción y conversión de audio |
+| Conversión de audio | `ffmpeg` 6 o superior en `PATH` para extracción y conversión. Descargas necesita al menos un codificador por formato: `libmp3lame` (MP3), `aac` nativo o `libfdk_aac` (M4A), `libvorbis` (Opus/Ogg) y `flac` (FLAC). Sin FFmpeg, la vista de Descargas lo avisa y deshabilita la descarga |
 
 ## Instalación
 

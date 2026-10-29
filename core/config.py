@@ -98,6 +98,26 @@ DOWNLOAD_MIN_BYTES: int = 64 * 1024
 # bajo reduce el riesgo de throttling.
 DOWNLOAD_CONCURRENCY: int = 2
 
+# ── Portadas online ──────────────────────────────────────────────────
+# Tope de bytes por imagen descargada y timeout de red. Compartidos por
+# `services/cover_cache.py` y `services/covers.py` para no declarar dos
+# límites distintos sobre la misma descarga.
+COVER_MAX_BYTES: int = 2_000_000
+COVER_HTTP_TIMEOUT: int = 8
+# Cadencia por proveedor. iTunes documenta ~20 req/min por IP y Deezer
+# corta en ráfagas, así que se serializa con una pausa mínima entre
+# peticiones en lugar de confiar en el paralelismo del semáforo global.
+COVER_ITUNES_INTERVAL: float = 1.0
+COVER_DEEZER_INTERVAL: float = 0.5
+# MusicBrainz exige 1 req/s y un User-Agent propio identificable.
+COVER_MUSICBRAINZ_INTERVAL: float = 1.1
+COVER_USER_AGENT: str = "Melomaniac/4.7.0 ( https://github.com/Brimx/Melomaniac )"
+# Umbral de coincidencia de álbum/artista del proveedor contra el Track.
+COVER_ALBUM_MIN_RATIO: int = 80
+COVER_ARTIST_MIN_RATIO: int = 70
+# Penalización del breaker cuando un proveedor responde 429.
+COVER_RATE_LIMIT_COOLDOWN: int = 120
+
 # ── Re-export umbrales fuzzy para conveniencia ───────────────────────
 try:
     from engine.normalizer import (

@@ -51,6 +51,7 @@ from __future__ import annotations
 
 import os
 import re
+import shutil
 import unicodedata
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -72,12 +73,38 @@ from engine.normalizer import clean_metadata
 __all__ = [
     "DownloadResult",
     "DownloadError",
+    "DOWNLOAD_ERROR_NO_FFMPEG",
+    "DOWNLOAD_SKIPPED",
+    "ffmpeg_available",
     "resolve_download_dir",
     "sanitize_filename",
     "build_audio_opts",
     "search_video_id",
     "download_audio",
 ]
+
+# Código de error reutilizable por la UI para distinguir la falta de FFmpeg
+# de un fallo de red. ``DownloadResult.error`` lleva el texto legible.
+DOWNLOAD_ERROR_NO_FFMPEG = "NO_FFMPEG"
+# Código de éxito con matiz: el archivo ya existía y se conservó tal cual.
+DOWNLOAD_SKIPPED = "SKIPPED"
+
+_ffmpeg_path_cache: str | None | bool = False
+
+
+def ffmpeg_available() -> bool:
+    """Indica si ``ffmpeg`` está en ``PATH``. El resultado se cachea.
+
+    ``yt-dlp`` resuelve el binario una sola vez por proceso, así que
+    comprobarlo en cada pista cuesta poco, pero cachearlo evita llamadas
+    repetidas a ``shutil.which`` en una cola de cientos de pistas. La
+    caché es por proceso: no cambia si el usuario instala FFmpeg sin
+    reiniciar.
+    """
+    global _ffmpeg_path_cache
+    if _ffmpeg_path_cache is False:
+        _ffmpeg_path_cache = shutil.which("ffmpeg")
+    return bool(_ffmpeg_path_cache)
 
 # Margen de duración aceptable frente a la pista original. Un video con
 # diferencia mayor suele ser otra versión (live, remix, extended).
@@ -103,6 +130,8 @@ class DownloadResult:
         title: Título del video elegido en YouTube.
         video_id: ID del video usado como fuente.
         error: Motivo legible cuando ``ok`` es False.
+        code: Código estable del fallo (``NO_FFMPEG``) para decisiones de UI;
+            vacío cuando no hay uno específico.
         duration_s: Duración del video en segundos, si se conoce.
     """
 
@@ -111,7 +140,9 @@ class DownloadResult:
     title: str = ""
     video_id: str = ""
     error: str = ""
+    code: str = ""
     duration_s: int = 0
+    skipped: bool = False
 
 
 # ──────────────────────────────────────────────────────────────────────
@@ -460,6 +491,7 @@ def _attempt_download(
     progress_hook: Optional[Callable[[dict], None]],
     embed_thumbnail: bool,
     timeout_s: int,
+    artwork_fetcher: Optional[Callable[[Any], bytes | None]] = None,
 ) -> DownloadResult:
     """Ejecuta un intento de descarga con o sin sesión autenticada.
 
@@ -472,10 +504,10 @@ def _attempt_download(
         str(temp_stem), fmt, progress_hook=progress_hook, cookies=use_cookies
     )
     opts["socket_timeout"] = timeout_s
-    if embed_thumbnail and fmt in ("mp3", "m4a", "flac"):
+    # ``embed_thumbnail`` y ``convert_thumbnails`` no son claves de YoutubeDL
+    # (solo se lee ``writethumbnail``); la incrustación real la hace mutagen.
+    if embed_thumbnail:
         opts["writethumbnail"] = True
-        opts["embed_thumbnail"] = True
-        opts["convert_thumbnails"] = "jpg"
 
     try:
         with yt_dlp.YoutubeDL(opts) as ydl:
@@ -491,7 +523,11 @@ def _attempt_download(
         _cleanup_temp_files(temp_stem)
         return DownloadResult(ok=False, error="yt-dlp no generó archivo de audio")
 
-    artwork = _read_artwork(produced_files) if embed_thumbnail else None
+    artwork = (
+        _resolve_artwork(track, produced_files, fetcher=artwork_fetcher)
+        if embed_thumbnail
+        else None
+    )
 
     if not _finalize_temp_file(produced, final_path):
         _cleanup_temp_files(temp_stem)
@@ -500,6 +536,7 @@ def _attempt_download(
     # Los tags del video no son los de la playlist: se corrigen aquí con los
     # datos originales. Si falla, el archivo ya está guardado y sirve igual.
     _apply_playlist_metadata(track, final_path, artwork)
+    _write_sidecar_if_needed(final_path, artwork)
     _cleanup_temp_files(temp_stem)
 
     title = str((info or {}).get("title") or "")
@@ -520,6 +557,8 @@ def download_audio(
     progress_hook: Optional[Callable[[dict], None]] = None,
     embed_thumbnail: bool = True,
     timeout_s: int = 60,
+    artwork_fetcher: Optional[Callable[[Any], bytes | None]] = None,
+    skip_existing: bool = True,
 ) -> DownloadResult:
     """Descarga el audio de una pista y devuelve la ruta final.
 
@@ -543,6 +582,10 @@ def download_audio(
         progress_hook: Callback de progreso de yt-dlp.
         embed_thumbnail: Incrusta la portada cuando el contenedor lo admite.
         timeout_s: Timeout de red por petición.
+        artwork_fetcher: Callable ``(track) -> bytes | None`` que resuelve la
+            portada por la cadena de proveedores. Se inyecta desde
+            ``core/state`` porque ``engine`` no puede importar ``services``.
+            Si es ``None`` o devuelve vacío, se usa la cadena local.
 
     Returns:
         ``DownloadResult`` con ``ok=True`` y la ruta final, o ``ok=False``
@@ -552,9 +595,35 @@ def download_audio(
     if fmt not in AUDIO_BITRATES:
         fmt = DEFAULT_AUDIO_FORMAT
 
+    # FFmpegExtractAudio lo necesita para cualquier formato. Comprobarlo antes
+    # de buscar el vídeo evita gastar una búsqueda en YouTube para fallar luego.
+    if not ffmpeg_available():
+        return DownloadResult(
+            ok=False,
+            error="FFmpeg no está instalado o no está en PATH",
+            code=DOWNLOAD_ERROR_NO_FFMPEG,
+        )
+
     target_dir = resolve_download_dir(destination_dir)
     stem = _target_stem(track)
     final_path = target_dir / f"{stem}.{fmt}"
+
+    # «Omitir existentes»: sin esto la cola vuelve a descargar, busca en
+    # YouTube y sobrescribe en silencio un archivo que ya estaba bien.
+    if skip_existing and final_path.is_file():
+        try:
+            size = final_path.stat().st_size
+        except OSError:
+            size = 0
+        if size >= DOWNLOAD_MIN_BYTES:
+            return DownloadResult(
+                ok=True,
+                path=str(final_path),
+                title=str(getattr(track, "name", "") or ""),
+                code=DOWNLOAD_SKIPPED,
+                skipped=True,
+            )
+
     temp_stem = target_dir / f".{stem}.{os.getpid()}"
 
     resolved_id = video_id or search_video_id(track).video_id
@@ -569,6 +638,7 @@ def download_audio(
         progress_hook=progress_hook,
         embed_thumbnail=embed_thumbnail,
         timeout_s=timeout_s,
+        artwork_fetcher=artwork_fetcher,
     )
     if not result.ok and _load_cookie_jar() is not None:
         # El primer error puede ser un límite anónimo; con sesión cambia el
@@ -579,6 +649,7 @@ def download_audio(
             progress_hook=progress_hook,
             embed_thumbnail=embed_thumbnail,
             timeout_s=timeout_s,
+            artwork_fetcher=artwork_fetcher,
         )
         if retry.ok:
             result = retry
@@ -615,6 +686,27 @@ def _apply_playlist_metadata(track: Any, audio_path: Path, artwork: bytes | None
         return False
 
 
+def _write_sidecar_if_needed(audio_path: Path, artwork: bytes | None) -> None:
+    """Deja ``cover.jpg`` junto al audio en los formatos que no la incrustan.
+
+    Opus no admite ``add_picture`` en mutagen y muchos reproductores ignoran
+    el APIC de WAV; el sidecar es la única forma fiable de que la vean.
+    """
+    if not artwork:
+        return
+    fmt = audio_path.suffix.lower().lstrip(".")
+    try:
+        from engine.audio_metadata import SIDECAR_COVER_FORMATS, write_cover_sidecar
+    except ImportError:
+        return
+    if fmt not in SIDECAR_COVER_FORMATS:
+        return
+    try:
+        write_cover_sidecar(str(audio_path), artwork)
+    except Exception:
+        pass
+
+
 def _read_artwork(produced_files: list[Path]) -> bytes | None:
     """Devuelve la portada descargada, si ``yt-dlp`` dejó una imagen."""
     for entry in produced_files:
@@ -623,6 +715,75 @@ def _read_artwork(produced_files: list[Path]) -> bytes | None:
                 return entry.read_bytes()
             except OSError:
                 return None
+    return None
+
+
+def _fetch_url_bytes(url: str, timeout_s: int = 10) -> bytes | None:
+    """Descarga una imagen remota en memoria; ``None`` si falla o no es imagen."""
+    if not url or not url.startswith("http"):
+        return None
+    try:
+        import requests
+    except ImportError:
+        return None
+    try:
+        resp = requests.get(url, timeout=timeout_s, stream=True)
+        if resp.status_code != 200:
+            return None
+        content_type = (resp.headers.get("Content-Type") or "").lower()
+        if content_type and not content_type.startswith("image/"):
+            return None
+        data = resp.content
+    except Exception:
+        return None
+    return data or None
+
+
+def _resolve_artwork(
+    track: Any,
+    produced_files: list[Path],
+    *,
+    fetcher: Optional[Callable[[Any], bytes | None]] = None,
+) -> bytes | None:
+    """Elige y normaliza la portada a incrustar.
+
+    Prioridad:
+        1. ``fetcher``: cadena de proveedores inyectada desde ``core/state``
+           (plataforma, ISRC, iTunes, Deezer). Devuelve ya un JPEG cuadrado.
+        2. ``track.img_url``: artwork de la plataforma de origen.
+        3. Thumbnail de YouTube dejado por ``yt-dlp``: solo como respaldo,
+           porque suele ser una miniatura de vídeo 16:9.
+
+    Todo sale normalizado a JPEG cuadrado. Antes se pasaban los bytes crudos
+    (a menudo WebP) y ``write_audio_metadata`` los etiquetaba como
+    ``image/jpeg``, generando portadas corruptas.
+    """
+    from engine.covers import normalize_cover, upscale_cover_url
+
+    if fetcher is not None:
+        try:
+            resolved = fetcher(track)
+        except Exception:
+            resolved = None
+        if resolved:
+            return resolved
+
+    candidates: list[bytes] = []
+
+    platform_cover = _fetch_url_bytes(
+        upscale_cover_url(str(getattr(track, "img_url", "") or ""))
+    )
+    if platform_cover:
+        candidates.append(platform_cover)
+
+    youtube_cover = _read_artwork(produced_files)
+    if youtube_cover:
+        candidates.append(youtube_cover)
+
+    for raw in candidates:
+        normalized = normalize_cover(raw)
+        if normalized:
+            return normalized
     return None
 
 

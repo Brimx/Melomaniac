@@ -39,14 +39,14 @@ import flet as ft
 
 from ui.fonts import (
     FONT_HEADLINE, FONT_HEADLINE_BOLD,
-    FONT_TEXT, FONT_TEXT_MEDIUM, FONT_TEXT_SEMI,
+    FONT_TEXT, FONT_TEXT_MEDIUM, FONT_TEXT_SEMI, mono_family,
 )
 
 from ui.tokens import (
     TEXT_PRIMARY, TEXT_MUTED, TEXT_DIM,
     ACCENT, ACCENT_HOVER, ACCENT_DIM, ACCENT_HALO, BG_HOVER,
     SUCCESS, ERROR_COL, WARNING, BORDER_MUTED, BORDER_LIGHT,
-    BG_INPUT, BG_PANEL,
+    BG_INPUT, BG_PANEL, WARN_BG, WARN_BORDER,
     RADIUS_INPUT, RADIUS_BUTTON, RADIUS_DIALOG,
 )
 
@@ -292,6 +292,38 @@ def notify(
     snack.open = True
     page.update()
     return snack
+
+
+def status_banner(
+    message: str,
+    *,
+    icon: str = ft.Icons.INFO_OUTLINE,
+    kind: str = "warning",
+    action: ft.Control | None = None,
+) -> ft.Container:
+    """Banner persistente de estado, con acción opcional.
+
+    A diferencia de ``notify`` no desaparece solo: sirve para condiciones que
+    el usuario debe resolver (FFmpeg ausente, rate limit en curso). El texto
+    queda en ``container.content.controls[1]`` para poder actualizarlo sin
+    reconstruir el banner.
+    """
+    accent = WARNING if kind == "warning" else ERROR_COL
+    row_controls: list[ft.Control] = [
+        ft.Icon(icon, color=accent, size=14),
+        ft.Text(message, size=10, color=accent, font_family=mono_family("light"), opacity=1.0),
+    ]
+    if action is not None:
+        row_controls.extend([ft.Container(expand=True), action])
+    return ft.Container(
+        content=ft.Row(row_controls, spacing=6,
+                       vertical_alignment=ft.CrossAxisAlignment.CENTER),
+        bgcolor=WARN_BG if kind == "warning" else BG_PANEL,
+        border=ft.Border.all(0.8, WARN_BORDER if kind == "warning" else accent),
+        border_radius=RADIUS_INPUT,
+        padding=ft.Padding.symmetric(horizontal=10, vertical=6),
+        visible=False,
+    )
 
 
 def _section_label(text: str) -> ft.Text:
