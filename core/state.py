@@ -958,12 +958,6 @@ class AppState:
             )
         )
         return self._download_task
-        self._download_task = asyncio.create_task(
-            self._run_downloads(
-                audio_format=audio_format, destination_dir=destination_dir
-            )
-        )
-        return self._download_task
 
     def cancel_downloads(self) -> None:
         """Marca la descarga en curso para que se detenga en la próxima pista."""
@@ -1069,10 +1063,13 @@ class AppState:
                         track.source_path = result.path
                         self.download_done.append(
                             {
+                                "id": track.id,
                                 "name": track.name,
                                 "artist": track.artist,
                                 "path": result.path,
                                 "video_id": result.video_id,
+                                "format": fmt,
+                                "duration_ms": track.duration_ms,
                             }
                         )
                     else:
