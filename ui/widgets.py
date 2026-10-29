@@ -488,3 +488,37 @@ def _status_icon(status: str) -> ft.Control:
     }
     ico, col = icons.get(status, (ft.Icons.RADIO_BUTTON_UNCHECKED, TEXT_DIM))
     return ft.Icon(ico, color=col, size=15)
+
+
+def open_external(page: ft.Page | None, url: str) -> None:
+    """Abre una URL externa resolviendo que ``ft.Page.launch_url`` es coroutine.
+
+    Programa ``page.launch_url(url)`` en el loop activo y usa ``webbrowser.open``
+    como fallback si no hay loop o si ``page`` no está disponible.
+    """
+    if not url:
+        return
+    result = None
+    try:
+        if page is not None and hasattr(page, "launch_url"):
+            result = page.launch_url(url)
+    except Exception:
+        result = None
+    if asyncio.iscoroutine(result):
+        try:
+            asyncio.get_running_loop().create_task(result)
+            return
+        except RuntimeError:
+            try:
+                result.close()
+            except Exception:
+                pass
+    elif result is not None:
+        return
+    try:
+        import webbrowser
+
+        webbrowser.open(url)
+    except Exception:
+        pass
+

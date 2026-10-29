@@ -24,7 +24,7 @@ from ui.tokens import (
     ACCENT, BG_HOVER, BG_LIST, BG_SURFACE, BORDER_LIGHT, BORDER_MUTED, BORDER_ROW,
     SKELETON_DARK, TEXT_DIM, TEXT_MUTED, TEXT_PRIMARY,
 )
-from ui.widgets import _ghost_btn, _primary_btn, app_text, notify
+from ui.widgets import _ghost_btn, _primary_btn, app_text, notify, open_external
 
 
 class PlaylistDetailView(ft.Container):
@@ -130,37 +130,8 @@ class PlaylistDetailView(ft.Container):
         )
 
     def _launch(self, url: str) -> None:
-        """Abre URL externa. ft.Page.launch_url es coroutine: hay que schedulearla.
-
-        Llamarla sync devuelve coroutine 'never awaited' y no abre nada.
-        Se schedulean con create_task y fallback a webbrowser si no hay loop.
-        """
-        if not url:
-            return
-        page = getattr(self, "_page_ref", None)
-        result = None
-        try:
-            if page is not None and hasattr(page, "launch_url"):
-                result = page.launch_url(url)
-        except Exception:
-            result = None
-        if asyncio.iscoroutine(result):
-            try:
-                asyncio.get_running_loop().create_task(result)
-                return
-            except RuntimeError:
-                try:
-                    result.close()
-                except Exception:
-                    pass
-        elif result is not None:
-            return  # runtime sync que sí abrió
-        try:
-            import webbrowser  # fallback desktop
-
-            webbrowser.open(url)
-        except Exception:
-            pass
+        """Delega en ``ui.widgets.open_external``."""
+        open_external(getattr(self, "_page_ref", None), url)
 
     def _calc_detail_skeleton_count(self) -> int:
         """Cuántos LibrarySkeletonRow caben — espejo de main_ui._calc_skeleton_count.
