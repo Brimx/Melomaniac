@@ -1,5 +1,15 @@
 # Changelog
 
+## 4.8.0 — 2026-10-29 · Reproductor integrado, sesión de navegador y MPRIS
+
+> Versión de trabajo consolidada que incorpora el reproductor de audio nativo, derivación de sesiones de navegador en memoria y exposición D-Bus/MPRIS para el escritorio. Tag anterior: `v4.6.0`.
+
+- **Reproductor de audio integrado:** barra inferior persistente `PlayerBar` con `flet-audio` 1.0.5 (`FLET_DESKTOP_FLAVOR=full`), cola de reproducción reordenable `PlayQueue` y panel `PlayerQueuePanel`. Soporte de reproducción para FLAC, MP3, M4A, Opus y WAV. Control de volumen, mute, shuffle y modos repeat persistidos.
+- **Exposición MPRIS (D-Bus) en Linux:** nuevo servicio `services/mpris_service.py` (`org.mpris.MediaPlayer2.melomaniac`) que expone las interfaces estándar `MediaPlayer2` y `Player`. Permite control por teclas multimedia y widgets de escritorio (Caelestia/Quickshell, playerctl, Waybar, GNOME/KDE). Incluye señal `Seeked`, sincronización de estado, métodos de transporte y conversión de portadas locales en Data URIs a archivos en caché `config/cover_cache/embedded_{hash}.jpg` (`file:///...`).
+- **Sesión de navegador en memoria (Plan A):** `services/browser_session.py` resuelve sesiones activas de YouTube Music y Spotify directamente desde Firefox (copia en RAM de `cookies.sqlite`) y Chromium vía `yt-dlp`. Elimina la necesidad de exportar cookies manuales sin persistir `SAPISIDHASH` ni credenciales sensibles en disco.
+- **Módulo Config y portadas:** vista `ui/config_view.py` para preferencias de descargas, carpetas destino y caché de portadas. Cadena de resolución de portadas por álbum (`services/covers.py`) con CircuitBreaker dedicado y caché atómica.
+- **Biblioteca y Gestión:** integración de «Crear playlist» desde el detalle de carpetas locales en Biblioteca, selector de fuentes compacto y acciones de reproducción directa por pista en Biblioteca y Descargas.
+
 ## 4.7.0 — 2026-10-25 · Descargas de audio y mejoras de Biblioteca
 
 > Versión de trabajo que consolida los commits posteriores al tag `v4.6.0`.

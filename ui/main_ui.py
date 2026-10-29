@@ -1,6 +1,6 @@
 """
 ╔══════════════════════════════════════════════════════════════════════╗
-║                    Melomaniac v4.7.0                             ║
+║                    Melomaniac v4.8.0                             ║
 ║              Interfaz Principal de Usuario                           ║
 ╚══════════════════════════════════════════════════════════════════════╝
 
@@ -46,7 +46,7 @@ Componentes Principales:
     - Dialogs: Modales para errores y confirmaciones
 
 Autor: Melomaniac Team
-Versión: 4.7.0
+Versión: 4.8.0
 Fecha: 2026
 """
 
@@ -783,7 +783,7 @@ class PlaylistManagerUI(DialogMixin):
 
         # versión — IBM Plex Mono Light 300 (datos técnicos § Mono)
         self._rail_version_text = ft.Text(
-            "v4.7.0", size=8, color=TEXT_DIM,
+            "v4.8.0", size=8, color=TEXT_DIM,
             font_family=mono_family("light"),
             visible=True,
             height=RAIL_VERSION_H, no_wrap=True, max_lines=1,
@@ -861,6 +861,7 @@ class PlaylistManagerUI(DialogMixin):
             self._panel_biblioteca = ft.Container(expand=True, bgcolor=BG_LIST, alignment=ft.Alignment.CENTER,
                                                   content=self._make_cono_empty("Biblioteca", "Colección local, historial 20 y portadas — pronto.", visible=True))
         self._auto_play_download_ids: set[str] = set()
+        from services.mpris_service import MPRISService
         from ui.player_bar import PlayerBar
         from ui.player_queue import PlayerQueuePanel
 
@@ -869,6 +870,7 @@ class PlaylistManagerUI(DialogMixin):
             state,
             on_toggle_queue=lambda: self.player_queue.toggle(),
         )
+        self.player_bar.attach_mpris(MPRISService())
         self.player_queue = PlayerQueuePanel(page, self.player_bar)
         self.player_bar.log_audio_services_count("init")
         if hasattr(self, "_panel_biblioteca") and self._panel_biblioteca is not None:
@@ -1032,7 +1034,7 @@ class PlaylistManagerUI(DialogMixin):
                         ft.TextSpan("Melomaniac", ft.TextStyle(size=20,
                                                                color=TEXT_PRIMARY, font_family=brand_family("bold"))),
                     ], opacity=1.0),
-                    ft.Text("v4.7.0", size=9, color=TEXT_DIM, font_family=FONT_TEXT,
+                    ft.Text("v4.8.0", size=9, color=TEXT_DIM, font_family=FONT_TEXT,
                             style=ft.TextStyle(letter_spacing=0.8), opacity=1.0),
                 ], spacing=0, tight=True, expand=True),
                 self.btn_wizard,

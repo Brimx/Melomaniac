@@ -1,6 +1,6 @@
 """
 ╔══════════════════════════════════════════════════════════════════════╗
-║                    Melomaniac v4.7.0                                 ║
+║                    Melomaniac v4.8.0                                 ║
 ║              Motor de Descargas de Audio (yt-dlp)                    ║
 ╚══════════════════════════════════════════════════════════════════════╝
 
@@ -44,7 +44,7 @@ Concurrencia:
     el caller despacha a un hilo.
 
 Autor: Melomaniac Team
-Versión: 4.7.0
+Versión: 4.8.0
 """
 
 from __future__ import annotations

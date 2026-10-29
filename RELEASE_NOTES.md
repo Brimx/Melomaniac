@@ -1,8 +1,17 @@
 # Release Notes — Melomaniac
 
-Notas enfocadas en **qué cambió para el usuario**, no en detalles internos. La versión de trabajo documentada es `4.7.0`; el último tag publicado sigue siendo `v4.6.0`. El detalle técnico está en [`CHANGELOG.md`](CHANGELOG.md).
+Notas enfocadas en **qué cambió para el usuario**, no en detalles internos. La versión de trabajo documentada es `4.8.0`; el último tag publicado sigue siendo `v4.6.0`. El detalle técnico está en [`CHANGELOG.md`](CHANGELOG.md).
 
 ---
+
+## v4.8.0 — Reproductor integrado, sesión de navegador y MPRIS (2026-10-29)
+
+**Novedades:**
+- **Reproductor de audio nativo:** barra inferior interactiva con reproducción de audio local (FLAC, MP3, M4A, Opus, WAV), barra de progreso con arrastre (scrubbing), control de volumen, mute, cola de reproducción reordenable y modos de repetición/aleatorio.
+- **Integración con el escritorio Linux (MPRIS):** soporte completo para widgets de sistema (Caelestia, Quickshell, Waybar, KDE, GNOME, playerctl) y teclas multimedia físicas, con actualización de metadatos, posición en tiempo real y carátulas.
+- **Detección de sesión desde el navegador:** conecta automáticamente tu cuenta de YouTube Music y Spotify leyendo las cookies seguras de Firefox o Chromium sin necesidad de exportar archivos JSON manualmente.
+- **Módulo Config dedicado:** interfaz para personalizar la carpeta de descargas, formato de audio predeterminado, opciones de carátulas online y limpieza de almacenamiento en caché.
+- **Creación de playlists desde carpetas locales:** botón en el detalle de Biblioteca para llevar cualquier carpeta de tu disco a Gestión y transferirla a Spotify, Apple Music o YouTube Music.
 
 ## v4.7.0 — Descargas de audio y mejoras de Biblioteca (2026-10-25)
 

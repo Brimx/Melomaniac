@@ -111,7 +111,7 @@ COVER_ITUNES_INTERVAL: float = 1.0
 COVER_DEEZER_INTERVAL: float = 0.5
 # MusicBrainz exige 1 req/s y un User-Agent propio identificable.
 COVER_MUSICBRAINZ_INTERVAL: float = 1.1
-COVER_USER_AGENT: str = "Melomaniac/4.7.0 ( https://github.com/Brimx/Melomaniac )"
+COVER_USER_AGENT: str = "Melomaniac/4.8.0 ( https://github.com/Brimx/Melomaniac )"
 # Umbral de coincidencia de álbum/artista del proveedor contra el Track.
 COVER_ALBUM_MIN_RATIO: int = 80
 COVER_ARTIST_MIN_RATIO: int = 70

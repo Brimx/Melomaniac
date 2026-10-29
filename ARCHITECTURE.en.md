@@ -1,8 +1,8 @@
-# Melomaniac v4.7.0 — Architecture
+# Melomaniac v4.8.0 — Architecture
 
 Melomaniac separates the Flet UI, application state, platform services, and metadata normalization/matching engine. The current version supports YouTube Music, Apple Music, Spotify, and two local inputs: file and pasted text.
 
-The documented working version is `4.7.0`. This version adds audio downloads with `yt-dlp`, along with post-`v4.6.0` authentication and Library fixes.
+The documented working version is `4.8.0`. This version consolidates the integrated player, browser session detection, audio downloads with `yt-dlp`, and MPRIS desktop integration on Linux.
 
 ## Layers and dependencies
 

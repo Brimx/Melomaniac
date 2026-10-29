@@ -5,6 +5,7 @@ cffi==2.1.1
 charset-normalizer==3.4.9
 colorama==0.4.6
 curl_cffi==0.16.0
+dbus-next==0.2.3
 dnspython==2.8.0
 flet==1.0.5
 flet-desktop==1.0.5

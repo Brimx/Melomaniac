@@ -1,4 +1,4 @@
-# 🎵 Melomaniac v4.7.0
+# 🎵 Melomaniac v4.8.0
 
 **Your music. Your library. Your way.**
 
@@ -11,7 +11,7 @@
 
 Melomaniac is a desktop application for rebuilding playlists between **YouTube Music, Apple Music, and Spotify**. It can also import a local playlist or a single audio file, find each track on the destination, and create a new playlist.
 
-The documented working version is `4.7.0`. Changes in this version are summarized in [`CHANGELOG.md`](CHANGELOG.md).
+The documented working version is `4.8.0`. Changes in this version are summarized in [`CHANGELOG.md`](CHANGELOG.md).
 
 Matching combines metadata normalization, RapidFuzz, title/artist similarity, duration, explicit metadata, and ISRC when available. Uncertain results are preserved in the Post-Mortem view for review.
 
@@ -214,7 +214,7 @@ Melomaniac is not affiliated with, sponsored by, or endorsed by Spotify, Apple, 
 
 ## Status and license
 
-The documented version is `4.7.0` on the `main` branch. This is a personal-use project; each platform and its APIs are subject to their own terms of service.
+The documented version is `4.8.0` on the `main` branch. This is a personal-use project; each platform and its APIs are subject to their own terms of service.
 
 ## Thanks
 
