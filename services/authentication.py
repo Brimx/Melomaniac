@@ -7,15 +7,15 @@ no legacy root-level paths are consulted.
 
 from __future__ import annotations
 
-import asyncio
+import hashlib
 import json
 import re
+import time
 from pathlib import Path
 
-import requests
 from dotenv import dotenv_values, load_dotenv, set_key
 
-from core.config import APPLE_API_BASE, PLATFORM_ORDER
+from core.config import PLATFORM_ORDER
 
 PROJECT_DIR = Path(__file__).resolve().parent.parent
 CONFIG_DIR = PROJECT_DIR / "config"
@@ -55,22 +55,47 @@ def load_runtime_env(*, override: bool = False) -> None:
     load_dotenv(str(ENV_FILE), override=override)
 
 
+def _recalc_sapisidhash_from_cookie(raw_cookie: str) -> str:
+    """Recalcula ``SAPISIDHASH`` desde ``SAPISID`` o ``__Secure-3PAPISID`` en memoria."""
+    cookies: dict[str, str] = {}
+    for chunk in str(raw_cookie or "").split(";"):
+        piece = chunk.strip()
+        if not piece or "=" not in piece:
+            continue
+        k, _, v = piece.partition("=")
+        cookies[k.strip()] = v.strip()
+    sapisid = cookies.get("SAPISID") or cookies.get("__Secure-3PAPISID") or ""
+    if not sapisid:
+        return ""
+    ts = int(time.time())
+    digest = hashlib.sha1(f"{ts} {sapisid} https://music.youtube.com".encode("utf-8")).hexdigest()
+    return f"SAPISIDHASH {ts}_{digest}"
+
+
 def read_browser_json() -> dict:
-    """Return parsed YouTube headers, or an empty mapping if unavailable."""
+    """Return parsed YouTube headers, recalculating SAPISIDHASH from Cookie and ignoring legacy saved Authorization."""
     if not BROWSER_JSON.exists():
         return {}
     try:
-        return json.loads(BROWSER_JSON.read_text(encoding="utf-8"))
+        data = json.loads(BROWSER_JSON.read_text(encoding="utf-8"))
+        if not isinstance(data, dict):
+            return {}
+        data.pop("Authorization", None)
+        raw_cookie = str(data.get("Cookie", "") or "").strip()
+        if raw_cookie:
+            recalc = _recalc_sapisidhash_from_cookie(raw_cookie)
+            if recalc:
+                data["Authorization"] = recalc
+        return data
     except (json.JSONDecodeError, OSError):
         return {}
 
 
-def write_browser_json(authorization: str, cookie: str) -> None:
-    """Write the spec-compliant YouTube browser headers file."""
+def write_browser_json(authorization: str = "", cookie: str = "") -> None:
+    """Write the YouTube browser headers file without persisting SAPISIDHASH."""
     ensure_config_dir()
     data = {
         "Accept": BROWSER_JSON_FIXED["Accept"],
-        "Authorization": authorization.strip(),
         "Content-Type": BROWSER_JSON_FIXED["Content-Type"],
         "X-Goog-AuthUser": BROWSER_JSON_FIXED["X-Goog-AuthUser"],
         "x-origin": BROWSER_JSON_FIXED["x-origin"],
@@ -128,6 +153,7 @@ def write_spotify_cookies(identifier: str, sp_dc: str, sp_key: str) -> None:
 class AuthFailureCode:
     """Stable authentication failure codes consumed by the UI."""
 
+    NO_CREDENTIALS = "NO_CREDENTIALS"
     YT_EXPIRED = "YT_EXPIRED"
     YT_FORBIDDEN = "YT_FORBIDDEN"
     YT_RATE_LIMITED = "YT_RATE_LIMITED"
@@ -145,6 +171,7 @@ class PreFlightResult:
         self.error = ""
         self.expired = False
         self.code = ""
+        self.source = ""
 
     def __repr__(self) -> str:
         status = "OK" if self.ok else f"FAIL({'EXPIRED' if self.expired else self.error[:30]})"
@@ -164,143 +191,94 @@ def youtube_http_status(error: BaseException | str) -> int | None:
     return int(match.group(1)) if match else None
 
 
-def youtube_preflight_result(ok: bool, error: str = "") -> PreFlightResult:
-    """Map a YouTube probe result without treating transient errors as expiry."""
-    result = PreFlightResult("YouTube Music")
+def preflight_result(platform: str, ok: bool, error: str = "", source: str = "") -> PreFlightResult:
+    """Map a platform probe result preserving 401/403/429 and AuthFailureCode."""
+    result = PreFlightResult(platform)
     result.ok = ok
+    result.source = source
     if ok:
         return result
-    result.error = error or "No se pudo validar YouTube Music"
-    status = youtube_http_status(error)
-    if status == 401 or (
-        status is None
-        and any(word in result.error.lower() for word in ("unauthorized", "sign in", "login"))
+
+    raw_error = str(error or "").strip()
+    lower = raw_error.lower()
+
+    if any(
+        term in lower
+        for term in (
+            "missing credentials",
+            "no credentials",
+            "missing config/",
+            "sin sesión en navegador",
+            "missing",
+            "falta sp_dc",
+            "falta identifier",
+            "falta authorization",
+        )
     ):
-        result.code = AuthFailureCode.YT_EXPIRED
+        result.code = AuthFailureCode.NO_CREDENTIALS
         result.expired = True
-        result.error = (
-            "401 — sesión de YouTube Music rechazada"
-            if status == 401
-            else "YouTube Music pide iniciar sesión de nuevo"
-        )
-    elif status == 403:
-        result.code = AuthFailureCode.YT_FORBIDDEN
-        result.error = f"403 — YouTube Music rechazó la solicitud: {error[:160]}"
-    elif status == 429:
-        result.code = AuthFailureCode.YT_RATE_LIMITED
-        result.error = f"429 — límite de solicitudes de YouTube Music: {error[:160]}"
-    elif any(term in result.error.lower() for term in (
-        "missing config/browser.json", "falta authorization", "no comienza con",
-        "cookie is missing", "cookie missing", "invalid cookie",
-    )):
-        result.code = AuthFailureCode.YT_EXPIRED
-        result.expired = True
-    else:
-        result.code = AuthFailureCode.YT_CHECK_FAILED
-    return result
-
-
-def _apple_403_error(response) -> str:
-    """Extract Apple API diagnostics from a 403 response."""
-    detail = ""
-    try:
-        errors = response.json().get("errors", [])
-        if errors:
-            detail = f"{errors[0].get('code', '')} {errors[0].get('title', '')}".strip()
-    except Exception:  # pylint: disable=broad-exception-caught
-        detail = (response.text or "")[:120]
-    retry_after = (response.headers.get("Retry-After") or "").strip()
-    message = "403 — amp-api bloquea este token"
-    if detail:
-        message += f" · {detail}"
-    if retry_after:
-        message += f" · Retry-After: {retry_after}"
-    return message
-
-
-def _preflight_apple() -> PreFlightResult:
-    result = PreFlightResult("Apple Music")
-    env = read_env_values()
-    bearer = env.get("APPLE_AUTH_BEARER", "").strip()
-    user_token = env.get("APPLE_MUSIC_USER_TOKEN", "").strip()
-    if not bearer or not user_token:
-        result.error = "APPLE_AUTH_BEARER or APPLE_MUSIC_USER_TOKEN missing"
+        result.error = raw_error or f"Sin credenciales para {platform}"
         return result
 
-    headers = {
-        "Authorization": bearer if bearer.startswith("Bearer ") else f"Bearer {bearer}",
-        "media-user-token": user_token,
-        "x-apple-music-user-token": user_token,
-        "Origin": "https://music.apple.com",
-        "Referer": "https://music.apple.com/",
-        "Accept": "application/json",
-    }
-    try:
-        response = requests.get(f"{APPLE_API_BASE}/me/storefront", headers=headers, timeout=8)
-        if response.status_code == 401:
-            result.expired = True
-            result.code = AuthFailureCode.APPLE_EXPIRED
-            result.error = "401 — Apple Music token expired"
-            return result
-        if response.status_code == 403:
-            result.code = AuthFailureCode.APPLE_EXPIRED
-            result.error = _apple_403_error(response)
-            return result
-        if response.status_code != 200:
-            result.error = f"Unexpected HTTP {response.status_code}"
-            return result
+    status = youtube_http_status(raw_error)
 
-        storefront = response.json().get("data", [{}])[0].get("id", "us")
-        catalog = requests.get(
-            f"https://api.music.apple.com/v1/catalog/{storefront}/search",
-            params={"term": "a", "types": "songs", "limit": 1},
-            headers=headers,
-            timeout=8,
-        )
-        if catalog.status_code == 401:
+    if platform == "YouTube Music":
+        result.error = raw_error or "No se pudo validar YouTube Music"
+        if status == 401 or (
+            status is None
+            and any(word in lower for word in ("unauthorized", "sign in", "login"))
+        ):
+            result.code = AuthFailureCode.YT_EXPIRED
             result.expired = True
-            result.code = AuthFailureCode.APPLE_EXPIRED
-            result.error = "401 — catálogo rechazó media-user-token"
-        elif catalog.status_code == 200:
-            result.ok = True
+            result.error = (
+                "401 — sesión de YouTube Music rechazada"
+                if status == 401
+                else "YouTube Music pide iniciar sesión de nuevo"
+            )
+        elif status == 403:
+            result.code = AuthFailureCode.YT_FORBIDDEN
+            result.error = f"403 — YouTube Music rechazó la solicitud: {raw_error[:160]}"
+        elif status == 429:
+            result.code = AuthFailureCode.YT_RATE_LIMITED
+            result.error = f"429 — límite de solicitudes de YouTube Music: {raw_error[:160]}"
+        elif any(
+            term in lower
+            for term in (
+                "no comienza con",
+                "cookie is missing",
+                "cookie missing",
+                "invalid cookie",
+            )
+        ):
+            result.code = AuthFailureCode.YT_EXPIRED
+            result.expired = True
         else:
-            result.code = AuthFailureCode.APPLE_EXPIRED
-            result.error = f"Catálogo HTTP {catalog.status_code}"
-    except requests.RequestException as exc:
-        result.error = str(exc)
-    return result
-
-
-def _preflight_spotify() -> PreFlightResult:
-    result = PreFlightResult("Spotify")
-    spotify = read_spotify_cookies()
-    cookies = spotify.get("cookies", {})
-    if isinstance(cookies, str):
-        cookies = {}
-    if not spotify.get("identifier") or not cookies.get("sp_dc") or not cookies.get("sp_key"):
-        result.error = "config/spotify_cookies.json: falta identifier, sp_dc o sp_key"
-        result.expired = True
+            result.code = AuthFailureCode.YT_CHECK_FAILED
         return result
-    try:
-        from spotapi import Config, Login  # pylint: disable=import-outside-toplevel
-        from spotapi.utils.logger import NoopLogger  # pylint: disable=import-outside-toplevel
 
-        login = Login.from_cookies(spotify, Config(logger=NoopLogger()))
-        if not login.logged_in:
-            result.error = "cookies inválidas (login falló)"
+    if platform == "Apple Music":
+        result.error = raw_error or "No se pudo validar Apple Music"
+        if status in (401, 403) or any(w in lower for w in ("401", "403", "expired", "token")):
+            result.code = AuthFailureCode.APPLE_EXPIRED
             result.expired = True
-            return result
-        result.ok = True
-    except Exception as exc:  # pylint: disable=broad-exception-caught
-        message = str(exc).lower()
-        result.code = AuthFailureCode.SPOTIFY_EXPIRED
-        result.expired = True
-        result.error = (
-            "401 — cookies expiradas o inválidas"
-            if any(word in message for word in ("401", "unauthorized", "invalid", "cookie", "login"))
-            else str(exc)[:200]
-        )
+        return result
+
+    if platform == "Spotify":
+        result.error = raw_error or "No se pudo validar Spotify"
+        if status in (401, 403) or any(
+            w in lower for w in ("401", "403", "unauthorized", "invalid", "cookie", "login", "libraryv3", "falló")
+        ):
+            result.code = AuthFailureCode.SPOTIFY_EXPIRED
+            result.expired = True
+        return result
+
+    result.error = raw_error or f"No se pudo validar {platform}"
     return result
+
+
+def youtube_preflight_result(ok: bool, error: str = "") -> PreFlightResult:
+    """Alias compatible que delega en ``preflight_result('YouTube Music', ...)``."""
+    return preflight_result("YouTube Music", ok, error)
 
 
 def auth_failure_tooltip(result: PreFlightResult) -> str:
@@ -311,44 +289,12 @@ def auth_failure_tooltip(result: PreFlightResult) -> str:
         tag = f"[{result.code}] " if result.code else ""
         return f"{tag}YouTube Music · {result.error}"[:500]
     hints = {
-        "YouTube Music": "config/browser.json: Cookie + Authorization (SAPISIDHASH)",
-        "Apple Music": "config/.env: APPLE_AUTH_BEARER + APPLE_MUSIC_USER_TOKEN",
-        "Spotify": "config/spotify_cookies.json: identifier + sp_dc + sp_key",
+        "YouTube Music": "Inicia sesión en el navegador o revisa config/browser.json",
+        "Apple Music": "Inicia sesión en el navegador o revisa config/.env",
+        "Spotify": "Inicia sesión en el navegador o revisa config/spotify_cookies.json",
     }
     tag = f"[{result.code}] " if result.code else ""
     return f"{tag}{hints.get(result.platform, result.platform)} · {result.error}"[:500]
-
-
-async def run_preflight(platforms: list[str] | None = None) -> list[PreFlightResult]:
-    """Run Apple Music and Spotify checks concurrently in platform order.
-
-    YouTube Music is checked by AuthManager through MusicApiService so the
-    probe shares the production client and request path.
-    """
-    checks = {
-        "Apple Music": _preflight_apple,
-        "Spotify": _preflight_spotify,
-    }
-    wanted = set(platforms) if platforms is not None else None
-    selected = [
-        platform for platform in PLATFORM_ORDER
-        if platform in checks and (wanted is None or platform in wanted)
-    ]
-    if not selected:
-        return []
-    results = await asyncio.gather(
-        *(asyncio.to_thread(checks[platform]) for platform in selected),
-        return_exceptions=True,
-    )
-    output: list[PreFlightResult] = []
-    for platform, result in zip(selected, results):
-        if isinstance(result, Exception):
-            failure = PreFlightResult(platform)
-            failure.error = str(result)
-            output.append(failure)
-        else:
-            output.append(result)
-    return output
 
 
 __all__ = [
@@ -357,6 +303,10 @@ __all__ = [
     "BROWSER_JSON",
     "SPOTIFY_COOKIES_JSON",
     "SEARCH_CACHE_JSON",
+    "SETTINGS_JSON",
+    "TRANSFER_HISTORY_JSONL",
+    "TRANSFER_REPORTS_DIR",
+    "BROWSER_JSON_FIXED",
     "ENV_KEYS_APPLE",
     "ENV_KEYS_ALL",
     "PLATFORM_ORDER",
@@ -365,13 +315,13 @@ __all__ = [
     "auth_failure_tooltip",
     "ensure_config_dir",
     "load_runtime_env",
+    "preflight_result",
     "read_browser_json",
     "write_browser_json",
     "read_env_values",
     "write_env_values",
     "read_spotify_cookies",
     "write_spotify_cookies",
-    "run_preflight",
     "youtube_http_status",
     "youtube_preflight_result",
 ]
