@@ -42,7 +42,7 @@ from ui.fonts import font_family_for, mono_family
 from ui.tokens import (
     BG_LIST, BG_HOVER, SKELETON_DARK,
     TEXT_PRIMARY, TEXT_MUTED, TEXT_DIM,
-    ACCENT, BG_SURFACE, BORDER_ROW,
+    ACCENT, SUCCESS, BG_SURFACE, BORDER_ROW,
     BG_INPUT, BORDER_LIGHT,
 )
 from ui.widgets import _status_icon, input_border
@@ -391,7 +391,17 @@ class SongRow(ft.Container):
         sin ser intrusivo.
     """
 
-    def __init__(self, track: Track, index: int, on_toggle: Callable[[str], None], on_move: Callable[[str, int], None] | None = None):
+    def __init__(
+        self,
+        track: Track,
+        index: int,
+        on_toggle: Callable[[str], None],
+        on_move: Callable[[str, int], None] | None = None,
+        on_download: Callable[[str], None] | None = None,
+        *,
+        download_busy: bool = False,
+        download_done: bool = False,
+    ):
         """
         Inicializa una fila de canción con todos sus componentes visuales.
         
@@ -401,11 +411,18 @@ class SongRow(ft.Container):
             on_toggle: Callback (track_id: str) -> None ejecutado al
                       cambiar el estado del checkbox.
             on_move: Callback opcional (track_id, new_index) para Nº editable §8 — subir/bajar vía teclado.
+            on_download: Callback opcional (track_id: str) -> None para descargar la pista.
+            download_busy: True si ya hay una cola de descarga activa.
+            download_done: True si la pista ya terminó de descargarse.
         """
         self.track      = track
         self._on_toggle = on_toggle
         self._on_move = on_move
+        self._on_download = on_download
         self._index = index
+        self._hovered: bool = False
+        self._download_busy: bool = bool(download_busy)
+        self._download_done: bool = bool(download_done)
         # Último estado pintado: permite refrescar solo lo que cambió.
         self._last_selected = track.selected
         self._last_album = track.album or "—"
@@ -528,8 +545,12 @@ class SongRow(ft.Container):
         # Estructura: [#] [Thumb] [Título/Artista] [Álbum] [Duración] [Estado] [✓]
 
         self._status_cell = ft.Container(
-            content=self._status_icon, width=26, alignment=ft.Alignment.CENTER,
+            content=self._status_icon,
+            width=26,
+            alignment=ft.Alignment.CENTER,
+            animate=ft.Animation(100, ft.AnimationCurve.EASE_OUT),
         )
+        self._sync_status_cell()
         row_content = ft.Row(
             controls=[
                 ft.Container(content=num_label, width=32, alignment=ft.Alignment.CENTER),
@@ -561,9 +582,39 @@ class SongRow(ft.Container):
             content=row_content,
         )
 
+    def _handle_download_click(self, _e=None) -> None:
+        if self._download_busy or self._on_download is None:
+            return
+        self._on_download(self.track.id)
+
+    def _sync_status_cell(self) -> None:
+        status = self.track.transfer_status
+        transfer_active = status in ("searching", "transferred", "not_found", "error", "revision_necesaria")
+        if self._download_done:
+            self._status_cell.content = ft.Icon(ft.Icons.CHECK_CIRCLE_OUTLINE, color=SUCCESS, size=15)
+            self._status_cell.tooltip = "Descargada"
+            self._status_cell.on_click = None
+            return
+        if self._hovered and self._on_download is not None and not transfer_active:
+            self._status_cell.content = ft.Icon(
+                ft.Icons.DOWNLOAD_ROUNDED,
+                color=TEXT_DIM if self._download_busy else ACCENT,
+                size=16,
+            )
+            self._status_cell.tooltip = (
+                "Descarga en curso" if self._download_busy else "Descargar canción"
+            )
+            self._status_cell.on_click = (
+                None if self._download_busy else self._handle_download_click
+            )
+            return
+        self._status_cell.content = _status_icon(status)
+        self._status_cell.tooltip = None
+        self._status_cell.on_click = None
+
     def _on_hover(self, e: ft.HoverEvent) -> None:
         """
-        Maneja el evento de hover cambiando el color de fondo.
+        Maneja el evento de hover cambiando el color de fondo y la celda de acción.
         
         Proporciona feedback visual sutil al pasar el cursor sobre la fila.
         La animación de 100ms (definida en __init__) suaviza la transición.
@@ -571,10 +622,20 @@ class SongRow(ft.Container):
         Args:
             e: Evento de hover con data "true" (entrando) o "false" (saliendo).
         """
-        self.bgcolor = BG_HOVER if e.data == "true" else BG_LIST
+        hovered = e.data == "true" or e.data is True
+        self._hovered = hovered
+        self.bgcolor = BG_HOVER if hovered else BG_LIST
+        self._sync_status_cell()
         self.update()
 
-    def refresh(self, track: Track, notify: bool = True) -> bool:
+    def refresh(
+        self,
+        track: Track,
+        notify: bool = True,
+        *,
+        download_busy: bool | None = None,
+        download_done: bool | None = None,
+    ) -> bool:
         """
         Actualiza la fila con nuevos datos del track.
 
@@ -586,11 +647,14 @@ class SongRow(ft.Container):
             track: Instancia actualizada de Track.
             notify: Si es True publica el cambio de esta fila. Los llamadores
                 que actualizan muchas filas pueden pasar False y agrupar.
+            download_busy: Si no es None, actualiza el bloqueo de descarga en curso.
+            download_done: Si no es None, actualiza si la pista ya fue descargada.
 
         Returns:
             True si algún campo visual cambió.
         """
         dirty = False
+        self.track = track
 
         if self._last_selected != track.selected:
             self._last_selected = track.selected
@@ -603,12 +667,22 @@ class SongRow(ft.Container):
             self._album_text.value = album
             dirty = True
 
-        if self._last_status != track.transfer_status:
+        status_changed = self._last_status != track.transfer_status
+        if status_changed:
             self._last_status = track.transfer_status
-            self._status_cell.content = _status_icon(track.transfer_status)
+
+        busy_changed = download_busy is not None and self._download_busy != bool(download_busy)
+        if busy_changed:
+            self._download_busy = bool(download_busy)
+
+        done_changed = download_done is not None and self._download_done != bool(download_done)
+        if done_changed:
+            self._download_done = bool(download_done)
+
+        if status_changed or busy_changed or done_changed:
+            self._sync_status_cell()
             dirty = True
 
-        self.track = track
         if dirty and notify:
             self.update()
         return dirty
