@@ -23,7 +23,16 @@ from ui.tokens import (
     OVERLAY_06, OVERLAY_08, OVERLAY_10, OVERLAY_14, OVERLAY_18,
     WARN_BG, WARN_BORDER,
 )
-from ui.widgets import DialogMixin, dialog_action
+from ui.widgets import (
+    DialogMixin,
+    _ghost_btn,
+    _primary_btn,
+    app_text,
+    dialog_action,
+    open_external,
+    organize_dropdown,
+)
+from services import browser_session
 from services.authentication import (
     ENV_KEYS_APPLE,
     PreFlightResult,
@@ -37,10 +46,21 @@ from services.authentication import (
 
 # ── Platform order and tab metadata (single source of truth) ───────────
 PLATFORM_TAB_META = {
-
     "YouTube Music": (ft.Icons.MUSIC_VIDEO, ft.Icons.WARNING_AMBER_ROUNDED),
     "Apple Music":   (ft.Icons.APPLE, ft.Icons.WARNING_AMBER_ROUNDED),
     "Spotify":       (ft.Icons.MUSIC_NOTE, ft.Icons.WARNING_AMBER_ROUNDED),
+}
+
+PLATFORM_LOGIN_URLS = {
+    "YouTube Music": "https://music.youtube.com",
+    "Apple Music":   "https://music.apple.com",
+    "Spotify":       "https://open.spotify.com",
+}
+
+PLATFORM_MANUAL_LABELS = {
+    "YouTube Music": "config/browser.json",
+    "Apple Music":   "config/.env",
+    "Spotify":       "config/spotify_cookies.json",
 }
 
 # ── Declarative wizard field and instruction definitions ──────────────
@@ -158,6 +178,9 @@ class ConfigWizard(DialogMixin):
         self._yt_fields: dict[str, ft.TextField] = {}
         self._am_fields: dict[str, ft.TextField] = {}
         self._sp_fields: dict[str, ft.TextField] = {}
+        self._results_by_platform: dict[str, PreFlightResult] = {}
+        self._status_rows: dict[str, ft.Row] = {}
+        self._source_dropdowns: dict[str, ft.Dropdown] = {}
 
         # Save controls
         self._save_button: Optional[ft.TextButton] = None
@@ -196,6 +219,9 @@ class ConfigWizard(DialogMixin):
         self._yt_fields = {}
         self._am_fields = {}
         self._sp_fields = {}
+        self._results_by_platform = {}
+        self._status_rows = {}
+        self._source_dropdowns = {}
         self._save_button = None
         self._save_error = None
 
@@ -368,6 +394,8 @@ class ConfigWizard(DialogMixin):
             self._dlg = None
 
         self._reset_state()
+        for result in (results or []):
+            self._results_by_platform[result.platform] = result
         self._failed_platforms = {
             result.platform
             for result in (results or [])
@@ -666,6 +694,179 @@ class ConfigWizard(DialogMixin):
             controls.append(control)
         return controls
 
+    def _current_source_info(self, platform: str) -> tuple[bool, str, str]:
+        """Devuelve ``(ok, source, error)`` actual de la plataforma."""
+        res = self._results_by_platform.get(platform)
+        svc = getattr(self._auth_manager, "service", None)
+        attr_map = {
+            "YouTube Music": ("youtube_session_source", "youtube_auth_error"),
+            "Apple Music":   ("apple_session_source", "apple_auth_error"),
+            "Spotify":       ("spotify_session_source", "spotify_auth_error"),
+        }
+        src_attr, err_attr = attr_map.get(platform, ("", ""))
+        svc_src = str(getattr(svc, src_attr, "") or "") if svc else ""
+        svc_err = str(getattr(svc, err_attr, "") or "") if svc else ""
+        if res is not None:
+            return (res.ok, res.source or svc_src, res.error or svc_err)
+        st = getattr(self._auth_manager, "state", None)
+        ok = bool(st.auth_session_ok.get(platform, False)) if st else bool(svc_src)
+        return (ok, svc_src, svc_err)
+
+    def _set_preferred_source(self, platform: str, value: Optional[str]) -> None:
+        svc = getattr(self._auth_manager, "service", None)
+        if svc is None:
+            return
+        pref = None if not value or value == "__auto__" else value
+        if platform == "YouTube Music":
+            svc.youtube_preferred_source = pref
+        elif platform == "Apple Music":
+            svc.apple_preferred_source = pref
+        elif platform == "Spotify":
+            svc.spotify_preferred_source = pref
+
+    def _update_status_row(self, platform: str) -> None:
+        row = self._status_rows.get(platform)
+        if row is None:
+            return
+        ok, source, error = self._current_source_info(platform)
+        icon_ctrl = row.controls[0]
+        text_ctrl = row.controls[1]
+        if ok:
+            icon_ctrl.icon = ft.Icons.CHECK_CIRCLE_OUTLINE
+            icon_ctrl.color = SUCCESS
+            src_label = source or "sesión activa"
+            text_ctrl.value = f"Verificado con {src_label}"
+            text_ctrl.color = SUCCESS
+        else:
+            icon_ctrl.icon = ft.Icons.WARNING_AMBER_ROUNDED
+            icon_ctrl.color = WARNING
+            text_ctrl.value = error or "Sesión no verificada — inicia sesión en el navegador y pulsa Reintentar"
+            text_ctrl.color = WARNING
+
+    def _on_retry_platform(self, platform: str) -> None:
+        dd = self._source_dropdowns.get(platform)
+        if dd is not None:
+            self._set_preferred_source(platform, dd.value)
+
+        async def _run() -> None:
+            browser_session.clear_cache()
+            results = await self._auth_manager.check_sessions([platform])
+            self._auth_manager.ingest_preflight_results(results)
+            for r in results:
+                self._results_by_platform[r.platform] = r
+                if r.ok:
+                    self._failed_platforms.discard(r.platform)
+                else:
+                    self._failed_platforms.add(r.platform)
+            self._update_status_row(platform)
+            self._apply_tab_selection(self._active_tab_idx)
+
+        try:
+            asyncio.create_task(_run())
+        except RuntimeError:
+            pass
+
+    def _build_browser_session_header(
+        self,
+        platform: str,
+        advanced_body: ft.Control,
+    ) -> list[ft.Control]:
+        """Construye selector de origen, línea de estado, botones y sección Avanzado plegable."""
+        profiles = browser_session.detect()
+        manual_key = PLATFORM_MANUAL_LABELS[platform]
+        options: list[tuple[str, str]] = [("__auto__", "Automático (navegador primero)")]
+        for prof in profiles:
+            options.append((prof.label, prof.label))
+        options.append((manual_key, f"Manual ({manual_key})"))
+
+        ok, active_src, _ = self._current_source_info(platform)
+        option_keys = {k for k, _ in options}
+        default_val = active_src if (ok and active_src in option_keys) else "__auto__"
+
+        dd = organize_dropdown(
+            options=options,
+            value=default_val,
+            label="Origen de sesión",
+            width=320,
+        )
+        dd.on_select = lambda e, p=platform: self._set_preferred_source(p, e.control.value)
+        self._source_dropdowns[platform] = dd
+
+        status_icon = ft.Icon(ft.Icons.INFO_OUTLINED, size=15, color=TEXT_MUTED)
+        status_text = app_text("", size=11, color=TEXT_MUTED, expand=True)
+        status_row = ft.Row(
+            controls=[status_icon, status_text],
+            spacing=6,
+            vertical_alignment=ft.CrossAxisAlignment.CENTER,
+        )
+        self._status_rows[platform] = status_row
+        self._update_status_row(platform)
+
+        login_url = PLATFORM_LOGIN_URLS[platform]
+        actions_row = ft.Row(
+            controls=[
+                _primary_btn(
+                    "Abrir y iniciar sesión",
+                    ft.Icons.OPEN_IN_BROWSER,
+                    lambda _e, u=login_url: open_external(self.page, u),
+                    height=38,
+                ),
+                _ghost_btn(
+                    "Reintentar",
+                    ft.Icons.REFRESH,
+                    lambda _e, p=platform: self._on_retry_platform(p),
+                    height=38,
+                ),
+            ],
+            spacing=8,
+            wrap=True,
+        )
+
+        unsupported = browser_session.unsupported_browsers()
+        controls: list[ft.Control] = [
+            dd,
+            ft.Container(
+                content=status_row,
+                bgcolor=OVERLAY_08,
+                border=ft.Border.all(0.8, OVERLAY_14),
+                border_radius=8,
+                padding=ft.Padding.symmetric(horizontal=10, vertical=8),
+            ),
+            actions_row,
+        ]
+        if unsupported:
+            controls.append(
+                self._fixed_note(
+                    f"Navegadores en Flatpak/Snap no soportados por yt-dlp: {', '.join(unsupported)}. "
+                    "Usa Firefox o el modo Avanzado."
+                )
+            )
+
+        adv_container = ft.Container(content=advanced_body, visible=False, padding=ft.Padding.only(top=6))
+        adv_icon = ft.Icon(ft.Icons.EXPAND_MORE, size=16, color=TEXT_MUTED)
+        adv_label = app_text("Avanzado (credenciales manuales)", size=11, color=TEXT_MUTED, font_family=FONT_HEADLINE)
+
+        def _toggle_adv(_e: ft.ControlEvent) -> None:
+            adv_container.visible = not adv_container.visible
+            adv_icon.icon = ft.Icons.EXPAND_LESS if adv_container.visible else ft.Icons.EXPAND_MORE
+            self._safe_dialog_update()
+
+        adv_header = ft.Container(
+            content=ft.Row(
+                controls=[adv_icon, adv_label],
+                spacing=6,
+                vertical_alignment=ft.CrossAxisAlignment.CENTER,
+            ),
+            bgcolor=OVERLAY_06,
+            border=ft.Border.all(0.8, OVERLAY_14),
+            border_radius=8,
+            padding=ft.Padding.symmetric(horizontal=10, vertical=8),
+            ink=True,
+            on_click=_toggle_adv,
+        )
+        controls.extend([adv_header, adv_container])
+        return controls
+
     # ── Tab 0: YouTube Music (editable) ───────────────────────────────
 
     def _panel_youtube(self, warn: bool = False) -> ft.Container:
@@ -676,21 +877,19 @@ class ConfigWizard(DialogMixin):
             bj,
             self._yt_fields,
         )
-        controls: list[ft.Control] = []
-        if warn:
-            controls.append(self._warn_banner(
-                "Token expirado. Actualiza Authorization y Cookie desde "
-                "music.youtube.com → DevTools → Network."
-            ))
-        controls.extend([
+        adv_controls: list[ft.Control] = [
             self._instructions_box(YOUTUBE_INSTRUCTIONS),
             self._section("BROWSER.JSON — CAMPOS VARIABLES"),
             *fields,
             self._fixed_note(
                 "Los campos fijos (Accept, Content-Type, X-Goog-AuthUser, x-origin) "
-                "se escriben automáticamente."
+                "se escriben automáticamente; SAPISIDHASH se recalcula en cada lectura."
             ),
-        ])
+        ]
+        controls = self._build_browser_session_header(
+            "YouTube Music",
+            ft.Column(controls=adv_controls, spacing=10),
+        )
         return ft.Container(
             content=ft.Column(
                 controls=controls,
@@ -706,26 +905,23 @@ class ConfigWizard(DialogMixin):
     def _panel_apple(self, warn: bool = False) -> ft.Container:
         env = read_env_values()
         self._am_fields = {}
-        controls: list[ft.Control] = []
-
-        if warn:
-            controls.append(self._warn_banner(
-                "Token expirado. Actualiza APPLE_AUTH_BEARER y APPLE_MUSIC_USER_TOKEN."
-            ))
-
-        controls.append(self._instructions_box(APPLE_INSTRUCTIONS))
-
-        controls.append(self._section("APPLE MUSIC — .env"))
-        controls.extend(self._build_field_controls(
-            APPLE_FIELD_SPECS,
-            env,
-            self._am_fields,
-        ))
-
-        controls.append(self._fixed_note(
-            'APPLE_AUTH_BEARER puede tener o no el prefijo "Bearer "; '
-            "la app lo normaliza automáticamente."
-        ))
+        adv_controls: list[ft.Control] = [
+            self._instructions_box(APPLE_INSTRUCTIONS),
+            self._section("APPLE MUSIC — .env"),
+            *self._build_field_controls(
+                APPLE_FIELD_SPECS,
+                env,
+                self._am_fields,
+            ),
+            self._fixed_note(
+                'APPLE_AUTH_BEARER puede tener o no el prefijo "Bearer "; '
+                "la app lo normaliza automáticamente."
+            ),
+        ]
+        controls = self._build_browser_session_header(
+            "Apple Music",
+            ft.Column(controls=adv_controls, spacing=10),
+        )
         return ft.Container(
             content=ft.Column(controls, spacing=10, scroll=ft.ScrollMode.AUTO),
             padding=ft.Padding.all(12),
@@ -750,21 +946,19 @@ class ConfigWizard(DialogMixin):
             values,
             self._sp_fields,
         )
-        controls: list[ft.Control] = []
-        if warn:
-            controls.append(self._warn_banner(
-                "Cookies expiradas. Actualiza identifier, sp_dc y sp_key desde "
-                "open.spotify.com → DevTools → Application."
-            ))
-        controls.extend([
+        adv_controls: list[ft.Control] = [
             self._instructions_box(SPOTIFY_INSTRUCTIONS),
             self._section("SPOTIFY_COOKIES.JSON — CAMPOS VARIABLES"),
             *fields,
             self._fixed_note(
-                "Solo se necesitan cookies para crear playlists; "
+                "Solo se necesitan cookies para crear playlists y leer tu biblioteca; "
                 "la búsqueda y el fetch de playlists públicas funcionan sin login."
             ),
-        ])
+        ]
+        controls = self._build_browser_session_header(
+            "Spotify",
+            ft.Column(controls=adv_controls, spacing=10),
+        )
         return ft.Container(
             content=ft.Column(
                 controls=controls,
