@@ -220,6 +220,23 @@ async def main(page: ft.Page) -> None:
             except Exception:  # pylint: disable=broad-exception-caught
                 pass
 
+            # Liberar reproductor de audio nativo (flet-audio)
+            try:
+                player_bar = getattr(app_inst, "player_bar", None)
+                if player_bar is not None and hasattr(player_bar, "release"):
+                    player_bar.release()
+                for svc in list(getattr(page, "services", []) or []):
+                    rel = getattr(svc, "release", None)
+                    if callable(rel):
+                        res = rel()
+                        if asyncio.iscoroutine(res):
+                            try:
+                                await asyncio.wait_for(res, timeout=0.3)
+                            except Exception:
+                                pass
+            except Exception:  # pylint: disable=broad-exception-caught
+                pass
+
             # Detener instancia de UI
             try:
                 app_inst.stop()

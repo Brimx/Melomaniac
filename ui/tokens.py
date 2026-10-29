@@ -74,6 +74,14 @@ RAIL_VERSION_H_COLLAPSED = 0.1
 RAIL_ANIM_MS      = 300
 RAIL_ITEM_ANIM_MS = 200
 
+# Medidas del reproductor integrado y panel de cola
+PLAYER_BAR_H            = 72
+PLAYER_THUMB_SIZE       = 44
+PLAYER_PROGRESS_H       = 4
+PLAYER_PROGRESS_ANIM_MS = RAIL_ITEM_ANIM_MS
+PLAYER_QUEUE_W          = 340
+PLAYER_QUEUE_ANIM_MS    = RAIL_ANIM_MS
+
 # Listas de selección en diálogos: se muestran por tramos para no construir
 # cientos de checkboxes de golpe. El buscador sigue filtrando el total.
 DIALOG_OPTION_LIMIT = 80
