@@ -1,5 +1,9 @@
 """
 ui/playlist_detail_view.py — Detalle playlist Biblioteca: header + Ver en plataforma + lista tracks bajo demanda
+
+Para playlists de plataforma ofrece «Descargar» (cola yt-dlp de ``AppState``).
+Para carpetas locales (``loader``) ofrece abrir la carpeta y quitarla de la
+Biblioteca.
 """
 
 from __future__ import annotations
@@ -9,20 +13,30 @@ from typing import Callable, Optional
 
 import flet as ft
 
+from core.config import LOCAL_LIBRARY_LABEL
 from core.library_models import PlaylistSummary
-from core.models import Track
+from core.models import Track, TransferState
+from engine.downloader import open_in_file_manager
+from services import settings_store
 from ui.fonts import FONT_HEADLINE, FONT_HEADLINE_BOLD, FONT_TEXT, font_family_for, mono_family
 from ui.song_row import ITEM_H, LibrarySkeletonRow
 from ui.tokens import (
     ACCENT, BG_HOVER, BG_LIST, BG_SURFACE, BORDER_LIGHT, BORDER_MUTED, BORDER_ROW,
     SKELETON_DARK, TEXT_DIM, TEXT_MUTED, TEXT_PRIMARY,
 )
-from ui.widgets import _ghost_btn, _primary_btn, app_text
+from ui.widgets import _ghost_btn, _primary_btn, app_text, notify
 
 
 class PlaylistDetailView(ft.Container):
-    def __init__(self, page: ft.Page, summary: PlaylistSummary, service, on_back: Callable[[], None]):
+    def __init__(self, page: ft.Page, summary: PlaylistSummary, service, on_back: Callable[[], None],
+                 app_state=None, loader: Optional[Callable] = None,
+                 on_remove: Optional[Callable[[], None]] = None,
+                 on_open_downloads: Optional[Callable[[], None]] = None):
         super().__init__(expand=True, bgcolor=BG_LIST)
+        self.app_state = app_state
+        self._loader = loader
+        self._on_open_downloads = on_open_downloads
+        self._is_local = summary.platform == LOCAL_LIBRARY_LABEL
         self._page_ref = page
         self.summary = summary
         self.service = service
@@ -45,9 +59,23 @@ class PlaylistDetailView(ft.Container):
 
         self._open_btn = _ghost_btn("Ver playlist en plataforma", ft.Icons.OPEN_IN_NEW, lambda e: self._launch(summary.external_url), width=260, height=40) if summary.external_url else ft.Container()
 
+        if self._is_local:
+            actions = [
+                _ghost_btn("Abrir carpeta", ft.Icons.FOLDER_OPEN, lambda e: self._open_folder(), height=40),
+                _ghost_btn("Quitar de la Biblioteca", ft.Icons.REMOVE_CIRCLE_OUTLINE, lambda e: on_remove() if on_remove else None, height=40),
+            ]
+            self._download_btn = None
+        else:
+            self._download_btn = _primary_btn("Descargar", ft.Icons.DOWNLOAD, self._on_download, height=40)
+            self._download_btn.disabled = True
+            actions = [self._download_btn]
+        if summary.external_url:
+            actions.append(self._open_btn)
+        actions_row = ft.Row(controls=actions, spacing=8, wrap=True)
+
         header = ft.Container(
             bgcolor=BG_SURFACE, border=ft.Border.all(0.8, BORDER_LIGHT), border_radius=12, padding=ft.Padding.all(12),
-            content=ft.Row(controls=[cover, ft.Column(controls=[self._title, self._count, self._desc, self._open_btn], spacing=6, expand=True, alignment=ft.MainAxisAlignment.CENTER)], spacing=12),
+            content=ft.Row(controls=[cover, ft.Column(controls=[self._title, self._count, self._desc, actions_row], spacing=6, expand=True, alignment=ft.MainAxisAlignment.CENTER)], spacing=12),
         )
 
         # list area — skeletons dinámicos según altura disponible (paridad Gestión)
@@ -76,6 +104,30 @@ class PlaylistDetailView(ft.Container):
             asyncio.create_task(self.reload())
         except Exception:
             pass
+
+    def _open_folder(self) -> None:
+        if not open_in_file_manager(self.summary.id):
+            notify(self._page_ref, "No se pudo abrir la carpeta", kind="error")
+
+    def _on_download(self, _e=None) -> None:
+        """Encola todas las pistas de la playlist en la cola de Descargas."""
+        st = self.app_state
+        if st is None or not self._tracks:
+            return
+        if st.download_state == TransferState.RUNNING:
+            notify(self._page_ref, "Ya hay una descarga en curso", kind="error")
+            return
+        try:
+            st.download_tracks(self._tracks, destination_dir=settings_store.get_download_dir())
+        except Exception as exc:  # noqa: BLE001
+            notify(self._page_ref, f"No se pudo iniciar la descarga: {exc}", kind="error")
+            return
+        cb = self._on_open_downloads
+        notify(
+            self._page_ref, f"Descargando {len(self._tracks)} pistas",
+            action="Ver" if cb else None,
+            on_action=(lambda e: cb()) if cb else None,
+        )
 
     def _launch(self, url: str) -> None:
         """Abre URL externa. ft.Page.launch_url es coroutine: hay que schedulearla.
@@ -180,8 +232,13 @@ class PlaylistDetailView(ft.Container):
         except Exception:
             pass
         try:
-            meta, tracks = await self.service.fetch_playlist(self.summary.platform, self.summary.id, None)
+            if self._loader is not None:
+                _meta, tracks = await self._loader()
+            else:
+                _meta, tracks = await self.service.fetch_playlist(self.summary.platform, self.summary.id, None)
             self._tracks = tracks
+            if self._download_btn is not None:
+                self._download_btn.disabled = not tracks
             self._loading = False
             self.summary.track_count = len(tracks)
             # header count real tras cargar (fix Apple count 0 en summary)
@@ -198,7 +255,7 @@ class PlaylistDetailView(ft.Container):
             self._list_view.visible = True
         except Exception as exc:
             auth_manager = getattr(self.service, "auth_manager", None)
-            if auth_manager is not None:
+            if auth_manager is not None and self._loader is None:
                 auth_manager.record_operation_failure(self.summary.platform, exc)
             self._loading = False
             self._error = str(exc)[:400]
@@ -213,6 +270,13 @@ class PlaylistDetailView(ft.Container):
             self.update()
         except Exception:
             pass
+
+    def _open_track(self, track: Track) -> None:
+        """Pista local → su carpeta en el explorador; plataforma → su URL."""
+        if self._is_local and track.source_path:
+            open_in_file_manager(track.source_path)
+        else:
+            self._launch(track.source_url or "")
 
     def _build_track_row(self, track: Track, index: int) -> ft.Container:
         """Fila Biblioteca: [#][thumb48][título/artista expand3][álbum expand2][dur48][open32].
@@ -238,7 +302,7 @@ class PlaylistDetailView(ft.Container):
                 ft.Column(controls=[title, artist], spacing=1, expand=3, tight=True, alignment=ft.MainAxisAlignment.CENTER),
                 ft.Container(content=album, expand=2, alignment=ft.Alignment.CENTER_LEFT),
                 ft.Container(content=dur, width=48, alignment=ft.Alignment.CENTER),
-                ft.Container(content=ft.Icon(ft.Icons.OPEN_IN_NEW, size=14, color=TEXT_DIM), width=32, alignment=ft.Alignment.CENTER),
+                ft.Container(content=ft.Icon(ft.Icons.FOLDER_OPEN if self._is_local else ft.Icons.OPEN_IN_NEW, size=14, color=TEXT_DIM), width=32, alignment=ft.Alignment.CENTER),
             ], spacing=16, vertical_alignment=ft.CrossAxisAlignment.CENTER),
         )
 
@@ -269,12 +333,12 @@ class PlaylistDetailView(ft.Container):
                     row.update()
                 except Exception:
                     pass
-                self._launch(track.source_url or "")
+                self._open_track(track)
 
             try:
                 asyncio.create_task(_press_and_open())
             except Exception:
-                self._launch(track.source_url or "")
+                self._open_track(track)
 
         row.on_hover = _on_hover
         row.on_click = _on_click

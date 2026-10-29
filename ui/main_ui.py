@@ -824,7 +824,7 @@ class PlaylistManagerUI(DialogMixin):
         # Paneles de módulos — Gestión es Row([sidebar, content]); Biblioteca y Descargas tienen vistas propias
         self._panel_gestion = ft.Row(controls=[self._sidebar, self._content], spacing=0, expand=True,
                                      vertical_alignment=ft.CrossAxisAlignment.STRETCH)
-        # Biblioteca: LibraryView con Tabs Playlists|Descargas + selector plataforma
+        # Biblioteca: LibraryView con selector de fuente (plataformas + Local)
         try:
             from services.library_state import LibraryState
             from ui.library_view import LibraryView
@@ -848,7 +848,7 @@ class PlaylistManagerUI(DialogMixin):
                                                   content=self._make_cono_empty("Biblioteca", "Colección local, historial 20 y portadas — pronto.", visible=True))
         try:
             from ui.downloads_view import DownloadsView
-            self._panel_descargas = DownloadsView(page, state)
+            self._panel_descargas = DownloadsView(page, state, library_state=getattr(self, "library_state", None))
         except Exception as exc:
             try:
                 state.log(f"[WARN] Descargas fallback: {exc}")  # type: ignore

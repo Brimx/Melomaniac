@@ -1,5 +1,5 @@
 """
-ui/library_view.py — Contenedor Biblioteca: Tabs Playlists/Descargas + selector plataforma + grid + detail
+ui/library_view.py — Contenedor Biblioteca: selector plataforma + grid + detail
 """
 
 from __future__ import annotations
@@ -8,24 +8,27 @@ import asyncio
 
 import flet as ft
 
-from core.config import PLATFORM_ORDER
+from core.config import LOCAL_LIBRARY_LABEL, PLATFORM_ORDER
 from core.library_models import LibraryLoadState
+from engine.parsers import scan_audio_folder
 from services.library_state import LibraryState
 from ui.fonts import FONT_HEADLINE, FONT_HEADLINE_BOLD, FONT_TEXT
 from ui.playlist_card import PlaylistCard
 from ui.playlist_detail_view import PlaylistDetailView
 from ui.tokens import (
-    ACCENT, BG_HOVER, BG_LIST, BG_SURFACE, BORDER_LIGHT, BORDER_MUTED,
+    ACCENT, BG_HOVER, BG_LIST, BG_SURFACE, BORDER_LIGHT,
     TEXT_DIM, TEXT_MUTED, TEXT_PRIMARY,
 )
-from ui.widgets import _ghost_btn, app_text, section_label
+from ui.widgets import _ghost_btn, app_text, notify, section_label
 
 
 PLATFORM_ICONS = {
     "YouTube Music": ft.Icons.VIDEO_LIBRARY_OUTLINED,
     "Apple Music": ft.Icons.APPLE,
     "Spotify": ft.Icons.MUSIC_NOTE,
+    LOCAL_LIBRARY_LABEL: ft.Icons.FOLDER_OUTLINED,
 }
+SOURCES = (*PLATFORM_ORDER, LOCAL_LIBRARY_LABEL)
 
 
 class LibraryView(ft.Container):
@@ -37,8 +40,9 @@ class LibraryView(ft.Container):
         self.service = service
         self.app_state = app_state
         self._on_open_downloads = on_open_downloads
+        self._picker = ft.FilePicker()
+        page.services.append(self._picker)
         self.library_state.set_service(service)
-        self._tab = "playlists"  # playlists | downloads
         self._platform: str | None = None
         self._detail = None  # PlaylistDetailView
         self._build()
@@ -49,57 +53,32 @@ class LibraryView(ft.Container):
             self.library_state.select_platform(self._platform)
 
     def _build(self) -> None:
-        # tabs
-        try:
-            self._tabs = ft.SegmentedButton(
-                selected=[self._tab],
-                allow_empty_selection=False,
-                allow_multiple_selection=False,
-                show_selected_icon=False,
-                style=ft.ButtonStyle(bgcolor={ft.ControlState.SELECTED: ACCENT, ft.ControlState.DEFAULT: BG_SURFACE}, color={ft.ControlState.SELECTED: TEXT_PRIMARY, ft.ControlState.DEFAULT: TEXT_MUTED}),
-                segments=[
-                    ft.Segment(value="playlists", label=ft.Text("Playlists", size=11, font_family=FONT_HEADLINE)),
-                    ft.Segment(value="downloads", label=ft.Text("Descargas", size=11, font_family=FONT_HEADLINE)),
-                ],
-                on_change=self._on_tab_change,
-            )
-        except Exception:
-            self._tabs = ft.Dropdown(value=self._tab, width=200, options=[ft.dropdown.Option("playlists", "Playlists"), ft.dropdown.Option("downloads", "Descargas")], on_select=self._on_tab_change)  # type: ignore
-
         # selector plataforma
         self._platform_row = ft.Row(spacing=8, wrap=True)
         self._rebuild_platform_selector()
 
         self._status_text = app_text("", size=11, color=TEXT_MUTED, font_family=FONT_TEXT)
         self._refresh_btn = _ghost_btn("Actualizar", ft.Icons.REFRESH, lambda e: self._on_refresh(), width=140, height=36)
+        self._add_folder_btn = _ghost_btn("Añadir carpeta", ft.Icons.CREATE_NEW_FOLDER_OUTLINED,
+                                          lambda e: self._page_ref.run_task(self._pick_folder), height=36)
+        self._add_folder_btn.visible = self._platform == LOCAL_LIBRARY_LABEL
 
         self._grid = ft.GridView(expand=True, max_extent=180, child_aspect_ratio=0.72, spacing=12, run_spacing=12, visible=True)
+        self._empty_title = app_text("Sin playlists cacheadas", size=13, color=TEXT_PRIMARY, font_family=FONT_HEADLINE_BOLD)
+        self._empty_sub = app_text("Elige una fuente para sincronizar", size=11, color=TEXT_MUTED, font_family=FONT_TEXT)
         self._empty = ft.Container(expand=True, visible=False, alignment=ft.Alignment.CENTER, content=ft.Column(controls=[
             ft.Icon(ft.Icons.LIBRARY_MUSIC_OUTLINED, size=48, color=TEXT_DIM),
-            app_text("Sin playlists cacheadas", size=13, color=TEXT_PRIMARY, font_family=FONT_HEADLINE_BOLD),
-            app_text("Elige una fuente para sincronizar", size=11, color=TEXT_MUTED, font_family=FONT_TEXT),
+            self._empty_title,
+            self._empty_sub,
         ], horizontal_alignment=ft.CrossAxisAlignment.CENTER, spacing=8))
         self._loading_bar = ft.ProgressBar(visible=False, color=ACCENT, bgcolor=BG_SURFACE)
 
-        downloads_controls = [
-            ft.Container(content=ft.Icon(ft.Icons.DOWNLOAD_OUTLINED, size=52, color=TEXT_DIM), bgcolor=BG_SURFACE, border=ft.Border.all(0.8, BORDER_LIGHT), border_radius=20, padding=ft.Padding.all(20)),
-            app_text("Descargas", size=18, color=TEXT_PRIMARY, font_family=FONT_HEADLINE_BOLD),
-            app_text("La cola de descargas de audio vive en el módulo Descargas del rail.", size=12, color=TEXT_MUTED, font_family=FONT_TEXT, text_align=ft.TextAlign.CENTER),
-        ]
-        if self._on_open_downloads is not None:
-            downloads_controls.append(
-                _ghost_btn("Abrir Descargas", ft.Icons.DOWNLOAD, self._handle_open_downloads, width=180)
-            )
-        self._downloads_placeholder = ft.Container(expand=True, visible=False, bgcolor=BG_LIST, alignment=ft.Alignment.CENTER, content=ft.Column(controls=downloads_controls, horizontal_alignment=ft.CrossAxisAlignment.CENTER, spacing=8))
-
-        self._list_stack = ft.Stack(controls=[self._grid, self._empty, self._downloads_placeholder], expand=True)
+        self._list_stack = ft.Stack(controls=[self._grid, self._empty], expand=True)
 
         body = ft.Column(controls=[
-            self._tabs,
-            ft.Divider(height=1, color=BORDER_MUTED),
             section_label("FUENTE"),
             self._platform_row,
-            ft.Row(controls=[self._status_text, ft.Container(expand=True), self._refresh_btn], spacing=8),
+            ft.Row(controls=[self._status_text, ft.Container(expand=True), self._add_folder_btn, self._refresh_btn], spacing=8),
             self._loading_bar,
             ft.Container(expand=True, content=self._list_stack),
         ], spacing=10, expand=True)
@@ -108,7 +87,7 @@ class LibraryView(ft.Container):
 
     def _rebuild_platform_selector(self) -> None:
         self._platform_row.controls.clear()
-        for plat in PLATFORM_ORDER:
+        for plat in SOURCES:
             selected = plat == self._platform
             icon = PLATFORM_ICONS.get(plat, ft.Icons.MUSIC_NOTE)
             btn = ft.Container(
@@ -130,56 +109,36 @@ class LibraryView(ft.Container):
                     pass
             self._platform_row.controls.append(btn)
 
-    def _on_tab_change(self, e) -> None:
-        try:
-            val = e.control.selected[0] if hasattr(e.control, "selected") else e.control.value
-        except Exception:
-            val = "playlists"
-        self._tab = val
-        self._sync_tab_visibility()
-        try:
-            self.update()
-        except Exception:
-            pass
-
-    def _handle_open_downloads(self, e=None) -> None:
-        try:
-            if self._on_open_downloads is not None:
-                self._on_open_downloads()
-        except Exception:
-            pass
-
-    def _sync_tab_visibility(self) -> None:
-        is_playlists = self._tab == "playlists"
-        self._platform_row.visible = is_playlists
-        self._refresh_btn.visible = is_playlists
-        self._status_text.visible = is_playlists
-        self._grid.visible = is_playlists and self._detail is None
-        self._empty.visible = is_playlists and self._detail is None and len(self._grid.controls) == 0
-        self._downloads_placeholder.visible = not is_playlists and self._detail is None
-        # detail overrides
-        if self._detail is not None:
-            self._grid.visible = False
-            self._empty.visible = False
-            self._downloads_placeholder.visible = False
-
     def _on_platform_click(self, e) -> None:
         plat = str(e.control.data)
         self._platform = plat
-        self.library_state.select_platform(plat)
         self._rebuild_platform_selector()
-        # auto sync
-        try:
-            asyncio.create_task(self.library_state.sync_source(plat))
-        except Exception:
-            pass
+        if plat != LOCAL_LIBRARY_LABEL:
+            self.library_state.select_platform(plat)
+            # auto sync
+            try:
+                asyncio.create_task(self.library_state.sync_source(plat))
+            except Exception:
+                pass
         self._refresh()
         try:
             self.update()
         except Exception:
             pass
 
+    async def _pick_folder(self) -> None:
+        try:
+            path = await self._picker.get_directory_path(dialog_title="Añadir carpeta a la Biblioteca")
+        except Exception as exc:  # noqa: BLE001
+            notify(self._page_ref, f"No se pudo abrir el selector: {exc}", kind="error")
+            return
+        if path and not self.library_state.add_local_folder(path):
+            notify(self._page_ref, "Esa carpeta ya está en la Biblioteca")
+
     def _on_refresh(self) -> None:
+        if self._platform == LOCAL_LIBRARY_LABEL:
+            self._refresh()
+            return
         if not self._platform:
             return
         try:
@@ -189,7 +148,22 @@ class LibraryView(ft.Container):
 
     def _on_open_playlist(self, summary) -> None:
         # push detail
-        self._detail = PlaylistDetailView(self._page_ref, summary, self.service, on_back=self._on_back_from_detail)
+        local = summary.platform == LOCAL_LIBRARY_LABEL
+
+        async def _load_local():
+            return None, await asyncio.to_thread(scan_audio_folder, summary.id)
+
+        def _remove_local() -> None:
+            self.library_state.remove_local_folder(summary.id)
+            self._on_back_from_detail()
+
+        self._detail = PlaylistDetailView(
+            self._page_ref, summary, self.service, on_back=self._on_back_from_detail,
+            app_state=self.app_state,
+            loader=_load_local if local else None,
+            on_remove=_remove_local if local else None,
+            on_open_downloads=self._on_open_downloads,
+        )
         self.content = self._detail
         try:
             self.update()
@@ -210,16 +184,15 @@ class LibraryView(ft.Container):
         if self._detail is not None:
             return
         # rebuild grid for selected platform
-        if self._tab != "playlists":
-            self._sync_tab_visibility()
-            try:
-                self.update()
-            except Exception:
-                pass
-            return
         plat = self._platform or (PLATFORM_ORDER[0] if PLATFORM_ORDER else None)
         if not plat:
             return
+        if plat == LOCAL_LIBRARY_LABEL:
+            self._refresh_local()
+            return
+        self._add_folder_btn.visible = False
+        self._empty_title.value = "Sin playlists cacheadas"
+        self._empty_sub.value = "Elige una fuente para sincronizar"
         snap = self.library_state.get_snapshot(plat)
         state = snap.state
         # status
@@ -243,11 +216,31 @@ class LibraryView(ft.Container):
         for summ in snap.items:
             card = PlaylistCard(summ, state=state, on_tap=self._on_open_playlist)
             self._grid.controls.append(card)
-        self._sync_tab_visibility()
+        self._grid.visible = True
+        self._empty.visible = not snap.items and state != LibraryLoadState.LOADING
         # if empty
         if not snap.items and state not in (LibraryLoadState.LOADING,):
             self._empty.visible = True
             self._grid.visible = False
+        try:
+            self.update()
+        except Exception:
+            pass
+
+    def _refresh_local(self) -> None:
+        """Fuente Local: una tarjeta por carpeta agregada (sin sincronización)."""
+        folders = self.library_state.local_summaries()
+        self._add_folder_btn.visible = True
+        self._loading_bar.visible = False
+        self._status_text.value = f"{len(folders)} carpetas locales"
+        self._empty_title.value = "Sin carpetas locales"
+        self._empty_sub.value = "Añade una carpeta con audio o indexa tu carpeta de Descargas"
+        self._grid.controls = [
+            PlaylistCard(summ, state=LibraryLoadState.READY, on_tap=self._on_open_playlist)
+            for summ in folders
+        ]
+        self._grid.visible = bool(folders)
+        self._empty.visible = not folders
         try:
             self.update()
         except Exception:

@@ -6,11 +6,14 @@ Independiente de AppState, no contamina transfer. Observer simple.
 from __future__ import annotations
 
 import time
+from pathlib import Path
 from typing import Callable, Dict, Optional
 
-from core.config import PLATFORM_ORDER
+from core.config import LOCAL_LIBRARY_LABEL, PLATFORM_ORDER
 from core.library_models import LibraryLoadState, LibrarySnapshot, PlaylistSummary
 from core.library_store import load_library, save_library
+from engine.parsers import list_audio_files
+from services import settings_store
 from services.circuit_breaker import RateLimitError
 
 
@@ -47,6 +50,34 @@ class LibraryState:
 
     def load_state(self, platform: str) -> LibraryLoadState:
         return self.get_snapshot(platform).state
+
+    # Fuente local: carpetas con audio agregadas por el usuario
+    @property
+    def local_folders(self) -> list[str]:
+        return settings_store.get_local_folders()
+
+    def local_summaries(self) -> list[PlaylistSummary]:
+        """Una ``PlaylistSummary`` por carpeta local (id = ruta absoluta)."""
+        out: list[PlaylistSummary] = []
+        for folder in self.local_folders:
+            out.append(PlaylistSummary(
+                platform=LOCAL_LIBRARY_LABEL, id=folder,
+                name=Path(folder).name or folder, description=folder,
+                track_count=len(list_audio_files(folder)),
+            ))
+        return out
+
+    def add_local_folder(self, path: str) -> bool:
+        added = settings_store.add_local_folder(path)
+        if added:
+            self.notify()
+        return added
+
+    def remove_local_folder(self, path: str) -> bool:
+        removed = settings_store.remove_local_folder(path)
+        if removed:
+            self.notify()
+        return removed
 
     def set_service(self, service) -> None:
         self.service = service

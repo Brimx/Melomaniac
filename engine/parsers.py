@@ -468,3 +468,48 @@ def build_local_tracks(pairs: list[tuple[str, str] | tuple[str, str, str]]) -> l
             release_date=metadata.get("date", ""),
         ))
     return tracks
+
+
+def list_audio_files(folder: str | os.PathLike, *, recursive: bool = True,
+                     limit: int = 5000) -> list[str]:
+    """Lista archivos de audio de una carpeta, más recientes primero.
+
+    Solo considera ``_LOCAL_AUDIO_EXTENSIONS``, ignora ocultos (incluidos los
+    temporales ``.nombre.pid`` del descargador) y corta en ``limit`` para no
+    bloquear con carpetas enormes.
+    """
+    root = os.path.expanduser(str(folder))
+    found: list[tuple[float, str]] = []
+    if not os.path.isdir(root):
+        return []
+    for dirpath, dirnames, filenames in os.walk(root):
+        dirnames[:] = [d for d in dirnames if not d.startswith(".")]
+        for fname in filenames:
+            if fname.startswith(".") or os.path.splitext(fname)[1].lower() not in _LOCAL_AUDIO_EXTENSIONS:
+                continue
+            full = os.path.join(dirpath, fname)
+            try:
+                found.append((os.path.getmtime(full), full))
+            except OSError:
+                continue
+            if len(found) >= limit:
+                break
+        if not recursive or len(found) >= limit:
+            break
+    found.sort(key=lambda item: item[0], reverse=True)
+    return [path for _, path in found]
+
+
+def scan_audio_folder(folder: str | os.PathLike, *, limit: int = 5000) -> list[Track]:
+    """Convierte los audios de una carpeta en ``Track`` (tags con Mutagen).
+
+    Si faltan tags, artista y título salen del nombre ``Artista - Título``.
+    Es bloqueante: despacharla con ``asyncio.to_thread``.
+    """
+    triples: list[tuple[str, str, str]] = []
+    for path in list_audio_files(folder, limit=limit):
+        stem = os.path.splitext(os.path.basename(path))[0]
+        pair = _parse_local_line(stem)
+        artist, title = pair if pair else ("", stem)
+        triples.append((artist, title, path))
+    return build_local_tracks(triples)

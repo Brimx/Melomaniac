@@ -147,6 +147,28 @@ def resolve_download_dir(preferred: Path | str | None = None, *, create: bool = 
     return target
 
 
+def open_in_file_manager(path: Path | str) -> bool:
+    """Abre una carpeta en el explorador del sistema. Devuelve False si falla."""
+    import subprocess
+    import sys
+
+    target = Path(path).expanduser()
+    if target.is_file():
+        target = target.parent
+    try:
+        if not target.is_dir():
+            return False
+        if sys.platform.startswith("win"):
+            os.startfile(str(target))  # type: ignore[attr-defined]
+        elif sys.platform == "darwin":
+            subprocess.Popen(["open", str(target)])
+        else:
+            subprocess.Popen(["xdg-open", str(target)])
+        return True
+    except OSError:
+        return False
+
+
 def sanitize_filename(name: str, fallback: str = "audio") -> str:
     """Convierte un texto en nombre de archivo seguro y estable.
 

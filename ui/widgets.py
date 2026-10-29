@@ -338,6 +338,7 @@ def _primary_btn(text: str, icon: str, on_click, width=None, height=None) -> ft.
     - Default: Fondo azul acento sin elevación
     - Hover: Fondo azul claro con elevación 6 y sombra de halo
     - Pressed: Fondo azul oscuro sin elevación
+    - Disabled: Fondo gris atenuado y texto muted
     
     Args:
         text: Texto del botón.
@@ -370,8 +371,9 @@ def _primary_btn(text: str, icon: str, on_click, width=None, height=None) -> ft.
                 ft.ControlState.DEFAULT: ACCENT,
                 ft.ControlState.HOVERED: ACCENT_HOVER,
                 ft.ControlState.PRESSED: ACCENT_DIM,
+                ft.ControlState.DISABLED: BG_HOVER,
             },
-            color=TEXT_PRIMARY,
+            color={ft.ControlState.DEFAULT: TEXT_PRIMARY, ft.ControlState.DISABLED: TEXT_MUTED},
             elevation={ft.ControlState.DEFAULT: 0, ft.ControlState.HOVERED: 6},
             shadow_color={ft.ControlState.HOVERED: ACCENT_HALO},
             shape=ft.RoundedRectangleBorder(radius=RADIUS_BUTTON),

@@ -304,6 +304,8 @@ class AppState:
         self.download_done:      list[dict]    = []
         self.download_failed:    list[dict]    = []
         self.download_dir:       str           = ""
+        # Estado por pista: {id,title,status(queued|running|done|failed),percent,error}
+        self.download_items:     list[dict]    = []
         self.audio_format:       str           = ""
         self._download_task: Optional[asyncio.Task] = None
         self._download_cancel: Optional[asyncio.Event] = None
@@ -928,8 +930,34 @@ class AppState:
             La tarea creada. Si ya hay una descarga en curso, devuelve esa
             misma tarea sin lanzar otra.
         """
+        return self.download_tracks(
+            [t for t in self.tracks if t.selected],
+            audio_format=audio_format, destination_dir=destination_dir,
+        )
+
+    def download_tracks(
+        self,
+        tracks: list[Track],
+        *,
+        audio_format: str = "",
+        destination_dir: str = "",
+    ) -> asyncio.Task:
+        """Lanza la descarga de una lista arbitraria de pistas.
+
+        Reutiliza la misma cola que ``download_selected``; Biblioteca la usa
+        para bajar una playlist completa sin cargarla en Gestión.
+
+        Returns:
+            La tarea creada, o la en curso si ya hay una descarga activa.
+        """
         if self._download_task is not None and not self._download_task.done():
             return self._download_task
+        self._download_task = asyncio.create_task(
+            self._run_downloads(
+                list(tracks), audio_format=audio_format, destination_dir=destination_dir
+            )
+        )
+        return self._download_task
         self._download_task = asyncio.create_task(
             self._run_downloads(
                 audio_format=audio_format, destination_dir=destination_dir
@@ -943,7 +971,7 @@ class AppState:
             self._download_cancel.set()
 
     async def _run_downloads(
-        self, *, audio_format: str = "", destination_dir: str = ""
+        self, selected: list[Track], *, audio_format: str = "", destination_dir: str = ""
     ) -> None:
         """Ejecuta la cola de descargas con concurrencia acotada.
 
@@ -958,7 +986,6 @@ class AppState:
         )
         from engine.downloader import download_audio, resolve_download_dir
 
-        selected = [t for t in self.tracks if t.selected]
         if not selected:
             return
 
@@ -975,6 +1002,12 @@ class AppState:
         self.download_current  = ""
         self.download_done     = []
         self.download_failed   = []
+        items = {
+            id(t): {"id": t.id, "title": f"{t.artist} — {t.name}", "status": "queued",
+                    "percent": 0.0, "error": ""}
+            for t in selected
+        }
+        self.download_items    = list(items.values())
         self._download_cancel  = asyncio.Event()
         cancel = self._download_cancel
         self._log(
@@ -985,11 +1018,35 @@ class AppState:
         semaphore = asyncio.Semaphore(max(1, DOWNLOAD_CONCURRENCY))
         lock = asyncio.Lock()
 
+        loop = asyncio.get_running_loop()
+        last_push = [0.0]
+
+        def _push() -> None:
+            now = time.monotonic()
+            if now - last_push[0] >= 0.25:
+                last_push[0] = now
+                self.notify()
+
         async def _one(track: Track) -> None:
+            item = items[id(track)]
+
+            def _hook(info: dict) -> None:
+                # Corre en el hilo de yt-dlp: solo muta valores simples y
+                # pide el notify al loop de la UI (limitado a 4/s).
+                if info.get("status") != "downloading":
+                    return
+                total = info.get("total_bytes") or info.get("total_bytes_estimate") or 0
+                if total:
+                    item["percent"] = min(95.0, 100.0 * (info.get("downloaded_bytes") or 0) / total)
+                    loop.call_soon_threadsafe(_push)
+
             async with semaphore:
                 if cancel.is_set():
+                    item["status"] = "failed"
+                    item["error"] = "Cancelada"
                     return
                 async with lock:
+                    item["status"] = "running"
                     self.download_current = f"{track.artist} — {track.name}"[:80]
                     self.notify()
                 try:
@@ -998,6 +1055,7 @@ class AppState:
                         track,
                         destination_dir=target_dir,
                         audio_format=fmt,
+                        progress_hook=_hook,
                     )
                 except Exception as exc:  # noqa: BLE001 - nunca debe tumbar la cola
                     result = None
@@ -1007,6 +1065,7 @@ class AppState:
 
                 async with lock:
                     if result is not None and result.ok:
+                        item["status"], item["percent"] = "done", 100.0
                         track.source_path = result.path
                         self.download_done.append(
                             {
@@ -1017,6 +1076,7 @@ class AppState:
                             }
                         )
                     else:
+                        item["status"], item["error"] = "failed", error or "Error desconocido"
                         self.download_failed.append(
                             {
                                 "name": track.name,

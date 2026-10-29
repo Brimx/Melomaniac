@@ -72,6 +72,8 @@ DEFAULT_COOLDOWN: int = 60
 DOWNLOADS_DIR_NAME: str = "Descargas"
 # Formatos de audio ofrecidos. Solo audio: nunca se conserva el contenedor
 # de video que entrega YouTube.
+# Fuente local de Biblioteca (carpetas con audio); no es una plataforma de transferencia.
+LOCAL_LIBRARY_LABEL: str = "Local"
 AUDIO_FORMATS: tuple[str, ...] = ("mp3", "m4a", "opus", "flac", "wav")
 DEFAULT_AUDIO_FORMAT: str = "mp3"
 # Calidades por formato. "0" es la mejor disponible en el encoder.
