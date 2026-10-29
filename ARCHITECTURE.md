@@ -61,7 +61,8 @@ Melomaniac/
 │   └── parsers.py                  # formatos locales y Track local
 ├── services/
 │   ├── api_service.py              # fachada YouTube/Apple/Spotify
-│   ├── authentication.py           # archivos runtime y pre-flight
+│   ├── authentication.py           # archivos runtime y resultado de pre-flight
+│   ├── browser_session.py          # detección de navegador y sesión en memoria
 │   ├── circuit_breaker.py          # RateLimitError y cooldowns
 │   ├── cover_cache.py              # caché de portadas
 │   └── library_state.py            # sincronización de la Biblioteca
@@ -104,19 +105,19 @@ Estados principales:
 
 | Plataforma | Lectura/búsqueda | Creación | Credenciales |
 |---|---|---|---|
-| YouTube Music | `ytmusicapi` | `YTMusic.create_playlist` | `config/browser.json` |
-| Apple Music | catálogo web `amp-api.music.apple.com` | endpoint de biblioteca | `config/.env` |
-| Spotify | `spotapi`/`tracksV2` | `PrivatePlaylist` | `config/spotify_cookies.json` |
+| YouTube Music | `ytmusicapi` | `YTMusic.create_playlist` | Sesión del navegador (`SAPISID`) o `config/browser.json` |
+| Apple Music | catálogo web `amp-api.music.apple.com` | endpoint de biblioteca | Sesión del navegador (`media-user-token` + bearer del bundle) o `config/.env` |
+| Spotify | `spotapi`/`tracksV2` | `PrivatePlaylist` | Sesión del navegador (`sp_dc`/`sp_key`) o `config/spotify_cookies.json` |
 | Archivo Local | parsers + Mutagen | — | — |
 | Pegar Texto | parser de líneas | — | — |
 
-`services.authentication` es el único dueño de las rutas y la persistencia de credenciales:
+`services.browser_session` resuelve primero las sesiones activas del navegador en memoria (Firefox-family copiando `cookies.sqlite` + `-wal`/`-shm` a RAM con `sqlite3`; Chromium-family en rutas estándar mediante `yt-dlp`) sin escribir nada a disco. `services.authentication` es el único dueño de las rutas runtime y de los archivos de override manual en `config/`:
 
-- YouTube: `Authorization` y `Cookie`; los campos fijos (`Accept`, `Content-Type`, `X-Goog-AuthUser`, `x-origin`) se escriben automáticamente.
-- Apple: `APPLE_AUTH_BEARER` y `APPLE_MUSIC_USER_TOKEN`.
-- Spotify: `identifier`, `cookies.sp_dc` y `cookies.sp_key`.
+- YouTube: `Cookie` y `SAPISIDHASH` recalculado en cada lectura desde `SAPISID` (el `Authorization` legacy guardado se ignora); los campos fijos (`Accept`, `Content-Type`, `X-Goog-AuthUser`, `x-origin`) se completan automáticamente.
+- Apple: `media-user-token` de la cookie y bearer derivado del bundle público (`kid == "WebPlayKid"` e `iss == "AMPWebPlay"`) o `APPLE_AUTH_BEARER` / `APPLE_MUSIC_USER_TOKEN` en `config/.env`.
+- Spotify: `cookies.sp_dc` y `cookies.sp_key` (con `identifier` opcional en `config/spotify_cookies.json`).
 
-`AuthManager` valida YouTube mediante `MusicApiService` y Apple/Spotify mediante `run_preflight()`, solo al inicio o ante una acción del usuario. YouTube distingue rechazo de sesión (`401`/`403`) de límite (`429`) y fallos transitorios; estos últimos no cambian el estado de autenticación. Guardar en el wizard activa un hot reload sin reinicio.
+`AuthManager` valida las tres plataformas mediante `MusicApiService.init_youtube()`, `init_apple()` e `init_spotify()`, que iteran los candidatos (`*_candidates()`) y verifican contra la API real (`/v1/me/storefront` en Apple, `get_library_playlists(limit=1)` en YouTube y `_spotify_library_page(limit=1)` en Spotify). El preflight del arranque registra el origen ganador y actualiza los iconos sin abrir automáticamente el wizard. YouTube distingue rechazo de sesión (`401`/`403`) de límite (`429`) y fallos transitorios; estos últimos no cambian el estado de autenticación. Guardar o reintentar en el wizard vacía la caché de `browser_session` y recarga sin reinicio.
 
 ## Flujo de carga
 
