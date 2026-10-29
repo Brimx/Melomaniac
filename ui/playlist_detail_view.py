@@ -9,6 +9,8 @@ Biblioteca.
 from __future__ import annotations
 
 import asyncio
+import os
+from pathlib import Path
 from typing import Callable, Optional
 
 import flet as ft
@@ -71,10 +73,11 @@ class PlaylistDetailView(ft.Container):
             ]
             self._download_btn = None
         else:
-            self._play_all_btn = None
-            self._download_btn = _primary_btn("Descargar", ft.Icons.DOWNLOAD, self._on_download, height=40)
+            self._play_all_btn = _primary_btn("Reproducir", ft.Icons.PLAY_ARROW_ROUNDED, self._on_play_all, height=40)
+            self._play_all_btn.visible = False
+            self._download_btn = _primary_btn("Descargar playlist", ft.Icons.DOWNLOAD, self._on_download, height=40)
             self._download_btn.disabled = True
-            actions = [self._download_btn]
+            actions = [self._play_all_btn, self._download_btn]
         if summary.external_url:
             actions.append(self._open_btn)
         actions_row = ft.Row(controls=actions, spacing=8, wrap=True)
@@ -214,10 +217,13 @@ class PlaylistDetailView(ft.Container):
             else:
                 _meta, tracks = await self.service.fetch_playlist(self.summary.platform, self.summary.id, None)
             self._tracks = tracks
+
+            # Mapear pistas que ya existen en descargas o carpetas locales
+            self._match_local_files()
+
             if self._download_btn is not None:
                 self._download_btn.disabled = not tracks
-            if self._play_all_btn is not None:
-                self._play_all_btn.disabled = not tracks
+            self._update_header_play_count()
             self._loading = False
             self.summary.track_count = len(tracks)
             # header count real tras cargar (fix Apple count 0 en summary)
@@ -247,6 +253,129 @@ class PlaylistDetailView(ft.Container):
                 pass
         try:
             self.update()
+        except Exception:
+            pass
+
+    def _match_local_files(self) -> int:
+        """Asocia source_path a las pistas que ya existen en el directorio de descargas o carpetas locales."""
+        try:
+            from engine.downloader import _target_stem, resolve_download_dir
+            from engine.parsers import _LOCAL_AUDIO_EXTENSIONS
+            candidate_dirs = [resolve_download_dir(settings_store.get_download_dir())]
+            for extra in settings_store.get_local_folders():
+                if extra and os.path.isdir(extra):
+                    candidate_dirs.append(Path(extra))
+
+            disk_files: dict[str, str] = {}
+            for d in candidate_dirs:
+                try:
+                    for fname in os.listdir(d):
+                        lower = fname.lower()
+                        if lower not in disk_files:
+                            disk_files[lower] = os.path.join(str(d), fname)
+                except OSError:
+                    continue
+
+            matched = 0
+            for tr in self._tracks:
+                if tr.source_path and os.path.isfile(tr.source_path):
+                    matched += 1
+                    continue
+                stem = _target_stem(tr).lower()
+                for ext in _LOCAL_AUDIO_EXTENSIONS:
+                    candidate_name = f"{stem}{ext}".lower()
+                    if candidate_name in disk_files:
+                        tr.source_path = disk_files[candidate_name]
+                        matched += 1
+                        break
+            return matched
+        except Exception:
+            return 0
+
+    def _update_header_play_count(self) -> None:
+        """Actualiza el botón Reproducir en la cabecera según las pistas disponibles en disco."""
+        if self._play_all_btn is None:
+            return
+        downloaded = sum(1 for t in self._tracks if t.source_path and os.path.isfile(t.source_path))
+        total = len(self._tracks)
+        if downloaded > 0:
+            self._play_all_btn.visible = True
+            self._play_all_btn.disabled = False
+            try:
+                txt = "Reproducir" if downloaded == total or self._is_local else f"Reproducir ({downloaded})"
+                if hasattr(self._play_all_btn.content, "value"):
+                    self._play_all_btn.content.value = txt
+                elif hasattr(self._play_all_btn, "text"):
+                    self._play_all_btn.text = txt
+            except Exception:
+                pass
+        else:
+            if not self._is_local:
+                self._play_all_btn.visible = False
+            else:
+                self._play_all_btn.disabled = True
+
+    def _download_single_track(self, track: Track, action_container: ft.Container) -> None:
+        """Descarga una pista individual y al completarse habilita su reproducción inmediata."""
+        st = self.app_state
+        if st is None:
+            notify(self._page_ref, "Estado de aplicación no disponible", kind="error")
+            return
+        if st.download_state == TransferState.RUNNING:
+            notify(self._page_ref, "Ya hay una descarga en curso", kind="error")
+            return
+
+        async def _do_download() -> None:
+            action_container.content = ft.ProgressRing(width=16, height=16, stroke_width=2, color=ACCENT)
+            action_container.tooltip = "Descargando..."
+            try:
+                action_container.update()
+            except Exception:
+                pass
+
+            notify(self._page_ref, f"Descargando «{track.name}»...")
+            try:
+                task = st.download_tracks([track], destination_dir=settings_store.get_download_dir())
+                await task
+            except Exception as exc:  # noqa: BLE001
+                notify(self._page_ref, f"Error al descargar: {exc}", kind="error")
+                action_container.content = ft.Icon(ft.Icons.DOWNLOAD_ROUNDED, size=16, color=TEXT_MUTED)
+                action_container.tooltip = "Descargar canción"
+                try:
+                    action_container.update()
+                except Exception:
+                    pass
+                return
+
+            if track.source_path and os.path.isfile(track.source_path):
+                notify(
+                    self._page_ref,
+                    f"Descarga lista: {track.artist} — {track.name}",
+                    action="Reproducir",
+                    on_action=lambda e: self._play_single_track(track, 1),
+                )
+                action_container.content = ft.Icon(ft.Icons.PLAY_ARROW_ROUNDED, size=16, color=ACCENT)
+                action_container.tooltip = "Reproducir"
+                try:
+                    action_container.update()
+                except Exception:
+                    pass
+                self._update_header_play_count()
+                try:
+                    self.update()
+                except Exception:
+                    pass
+            else:
+                notify(self._page_ref, f"No se pudo descargar «{track.name}»", kind="error")
+                action_container.content = ft.Icon(ft.Icons.DOWNLOAD_ROUNDED, size=16, color=TEXT_MUTED)
+                action_container.tooltip = "Descargar canción"
+                try:
+                    action_container.update()
+                except Exception:
+                    pass
+
+        try:
+            asyncio.create_task(_do_download())
         except Exception:
             pass
 
@@ -293,7 +422,12 @@ class PlaylistDetailView(ft.Container):
         álbum. Hover: BG_HOVER + scale 1.01. Click: press scale 0.99 +
         opacidad 0.85 antes de abrir URL o reproducir.
         """
-        thumb = ft.Container(width=48, height=48, border_radius=6, bgcolor=SKELETON_DARK, clip_behavior=ft.ClipBehavior.ANTI_ALIAS, content=ft.Image(src=track.img_url, fit=ft.BoxFit.COVER, error_content=ft.Icon(ft.Icons.MUSIC_NOTE, color=TEXT_DIM, size=16)) if track.img_url else ft.Container(content=ft.Icon(ft.Icons.MUSIC_NOTE, color=TEXT_DIM, size=16), alignment=ft.Alignment.CENTER))
+        has_file = bool(track.source_path and os.path.isfile(track.source_path))
+
+        thumb = ft.Container(
+            width=48, height=48, border_radius=6, bgcolor=SKELETON_DARK, clip_behavior=ft.ClipBehavior.ANTI_ALIAS,
+            content=ft.Image(src=track.img_url, fit=ft.BoxFit.COVER, error_content=ft.Icon(ft.Icons.MUSIC_NOTE, color=TEXT_DIM, size=16)) if track.img_url else ft.Container(content=ft.Icon(ft.Icons.MUSIC_NOTE, color=TEXT_DIM, size=16), alignment=ft.Alignment.CENTER),
+        )
         title = ft.Text(track.name, size=13, color=TEXT_PRIMARY, font_family=font_family_for(track.name, "semibold"), max_lines=1, overflow=ft.TextOverflow.ELLIPSIS)
         artist = ft.Text(track.artist, size=11, color=TEXT_MUTED, font_family=font_family_for(track.artist), max_lines=1, overflow=ft.TextOverflow.ELLIPSIS)
         album = ft.Text(track.album or "—", size=11, color=TEXT_MUTED, font_family=font_family_for(track.album or ""), max_lines=1, overflow=ft.TextOverflow.ELLIPSIS)
@@ -301,14 +435,25 @@ class PlaylistDetailView(ft.Container):
 
         action_icon = ft.Container(
             content=ft.Icon(
-                ft.Icons.PLAY_ARROW_ROUNDED if self._is_local else ft.Icons.OPEN_IN_NEW,
+                ft.Icons.PLAY_ARROW_ROUNDED if has_file else ft.Icons.DOWNLOAD_ROUNDED,
                 size=16,
-                color=ACCENT if self._is_local else TEXT_DIM,
+                color=ACCENT if has_file else TEXT_MUTED,
             ),
             width=32,
+            height=32,
+            border_radius=16,
             alignment=ft.Alignment.CENTER,
-            tooltip="Reproducir" if self._is_local else "Abrir en plataforma",
+            tooltip="Reproducir" if has_file else "Descargar canción",
+            ink=True,
         )
+
+        def _on_action_click(_e) -> None:
+            if track.source_path and os.path.isfile(track.source_path):
+                self._play_single_track(track, index)
+            else:
+                self._download_single_track(track, action_icon)
+
+        action_icon.on_click = _on_action_click
 
         row = ft.Container(
             height=ITEM_H, bgcolor=BG_LIST, border=ft.Border.only(bottom=ft.BorderSide(0.5, BORDER_ROW)), padding=ft.Padding.symmetric(horizontal=12, vertical=8),
@@ -353,21 +498,19 @@ class PlaylistDetailView(ft.Container):
                     row.update()
                 except Exception:
                     pass
-                if self._is_local:
+                if track.source_path and os.path.isfile(track.source_path):
                     self._play_single_track(track, index)
                 else:
-                    self._open_track(track)
+                    self._download_single_track(track, action_icon)
 
             try:
                 asyncio.create_task(_press_and_act())
             except Exception:
-                if self._is_local:
+                if track.source_path and os.path.isfile(track.source_path):
                     self._play_single_track(track, index)
                 else:
-                    self._open_track(track)
+                    self._download_single_track(track, action_icon)
 
         row.on_hover = _on_hover
-        row.on_click = _on_click
-        return row
         row.on_click = _on_click
         return row

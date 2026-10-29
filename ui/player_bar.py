@@ -236,16 +236,10 @@ class PlayerBar(ft.Container):
             padding=ft.Padding.symmetric(horizontal=8, vertical=4),
             content=self._badge_txt,
             tooltip="Formato real del archivo",
+            visible=False,
         )
 
-        # [▶/⏸] [⏮ ⏭]
-        self._play_btn = ft.IconButton(
-            icon=ft.Icons.PLAY_CIRCLE_FILL,
-            icon_color=ACCENT,
-            icon_size=30,
-            tooltip="Reproducir / Pausar",
-            on_click=self._on_play_pause_click,
-        )
+        # [⏮ ▶/⏸ ⏭]
         self._prev_btn = ft.IconButton(
             icon=ft.Icons.SKIP_PREVIOUS_ROUNDED,
             icon_color=TEXT_PRIMARY,
@@ -253,12 +247,24 @@ class PlayerBar(ft.Container):
             tooltip="Anterior (o reiniciar si > 3 s)",
             on_click=self._on_prev_click,
         )
+        self._play_btn = ft.IconButton(
+            icon=ft.Icons.PLAY_CIRCLE_FILL,
+            icon_color=ACCENT,
+            icon_size=32,
+            tooltip="Reproducir / Pausar",
+            on_click=self._on_play_pause_click,
+        )
         self._next_btn = ft.IconButton(
             icon=ft.Icons.SKIP_NEXT_ROUNDED,
             icon_color=TEXT_PRIMARY,
             icon_size=20,
             tooltip="Siguiente",
             on_click=self._on_next_click,
+        )
+        self._transport_row = ft.Row(
+            controls=[self._prev_btn, self._play_btn, self._next_btn],
+            spacing=2,
+            vertical_alignment=ft.CrossAxisAlignment.CENTER,
         )
 
         # [tiempo]
@@ -368,8 +374,7 @@ class PlayerBar(ft.Container):
                 self._thumb_box,
                 meta_col,
                 self._badge_box,
-                self._play_btn,
-                ft.Row(controls=[self._prev_btn, self._next_btn], spacing=0),
+                self._transport_row,
                 self._time_txt,
                 self._progress_gesture,
                 vol_row,
@@ -870,6 +875,7 @@ class PlayerBar(ft.Container):
                 self._thumb_img.visible = False
             self._badge_txt.value = cur.badge_text
             self._badge_box.tooltip = cur.stream_tooltip
+            self._badge_box.visible = True
             if self._duration_ms <= 0 and cur.duration_ms > 0:
                 self._duration_ms = cur.duration_ms
         else:
@@ -880,6 +886,7 @@ class PlayerBar(ft.Container):
             self._thumb_img.visible = False
             self._badge_txt.value = "—"
             self._badge_box.tooltip = "Formato real del archivo"
+            self._badge_box.visible = False
 
         self._play_btn.icon = (
             ft.Icons.PAUSE_CIRCLE_FILLED if playing else ft.Icons.PLAY_CIRCLE_FILL
