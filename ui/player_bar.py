@@ -155,6 +155,7 @@ class PlayerBar(ft.Container):
         count = sum(1 for s in self._page_ref.services if isinstance(s, fta.Audio))
         prefix = f"[AUDIO] Instancias Audio en page.services={count}"
         msg = f"{prefix} ({context})" if context else prefix
+        print(msg, flush=True)
         if self.app_state is not None and hasattr(self.app_state, "log"):
             self.app_state.log(msg)
         return count

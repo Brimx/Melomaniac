@@ -175,6 +175,10 @@ async def main(page: ft.Page) -> None:
             if library_state is not None and library_state.selected_platform:
                 await library_state.sync_source(library_state.selected_platform)
             state.notify()
+            auto_close = float(os.environ.get("MELOMANIAC_AUTO_CLOSE_S") or 0)
+            if auto_close > 0:
+                await asyncio.sleep(auto_close)
+                _on_close(None)
 
         asyncio.create_task(_startup())
 
@@ -220,7 +224,7 @@ async def main(page: ft.Page) -> None:
             except Exception:  # pylint: disable=broad-exception-caught
                 pass
 
-            # Liberar reproductor de audio nativo (flet-audio)
+            # Liberar reproductor de audio nativo (flet-audio) y cerrar ventana antes de cancelar el socket Flet
             try:
                 player_bar = getattr(app_inst, "player_bar", None)
                 if player_bar is not None and hasattr(player_bar, "release"):
@@ -234,6 +238,15 @@ async def main(page: ft.Page) -> None:
                                 await asyncio.wait_for(res, timeout=0.3)
                             except Exception:
                                 pass
+                win = getattr(page, "window", None)
+                destroy = getattr(win, "destroy", None) or getattr(win, "close", None)
+                if callable(destroy):
+                    res = destroy()
+                    if asyncio.iscoroutine(res):
+                        try:
+                            await asyncio.wait_for(res, timeout=0.5)
+                        except Exception:
+                            pass
             except Exception:  # pylint: disable=broad-exception-caught
                 pass
 
