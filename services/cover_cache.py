@@ -15,12 +15,12 @@ from typing import Optional
 
 import requests
 
+from core.config import COVER_HTTP_TIMEOUT as TIMEOUT
+from core.config import COVER_MAX_BYTES as MAX_BYTES
 from services.authentication import CONFIG_DIR, ensure_config_dir
 
 CACHE_DIR = CONFIG_DIR / "cover_cache"
 INDEX_JSON = CACHE_DIR / "index.json"
-MAX_BYTES = 2_000_000  # 2 MB por portada
-TIMEOUT = 8
 
 # Ext por MIME
 MIME_EXT = {
@@ -84,6 +84,47 @@ def cached_path_for_url(url: str) -> Optional[Path]:
     return path
 
 
+def _album_index_key(album_key: str) -> str:
+    """Clave de índice para un álbum ya normalizado por el llamador.
+
+    Se guarda con prefijo para no colisionar con los hashes de URL.
+    """
+    return f"album:{album_key}"
+
+
+def get_album_cover(album_key: str) -> Optional[Path]:
+    """Portada cacheada para ``album_key``, o ``None`` si no hay o el archivo faltó."""
+    if not album_key:
+        return None
+    entry = _index_load().get(_album_index_key(album_key))
+    if not isinstance(entry, dict):
+        return None
+    p = entry.get("local_path") or ""
+    if not p:
+        return None
+    path = Path(p) if Path(p).is_absolute() else CACHE_DIR / Path(p).name
+    return path if path.exists() else None
+
+
+def set_album_cover(album_key: str, local_path: Path | str, *, source: str = "") -> None:
+    """Asocia ``album_key`` a una portada ya presente en el caché.
+
+    El archivo debe existir ya; esta función solo escribe el puntero, no copia.
+    """
+    if not album_key:
+        return
+    path = Path(local_path)
+    if not path.exists():
+        return
+    idx = _index_load()
+    idx[_album_index_key(album_key)] = {
+        "local_path": str(path),
+        "source": source,
+        "cached_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+    }
+    _index_save(idx)
+
+
 def ensure_cached(url: str, session: Optional[requests.Session] = None) -> Optional[Path]:
     """Descarga si no existe, retorna path local o None si falla/límite (fallback remoto)."""
     if not url or not url.startswith("http"):
@@ -131,7 +172,9 @@ def ensure_cached(url: str, session: Optional[requests.Session] = None) -> Optio
         except Exception:
             pass
         os.replace(tmp_path, final_path)
-        # actualiza índice
+        # actualiza índice. Solo se escribe la clave hash: `cached_path_for_url`
+        # sigue aceptando la clave-URL de índices legacy, pero duplicar cada
+        # entrada al escribir duplicaba el tamaño del índice sin ganar lookup.
         idx = _index_load()
         idx[h] = {
             "url": url,
@@ -140,8 +183,6 @@ def ensure_cached(url: str, session: Optional[requests.Session] = None) -> Optio
             "size": total,
             "cached_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         }
-        # también indexa por URL para lookup rápido
-        idx[url] = idx[h]
         _index_save(idx)
         return final_path
     except Exception:

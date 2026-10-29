@@ -224,6 +224,14 @@ async def main(page: ft.Page) -> None:
             except Exception:  # pylint: disable=broad-exception-caught
                 pass
 
+            # Breaker de portadas: vive en services/covers.py a propósito, fuera
+            # de state.cb para no aparecer como rate limit de plataforma.
+            try:
+                from services.covers import cover_breaker
+                cover_breaker.cancel()
+            except Exception:  # pylint: disable=broad-exception-caught
+                pass
+
             # Liberar reproductor de audio nativo (flet-audio) y cerrar ventana antes de cancelar el socket Flet
             try:
                 player_bar = getattr(app_inst, "player_bar", None)

@@ -302,9 +302,10 @@ class AppState:
         self.download_total:     int           = 0
         self.download_current:   str           = ""
         self.download_done:      list[dict]    = []
+        self.download_skipped:   list[dict]    = []
         self.download_failed:    list[dict]    = []
         self.download_dir:       str           = ""
-        # Estado por pista: {id,title,status(queued|running|done|failed),percent,error}
+        # Estado por pista: {id,title,status(queued|running|done|skipped|failed),percent,error}
         self.download_items:     list[dict]    = []
         self.audio_format:       str           = ""
         self._download_task: Optional[asyncio.Task] = None
@@ -978,7 +979,7 @@ class AppState:
             DEFAULT_AUDIO_FORMAT,
             DOWNLOAD_CONCURRENCY,
         )
-        from engine.downloader import download_audio, resolve_download_dir
+        from engine.downloader import download_audio, ffmpeg_available, resolve_download_dir
 
         if not selected:
             return
@@ -995,6 +996,7 @@ class AppState:
         self.download_total    = len(selected)
         self.download_current  = ""
         self.download_done     = []
+        self.download_skipped  = []
         self.download_failed   = []
         items = {
             id(t): {"id": t.id, "title": f"{t.artist} — {t.name}", "status": "queued",
@@ -1004,10 +1006,41 @@ class AppState:
         self.download_items    = list(items.values())
         self._download_cancel  = asyncio.Event()
         cancel = self._download_cancel
+
+        # Sin FFmpeg toda la cola fallaría igual pista por pista. Se marca de
+        # una vez para que la UI muestre un solo diagnóstico accionable.
+        if not ffmpeg_available():
+            message = "FFmpeg no está instalado o no está en PATH"
+            for item in self.download_items:
+                item["status"] = "failed"
+                item["error"] = message
+            self.download_failed   = [item["title"] for item in self.download_items]
+            self.download_progress = self.download_total
+            self.download_state    = TransferState.DONE
+            self._log(f"[ERROR] Descargas canceladas · {message}")
+            self.notify()
+            return
+
         self._log(
             f"[INFO] Descargas · {len(selected)} pistas → {fmt.upper()} en {target_dir}"
         )
         self.notify()
+
+        # Un único resolver por cola: su memo por álbum evita repetir la
+        # consulta para cada pista del mismo disco. ``engine`` no puede
+        # importar ``services``, así que la cadena se inyecta aquí.
+        cover_resolver = None
+        artwork_fetcher = None
+        try:
+            from services import settings_store
+            if settings_store.get_covers_online():
+                from services.covers import CoverResolver
+                cover_resolver = CoverResolver()
+                artwork_fetcher = lambda t: cover_resolver.resolve(  # noqa: E731
+                    t, allow_youtube_thumb=True
+                ).data or None
+        except Exception as exc:  # noqa: BLE001 - portadas nunca bloquean la cola
+            self._log(f"[WARN] Portadas online no disponibles: {exc}")
 
         semaphore = asyncio.Semaphore(max(1, DOWNLOAD_CONCURRENCY))
         lock = asyncio.Lock()
@@ -1050,6 +1083,8 @@ class AppState:
                         destination_dir=target_dir,
                         audio_format=fmt,
                         progress_hook=_hook,
+                        artwork_fetcher=artwork_fetcher,
+                        skip_existing=True,
                     )
                 except Exception as exc:  # noqa: BLE001 - nunca debe tumbar la cola
                     result = None
@@ -1059,19 +1094,24 @@ class AppState:
 
                 async with lock:
                     if result is not None and result.ok:
-                        item["status"], item["percent"] = "done", 100.0
                         track.source_path = result.path
-                        self.download_done.append(
-                            {
-                                "id": track.id,
-                                "name": track.name,
-                                "artist": track.artist,
-                                "path": result.path,
-                                "video_id": result.video_id,
-                                "format": fmt,
-                                "duration_ms": track.duration_ms,
-                            }
-                        )
+                        entry = {
+                            "id": track.id,
+                            "name": track.name,
+                            "artist": track.artist,
+                            "path": result.path,
+                            "video_id": result.video_id,
+                            "format": fmt,
+                            "duration_ms": track.duration_ms,
+                        }
+                        if getattr(result, "skipped", False):
+                            # Ya existía: no se descargó ni se reescribió. Se
+                            # cuenta aparte para que «Completado» no mienta.
+                            item["status"], item["percent"] = "skipped", 100.0
+                            self.download_skipped.append(entry)
+                        else:
+                            item["status"], item["percent"] = "done", 100.0
+                            self.download_done.append(entry)
                     else:
                         item["status"], item["error"] = "failed", error or "Error desconocido"
                         self.download_failed.append(
@@ -1091,9 +1131,11 @@ class AppState:
             await asyncio.gather(*(_one(t) for t in selected))
             cancelled = cancel.is_set()
             self.download_state = TransferState.DONE
+            skipped = len(self.download_skipped)
             summary = (
                 f"Descargas {'canceladas' if cancelled else 'completas'} · "
                 f"OK: {len(self.download_done)} · Fallidas: {len(self.download_failed)}"
+                + (f" · Omitidas: {skipped}" if skipped else "")
             )
             self._log(f"[INFO] {summary}")
         except Exception as exc:  # noqa: BLE001
