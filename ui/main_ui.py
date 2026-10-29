@@ -92,6 +92,7 @@ from ui.tokens import (
     RAIL_HEADER_H, RAIL_LABEL_W, RAIL_BRAND_W,
     RAIL_VERSION_H, RAIL_VERSION_H_COLLAPSED,
     RAIL_ANIM_MS, RAIL_ITEM_ANIM_MS,
+    MOTION_PANEL_MS,
 )
 
 # Por encima de este número conviene un único update del ListView en vez de
@@ -601,6 +602,10 @@ class PlaylistManagerUI(DialogMixin):
             except Exception:
                 pass
 
+        # Biblioteca y otras vistas necesitan cambiar de módulo después del
+        # arranque (p. ej. «Crear playlist» desde una carpeta local).
+        self._select_module = _select_module
+
         def _on_rail_item_click(e):
             try:
                 idx = int(e.control.data)
@@ -845,6 +850,7 @@ class PlaylistManagerUI(DialogMixin):
                 getattr(state, "service", None) or getattr(self.state, "service", None),
                 app_state=state,
                 on_open_downloads=lambda: _select_module(2),
+                on_open_gestion=self._open_folder_in_gestion,
             )
         except Exception as exc:
             # fallback placeholder no rompe app
@@ -1917,8 +1923,8 @@ class PlaylistManagerUI(DialogMixin):
         # list_area siempre contiene _dual_row (estable, animación cookbook)
         self._list_area = ft.Container(
             content=self._dual_row, expand=True,
-            animate_opacity=ft.Animation(300, ft.AnimationCurve.EASE_IN_OUT),
-            animate_scale=ft.Animation(300, ft.AnimationCurve.EASE_IN_OUT),
+            animate_opacity=ft.Animation(MOTION_PANEL_MS, ft.AnimationCurve.EASE_IN_OUT),
+            animate_scale=ft.Animation(MOTION_PANEL_MS, ft.AnimationCurve.EASE_IN_OUT),
             opacity=1.0, scale=1.0,
         )
         list_area = self._list_area
@@ -2365,6 +2371,25 @@ class PlaylistManagerUI(DialogMixin):
         self._search_field.value = ""
         self.state.reset_session()
         self._snack("Sesión limpiada")
+
+    def _open_folder_in_gestion(self, name: str, tracks: list) -> None:
+        """Carga una carpeta local de la Biblioteca en Gestión como playlist.
+
+        Deja el origen en «Archivo Local» para que Transferir pida destino en
+        vez de tratar la lista como una playlist remota, y alinea el selector
+        de origen: ``AppState.source`` no se sincroniza solo con el widget.
+        """
+        if not tracks:
+            self._snack("La carpeta no tiene pistas", error=True)
+            return
+        self._completion_snack_shown = False
+        self._pm_cleared_for_load = True
+        self._telemetry.clear_postmortem()
+        self.state.load_local_tracks(list(tracks), playlist_name=name or "Playlist Local")
+        self.state.set_source("Archivo Local")
+        self._src_dd.value = "Archivo Local"
+        self._select_module(0)
+        self._snack(f"{len(tracks)} pistas de «{name}» cargadas en Gestión")
 
     def _open_paste_dialog(self) -> None:
         self._paste_field.value = ""

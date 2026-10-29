@@ -16,6 +16,13 @@
 - Spotify: reduce el bloqueo durante la sincronización de Biblioteca al diferir la carga del detalle y aplicar timeout por página.
 - Diseño: se probaron `#3B5AFF`, `#214AFF` y `#1B4CB6`; se restauró el acento original `#4F8BFF`.
 - Dependencias: alinea `flet`, `flet-desktop` y `flet-audio` en `1.0.5`, e incorpora `yt-dlp`.
+- Reproductor: el servicio `flet_audio.Audio` se crea en la primera reproducción y siempre con `src`. Crearlo vacío hacía que su `update()` en Dart lanzara `Audio must have "src" specified` y dejara el servicio inservible: la barra mostraba `0:00 / 0:00` y no sonaba nada. Los errores de `play` dejan de silenciarse y se registran en el panel de Consola.
+- Escritorio: `app.py` fija `FLET_DESKTOP_FLAVOR=full` antes de lanzar el cliente. El flavor `light` (el predeterminado en Linux) no incluye el plugin de audio y el reproductor quedaba mudo sin ningún error visible.
+- Bibliotecas y portadas: el orden de proveedores depende del origen. Apple Music y Spotify usan su artwork cuadrado; las URL del CDN de YouTube pasan detrás de iTunes/Deezer, porque son miniaturas de vídeo y no carátulas de álbum.
+- Portadas: la miniatura de fila, tarjeta y detalle recibe el tamaño de su recuadro (`_thumb_content_for(..., box=N)`). `ft.Image` no admite `alignment` en Flet 1.0.5 y una portada con dimensiones inesperadas quedaba descentrada.
+- Biblioteca: selector de fuente compacto de una sola fila con cuatro segmentos (YouTube / Apple / Spotify / Local), en lugar de etiquetas largas que se partían en tres filas.
+- Biblioteca: el detalle de una carpeta local ofrece «Crear playlist», que carga sus pistas en Gestión con origen «Archivo Local» listo para elegir destino y transferir.
+- Config: la vista usa el mismo chasis que Descargas (padding de 16, cabecera fija y divisoria) y la carpeta destino aparece desde el primer render.
 
 ## 4.6.0 — 2026-10-23 · Búsqueda deduplicada, variantes cirílicas y aborto temprano
 

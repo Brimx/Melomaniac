@@ -16,8 +16,8 @@ from ui.fonts import FONT_HEADLINE, FONT_HEADLINE_BOLD, FONT_TEXT
 from ui.playlist_card import PlaylistCard
 from ui.playlist_detail_view import PlaylistDetailView
 from ui.tokens import (
-    ACCENT, BG_HOVER, BG_LIST, BG_SURFACE, BORDER_LIGHT,
-    TEXT_DIM, TEXT_MUTED, TEXT_PRIMARY,
+    ACCENT, ACCENT_HALO, BG_HOVER, BG_LIST, BG_SURFACE, BORDER_LIGHT,
+    RADIUS_BUTTON, TEXT_DIM, TEXT_MUTED, TEXT_PRIMARY,
 )
 from ui.widgets import _ghost_btn, app_text, notify, section_label
 
@@ -30,11 +30,21 @@ PLATFORM_ICONS = {
 }
 SOURCES = (*PLATFORM_ORDER, LOCAL_LIBRARY_LABEL)
 
+# Etiquetas cortas para el control segmentado (una sola fila, 4 segmentos).
+_SHORT_LABELS = {
+    "YouTube Music": "YouTube",
+    "Apple Music": "Apple",
+    "Spotify": "Spotify",
+    LOCAL_LIBRARY_LABEL: "Local",
+}
+
 
 class LibraryView(ft.Container):
     def __init__(self, page: ft.Page, library_state: LibraryState, service,
-                 app_state=None, on_open_downloads=None, player_bar=None):
+                 app_state=None, on_open_downloads=None, on_open_gestion=None,
+                 player_bar=None):
         super().__init__(expand=True, bgcolor=BG_LIST)
+        self._on_open_gestion = on_open_gestion
         self._page_ref = page
         self.library_state = library_state
         self.service = service
@@ -55,7 +65,7 @@ class LibraryView(ft.Container):
 
     def _build(self) -> None:
         # selector plataforma
-        self._platform_row = ft.Row(spacing=8, wrap=True)
+        self._platform_row = ft.Row(spacing=8, wrap=False)
         self._rebuild_platform_selector()
 
         self._status_text = app_text("", size=11, color=TEXT_MUTED, font_family=FONT_TEXT)
@@ -87,27 +97,40 @@ class LibraryView(ft.Container):
         self.content = ft.Container(content=body, padding=ft.Padding.all(12), expand=True)
 
     def _rebuild_platform_selector(self) -> None:
+        """Control segmentado de una sola fila: icono + etiqueta corta."""
         self._platform_row.controls.clear()
         for plat in SOURCES:
             selected = plat == self._platform
             icon = PLATFORM_ICONS.get(plat, ft.Icons.MUSIC_NOTE)
             btn = ft.Container(
-                content=ft.Row(controls=[ft.Icon(icon, size=18, color=ACCENT if selected else TEXT_DIM), ft.Text(plat, size=12, color=TEXT_PRIMARY if selected else TEXT_MUTED, font_family=FONT_HEADLINE)], spacing=8, vertical_alignment=ft.CrossAxisAlignment.CENTER),
-                bgcolor=ACCENT if selected else BG_SURFACE,  # simple; halo variant could be used
+                content=ft.Column(
+                    controls=[
+                        ft.Icon(icon, size=18, color=ACCENT if selected else TEXT_DIM),
+                        ft.Text(
+                            _SHORT_LABELS.get(plat, plat),
+                            size=10,
+                            color=TEXT_PRIMARY if selected else TEXT_MUTED,
+                            font_family=FONT_HEADLINE,
+                            max_lines=1,
+                            overflow=ft.TextOverflow.ELLIPSIS,
+                            text_align=ft.TextAlign.CENTER,
+                        ),
+                    ],
+                    spacing=3,
+                    horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+                    tight=True,
+                ),
+                bgcolor=ACCENT_HALO if selected else BG_SURFACE,
                 border=ft.Border.all(0.8, ACCENT if selected else BORDER_LIGHT),
-                border_radius=10,
-                padding=ft.Padding.symmetric(horizontal=12, vertical=8),
+                border_radius=RADIUS_BUTTON,
+                padding=ft.Padding.symmetric(horizontal=6, vertical=7),
+                alignment=ft.Alignment.CENTER,
                 ink=True,
+                tooltip=plat,
+                expand=True,
                 data=plat,
                 on_click=self._on_platform_click,
             )
-            # use halo for selected to match rail
-            if selected:
-                try:
-                    from ui.tokens import ACCENT_HALO
-                    btn.bgcolor = ACCENT_HALO
-                except Exception:
-                    pass
             self._platform_row.controls.append(btn)
 
     def _on_platform_click(self, e) -> None:
@@ -164,6 +187,7 @@ class LibraryView(ft.Container):
             loader=_load_local if local else None,
             on_remove=_remove_local if local else None,
             on_open_downloads=self._on_open_downloads,
+            on_open_gestion=self._on_open_gestion,
             player_bar=getattr(self, "player_bar", None),
         )
         self.content = self._detail

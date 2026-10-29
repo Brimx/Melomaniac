@@ -21,10 +21,11 @@ from core.models import Track, TransferState
 from engine.downloader import open_in_file_manager
 from services import settings_store
 from ui.fonts import FONT_HEADLINE, FONT_HEADLINE_BOLD, FONT_TEXT, font_family_for, mono_family
-from ui.song_row import ITEM_H, LibrarySkeletonRow
+from ui.song_row import ITEM_H, LibrarySkeletonRow, _thumb_content_for
 from ui.tokens import (
     ACCENT, BG_HOVER, BG_LIST, BG_SURFACE, BORDER_LIGHT, BORDER_MUTED, BORDER_ROW,
     SKELETON_DARK, TEXT_DIM, TEXT_MUTED, TEXT_PRIMARY,
+    MOTION_HOVER_MS,
 )
 from ui.widgets import _ghost_btn, _primary_btn, app_text, notify, open_external
 
@@ -34,12 +35,14 @@ class PlaylistDetailView(ft.Container):
                  app_state=None, loader: Optional[Callable] = None,
                  on_remove: Optional[Callable[[], None]] = None,
                  on_open_downloads: Optional[Callable[[], None]] = None,
+                 on_open_gestion: Optional[Callable[[str, list], None]] = None,
                  player_bar=None):
         super().__init__(expand=True, bgcolor=BG_LIST)
         self.app_state = app_state
         self.player_bar = player_bar
         self._loader = loader
         self._on_open_downloads = on_open_downloads
+        self._on_open_gestion = on_open_gestion
         self._is_local = summary.platform == LOCAL_LIBRARY_LABEL
         self._page_ref = page
         self.summary = summary
@@ -66,13 +69,20 @@ class PlaylistDetailView(ft.Container):
         if self._is_local:
             self._play_all_btn = _primary_btn("Reproducir", ft.Icons.PLAY_ARROW_ROUNDED, self._on_play_all, height=40)
             self._play_all_btn.disabled = True
+            self._create_btn = _ghost_btn(
+                "Crear playlist", ft.Icons.QUEUE_MUSIC_OUTLINED,
+                lambda e: self._on_create_playlist(), height=40,
+            )
+            self._create_btn.disabled = True
             actions = [
                 self._play_all_btn,
+                self._create_btn,
                 _ghost_btn("Abrir carpeta", ft.Icons.FOLDER_OPEN, lambda e: self._open_folder(), height=40),
                 _ghost_btn("Quitar de la Biblioteca", ft.Icons.REMOVE_CIRCLE_OUTLINE, lambda e: on_remove() if on_remove else None, height=40),
             ]
             self._download_btn = None
         else:
+            self._create_btn = None
             self._play_all_btn = _primary_btn("Reproducir", ft.Icons.PLAY_ARROW_ROUNDED, self._on_play_all, height=40)
             self._play_all_btn.visible = False
             self._download_btn = _primary_btn("Descargar playlist", ft.Icons.DOWNLOAD, self._on_download, height=40)
@@ -117,6 +127,20 @@ class PlaylistDetailView(ft.Container):
     def _open_folder(self) -> None:
         if not open_in_file_manager(self.summary.id):
             notify(self._page_ref, "No se pudo abrir la carpeta", kind="error")
+
+    def _on_create_playlist(self) -> None:
+        """Manda la carpeta local a Gestión como playlist con origen preparado.
+
+        Gestión es la única vista que tiene destino, Organizar/Dividir y el
+        diálogo de nombre; duplicar ese flujo aquí dejaría dos caminos para la
+        misma operación. Por eso cede los datos al callback en vez de tocar
+        ``AppState`` directamente: allí también hay que alinear el selector de
+        origen.
+        """
+        if not self._tracks or self._on_open_gestion is None:
+            notify(self._page_ref, "No hay pistas cargadas para crear la playlist", kind="error")
+            return
+        self._on_open_gestion(self.summary.name, list(self._tracks))
 
     def _on_download(self, _e=None) -> None:
         """Encola todas las pistas de la playlist en la cola de Descargas."""
@@ -314,6 +338,8 @@ class PlaylistDetailView(ft.Container):
                 self._play_all_btn.visible = False
             else:
                 self._play_all_btn.disabled = True
+        if self._create_btn is not None:
+            self._create_btn.disabled = total == 0
 
     def _download_single_track(self, track: Track, action_container: ft.Container) -> None:
         """Descarga una pista individual y al completarse habilita su reproducción inmediata."""
@@ -426,7 +452,7 @@ class PlaylistDetailView(ft.Container):
 
         thumb = ft.Container(
             width=48, height=48, border_radius=6, bgcolor=SKELETON_DARK, clip_behavior=ft.ClipBehavior.ANTI_ALIAS,
-            content=ft.Image(src=track.img_url, fit=ft.BoxFit.COVER, error_content=ft.Icon(ft.Icons.MUSIC_NOTE, color=TEXT_DIM, size=16)) if track.img_url else ft.Container(content=ft.Icon(ft.Icons.MUSIC_NOTE, color=TEXT_DIM, size=16), alignment=ft.Alignment.CENTER),
+            content=_thumb_content_for(track.img_url, box=48, icon_size=16),
         )
         title = ft.Text(track.name, size=13, color=TEXT_PRIMARY, font_family=font_family_for(track.name, "semibold"), max_lines=1, overflow=ft.TextOverflow.ELLIPSIS)
         artist = ft.Text(track.artist, size=11, color=TEXT_MUTED, font_family=font_family_for(track.artist), max_lines=1, overflow=ft.TextOverflow.ELLIPSIS)
@@ -458,9 +484,9 @@ class PlaylistDetailView(ft.Container):
         row = ft.Container(
             height=ITEM_H, bgcolor=BG_LIST, border=ft.Border.only(bottom=ft.BorderSide(0.5, BORDER_ROW)), padding=ft.Padding.symmetric(horizontal=12, vertical=8),
             ink=True,
-            animate=ft.Animation(100, ft.AnimationCurve.EASE_OUT),
-            animate_scale=ft.Animation(120, ft.AnimationCurve.EASE_OUT),
-            animate_opacity=ft.Animation(100, ft.AnimationCurve.EASE_OUT),
+            animate=ft.Animation(MOTION_HOVER_MS, ft.AnimationCurve.EASE_OUT),
+            animate_scale=ft.Animation(MOTION_HOVER_MS, ft.AnimationCurve.EASE_OUT),
+            animate_opacity=ft.Animation(MOTION_HOVER_MS, ft.AnimationCurve.EASE_OUT),
             content=ft.Row(controls=[
                 ft.Container(content=ft.Text(str(index), size=11, color=TEXT_MUTED, font_family=mono_family("light")), width=28, alignment=ft.Alignment.CENTER),
                 thumb,

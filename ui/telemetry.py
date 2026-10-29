@@ -9,12 +9,13 @@ from ui.tokens import (
     BG_PANEL, BG_HOVER, BORDER_LIGHT, BORDER_MUTED,
     ACCENT, SUCCESS, ERROR_COL,
     TEXT_PRIMARY, TEXT_MUTED, TEXT_DIM,
+    MOTION_PANEL_MS,
 )
 
 _TELE_HANDLE_H   = 35
 _TELE_PANEL_H    = 300
 _TELE_DOCKED_MIN = 700
-_TELE_ANIM       = ft.Animation(400, ft.AnimationCurve.DECELERATE)
+_TELE_ANIM       = ft.Animation(MOTION_PANEL_MS, ft.AnimationCurve.DECELERATE)
 
 
 class TelemetryDrawer:

@@ -56,6 +56,15 @@ RADIUS_DIALOG = 14
 RADIUS_RAIL        = RADIUS_DIALOG
 RADIUS_RAIL_ITEM   = RADIUS_BUTTON
 
+# Movimiento — duración por propósito (una sola fuente)
+# Curva por propósito: hover/press usa EASE_OUT; el resto EASE_IN_OUT.
+# Ninguna animación nueva inventa duración: reutiliza el propósito existente
+# o añade uno aquí con su justificación.
+MOTION_HOVER_MS    = 120  # hover, press, cambios de color/borde
+MOTION_ENTER_MS    = 200  # aparición de elemento, progreso, cambio de estado corto
+MOTION_PANEL_MS    = 300  # paneles, rail, transiciones de vista
+MOTION_SKELETON_MS = 600  # pulso de carga
+
 # Medidas del rail de navegación
 RAIL_W_COLLAPSED = 68
 RAIL_W_EXPANDED  = 220
@@ -71,8 +80,8 @@ RAIL_LABEL_W      = 140
 RAIL_BRAND_W      = 140
 RAIL_VERSION_H    = 14
 RAIL_VERSION_H_COLLAPSED = 0.1
-RAIL_ANIM_MS      = 300
-RAIL_ITEM_ANIM_MS = 200
+RAIL_ANIM_MS      = MOTION_PANEL_MS
+RAIL_ITEM_ANIM_MS = MOTION_ENTER_MS
 
 # Medidas del reproductor integrado y panel de cola
 PLAYER_BAR_H            = 72

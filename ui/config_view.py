@@ -84,8 +84,10 @@ class ConfigView(ft.Container):
             on_change=self._on_covers_change,
         )
 
+        # Valor inicial real: sin esto la tarjeta DESTINO nace vacía hasta el
+        # primer ``refresh()`` y parece que no hay carpeta configurada.
         self._dir_text = app_text(
-            "", size=11, color=TEXT_PRIMARY, font_family=mono_family("light"),
+            self._download_dir, size=11, color=TEXT_PRIMARY, font_family=mono_family("light"),
             max_lines=1, overflow=ft.TextOverflow.ELLIPSIS, expand=True,
         )
         self._dir_reset_btn = _ghost_btn(
@@ -102,13 +104,13 @@ class ConfigView(ft.Container):
             width=150, height=36,
         )
 
-        return ft.Column(controls=[
-            ft.Row(controls=[
-                ft.Icon(ft.Icons.SETTINGS_OUTLINED, size=18, color=TEXT_MUTED),
-                app_text("Configuración", size=16, color=TEXT_PRIMARY,
-                         font_family=FONT_HEADLINE),
-            ], spacing=8),
-            ft.Container(height=6),
+        header = ft.Row(controls=[
+            ft.Icon(ft.Icons.SETTINGS_OUTLINED, size=18, color=TEXT_MUTED),
+            app_text("Configuración", size=16, color=TEXT_PRIMARY,
+                     font_family=FONT_HEADLINE),
+        ], spacing=8)
+
+        cards = ft.Column(controls=[
             self._card(
                 "DESCARGAS",
                 "Formato por defecto de la cola. Se puede cambiar por descarga en el módulo Descargas.",
@@ -139,6 +141,20 @@ class ConfigView(ft.Container):
             ),
         ], spacing=12, scroll=ft.ScrollMode.AUTO, expand=True,
             horizontal_alignment=ft.CrossAxisAlignment.STRETCH)
+
+        # Mismo chasis que Descargas: cabecera fija + divisoria + cuerpo con
+        # scroll y padding de 16. Sin el contenedor exterior las tarjetas se
+        # pegaban al borde de la página y el título flotaba sin margen.
+        return ft.Container(
+            expand=True,
+            padding=ft.Padding.all(16),
+            content=ft.Column(controls=[
+                header,
+                ft.Divider(height=1, color=BORDER_MUTED),
+                ft.Container(content=cards, expand=True),
+            ], spacing=12, expand=True,
+                horizontal_alignment=ft.CrossAxisAlignment.STRETCH),
+        )
 
     # ── estado ─────────────────────────────────────────────────────────
 

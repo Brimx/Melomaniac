@@ -44,6 +44,7 @@ from ui.tokens import (
     TEXT_PRIMARY, TEXT_MUTED, TEXT_DIM,
     ACCENT, SUCCESS, BG_SURFACE, BORDER_ROW,
     BG_INPUT, BORDER_LIGHT,
+    MOTION_HOVER_MS, MOTION_SKELETON_MS,
 )
 from ui.widgets import _status_icon, input_border
 
@@ -96,7 +97,7 @@ class SkeletonRow(ft.Container):
             content=_shimmer,
             opacity=1.0,
             scale=0.98,
-            animate_scale=ft.Animation(600, ft.AnimationCurve.EASE_IN_OUT),
+            animate_scale=ft.Animation(MOTION_SKELETON_MS, ft.AnimationCurve.EASE_IN_OUT),
         )
 
     async def start_pulse(self) -> None:
@@ -133,16 +134,28 @@ class SkeletonRow(ft.Container):
             pass
 
 
-def _thumb_content_for(img_url: str, *, size: int = 20, icon_size: int = 18) -> ft.Control:
-    """Contenido de miniatura con respaldo de icono. Nunca queda vacío."""
+def _thumb_content_for(
+    img_url: str, *, box: int | None = None, icon_size: int = 18,
+) -> ft.Control:
+    """Contenido de miniatura que rellena y centra su recuadro. Nunca vacío.
+
+    ``ft.Image`` no acepta ``alignment`` en Flet 1.0.5 y, sin tamaño propio,
+    toma el intrínseco de la imagen: una portada con dimensiones inesperadas
+    queda pegada a una esquina del recuadro recortado. Pasando ``box`` (el lado
+    del contenedor que la recorta) la imagen ocupa exactamente ese cuadrado y
+    COVER la centra siempre. ``box=None`` deja el tamaño intrínseco para los
+    usos que no recortan.
+    """
     if img_url:
+        size = {"width": box, "height": box} if box else {}
         return ft.Image(
             src=img_url,
             fit=ft.BoxFit.COVER,
             error_content=ft.Icon(ft.Icons.MUSIC_NOTE, color=TEXT_DIM, size=icon_size),
+            **size,
         )
     return ft.Container(
-        content=ft.Icon(ft.Icons.MUSIC_NOTE, color=TEXT_DIM, size=size),
+        content=ft.Icon(ft.Icons.MUSIC_NOTE, color=TEXT_DIM, size=icon_size),
         alignment=ft.Alignment.CENTER,
     )
 
@@ -155,17 +168,7 @@ def build_preview_row(track: Track, index: int) -> ft.Container:
     Solo quita Estado (26) y Checkbox (32) — resto idéntico.
     """
     # thumbnail idéntico a SongRow (55) con fallback
-    if track.img_url:
-        thumb_content = ft.Image(
-            src=track.img_url,
-            fit=ft.BoxFit.COVER,
-            error_content=ft.Icon(ft.Icons.MUSIC_NOTE, color=TEXT_DIM, size=18),
-        )
-    else:
-        thumb_content = ft.Container(
-            content=ft.Icon(ft.Icons.MUSIC_NOTE, color=TEXT_DIM, size=20),
-            alignment=ft.Alignment.CENTER,
-        )
+    thumb_content = _thumb_content_for(track.img_url, box=55)
     thumb = ft.Container(
         width=55, height=55,
         border_radius=8,
@@ -264,7 +267,7 @@ class PreviewSkeletonRow(ft.Container):
             content=_shimmer,
             opacity=1.0,
             scale=0.98,
-            animate_scale=ft.Animation(600, ft.AnimationCurve.EASE_IN_OUT),
+            animate_scale=ft.Animation(MOTION_SKELETON_MS, ft.AnimationCurve.EASE_IN_OUT),
         )
 
     async def start_pulse(self) -> None:
@@ -338,7 +341,7 @@ class LibrarySkeletonRow(ft.Container):
             content=_shimmer,
             opacity=1.0,
             scale=0.98,
-            animate_scale=ft.Animation(600, ft.AnimationCurve.EASE_IN_OUT),
+            animate_scale=ft.Animation(MOTION_SKELETON_MS, ft.AnimationCurve.EASE_IN_OUT),
         )
 
     async def start_pulse(self) -> None:
@@ -448,7 +451,7 @@ class SongRow(ft.Container):
         # ──────────────────────────────────────────────────────────────
         # Intenta cargar imagen de álbum, fallback a icono si falla
         
-        _thumb_content = _thumb_content_for(track.img_url)
+        _thumb_content = _thumb_content_for(track.img_url, box=55)
 
         self._thumb = ft.Container(
             width=55, height=55,
@@ -553,7 +556,7 @@ class SongRow(ft.Container):
             content=self._status_icon,
             width=26,
             alignment=ft.Alignment.CENTER,
-            animate=ft.Animation(100, ft.AnimationCurve.EASE_OUT),
+            animate=ft.Animation(MOTION_HOVER_MS, ft.AnimationCurve.EASE_OUT),
         )
         self._sync_status_cell()
         row_content = ft.Row(
@@ -582,7 +585,7 @@ class SongRow(ft.Container):
             border=ft.Border.only(bottom=ft.BorderSide(0.5, BORDER_ROW)),
             border_radius=0,
             bgcolor=BG_LIST,
-            animate=ft.Animation(100, ft.AnimationCurve.EASE_OUT),
+            animate=ft.Animation(MOTION_HOVER_MS, ft.AnimationCurve.EASE_OUT),
             on_hover=self._on_hover,
             content=row_content,
         )
@@ -676,7 +679,7 @@ class SongRow(ft.Container):
         # lectura local). Sin esto la fila se queda con el icono de respaldo.
         if self._last_img_url != track.img_url:
             self._last_img_url = track.img_url
-            self._thumb.content = _thumb_content_for(track.img_url)
+            self._thumb.content = _thumb_content_for(track.img_url, box=55)
             dirty = True
 
         status_changed = self._last_status != track.transfer_status

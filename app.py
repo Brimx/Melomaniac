@@ -23,6 +23,12 @@ import asyncio
 import os
 from pathlib import Path
 
+# El flavor "light" del cliente de escritorio no incluye el plugin de audio de
+# flet_audio, así que el reproductor queda mudo sin ningún error visible.
+# Debe fijarse antes de que flet_desktop resuelva el flavor (al arrancar el
+# cliente), por eso va aquí y no en un pyproject.toml que el repo no usa.
+os.environ["FLET_DESKTOP_FLAVOR"] = "full"
+
 import flet as ft
 
 from core.state import AppState
@@ -327,6 +333,9 @@ async def main(page: ft.Page) -> None:
     except asyncio.CancelledError:
         # Cierre normal de la aplicación, no requiere acción
         pass
+    except Exception:
+        import traceback
+        traceback.print_exc()
     finally:
         # Último recurso: forzar salida del proceso
         os._exit(0)

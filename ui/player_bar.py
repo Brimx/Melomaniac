@@ -4,6 +4,11 @@ ui/player_bar.py — Barra de reproducción global integrada con flet-audio
 Control visual propio sobre una única instancia de ``flet_audio.Audio``
 registrada en ``page.services``. Toda la lógica de cola vive en
 ``core/playback.py``.
+
+El servicio se crea **bajo demanda**: ``flet_audio`` lanza
+``Audio must have "src" specified`` en su ``update()`` de Dart cuando el
+servicio nace sin fuente y lo deja inservible para toda la sesión. Por eso
+``self.audio`` es ``None`` hasta la primera reproducción.
 """
 
 from __future__ import annotations
@@ -120,36 +125,62 @@ class PlayerBar(ft.Container):
         self._pos_event_count: int = 0
         self._last_pos_event_mono: float | None = None
 
-        # Única instancia de Audio por proceso en page.services
-        self.audio = self._ensure_single_audio_service(page)
+        # El servicio ``Audio`` nace bajo demanda: ver ``_ensure_audio``.
+        self.audio: fta.Audio | None = None
         self._build_ui()
         self._sync_ui()
 
-    def _ensure_single_audio_service(self, page: ft.Page) -> fta.Audio:
-        existing = [s for s in page.services if isinstance(s, fta.Audio)]
-        if existing:
-            audio = existing[0]
-            for extra in existing[1:]:
+    def _ensure_audio(self, src: str) -> tuple[fta.Audio, bool]:
+        """Devuelve ``(servicio Audio listo para sonar src, recién creado)``.
+
+        ``flet_audio`` exige que la primera actualización del servicio ya
+        traiga ``src``: su ``AudioService.update()`` en Dart lanza
+        ``Audio must have src specified`` y el servicio queda inservible para
+        el resto de la sesión (todos los ``invoke_method`` expiran). Por eso
+        nunca se construye vacío y solo se crea al reproducir la primera pista.
+        Cuando se crea, arranca con ``autoplay`` y el llamador no debe volver a
+        llamar a ``play``.
+        """
+        audio = self.audio
+        if audio is None:
+            existing = [s for s in self._page_ref.services if isinstance(s, fta.Audio)]
+            for extra in existing:
                 try:
-                    page.services.remove(extra)
+                    self._page_ref.services.remove(extra)
                 except ValueError:
                     pass
-        else:
             audio = fta.Audio(
-                autoplay=False,
+                src=src,
+                autoplay=True,
                 volume=0.0 if self._muted else self._volume,
                 release_mode=fta.ReleaseMode.STOP,
+                on_loaded=self._on_audio_loaded,
+                on_duration_change=self._on_duration_change,
+                on_state_change=self._on_state_change,
+                on_position_change=self._on_position_change,
+                on_seek_complete=self._on_seek_complete,
             )
-            page.services.append(audio)
+            self._page_ref.services.append(audio)
+            self.audio = audio
+            return audio, True
 
-        audio.release_mode = fta.ReleaseMode.STOP
+        audio.src = src
         audio.volume = 0.0 if self._muted else self._volume
-        audio.on_loaded = self._on_audio_loaded
-        audio.on_duration_change = self._on_duration_change
-        audio.on_state_change = self._on_state_change
-        audio.on_position_change = self._on_position_change
-        audio.on_seek_complete = self._on_seek_complete
-        return audio
+        audio.release_mode = fta.ReleaseMode.STOP
+        try:
+            audio.update()
+        except Exception as exc:  # noqa: BLE001
+            self._log(f"[AUDIO] No se pudo actualizar el servicio: {exc}")
+        return audio, False
+
+    def _log(self, msg: str) -> None:
+        """Traza del reproductor hacia el log de la app (diagnóstico)."""
+        print(msg, flush=True)
+        if self.app_state is not None and hasattr(self.app_state, "log"):
+            try:
+                self.app_state.log(msg)
+            except Exception:
+                pass
 
     def log_audio_services_count(self, context: str = "") -> int:
         count = sum(1 for s in self._page_ref.services if isinstance(s, fta.Audio))
@@ -395,7 +426,8 @@ class PlayerBar(ft.Container):
             return
         try:
             result = fn(*args, **kwargs)
-        except Exception:
+        except Exception as exc:  # noqa: BLE001
+            self._log(f"[AUDIO] Fallo al invocar {getattr(fn, '__name__', fn)}: {exc}")
             return
         if asyncio.iscoroutine(result):
             try:
@@ -408,6 +440,13 @@ class PlayerBar(ft.Container):
                         result.close()
                     except Exception:
                         pass
+
+    def _call_audio(self, method: str, *args) -> None:
+        """Invoca ``method`` del servicio si ya existe (no-op antes del primer play)."""
+        audio = self.audio
+        if audio is None:
+            return
+        self._schedule_audio(getattr(audio, method), *args)
 
     # ── API pública de reproducción y cola ─────────────────────────────
 
@@ -497,15 +536,12 @@ class PlayerBar(ft.Container):
             return
         self._position_ms = 0
         self._duration_ms = max(0, int(cur.duration_ms or 0))
-        self.audio.src = abs_path
-        self.audio.release_mode = fta.ReleaseMode.STOP
-        self.audio.volume = 0.0 if self._muted else self._volume
+        audio, created = self._ensure_audio(abs_path)
         self._audio_state = fta.AudioState.PLAYING
-        try:
-            self.audio.update()
-        except Exception:
-            pass
-        self._schedule_audio(self.audio.play, 0)
+        if not created:
+            # El servicio ya existía: cambiar ``src`` carga la pista pero no la
+            # arranca, hay que pedir ``play`` explícitamente.
+            self._schedule_audio(audio.play, 0)
         self._ensure_ticker()
         self._sync_ui()
         self._notify_listeners()
@@ -515,23 +551,26 @@ class PlayerBar(ft.Container):
         self._position_ms = 0
         self._duration_ms = 0
         self._stop_ticker()
-        self._schedule_audio(self.audio.release)
+        self._call_audio("release")
         self._sync_ui()
         self._notify_listeners()
 
     def release(self) -> None:
         """Libera el decodificador nativo y detiene el ticker (hard_cleanup)."""
-        self._disposed = True
         self._stop_ticker()
+        audio = self.audio
+        self._disposed = True
+        if audio is None:
+            return
         try:
-            res = self.audio.release()
+            res = audio.release()
             if asyncio.iscoroutine(res):
                 try:
                     asyncio.get_running_loop().create_task(res)
                 except RuntimeError:
                     res.close()
-        except Exception:
-            pass
+        except Exception as exc:  # noqa: BLE001
+            self._log(f"[AUDIO] No se pudo liberar el servicio: {exc}")
 
     # ── eventos de controles ───────────────────────────────────────────
 
@@ -544,11 +583,11 @@ class PlayerBar(ft.Container):
             return
         if self._audio_state == fta.AudioState.PLAYING:
             self._audio_state = fta.AudioState.PAUSED
-            self._schedule_audio(self.audio.pause)
+            self._call_audio("pause")
             self._stop_ticker()
         elif self._audio_state == fta.AudioState.PAUSED:
             self._audio_state = fta.AudioState.PLAYING
-            self._schedule_audio(self.audio.resume)
+            self._call_audio("resume")
             self._ensure_ticker()
         else:
             self._load_and_play_current()
@@ -561,10 +600,10 @@ class PlayerBar(ft.Container):
             return
         if self._position_ms > PlayQueue.RESTART_THRESHOLD_MS and self.queue.current is not None:
             self._position_ms = 0
-            self._schedule_audio(self.audio.seek, 0)
+            self._call_audio("seek", 0)
             if self._audio_state != fta.AudioState.PLAYING:
                 self._audio_state = fta.AudioState.PLAYING
-                self._schedule_audio(self.audio.resume)
+                self._call_audio("resume")
                 self._ensure_ticker()
             self._sync_ui()
             return
@@ -573,7 +612,7 @@ class PlayerBar(ft.Container):
         if target is not None:
             if target is prev_cur:
                 self._position_ms = 0
-                self._schedule_audio(self.audio.seek, 0)
+                self._call_audio("seek", 0)
                 self._sync_ui()
             else:
                 self._load_and_play_current()
@@ -606,12 +645,8 @@ class PlayerBar(ft.Container):
 
     def _on_mute_click(self, _e=None) -> None:
         self._muted = not self._muted
-        self.audio.volume = 0.0 if self._muted else self._volume
+        self._apply_volume()
         self._vol_slider.value = 0.0 if self._muted else self._volume
-        try:
-            self.audio.update()
-        except Exception:
-            pass
         setter = getattr(settings_store, "set_mute", None)
         if callable(setter):
             setter(self._muted)
@@ -625,12 +660,19 @@ class PlayerBar(ft.Container):
         self._volume = max(0.0, min(1.0, val))
         if self._volume > 0 and self._muted:
             self._muted = False
-        self.audio.volume = 0.0 if self._muted else self._volume
-        try:
-            self.audio.update()
-        except Exception:
-            pass
+        self._apply_volume()
         self._sync_volume_icon()
+
+    def _apply_volume(self) -> None:
+        """Propaga volumen/silencio al servicio; sin servicio solo guarda el valor."""
+        audio = self.audio
+        if audio is None:
+            return
+        audio.volume = 0.0 if self._muted else self._volume
+        try:
+            audio.update()
+        except Exception as exc:  # noqa: BLE001
+            self._log(f"[AUDIO] No se pudo aplicar volumen: {exc}")
 
     def _on_volume_change_end(self, _e: ft.ControlEvent) -> None:
         set_vol = getattr(settings_store, "set_volume", None)
@@ -664,7 +706,7 @@ class PlayerBar(ft.Container):
         x = float(getattr(pos, "x", 0.0) or 0.0)
         target_ms = self._x_to_ms(x)
         self._position_ms = target_ms
-        self._schedule_audio(self.audio.seek, target_ms)
+        self._call_audio("seek", target_ms)
         self._update_progress_visual(target_ms)
 
     def _on_scrub_start(self, _e) -> None:
@@ -692,22 +734,25 @@ class PlayerBar(ft.Container):
         self._progress_fill.animate = ft.Animation(
             PLAYER_PROGRESS_ANIM_MS, ft.AnimationCurve.EASE_IN_OUT
         )
-        self._schedule_audio(self.audio.seek, target_ms)
+        self._call_audio("seek", target_ms)
         self._update_progress_visual(target_ms)
 
     # ── callbacks del servicio Audio e instrumentación ─────────────────
 
     def _on_audio_loaded(self, _e) -> None:
         async def _probe_duration() -> None:
+            audio = self.audio
+            if audio is None:
+                return
             try:
-                dur = await self.audio.get_duration()
+                dur = await audio.get_duration()
                 ms = _to_ms(dur)
                 if ms > 0:
                     self._duration_ms = ms
                     if not self._scrubbing:
                         self._update_progress_visual(self._position_ms)
-            except Exception:
-                pass
+            except Exception as exc:  # noqa: BLE001
+                self._log(f"[AUDIO] No se pudo leer la duración: {exc}")
 
         try:
             asyncio.get_running_loop().create_task(_probe_duration())
@@ -770,7 +815,7 @@ class PlayerBar(ft.Container):
             if self.queue.repeat == RepeatMode.ONE and self.queue.current is not None:
                 self._position_ms = 0
                 self._audio_state = fta.AudioState.PLAYING
-                self._schedule_audio(self.audio.play, 0)
+                self._call_audio("play", 0)
                 self._ensure_ticker()
                 self._sync_ui()
                 return
@@ -810,13 +855,16 @@ class PlayerBar(ft.Container):
                 await asyncio.sleep(_TICKER_INTERVAL_S)
                 if self._disposed or self._audio_state != fta.AudioState.PLAYING:
                     break
+                audio = self.audio
+                if audio is None:
+                    break
                 try:
-                    pos = await self.audio.get_current_position()
+                    pos = await audio.get_current_position()
                     ms = _to_ms(pos)
                     if ms >= 0:
                         self._position_ms = ms
                     if self._duration_ms <= 0:
-                        dur = await self.audio.get_duration()
+                        dur = await audio.get_duration()
                         dms = _to_ms(dur)
                         if dms > 0:
                             self._duration_ms = dms

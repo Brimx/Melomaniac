@@ -9,18 +9,17 @@ import flet as ft
 
 from core.library_models import LibraryLoadState, PlaylistSummary
 from ui.fonts import FONT_HEADLINE, FONT_HEADLINE_BOLD, FONT_TEXT, font_family_for
+from ui.song_row import _thumb_content_for
 from ui.tokens import (
     ACCENT, BG_HOVER, BG_LIST, BG_SURFACE, BORDER_LIGHT, BORDER_MUTED,
     SKELETON_DARK, TEXT_DIM, TEXT_MUTED, TEXT_PRIMARY,
+    MOTION_HOVER_MS,
 )
 
 
 def _cover_single(url: str, size: int = 140) -> ft.Control:
-    if url:
-        content = ft.Image(src=url, fit=ft.BoxFit.COVER, error_content=ft.Icon(ft.Icons.MUSIC_NOTE, color=TEXT_DIM, size=28))
-    else:
-        content = ft.Container(content=ft.Icon(ft.Icons.MUSIC_NOTE, color=TEXT_DIM, size=28), alignment=ft.Alignment.CENTER)
-    return ft.Container(width=size, height=size, border_radius=8, bgcolor=SKELETON_DARK, clip_behavior=ft.ClipBehavior.ANTI_ALIAS, content=content)
+    content = _thumb_content_for(url, box=size, icon_size=28)
+    return ft.Container(width=size, height=size, border_radius=8, bgcolor=SKELETON_DARK, clip_behavior=ft.ClipBehavior.ANTI_ALIAS, alignment=ft.Alignment.CENTER, content=content)
 
 
 def _cover_grid(urls: list[str], size: int = 140) -> ft.Control:
@@ -28,11 +27,8 @@ def _cover_grid(urls: list[str], size: int = 140) -> ft.Control:
     cells = []
     for i in range(4):
         url = urls[i] if i < len(urls) else ""
-        if url:
-            c = ft.Image(src=url, fit=ft.BoxFit.COVER, error_content=ft.Icon(ft.Icons.MUSIC_NOTE, color=TEXT_DIM, size=16))
-        else:
-            c = ft.Container(bgcolor=BG_SURFACE, content=ft.Icon(ft.Icons.MUSIC_NOTE, color=TEXT_DIM, size=16), alignment=ft.Alignment.CENTER)
-        cells.append(ft.Container(expand=True, bgcolor=SKELETON_DARK, clip_behavior=ft.ClipBehavior.ANTI_ALIAS, border_radius=4, content=c))
+        c = _thumb_content_for(url, box=(size - 2) // 2, icon_size=16)
+        cells.append(ft.Container(expand=True, bgcolor=SKELETON_DARK, clip_behavior=ft.ClipBehavior.ANTI_ALIAS, border_radius=4, alignment=ft.Alignment.CENTER, content=c))
     return ft.Container(width=size, height=size, border_radius=8, clip_behavior=ft.ClipBehavior.ANTI_ALIAS, content=ft.Column(controls=[
         ft.Row(controls=cells[0:2], spacing=2, expand=True),
         ft.Row(controls=cells[2:4], spacing=2, expand=True),
@@ -70,7 +66,7 @@ class PlaylistCard(ft.Container):
             padding=ft.Padding.all(10),
             ink=True,
             on_click=lambda e: on_tap(summary) if on_tap else None,
-            animate=ft.Animation(120, ft.AnimationCurve.EASE_OUT),
+            animate=ft.Animation(MOTION_HOVER_MS, ft.AnimationCurve.EASE_OUT),
             on_hover=self._on_hover,
         )
 

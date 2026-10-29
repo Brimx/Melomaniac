@@ -48,6 +48,7 @@ from ui.tokens import (
     SUCCESS, ERROR_COL, WARNING, BORDER_MUTED, BORDER_LIGHT,
     BG_INPUT, BG_PANEL, WARN_BG, WARN_BORDER,
     RADIUS_INPUT, RADIUS_BUTTON, RADIUS_DIALOG,
+    MOTION_HOVER_MS,
 )
 
 FONT = FONT_TEXT
@@ -410,7 +411,7 @@ def _primary_btn(text: str, icon: str, on_click, width=None, height=None) -> ft.
             shadow_color={ft.ControlState.HOVERED: ACCENT_HALO},
             shape=ft.RoundedRectangleBorder(radius=RADIUS_BUTTON),
             padding=ft.Padding.symmetric(horizontal=16, vertical=12),
-            animation_duration=120,
+            animation_duration=MOTION_HOVER_MS,
         ),
         width=width,
         height=height,
@@ -467,7 +468,7 @@ def _ghost_btn(text: str, icon: str, on_click, width=None, height=None, disabled
             },
             shape=ft.RoundedRectangleBorder(radius=RADIUS_BUTTON),
             padding=ft.Padding.symmetric(horizontal=14, vertical=12),
-            animation_duration=120,
+            animation_duration=MOTION_HOVER_MS,
         ),
         width=width,
         height=height,

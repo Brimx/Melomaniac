@@ -6,15 +6,21 @@ thumbnail del vídeo de YouTube: una miniatura 16:9 que no es artwork. Aquí se
 resuelve la portada real de cada pista por álbum, no por canción: todas las
 pistas de un mismo ``album_artist|album|año`` comparten una sola consulta.
 
-Cadena de resolución, de más barata/veraz a más genérica:
+Cadena de resolución, de más veraz a más genérica:
 
 1. Portada incrustada o sidecar junto al archivo (ya leída por
    ``engine.parsers`` / ``engine.audio_metadata``); el llamador la pasa hecha.
-2. ``Track.img_url`` de la plataforma de origen.
+2. ``Track.img_url`` de la plataforma de origen, **si no es de YouTube**:
+   Apple Music y Spotify entregan carátula cuadrada del álbum.
 3. ISRC en MusicBrainz + Cover Art Archive (preciso, exige ``Track.isrc``).
 4. iTunes Search por artista + álbum.
 5. Deezer por artista + álbum.
-6. Thumbnail de YouTube (solo para descargas).
+6. ``Track.img_url`` de YouTube (miniatura de vídeo: casi siempre 16:9 y,
+   aun cuadrada, ilustra el vídeo y no el disco).
+7. Thumbnail dejado por ``yt-dlp``, solo si el llamador lo permite.
+
+El orden lo decide ``CoverResolver._steps_for``; una portada de YouTube nunca
+se consulta antes que las carátulas de álbum.
 
 Los proveedores se consultan serializados con su propio intervalo y con un
 ``CircuitBreaker`` **independiente** de ``AppState.cb``: un fallo de portadas no
@@ -47,7 +53,9 @@ from core.config import (
     COVER_USER_AGENT,
 )
 from core.models import Track
-from engine.covers import is_acceptable_cover, normalize_cover, probe_cover, upscale_cover_url
+from engine.covers import (
+    _GOOGLE_CDN_HOSTS, is_acceptable_cover, normalize_cover, probe_cover, upscale_cover_url,
+)
 from engine.normalizer import _normalize_title
 from services import cover_cache
 from services.circuit_breaker import CircuitBreaker
@@ -107,6 +115,15 @@ def album_key(track: Track) -> str:
 def _norm(text: str) -> str:
     """Normalización reutilizada de ``engine.normalizer`` (lower, sin ruido)."""
     return _normalize_title(text)
+
+
+def _is_youtube_cover_url(url: str) -> bool:
+    """``True`` si la URL es una miniatura de vídeo de YouTube/Google.
+
+    Reutiliza los hosts del CDN declarados en ``engine.covers`` para no tener
+    dos listas de hosts que mantener.
+    """
+    return any(host in url for host in _GOOGLE_CDN_HOSTS)
 
 
 def _matches(track: Track, *, album: str, artist: str) -> bool:
@@ -343,12 +360,7 @@ class CoverResolver:
                 return result
 
         result = CoverResolution()
-        for step in (
-            lambda: self._from_platform_url(track),
-            lambda: self._from_isrc(track),
-            lambda: self._from_itunes(track),
-            lambda: self._from_deezer(track),
-        ):
+        for step in self._steps_for(track):
             try:
                 result = step()
             except Exception:
@@ -377,6 +389,26 @@ class CoverResolver:
             cover_cache.set_album_cover(key, target, source=result.source)
         except OSError:
             pass
+
+    def _steps_for(self, track: Track):
+        """Orden de proveedores para ``track``.
+
+        El artwork de Apple Music (``mzstatic``) y Spotify (``scdn.co``) es
+        1:1 real y coincide exactamente con el álbum, así que va primero. Las
+        URL de YouTube/Google son miniaturas de vídeo: casi siempre 16:9 y, aun
+        cuando son cuadradas, ilustran el vídeo y no el disco. Por eso se
+        posponen detrás de iTunes/Deezer, que devuelven la carátula del álbum.
+        """
+        platform_first = not _is_youtube_cover_url(str(track.img_url or ""))
+        platform = lambda: self._from_platform_url(track)  # noqa: E731
+        chain = [
+            lambda: self._from_isrc(track),
+            lambda: self._from_itunes(track),
+            lambda: self._from_deezer(track),
+        ]
+        if platform_first:
+            return [platform, *chain]
+        return [*chain, platform]
 
     def _from_platform_url(self, track: Track, *, require_square: bool = True) -> CoverResolution:
         """Portada ya asociada a la pista por su plataforma de origen."""
