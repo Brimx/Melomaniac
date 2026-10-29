@@ -49,16 +49,19 @@ class DownloadsView(ft.Container):
         library_state: ``LibraryState`` opcional; habilita «Indexar a Biblioteca».
     """
 
-    def __init__(self, page: ft.Page, app_state, library_state=None) -> None:
+    def __init__(self, page: ft.Page, app_state, library_state=None, player_bar=None) -> None:
         super().__init__(expand=True, bgcolor=BG_LIST)
         self._page_ref = page
         self.app_state = app_state
         self.library_state = library_state
+        self.player_bar = player_bar
         self._cancel_requested = False
         self._was_running = False
         self._items_key: int = -1
         self._item_widgets: list[tuple[dict, ft.ProgressBar, ft.Text, ft.Icon]] = []
         self._history_dir = ""
+        self._history_paths: list[str] = []
+        self._done_sig = -1
         self._failed_sig = -1
         try:
             self._default_dir = str(resolve_download_dir(create=False))
@@ -142,6 +145,13 @@ class DownloadsView(ft.Container):
         )
 
         # estado B: historial de la carpeta
+        self._play_all_btn = _ghost_btn(
+            "Reproducir descargadas (0)",
+            ft.Icons.PLAY_ARROW_ROUNDED,
+            self._on_play_downloaded,
+            height=36,
+            disabled=True,
+        )
         self._index_btn = _ghost_btn(
             "Indexar a Biblioteca", ft.Icons.LIBRARY_ADD_OUTLINED, self._on_index, height=36,
         )
@@ -158,6 +168,7 @@ class DownloadsView(ft.Container):
                          text_align=ft.TextAlign.CENTER),
             ], horizontal_alignment=ft.CrossAxisAlignment.CENTER, spacing=8),
         )
+        self._done_col = ft.Column(spacing=6)
         self._failed_col = ft.Column(spacing=6)
         self._history_stack = ft.Stack(
             controls=[self._history_list, self._history_empty], expand=True,
@@ -167,8 +178,10 @@ class DownloadsView(ft.Container):
             ft.Row(controls=[
                 section_label("HISTORIAL EN LA CARPETA"),
                 ft.Container(expand=True),
+                self._play_all_btn,
                 self._index_btn,
-            ], vertical_alignment=ft.CrossAxisAlignment.CENTER),
+            ], spacing=8, vertical_alignment=ft.CrossAxisAlignment.CENTER),
+            self._done_col,
             self._failed_col,
             self._history_stack,
         ], spacing=8, expand=True)
@@ -254,13 +267,28 @@ class DownloadsView(ft.Container):
             notify(self._page_ref, "Carpeta indexada en Biblioteca → Local")
         self._refresh()
 
+    def _play_path(self, path: str) -> None:
+        if not path or not os.path.isfile(path):
+            notify(self._page_ref, "El archivo no está disponible en disco", kind="error")
+            return
+        if self.player_bar is not None and hasattr(self.player_bar, "play_file"):
+            self.player_bar.play_file(path)
+
+    def _on_play_downloaded(self, _e=None) -> None:
+        valid = [p for p in self._history_paths if p and os.path.isfile(p)]
+        if not valid:
+            notify(self._page_ref, "No hay archivos descargados para reproducir", kind="error")
+            return
+        if self.player_bar is not None and hasattr(self.player_bar, "play_files"):
+            self.player_bar.play_files(valid, start_index=0)
+
     # ── historial ──────────────────────────────────────────────────────
 
     async def _load_history(self) -> None:
         folder = self._dir
         self._history_dir = folder
 
-        def _scan() -> list[tuple[str, str, int, float]]:
+        def _scan() -> list[tuple[str, str, str, int, float]]:
             rows = []
             for path in list_audio_files(folder, limit=_HISTORY_LIMIT):
                 try:
@@ -268,12 +296,19 @@ class DownloadsView(ft.Container):
                 except OSError:
                     continue
                 name, ext = os.path.splitext(os.path.basename(path))
-                rows.append((name, ext.lstrip(".").upper(), st.st_size, st.st_mtime))
+                rows.append((path, name, ext.lstrip(".").upper(), st.st_size, st.st_mtime))
             return rows
 
         rows = await asyncio.to_thread(_scan)
         if folder != self._dir:
             return  # el usuario cambió de carpeta mientras se escaneaba
+        self._history_paths = [r[0] for r in rows]
+        self._play_all_btn.content = ft.Text(
+            f"Reproducir descargadas ({len(self._history_paths)})",
+            opacity=1.0,
+            font_family=FONT_HEADLINE,
+        )
+        self._play_all_btn.disabled = not self._history_paths
         self._history_list.controls = [self._history_row(*r) for r in rows]
         self._history_empty.visible = not rows
         self._history_list.visible = bool(rows)
@@ -282,13 +317,18 @@ class DownloadsView(ft.Container):
         except Exception:
             pass
 
-    @staticmethod
-    def _history_row(name: str, ext: str, size: int, mtime: float) -> ft.Container:
+    def _history_row(self, path: str, name: str, ext: str, size: int, mtime: float) -> ft.Container:
         return ft.Container(
-            padding=ft.Padding.symmetric(horizontal=12, vertical=8),
+            padding=ft.Padding.symmetric(horizontal=12, vertical=6),
             border=ft.Border.only(bottom=ft.BorderSide(0.5, BORDER_MUTED)),
             content=ft.Row(controls=[
-                ft.Icon(ft.Icons.AUDIOTRACK_OUTLINED, size=16, color=TEXT_MUTED),
+                ft.IconButton(
+                    icon=ft.Icons.PLAY_ARROW_ROUNDED,
+                    icon_size=18,
+                    icon_color=ACCENT,
+                    tooltip="Reproducir archivo",
+                    on_click=lambda _e, p=path: self._play_path(p),
+                ),
                 app_text(name, size=12, color=TEXT_PRIMARY, font_family=FONT_TEXT,
                          max_lines=1, overflow=ft.TextOverflow.ELLIPSIS, expand=True),
                 ft.Container(width=56, content=app_text(
@@ -298,7 +338,7 @@ class DownloadsView(ft.Container):
                 ft.Container(width=110, content=app_text(
                     datetime.fromtimestamp(mtime).strftime("%Y-%m-%d %H:%M"),
                     size=10, color=TEXT_DIM, font_family=mono_family("light"))),
-            ], spacing=12, vertical_alignment=ft.CrossAxisAlignment.CENTER),
+            ], spacing=10, vertical_alignment=ft.CrossAxisAlignment.CENTER),
         )
 
     # ── cola activa ────────────────────────────────────────────────────
@@ -413,13 +453,31 @@ class DownloadsView(ft.Container):
                 self._rebuild_queue(items)
             self._sync_queue()
 
-        # fallidas de la última tanda sobre el historial
+        # terminadas y fallidas de la última tanda sobre el historial
+        if not running and len(done) != self._done_sig:
+            self._done_sig = len(done)
+            self._done_col.controls = [
+                self._result_row(
+                    title=f"{d.get('artist', '')} — {d.get('name', '')}",
+                    detail=str(d.get("path", "") or ""),
+                    ok=True,
+                    on_play=(
+                        (lambda _e, p=str(d.get("path", "")): self._play_path(p))
+                        if d.get("path")
+                        else None
+                    ),
+                )
+                for d in done
+                if d.get("path")
+            ]
+
         if not running and len(failed) != self._failed_sig:
             self._failed_sig = len(failed)
             self._failed_col.controls = [
                 self._result_row(
                     title=f"{f.get('artist', '')} — {f.get('name', '')}",
                     detail=f.get("error", "") or "Error desconocido",
+                    ok=False,
                 )
                 for f in failed
             ]
@@ -438,14 +496,35 @@ class DownloadsView(ft.Container):
             pass
 
     @staticmethod
-    def _result_row(*, title: str, detail: str) -> ft.Container:
+    def _result_row(
+        *,
+        title: str,
+        detail: str,
+        ok: bool = False,
+        on_play=None,
+    ) -> ft.Container:
+        lead = (
+            ft.IconButton(
+                icon=ft.Icons.PLAY_ARROW_ROUNDED,
+                icon_size=18,
+                icon_color=ACCENT,
+                tooltip="Reproducir archivo descargado",
+                on_click=on_play,
+            )
+            if ok and on_play is not None
+            else ft.Icon(
+                ft.Icons.CHECK_CIRCLE_OUTLINE if ok else ft.Icons.ERROR_OUTLINE,
+                size=18,
+                color=SUCCESS if ok else ERROR_COL,
+            )
+        )
         return ft.Container(
             bgcolor=BG_SURFACE,
             border=ft.Border.all(0.8, BORDER_MUTED),
             border_radius=RADIUS_INPUT,
-            padding=ft.Padding.symmetric(horizontal=12, vertical=8),
+            padding=ft.Padding.symmetric(horizontal=12, vertical=6),
             content=ft.Row(controls=[
-                ft.Icon(ft.Icons.ERROR_OUTLINE, size=18, color=ERROR_COL),
+                lead,
                 ft.Column(controls=[
                     app_text(title, size=12, color=TEXT_PRIMARY, font_family=FONT_TEXT,
                              max_lines=1, overflow=ft.TextOverflow.ELLIPSIS),
