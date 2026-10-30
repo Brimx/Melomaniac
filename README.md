@@ -124,6 +124,25 @@ python app.py
 
 ---
 
+### 🔄 ¿Cómo actualizar a una nueva versión?
+
+Para actualizar la aplicación cuando se publiquen cambios nuevos en el repositorio:
+
+1. Abre la terminal en la carpeta de Melomaniac y descarga las novedades:
+   ```bash
+   git pull
+   ```
+   > [!NOTE]
+   > `git pull` solo actualiza los archivos del repositorio. Tus credenciales (`config/`), configuraciones personales, descargas (`downloads/`) y cachés están ignorados por Git, por lo que **no se tocan ni se pierden**.
+
+2. Vuelve a arrancar la aplicación:
+   - **Windows:** Haz doble clic en `run.bat` (o ejecuta `.\run.bat`).
+   - **Linux / macOS:** Ejecuta `./run.sh`.
+
+*(Los scripts `run.bat` y `run.sh` detectan automáticamente si la nueva versión actualizó `requirements.txt` e instalan las dependencias necesarias de forma transparente).*
+
+---
+
 ### 💡 Solución rápida a problemas frecuentes
 
 - **PowerShell bloquea la activación (`File ... cannot be loaded because running scripts is disabled`)**:

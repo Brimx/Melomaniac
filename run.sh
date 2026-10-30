@@ -23,6 +23,11 @@ if [ ! -d ".venv" ]; then
     echo "==> Instalando dependencias desde requirements.txt..."
     .venv/bin/pip install --upgrade pip
     .venv/bin/pip install -r requirements.txt
+    touch .venv/.requirements_installed
+elif [ -f "requirements.txt" ] && [ "requirements.txt" -nt ".venv/.requirements_installed" ]; then
+    echo "==> Se detectaron cambios en requirements.txt. Actualizando dependencias..."
+    .venv/bin/pip install -r requirements.txt
+    touch .venv/.requirements_installed
 fi
 
 # Ejecutar la aplicación usando el entorno virtual

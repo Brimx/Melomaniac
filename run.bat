@@ -36,6 +36,21 @@ if not exist ".venv\Scripts\python.exe" (
         pause
         exit /b 1
     )
+    copy /y requirements.txt .venv\requirements.installed >nul
+) else (
+    :: Comprobar si requirements.txt cambio desde la ultima instalacion
+    set "REQ_UPDATED=0"
+    if not exist ".venv\requirements.installed" (
+        set "REQ_UPDATED=1"
+    ) else (
+        fc /b requirements.txt .venv\requirements.installed >nul 2>nul
+        if errorlevel 1 set "REQ_UPDATED=1"
+    )
+    if "%REQ_UPDATED%"=="1" (
+        echo [*] Detectados cambios en dependencias. Actualizando...
+        call .venv\Scripts\pip install -r requirements.txt
+        copy /y requirements.txt .venv\requirements.installed >nul
+    )
 )
 
 :: Ejecutar la aplicacion directamente con el Python del venv
