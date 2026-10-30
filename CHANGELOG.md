@@ -4,6 +4,7 @@
 
 > Versión de trabajo consolidada que incorpora el reproductor de audio nativo, derivación de sesiones de navegador en memoria y exposición D-Bus/MPRIS para el escritorio. Tag anterior: `v4.6.0`.
 
+- **Lanzadores rápidos de un clic:** `run.bat` (Windows) y `run.sh` (Linux/macOS) automatizan la comprobación de Python, creación del entorno virtual `.venv`, instalación de dependencias y ejecución de la app en un solo paso.
 - **Reproductor de audio integrado:** barra inferior persistente `PlayerBar` con `flet-audio` 1.0.5 (`FLET_DESKTOP_FLAVOR=full`), cola de reproducción reordenable `PlayQueue` y panel `PlayerQueuePanel`. Soporte de reproducción para FLAC, MP3, M4A, Opus y WAV. Control de volumen, mute, shuffle y modos repeat persistidos.
 - **Exposición MPRIS (D-Bus) en Linux:** nuevo servicio `services/mpris_service.py` (`org.mpris.MediaPlayer2.melomaniac`) que expone las interfaces estándar `MediaPlayer2` y `Player`. Permite control por teclas multimedia y widgets de escritorio (Caelestia/Quickshell, playerctl, Waybar, GNOME/KDE). Incluye señal `Seeked`, sincronización de estado, métodos de transporte y conversión de portadas locales en Data URIs a archivos en caché `config/cover_cache/embedded_{hash}.jpg` (`file:///...`).
 - **Sesión de navegador en memoria (Plan A):** `services/browser_session.py` resuelve sesiones activas de YouTube Music y Spotify directamente desde Firefox (copia en RAM de `cookies.sqlite`) y Chromium vía `yt-dlp`. Elimina la necesidad de exportar cookies manuales sin persistir `SAPISIDHASH` ni credenciales sensibles en disco.

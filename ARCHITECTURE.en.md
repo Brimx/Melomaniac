@@ -40,48 +40,60 @@ service.auth_manager = auth_manager
 
 ```text
 Melomaniac/
-├── app.py
-├── config/                         # Git-ignored runtime files
+├── app.py                         # Entry point, composition, and lifecycle
+├── run.bat                        # Automated one-click launcher for Windows
+├── run.sh                         # Automated launcher for Linux/macOS
+├── config/                        # Git-ignored runtime files (credentials, settings, caches)
 ├── core/
-│   ├── availability.py             # lazy scan and Apple ISRC preload
-│   ├── cache.py                    # make_cache_key and legacy compatibility
-│   ├── config.py                  # platforms, limits, batch sizes
-│   ├── library_models.py           # PlaylistSummary, LibrarySnapshot, states
-│   ├── library_store.py            # atomic local metadata persistence
+│   ├── availability.py            # Lazy scan and Apple ISRC preload
+│   ├── cache.py                   # make_cache_key and legacy compatibility
+│   ├── config.py                  # Platforms, limits, and batch sizes
+│   ├── library_models.py          # PlaylistSummary, LibrarySnapshot, states
+│   ├── library_store.py           # Atomic local metadata persistence
 │   ├── models.py                  # Track, PlaylistMeta, SearchResult, enums
+│   ├── playback.py                # PlayQueue, audio engine, repeat/shuffle modes
 │   ├── state.py                   # AppState and BLoC/Observer workflow
-│   └── transfer.py                # rate-limit aware search and short errors
+│   └── transfer.py                # Rate-limit aware search and error tracking
 ├── engine/
-│   ├── audio_metadata.py           # Mutagen audio tags
-│   ├── match.py                    # validation, scoring, Hunter Recovery
-│   ├── normalizer.py               # cleanup, noise, ISRC
-│   ├── organizer.py                # in-memory sort_tracks/split_tracks
-│   ├── exporters.py                # multi-format local export
-│   ├── downloader.py               # yt-dlp audio resolution and download
-│   └── parsers.py                 # local formats and local Track creation
+│   ├── audio_metadata.py          # Mutagen audio tag reading and writing
+│   ├── covers.py                  # Artwork normalization to 800 px squares
+│   ├── match.py                   # Validation, scoring, and Hunter Recovery
+│   ├── normalizer.py              # Cleanup, noise, ISRC, and Cyrillic transliteration
+│   ├── organizer.py               # In-memory sort_tracks and split_tracks
+│   ├── exporters.py               # Multi-format local export (M3U8, CSV, TXT, XSPF)
+│   ├── downloader.py              # yt-dlp audio resolution and download queue
+│   └── parsers.py                 # Local formats and local Track creation
 ├── services/
-│   ├── api_service.py             # YouTube/Apple/Spotify facade
-│   ├── authentication.py           # runtime files and pre-flight
-│   ├── circuit_breaker.py          # RateLimitError and cooldowns
-│   ├── cover_cache.py              # cover cache
-│   └── library_state.py            # Library synchronization
+│   ├── api_service.py             # YouTube/Apple/Spotify streaming facade
+│   ├── authentication.py          # Runtime paths and pre-flight checks
+│   ├── browser_session.py         # In-memory browser cookie extraction
+│   ├── circuit_breaker.py         # RateLimitError and monotonic cooldowns
+│   ├── cover_cache.py             # Atomic artwork cache storage on disk
+│   ├── covers.py                  # Multi-source album artwork resolution pipeline
+│   ├── library_state.py           # Library synchronization and state management
+│   ├── mpris_service.py           # Linux D-Bus MPRIS service for media controls
+│   └── settings_store.py          # User settings persistence
 ├── ui/
-│   ├── auth_manager.py            # authentication coordination
-│   ├── config_wizard.py            # credential editing
-│   ├── main_ui.py                 # main window
-│   ├── organize_panel.py           # Organize/Split/Reorder dialogs
-│   ├── library_view.py             # Library and entry to Downloads module
-│   ├── downloads_view.py           # download queue, progress, and results
-│   ├── playlist_card.py            # playlist cards
-│   ├── playlist_detail_view.py     # details and on-demand track loading
-│   ├── playlist_meta_dialog.py     # playlist name/description
-│   ├── song_row.py                # rows and skeletons
-│   ├── telemetry.py               # Monitor, Console, Post-Mortem
+│   ├── auth_manager.py            # Authentication coordination and hot reload
+│   ├── config_view.py             # User settings (download format, covers, paths)
+│   ├── config_wizard.py           # Manual credential configuration wizard
+│   ├── downloads_view.py          # Download queue, progress, and FFmpeg preflight
 │   ├── fonts.py                   # Unicode classification and font registry
-│   ├── tokens.py                  # design tokens
-│   └── widgets.py                 # reusable controls
-├── resources/fonts/               # Stack Sans and IBM Plex; optional CJK
-└── tests/                          # reserved for unittest regressions
+│   ├── library_view.py            # Library view and local music folder exploration
+│   ├── main_ui.py                 # Main window, navigation rail, and view modes
+│   ├── organize_panel.py          # Organize, Split, and Reorder dialogs
+│   ├── player_bar.py              # Interactive persistent bottom player bar
+│   ├── player_queue.py            # Playback queue drawer panel
+│   ├── playlist_card.py           # Visual playlist cards
+│   ├── playlist_detail_view.py    # Playlist detail and on-demand track loading
+│   ├── playlist_meta_dialog.py    # Playlist name and description editor
+│   ├── song_row.py                # Track rows with animated skeleton loaders
+│   ├── telemetry.py               # Monitor, live console, and Post-Mortem
+│   ├── tokens.py                  # Design tokens (colors, radii, animations)
+│   ├── transfer_report.py         # Completion report and alternative track insertion
+│   └── widgets.py                 # Reusable styled UI controls
+├── resources/fonts/               # Stack Sans and IBM Plex fonts; optional CJK
+└── tests/                         # Reserved for unit tests and regressions
 ```
 
 ## Models and state
@@ -174,11 +186,15 @@ The shared matcher uses these thresholds:
 
 For local tracks, a `low_confidence` result is also rejected to avoid ambiguous transfers.
 
-The Organize dialog can preserve the current order or sort A→Z/Z→A, then group by artist, album, or release date. Split creates 2–5 manual divisions by selecting artists, albums, or tracks. These operations apply to the playlist as a whole. The user can show the list, preview, or both columns. The floating side rail is a custom docked control: it pushes the content instead of overlaying it, starts collapsed at `68 px`, and expands to `220 px` with animated labels. It exposes Manage, Library, Downloads, and Config; Config stays pinned at the bottom as a work-in-progress module, and the credential wizard opens from the gear button in the left panel. Library syncs and caches playlist metadata. Downloads lets users select tracks, format, and destination, inspect progress/results, and cancel the queue.
+The Organize dialog can preserve the current order or sort A→Z/Z→A, then group by artist, album, or release date. Split creates 2–5 manual divisions by selecting artists, albums, or tracks. These operations apply to the playlist as a whole. The user can show the list, preview, or both columns. The floating side rail is a custom docked control: it pushes the content instead of overlaying it, starts collapsed at `68 px`, and expands to `220 px` with animated labels. It exposes Manage, Library, Downloads, and Config; Config manages default audio formats, online artwork toggles, destination folders, and cache clearing, while the credential wizard opens from the gear button in the left panel. Library syncs and caches playlist metadata, and indexes local music folders. Downloads lets users select tracks, format, and destination, inspect progress/results with an FFmpeg preflight banner, and cancel the queue.
 
 ### Audio downloads
 
-`AppState.download_selected()` coordinates the queue and runs blocking `yt-dlp` calls in threads (`asyncio.to_thread`), with maximum concurrency `DOWNLOAD_CONCURRENCY=2`. `engine.downloader` reuses the source URL for YouTube Music tracks or searches YouTube for a match for other sources; it validates title and duration, extracts audio only with FFmpeg, and writes metadata/artwork. The file is published via atomic rename after passing a minimum-size check. MP3 (default), M4A, Opus, FLAC, and WAV are available. If needed, the YouTube Music session is loaded from `config/browser.json` in memory; no `cookies.txt` is written. The view does not implement playback or automatic cache pruning.
+`AppState.download_selected()` coordinates the queue and runs blocking `yt-dlp` calls in threads (`asyncio.to_thread`), with maximum concurrency `DOWNLOAD_CONCURRENCY=2`. `engine.downloader` reuses the source URL for YouTube Music tracks or searches YouTube for a match for other sources; it validates title and duration, extracts audio only with FFmpeg, and writes metadata/artwork with Mutagen. The file is published via atomic rename after passing a minimum-size check. MP3 (default), M4A, Opus, FLAC, and WAV are available, with automated skipping for already downloaded files.
+
+### Integrated Audio Player and MPRIS
+
+Native audio playback is handled by `ui.player_bar.PlayerBar` using `flet-audio` 1.0.5 over `FLET_DESKTOP_FLAVOR=full`. It supports FLAC, MP3, M4A, Opus, and WAV for local and downloaded tracks. Playback queues are managed by `core.playback.PlayQueue` (featuring repeat, shuffle, and reorderable track control via `ui.player_queue.PlayerQueuePanel`). On Linux, `services.mpris_service.MPRISService` (`org.mpris.MediaPlayer2.melomaniac`) exposes standard transport state, position seeking, artwork, and track metadata to the session D-Bus, enabling control through desktop widgets and physical keyboard media keys.
 
 ## Concurrency, caching, and resilience
 

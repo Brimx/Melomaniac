@@ -40,49 +40,60 @@ service.auth_manager = auth_manager
 
 ```text
 Melomaniac/
-├── app.py
-├── config/                         # runtime ignorado por Git
+├── app.py                         # Entrada, composición y ciclo de vida
+├── run.bat                        # Lanzador automático para Windows
+├── run.sh                         # Lanzador automático para Linux/macOS
+├── config/                        # Runtime ignorado por Git (credenciales, ajustes, cachés)
 ├── core/
-│   ├── availability.py             # escaneo lazy y precarga ISRC de Apple
-│   ├── cache.py                    # make_cache_key y compatibilidad legacy
-│   ├── config.py                   # plataformas, límites y tamaños de lote
-│   ├── library_models.py           # PlaylistSummary, LibrarySnapshot y estado
-│   ├── library_store.py            # persistencia atómica de metadatos locales
-│   ├── models.py                   # Track, PlaylistMeta, SearchResult, enums
-│   ├── state.py                    # AppState y flujo BLoC/Observer
-│   └── transfer.py                 # búsqueda con rate limit y errores breves
+│   ├── availability.py            # Escaneo lazy y precarga ISRC de Apple
+│   ├── cache.py                   # make_cache_key y compatibilidad legacy
+│   ├── config.py                  # Plataformas, límites y tamaños de lote
+│   ├── library_models.py          # PlaylistSummary, LibrarySnapshot y estado
+│   ├── library_store.py           # Persistencia atómica de metadatos locales
+│   ├── models.py                  # Track, PlaylistMeta, SearchResult, enums
+│   ├── playback.py                # Cola PlayQueue, audio y modos repeat/shuffle
+│   ├── state.py                   # AppState y flujo BLoC/Observer
+│   └── transfer.py                # Búsqueda con rate limit y errores breves
 ├── engine/
-│   ├── audio_metadata.py           # tags de audio con Mutagen
-│   ├── match.py                    # validación, scoring y Hunter Recovery
-│   ├── normalizer.py               # limpieza, ruido e ISRC
-│   ├── organizer.py                # sort_tracks y split_tracks en memoria
-│   ├── exporters.py                # exportación local en varios formatos
-│   ├── downloader.py               # resolución y descarga de audio con yt-dlp
-│   └── parsers.py                  # formatos locales y Track local
+│   ├── audio_metadata.py          # Tags de audio con Mutagen
+│   ├── covers.py                  # Normalización de carátulas a 800 px cuadrados
+│   ├── match.py                   # Validación, scoring y Hunter Recovery
+│   ├── normalizer.py              # Limpieza, ruido, ISRC y cirílico
+│   ├── organizer.py               # sort_tracks y split_tracks en memoria
+│   ├── exporters.py               # Exportación local en varios formatos
+│   ├── downloader.py              # Resolución y descarga de audio con yt-dlp
+│   └── parsers.py                 # Formatos locales y Track local
 ├── services/
-│   ├── api_service.py              # fachada YouTube/Apple/Spotify
-│   ├── authentication.py           # archivos runtime y resultado de pre-flight
-│   ├── browser_session.py          # detección de navegador y sesión en memoria
-│   ├── circuit_breaker.py          # RateLimitError y cooldowns
-│   ├── cover_cache.py              # caché de portadas
-│   └── library_state.py            # sincronización de la Biblioteca
+│   ├── api_service.py             # Fachada YouTube/Apple/Spotify
+│   ├── authentication.py          # Archivos runtime y resultado de pre-flight
+│   ├── browser_session.py         # Detección de navegador y sesión en memoria
+│   ├── circuit_breaker.py         # RateLimitError y cooldowns
+│   ├── cover_cache.py             # Caché de portadas en disco
+│   ├── covers.py                  # Resolución inteligente de portadas por álbum
+│   ├── library_state.py           # Sincronización de la Biblioteca
+│   ├── mpris_service.py           # Servicio D-Bus MPRIS para control en Linux
+│   └── settings_store.py          # Persistencia de ajustes y preferencias
 ├── ui/
-│   ├── auth_manager.py             # coordinación de autenticación
-│   ├── config_wizard.py             # edición de credenciales
-│   ├── main_ui.py                  # ventana principal
-│   ├── organize_panel.py            # diálogos Organizar/Dividir/Reorganizar
-│   ├── library_view.py              # Biblioteca y acceso al módulo Descargas
-│   ├── downloads_view.py            # cola, progreso y resultados de descargas
-│   ├── playlist_card.py             # tarjetas de playlist
-│   ├── playlist_detail_view.py       # detalle y carga de pistas bajo demanda
-│   ├── playlist_meta_dialog.py      # nombre/descripción de playlist
-│   ├── song_row.py                 # filas y skeletons
-│   ├── telemetry.py                # Monitor, Consola y Post-Mortem
-│   ├── fonts.py                    # clasificación Unicode y registro de fuentes
-│   ├── tokens.py                   # tokens de diseño
-│   └── widgets.py                  # controles reutilizables
-├── resources/fonts/                # Stack Sans e IBM Plex; CJK opcional
-└── tests/                           # reservado para unittest y regresiones
+│   ├── auth_manager.py            # Coordinación de autenticación
+│   ├── config_view.py             # Ajustes de descarga, portadas y carpetas
+│   ├── config_wizard.py           # Edición gráfica de credenciales
+│   ├── downloads_view.py          # Cola, progreso y resultados de descargas
+│   ├── fonts.py                   # Clasificación Unicode y registro de fuentes
+│   ├── library_view.py            # Biblioteca y acceso al módulo Descargas
+│   ├── main_ui.py                 # Ventana principal y rail de navegación
+│   ├── organize_panel.py          # Diálogos Organizar/Dividir/Reorganizar
+│   ├── player_bar.py              # Barra de reproducción persistente con scrubbing
+│   ├── player_queue.py            # Panel de cola de reproducción
+│   ├── playlist_card.py           # Tarjetas de playlist
+│   ├── playlist_detail_view.py    # Detalle y carga de pistas bajo demanda
+│   ├── playlist_meta_dialog.py    # Nombre/descripción de playlist
+│   ├── song_row.py                # Filas y skeletons animados
+│   ├── telemetry.py               # Monitor, Consola y Post-Mortem
+│   ├── tokens.py                  # Tokens de diseño
+│   ├── transfer_report.py         # Reporte de cierre e inserción de alternativas
+│   └── widgets.py                 # Controles reutilizables
+├── resources/fonts/               # Stack Sans e IBM Plex; CJK opcional
+└── tests/                         # Reservado para unittest y regresiones
 ```
 
 ## Modelos y estado
@@ -175,11 +186,15 @@ El matching común usa estos umbrales:
 
 En pistas locales, un resultado `low_confidence` también se rechaza para evitar transferencias ambiguas.
 
-El diálogo Organizar conserva el orden actual o permite ordenar A→Z/Z→A y agrupar por artista, álbum o fecha de lanzamiento. Dividir crea de 2 a 5 divisiones manuales seleccionando artistas, álbumes o canciones; ambas operaciones actúan sobre la playlist completa. El usuario puede mostrar la lista, el preview o ambas columnas. El rail lateral flotante es un control custom docked: desplaza el contenido en vez de superponerlo, arranca colapsado en `68 px` y se expande a `220 px` con labels animados. Expone Gestión, Biblioteca, Descargas y Config; Config queda al fondo como módulo en desarrollo y el asistente de credenciales se abre desde el engranaje del panel izquierdo. Biblioteca sincroniza y conserva metadatos de playlists. Descargas permite seleccionar pistas, formato y destino, consultar el progreso/resultados y cancelar la cola.
+El diálogo Organizar conserva el orden actual o permite ordenar A→Z/Z→A y agrupar por artista, álbum o fecha de lanzamiento. Dividir crea de 2 a 5 divisiones manuales seleccionando artistas, álbumes o canciones; ambas operaciones actúan sobre la playlist completa. El usuario puede mostrar la lista, el preview o ambas columnas. El rail lateral flotante es un control custom docked: desplaza el contenido en vez de superponerlo, arranca colapsado en `68 px` y se expande a `220 px` con labels animados. Expone Gestión, Biblioteca, Descargas y Config; Config gestiona formato por defecto, permiso de carátulas online, carpeta destino y vaciado de caché, mientras el asistente de credenciales se abre desde el engranaje del panel izquierdo. Biblioteca sincroniza y conserva metadatos de playlists, además de indexar carpetas de música local. Descargas permite seleccionar pistas, formato y destino, consultar el progreso/resultados con preflight de FFmpeg y cancelar la cola.
 
 ### Descargas de audio
 
-`AppState.download_selected()` coordina la cola y ejecuta las llamadas bloqueantes de `yt-dlp` en hilos (`asyncio.to_thread`), con concurrencia máxima `DOWNLOAD_CONCURRENCY=2`. `engine.downloader` reutiliza la URL de origen para pistas de YouTube Music o busca una coincidencia en YouTube para las demás fuentes; valida título y duración, extrae solo audio con FFmpeg y escribe metadatos/portada. El archivo se publica mediante renombrado atómico tras superar el tamaño mínimo. Se ofrecen MP3 (predeterminado), M4A, Opus, FLAC y WAV. Si se necesita, la sesión de YouTube Music se carga desde `config/browser.json` en memoria; no se crea `cookies.txt`. La vista no implementa reproducción ni poda automática de caché.
+`AppState.download_selected()` coordina la cola y ejecuta las llamadas bloqueantes de `yt-dlp` en hilos (`asyncio.to_thread`), con concurrencia máxima `DOWNLOAD_CONCURRENCY=2`. `engine.downloader` reutiliza la URL de origen para pistas de YouTube Music o busca una coincidencia en YouTube para las demás fuentes; valida título y duración, extrae solo audio con FFmpeg y escribe metadatos/portada con Mutagen. El archivo se publica mediante renombrado atómico tras superar el tamaño mínimo. Se ofrecen MP3 (predeterminado), M4A, Opus, FLAC y WAV con omisión inteligente de archivos ya existentes.
+
+### Reproductor de audio y MPRIS
+
+El reproductor nativo vive en `ui.player_bar.PlayerBar` utilizando `flet-audio` 1.0.5 sobre `FLET_DESKTOP_FLAVOR=full`. Soporta FLAC, MP3, M4A, Opus y WAV para fuentes locales y pistas descargadas. La cola de reproducción vive en `core.playback.PlayQueue` (con modos repeat, shuffle y control reordenable en `ui.player_queue.PlayerQueuePanel`). En Linux, `services.mpris_service.MPRISService` (`org.mpris.MediaPlayer2.melomaniac`) sincroniza el estado de transporte, posición, carátulas y metadatos con el bus D-Bus de sesión, habilitando control mediante teclas multimedia del sistema y widgets de escritorio.
 
 ## Concurrencia, caché y resiliencia
 

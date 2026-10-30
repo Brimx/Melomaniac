@@ -9,183 +9,247 @@
 [![Apple Music](https://img.shields.io/badge/Apple%20Music-Supported-FA243C?logo=applemusic&logoColor=white)](https://music.apple.com/)
 [![Spotify](https://img.shields.io/badge/Spotify-Supported-1DB954?logo=spotify&logoColor=white)](https://open.spotify.com/)
 
-Melomaniac is a desktop application for rebuilding playlists between **YouTube Music, Apple Music, and Spotify**. It can also import a local playlist or a single audio file, find each track on the destination, and create a new playlist.
+Melomaniac is a desktop application for syncing, rebuilding, downloading, and playing playlists between **YouTube Music, Apple Music, and Spotify**, as well as managing local music files.
 
-The documented working version is `4.8.0`. Changes in this version are summarized in [`CHANGELOG.md`](CHANGELOG.md).
+The documented working version is `4.8.0`. Detailed changes for each version are documented in [`CHANGELOG.md`](CHANGELOG.md).
 
-Matching combines metadata normalization, RapidFuzz, title/artist similarity, duration, explicit metadata, and ISRC when available. Uncertain results are preserved in the Post-Mortem view for review.
+---
 
-## Features
+## Key Features
 
-- Load playlists from YouTube Music, Apple Music, and Spotify.
-- Import `TXT`, `CSV`, `M3U/M3U8`, `PLS`, `WPL`, `XSPF`, and XSPF-compatible XML playlists.
-- Import audio files (`MP3`, `FLAC`, `AAC`, `OGG`, `WAV`, `M4A`, `WMA`, `OPUS`, `AIFF/AIF`) and read their tags with Mutagen.
-- Search with Hunter Recovery using query variants: cleaned metadata, original values, normalized title, Cyrillic transliteration, and title only as the last resort. Deduplicates concurrent searches and keeps the best result.
-- Use ISRC for exact Apple Music matches and retain it in the search cache.
-- Compare duration; Spotify also includes the `explicit` flag in its scoring.
-- Search and select tracks; sort by artist, album, title, duration, or release date; group by artist, album, or date; and create 2–5 divisions by selecting artists, albums, or tracks.
-- Use **List**, **Dual**, and **Preview** modes during transformations and a floating side rail that starts collapsed (`68 px`) and expands to `220 px`. The sections are **Manage**, **Library**, **Downloads**, and **Config**; Config stays pinned at the bottom as a work-in-progress module, and the credential wizard remains available from the gear button. Library syncs playlists by platform and stores their metadata locally.
-- Download selected tracks as MP3, M4A, Opus, FLAC, or WAV. `yt-dlp` resolves each track to a YouTube match, keeps audio only, and adds metadata/artwork; the view shows progress, supports cancellation, and lists results. Integrated playback is not included.
-- Show title, artist, album, duration, artwork, and transfer status for each track.
-- Export the selected tracks or visible scope to `TXT`, `CSV`, `M3U`, `M3U8`, and `XSPF`, using artist-title or title-artist order.
-- Edit the playlist name and description before creating it. Spotify's SpotAPI integration only saves the name; the description is reported as unsupported.
-- Provide destination availability scanning, progress, console logs, and a Post-Mortem report exportable to `transfer_failed_report.txt`.
-- Protect API usage with semaphores, circuit breakers, persistent caching, and batched writes.
+- 🔄 **Playlist Management & Transfer:** Rebuild and transfer playlists between YouTube Music, Apple Music, and Spotify. Supports local playlist files (`M3U/M3U8`, `PLS`, `WPL`, `XSPF`, `CSV`, `TXT`), audio files (`MP3`, `FLAC`, `AAC`, `OGG`, `WAV`, `M4A`, `OPUS`), or pasted plain text.
+- 🎯 **Intelligent Matching Engine:** Multi-stage matching using RapidFuzz, exact ISRC matching (Apple Music), duration comparisons, and explicit tags. Features Cyrillic transliteration, single-flight deduplication (`SingleFlight`), and an interactive Post-Mortem view to resolve alternative candidates.
+- 📚 **Unified Library:** Browse both your cloud streaming playlists and local music folders in a single place. Create streaming playlists directly from any local folder on your disk.
+- 🎵 **Integrated Audio Player:** Persistent bottom player bar for local audio files (FLAC, MP3, M4A, Opus, WAV) with reorderable queue (`PlayQueue`), scrubbing support, shuffle/repeat modes, and persistent volume.
+- ⬇️ **Audio Downloads with Full Metadata:** Download audio tracks in MP3, M4A, Opus, FLAC, or WAV via `yt-dlp`. Normalizes album art to square 800 px, embeds full ID3/Vorbis tags via `mutagen`, checks FFmpeg availability upfront, and automatically skips existing files.
+- 🖥️ **Desktop Integration (MPRIS / D-Bus):** Full media player control on Linux via system widgets (Waybar, Quickshell, GNOME, KDE) and keyboard media keys, complete with real-time metadata and cover art.
+- 🌐 **Frictionless Browser Sessions:** Automatically detects active sessions in memory from Firefox or Chromium-based browsers without needing manual cookie JSON exports.
+- 🛠️ **Advanced Organization & Export:** List, Dual, and Preview view modes. Sort and group by artist, album, duration, or release date; split playlists into 2 to 5 manual divisions, and export locally to `M3U8`, `CSV`, `TXT`, or `XSPF`.
 
-## Requirements
+---
+
+## System Requirements
 
 | Requirement | Details |
 |---|---|
 | Python | 3.10 or newer |
 | Dependencies | Pinned in [`requirements.txt`](requirements.txt) |
-| Credentials | `config/browser.json`, `config/.env`, and `config/spotify_cookies.json` as needed |
+| Audio conversion | `ffmpeg` 6+ on `PATH` (required for extraction and conversion in Downloads) |
+| Credentials | Active browser session in memory, or manual files in `config/` (`browser.json`, `.env`, `spotify_cookies.json`) |
 | UI | Flet Desktop 1.0.5; dark theme, Stack Sans, IBM Plex, and optional CJK fallback |
-| Audio conversion | `ffmpeg` 6+ on `PATH` for audio extraction and conversion. Downloads needs at least one encoder per format: `libmp3lame` (MP3), native `aac` or `libfdk_aac` (M4A), `libvorbis` (Opus/Ogg) and `flac` (FLAC). Without FFmpeg, the Downloads view warns and disables downloading |
 
-## Installation
+---
+
+## Installation and Running
+
+### ⚡ Quick Start with One-Click Launchers (Recommended)
+
+The repository includes automated launchers that set up the `.venv` virtual environment, install dependencies on first run, and start the app:
+
+- **Windows:** Double-click `run.bat` (or run `.\run.bat` in terminal).
+- **Linux / macOS:** Run in terminal:
+  ```bash
+  ./run.sh
+  ```
+
+---
+
+### 🛠️ Manual Step-by-Step Installation
+
+If you prefer running commands manually:
+
+#### 1. Install Prerequisites (Python and FFmpeg)
+
+<details>
+<summary><b>📦 Commands by Operating System</b></summary>
+
+- **Windows (PowerShell):**
+  ```powershell
+  winget install Python.Python.3.12 Gyan.FFmpeg Git.Git
+  ```
+  *(Restart your terminal after installation. If installing Python manually from python.org, remember to check **"Add python.exe to PATH"**).*
+
+- **Linux (Debian / Ubuntu / Mint):**
+  ```bash
+  sudo apt update && sudo apt install -y python3 python3-venv python3-pip ffmpeg git
+  ```
+
+- **Linux (Arch / Manjaro):**
+  ```bash
+  sudo pacman -S python python-pip ffmpeg git
+  ```
+
+- **Linux (Fedora):**
+  ```bash
+  sudo dnf install -y python3 python3-pip ffmpeg git
+  ```
+
+- **macOS (via Homebrew):**
+  ```bash
+  brew install python ffmpeg git
+  ```
+
+</details>
+
+#### 2. Clone and Run
+
+##### 🐧 Linux / macOS
 
 ```bash
 git clone https://github.com/Brimx/Melomaniac.git
 cd Melomaniac
-python -m venv .venv
-source .venv/bin/activate                 # Linux/macOS
-# .venv\Scripts\activate                 # Windows PowerShell
-python -m pip install -r requirements.txt
-```
-
-## Running
-
-```bash
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
 python app.py
 ```
+
+##### 🪟 Windows
+
+- **Direct Method (avoids PowerShell ExecutionPolicy restrictions):**
+  ```powershell
+  git clone https://github.com/Brimx/Melomaniac.git
+  cd Melomaniac
+  python -m venv .venv
+  .\.venv\Scripts\pip install -r requirements.txt
+  .\.venv\Scripts\python app.py
+  ```
+
+- **Traditional Method:**
+  ```powershell
+  .\.venv\Scripts\Activate.ps1   # In classic CMD: .venv\Scripts\activate.bat
+  pip install -r requirements.txt
+  python app.py
+  ```
+
+---
+
+### 💡 Quick Troubleshooting
+
+- **PowerShell blocks script activation (`File ... cannot be loaded because running scripts is disabled`)**:
+  Use `run.bat` or the **Direct Method** (`.\.venv\Scripts\python app.py`), or enable scripts once in PowerShell:
+  ```powershell
+  Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
+  ```
+- **FFmpeg not detected in Downloads view**:
+  Ensure FFmpeg was installed and **restart your terminal or IDE** so your system loads the new `PATH`.
+- **`ensurepip is not available` on Ubuntu/Debian**:
+  Install the missing package with `sudo apt install python3-venv`.
+
+---
 
 The main screen lets you choose a source and a destination. The source can be one of the three streaming platforms or a local input; the destination is always a streaming platform.
 
 ### Configure credentials
 
-The credential wizard has one tab per platform. On startup, `AuthManager` runs the session checks concurrently and identifies any platform that needs attention. After saving, credentials are reloaded without restarting the application.
+Melomaniac automatically detects active sessions directly in memory from your browser (Firefox and Chromium-based browsers), so in most cases **no manual setup is required**.
 
-YouTube Music requires the `Authorization` value (with the `SAPISIDHASH` prefix) and the `Cookie` value from a `browse` request in `music.youtube.com`:
+If you prefer manual credentials or use a non-standard browser, you can use the built-in wizard (accessible via the gear icon in the side rail):
 
-```json
-{
-  "Authorization": "SAPISIDHASH ...",
-  "Cookie": "...",
-  "Accept": "*/*",
-  "Content-Type": "application/json",
-  "X-Goog-AuthUser": "0",
-  "x-origin": "https://music.youtube.com"
-}
-```
+- **YouTube Music:** Saves `Cookie` and `Authorization` headers (with the `SAPISIDHASH` prefix) from `music.youtube.com` into `config/browser.json`.
+- **Apple Music:** Saves `APPLE_AUTH_BEARER` and `APPLE_MUSIC_USER_TOKEN` from `music.apple.com` into `config/.env`.
+- **Spotify:** Saves your `sp_dc` and `sp_key` cookies into `config/spotify_cookies.json`.
 
-Apple Music requires these values in `config/.env`:
-
-```env
-APPLE_AUTH_BEARER="Bearer eyJ..."
-APPLE_MUSIC_USER_TOKEN="0.As..."
-```
-
-The `Bearer ` prefix is optional; the application adds it when missing. Values come from the request headers of a `catalog` request in Apple Music Web.
-
-Spotify uses the format written by the wizard to `config/spotify_cookies.json`:
-
-```json
-{
-  "identifier": "user@example.com",
-  "cookies": {
-    "sp_dc": "...",
-    "sp_key": "..."
-  }
-}
-```
-
-Credentials and the search cache live under `config/`, which is excluded by `.gitignore`. Do not share or commit those files.
+Credentials, preferences, and caches live inside `config/`, which is ignored by `.gitignore`. Never share or commit these files.
 
 ### Load a playlist
 
-- **Streaming:** select the platform, enter the playlist ID or URL, and click **Load**.
-- **Local File:** select a supported playlist file; the parser uses the extension and content. XML files are interpreted as XSPF.
-- **Audio File:** select a supported song; its tags provide the title, artist, album, duration, track number, date, and ISRC.
-- **Paste Text:** paste one entry per line. Lines may use `Title - Artist`; lines without a separator are also accepted.
+- **Streaming:** Select the platform, enter the playlist ID or URL, and click **Load**.
+- **Local File:** Select a supported playlist file (`M3U/M3U8`, `PLS`, `WPL`, `XSPF`, `CSV`, `TXT`) or an audio file to extract metadata tags.
+- **Paste Text:** Paste a track list (one per line, in `Title - Artist` or plain format).
 
-For local sources, select the destination explicitly before transferring. The source and destination cannot be the same platform.
+For local inputs, explicitly select your target streaming platform before transferring.
 
-### Review and transfer
+### Review, transfer, and playback
 
-1. Review the tracks and deselect anything you do not want to transfer.
-2. Optionally use **Organize** to sort/group or **Split** to create manual divisions; change the visible segment and switch between **List**, **Dual**, and **Preview**.
-3. Click **Transfer**, and confirm or edit the name and description.
-4. Review progress, the console, and the **Post-Mortem** tab.
+1. Review the tracks and uncheck any you wish to exclude.
+2. Optionally click **Organize** to sort/group or **Split** to divide into manual segments (2 to 5 divisions).
+3. Toggle between **List**, **Dual**, and **Preview** modes to inspect source and target.
+4. Click **Transfer**, confirm name and description, and monitor live progress. When finished, the **Post-Mortem** tab allows searching and inserting alternative tracks for ambiguous results.
+5. Play any local or downloaded track by clicking on the row or using the bottom **Player bar**.
 
-If you choose **Local File (Export)** as the destination, the button changes to **Export**. You can select the format, order, and output path; the default is `~/Documents/Melomaniac/Exports` when available, with `./exports` as a fallback.
-
-`low_confidence` matches may continue for streaming sources. Local tracks use a strict threshold; matches below `85` are rejected. Matches marked `revision_necesaria` are not inserted automatically.
+If you choose **Local File (Export)** as the destination, you can export your playlist to `M3U8`, `CSV`, `TXT`, or `XSPF`.
 
 ## Authentication, APIs, and resilience
 
-- **YouTube Music:** `ytmusicapi` for song search and playlist read/create operations.
-- **Apple Music:** `amp-api.music.apple.com`; catalog search uses `durationInMillis` and `isrc`.
-- **Spotify:** `spotapi`; track search uses `tracksV2`, duration in milliseconds, and `explicit`.
-- Global network semaphore: `2` concurrent requests.
-- Configured transfer limits: `2` for Apple Music and `3` for the other platforms; Apple searches are currently processed sequentially to avoid request bursts.
-- Apple: ISRC batches of `25`, insertion batches of `100`, a preventive limit of `50` requests followed by a `60` second pause; HTTP `423` enforces at least a `120` second cooldown.
-- Spotify: inserts tracks in batches of `50`, with up to four attempts and progressive delays.
-- Search results are atomically persisted in `config/search_cache.json`; legacy entries containing only `track_id` remain readable.
-- Circuit breakers handle `429`; Apple also distinguishes authentication failures (`401/403`) from temporary locking (`423`).
+- **YouTube Music:** `ytmusicapi` for song search and playlist management.
+- **Apple Music:** Web endpoint `amp-api.music.apple.com` with catalog search and ISRC/duration matching.
+- **Spotify:** `spotapi` using `tracksV2`, duration in milliseconds, and `explicit` scoring.
+- **Player & Audio:** `flet-audio` 1.0.5 (`FLET_DESKTOP_FLAVOR=full`) with `PlayQueue` and `services/mpris_service.py` (Linux D-Bus).
+- **Semaphores & Limits:** 2 concurrent global network requests; Apple Music processes transfers sequentially with preventive pauses to avoid HTTP 423/429.
+- **Atomic Cache:** `config/search_cache.json` is flushed in batches every 25 entries and on transfer completion.
 
 ## Configuration files
 
-| File | Purpose |
+| File / Folder | Purpose |
 |---|---|
-| `config/.env` | `APPLE_AUTH_BEARER` and `APPLE_MUSIC_USER_TOKEN` |
-| `config/browser.json` | Authenticated YouTube Music headers |
-| `config/spotify_cookies.json` | `identifier`, `sp_dc`, and `sp_key` |
-| `config/search_cache.json` | Results keyed by `title|||artist|||destination` |
-| `exports/` | Local exporter output; excluded by `.gitignore` |
-| `transfer_failed_report.txt` | On-demand UI report; not a configuration file |
+| `config/settings.json` | Default download format, online artwork toggle, and local folders |
+| `config/browser.json` | Manual YouTube Music headers |
+| `config/.env` | `APPLE_AUTH_BEARER` and `APPLE_MUSIC_USER_TOKEN` tokens |
+| `config/spotify_cookies.json` | Spotify `sp_dc` and `sp_key` cookies |
+| `config/search_cache.json` | Cached search results (`title\|\|\|artist\|\|\|destination`) |
+| `config/transfer_history.jsonl` | Persistent transfer history and resolution events |
+| `config/cover_cache/` | Local normalized album artwork cache (800 px) |
+| `exports/` | Local exporter output (ignored by Git) |
+| `transfer_failed_report.txt` | On-demand UI report generated from Post-Mortem |
 
 ## Project structure
 
 ```text
 Melomaniac/
-├── app.py                         # Entry point, composition, lifecycle
-├── config/                        # Ignored runtime credentials and state
+├── app.py                         # Entry point, service composition, and lifecycle
+├── run.bat                        # Automated one-click launcher for Windows
+├── run.sh                         # Automated launcher for Linux/macOS
+├── config/                        # Ignored runtime credentials, settings, and caches
 ├── core/
-│   ├── availability.py            # Availability scan and Apple ISRC preload
-│   ├── cache.py                   # Cache keys and compatibility helpers
-│   ├── config.py                  # Platforms, concurrency, and batch sizes
-│   ├── library_models.py          # Library summaries and states
-│   ├── library_store.py           # Local playlist metadata persistence
-│   ├── models.py                  # Track, PlaylistMeta, SearchResult, states
-│   ├── state.py                   # BLoC state and transfer workflow
-│   └── transfer.py                # Search and rate-limit error helpers
+│   ├── availability.py            # Availability scanning and Apple ISRC preload
+│   ├── cache.py                   # search_cache keys and compatibility helpers
+│   ├── config.py                  # Constants, concurrency limits, and batch sizes
+│   ├── library_models.py          # Library playlist summaries and state models
+│   ├── library_store.py           # Atomic local persistence for Library metadata
+│   ├── models.py                  # Universal Track, PlaylistMeta, SearchResult, and enums
+│   ├── playback.py                # PlayQueue and playback state management
+│   ├── state.py                   # Centralized AppState (BLoC / Observer)
+│   └── transfer.py                # TransferReport and transfer failure tracking
 ├── engine/
-│   ├── audio_metadata.py          # Mutagen tag read/write helpers
-│   ├── match.py                   # Candidate scoring and validation
-│   ├── normalizer.py              # Cleanup, ISRC, fuzzy thresholds
-│   ├── organizer.py               # In-memory sorting and segmentation
-│   ├── exporters.py               # TXT/CSV/M3U/XSPF local export
-│   └── parsers.py                 # Local formats and Track construction
+│   ├── audio_metadata.py          # Tag reading and writing with Mutagen
+│   ├── covers.py                  # Artwork normalization to 800 px squares
+│   ├── downloader.py              # yt-dlp audio download queue with metadata tagging
+│   ├── exporters.py               # Local export (M3U8, CSV, TXT, XSPF)
+│   ├── match.py                   # Scoring and Hunter Recovery with RapidFuzz
+│   ├── normalizer.py              # Metadata cleaning, ISRC, and Cyrillic transliteration
+│   ├── organizer.py               # In-memory sorting and segment splitting
+│   └── parsers.py                 # Local playlist parsing and Track building
 ├── services/
-│   ├── api_service.py             # API facade and HTTP sessions
-│   ├── authentication.py           # Paths, credentials, pre-flight
-│   ├── circuit_breaker.py          # Cooldowns and RateLimitError
-│   ├── cover_cache.py              # Cover cache
-│   └── library_state.py            # Library synchronization and state
+│   ├── api_service.py             # Streaming API facade and HTTP session handling
+│   ├── authentication.py          # Runtime paths and credential preflights
+│   ├── browser_session.py         # In-memory browser cookie extraction
+│   ├── circuit_breaker.py         # Monotonic cooldowns and 429 rate-limit protection
+│   ├── cover_cache.py             # Atomic artwork cache storage
+│   ├── covers.py                  # Multi-source album artwork resolution pipeline
+│   ├── library_state.py           # Library sync and state coordination
+│   ├── mpris_service.py           # Linux D-Bus MPRIS service for system media controls
+│   └── settings_store.py          # User preferences persistence
 ├── ui/
-│   ├── auth_manager.py            # Checks and hot reload
-│   ├── config_wizard.py            # Credential wizard
-│   ├── main_ui.py                 # Main window and events
-│   ├── organize_panel.py           # Organize, split, and reorder dialogs
-│   ├── library_view.py             # Synced playlists and Library navigation
-│   ├── playlist_card.py            # Playlist cards
-│   ├── playlist_detail_view.py     # Details and on-demand track loading
-│   ├── playlist_meta_dialog.py     # Destination name and description
-│   ├── song_row.py                # Track rows and skeletons
-│   ├── telemetry.py               # Monitor, console, Post-Mortem
-│   ├── fonts.py                    # Unicode classification and font registry
-│   └── widgets.py / tokens.py      # Components and visual tokens
-└── resources/fonts/               # Stack Sans and IBM Plex; optional CJK
+│   ├── auth_manager.py            # Credential checks, modal, and hot reloading
+│   ├── config_view.py             # Settings view (downloads, artwork, paths)
+│   ├── config_wizard.py           # Manual credential configuration wizard
+│   ├── downloads_view.py          # Downloads queue view with progress and FFmpeg banner
+│   ├── fonts.py                   # Unicode script detection and font registration
+│   ├── library_view.py            # Library view with streaming and local music folders
+│   ├── main_ui.py                 # Main window, responsive navigation rail, view modes
+│   ├── organize_panel.py          # Organize, Split, and Reorder dialogs
+│   ├── player_bar.py              # Interactive persistent bottom player bar
+│   ├── player_queue.py            # Reorderable playback queue drawer
+│   ├── playlist_card.py           # Visual playlist cards
+│   ├── playlist_detail_view.py    # Playlist detail view with on-demand track loading
+│   ├── playlist_meta_dialog.py    # Playlist name and description editor
+│   ├── song_row.py                # Track rows with animated skeleton loaders
+│   ├── telemetry.py               # Transfer monitor, live console, and Post-Mortem
+│   ├── tokens.py                  # Color palette, spacing, border radii, and animations
+│   ├── transfer_report.py         # Completion report and alternative track insertion
+│   └── widgets.py                 # Reusable styled UI controls
+└── resources/fonts/               # Bundled Stack Sans and IBM Plex fonts
 ```
 
 Fonts are selected by script: Stack Sans for Latin text, IBM Plex Sans for

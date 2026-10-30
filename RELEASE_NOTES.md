@@ -7,6 +7,7 @@ Notas enfocadas en **qué cambió para el usuario**, no en detalles internos. La
 ## v4.8.0 — Reproductor integrado, sesión de navegador y MPRIS (2026-10-29)
 
 **Novedades:**
+- **Lanzadores de arranque rápido (`run.bat` y `run.sh`):** scripts automáticos para Windows y Linux/macOS que crean el entorno virtual, instalan dependencias y ejecutan la aplicación en un solo paso o doble clic.
 - **Reproductor de audio nativo:** barra inferior interactiva con reproducción de audio local (FLAC, MP3, M4A, Opus, WAV), barra de progreso con arrastre (scrubbing), control de volumen, mute, cola de reproducción reordenable y modos de repetición/aleatorio.
 - **Integración con el escritorio Linux (MPRIS):** soporte completo para widgets de sistema (Caelestia, Quickshell, Waybar, KDE, GNOME, playerctl) y teclas multimedia físicas, con actualización de metadatos, posición en tiempo real y carátulas.
 - **Detección de sesión desde el navegador:** conecta automáticamente tu cuenta de YouTube Music y Spotify leyendo las cookies seguras de Firefox o Chromium sin necesidad de exportar archivos JSON manualmente.
