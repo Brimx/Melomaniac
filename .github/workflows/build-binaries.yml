@@ -7,9 +7,9 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'Versión a compilar (ej. 4.8.0)'
+        description: 'Versión a compilar (ej. 4.8.2)'
         required: true
-        default: '4.8.0'
+        default: '4.8.2'
 
 permissions:
   contents: write
@@ -61,7 +61,6 @@ jobs:
           path: |
             dist-release/*.AppImage
             dist-release/*.tar.gz
-            dist-release/SHA256SUMS-linux.txt
 
   build-windows:
     name: Build Windows (Setup.exe & portable .zip)
@@ -98,7 +97,7 @@ jobs:
 
       - name: Build Windows folder with Flet pack
         run: |
-          python -m flet_cli pack app.py --onedir --name Melomaniac --add-data "resources;resources" --hidden-import "mutagen" -y --pyinstaller-build-args="--collect-data=ytmusicapi"
+          python -m flet_cli.cli pack app.py --onedir --name Melomaniac --add-data "resources;resources" --hidden-import "mutagen" -y --pyinstaller-build-args="--collect-data=ytmusicapi"
 
       - name: Create release directory
         shell: bash
@@ -125,13 +124,6 @@ jobs:
           7z a "../dist-release/Melomaniac-v${{ env.VERSION }}-windows-x64.zip" Melomaniac/
           cd ..
 
-      - name: Generate SHA256 hashes
-        shell: bash
-        run: |
-          cd dist-release
-          sha256sum Melomaniac-v${{ env.VERSION }}-windows-x64* > SHA256SUMS-windows.txt
-          cat SHA256SUMS-windows.txt
-
       - name: Upload Windows artifacts
         uses: actions/upload-artifact@v4
         with:
@@ -139,7 +131,6 @@ jobs:
           path: |
             dist-release/*-windows-x64-Setup.exe
             dist-release/*-windows-x64.zip
-            dist-release/SHA256SUMS-windows.txt
 
   publish-to-release:
     name: Upload Binaries to GitHub Release

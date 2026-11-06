@@ -2,7 +2,7 @@
 """Construye los paquetes standalone de Melomaniac para Linux (.tar.gz y .AppImage).
 
 Uso:
-    python scripts/build_linux.py --version 4.8.0 [--out-dir dist-release] [--skip-pack]
+    python scripts/build_linux.py --version 4.8.2 [--out-dir dist-release] [--skip-pack]
 
 Requisitos:
     - Entorno virtual con dependencias de requirements.txt y pyinstaller.
@@ -82,7 +82,7 @@ def run_flet_pack(root: Path) -> None:
     cmd = [
         sys.executable,
         "-m",
-        "flet_cli",
+        "flet_cli.cli",
         "pack",
         "app.py",
         "--onedir",
@@ -211,7 +211,7 @@ def compute_sha256(file_path: Path) -> str:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--version", default="4.8.0", help="Versión de release (ej. 4.8.0)")
+    parser.add_argument("--version", default="4.8.2", help="Versión de release (ej. 4.8.2)")
     parser.add_argument("--out-dir", default="dist-release", help="Directorio de salida para los paquetes")
     parser.add_argument("--skip-pack", action="store_true", help="Omitir flet pack y usar dist/ existente")
     args = parser.parse_args()
@@ -236,17 +236,13 @@ def main() -> None:
     appimage_path = out_dir / appimage_name
     build_appimage(dist_dir, appimage_path, version)
 
-    # 3. Generar SHA256SUMS-linux.txt
-    sums_path = out_dir / "SHA256SUMS-linux.txt"
-    lines = [
-        f"{compute_sha256(tar_path)}  {tar_name}",
-        f"{compute_sha256(appimage_path)}  {appimage_name}",
-    ]
-    sums_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    # 3. Resumen por consola. GitHub muestra el SHA-256 de cada asset del
+    #    release, así que no se publican archivos .txt de hashes.
     print("\n" + "=" * 60)
     print("RESUMEN DE ARTEFACTOS GENERADOS:")
     print("=" * 60)
-    print(sums_path.read_text().strip())
+    print(f"{compute_sha256(tar_path)}  {tar_name}")
+    print(f"{compute_sha256(appimage_path)}  {appimage_name}")
     print("=" * 60)
 
 

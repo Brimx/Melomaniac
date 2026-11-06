@@ -2,13 +2,13 @@
 """Construye el ZIP portátil de un release de Melomaniac.
 
 Uso:
-    python scripts/build_release_bundle.py --version 4.8.0 [--out-dir /tmp/opencode]
+    python scripts/build_release_bundle.py --version 4.8.2 [--out-dir /tmp/opencode]
 
 Incluye solo archivos trackeados necesarios en runtime:
 app.py, run.*, requirements.txt, LICENSE, README*, CHANGELOG.md,
 config/.gitkeep, core/, engine/, services/, ui/, resources/.
 Excluye tests/, docs internas, .venv, config/ real y cachés.
-Genera SHA256SUMS.txt junto al ZIP.
+Imprime el SHA-256 del ZIP por consola (GitHub lo muestra por asset).
 """
 
 from __future__ import annotations
@@ -51,7 +51,6 @@ def build(version: str, out_dir: str) -> str:
     root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     folder = f"Melomaniac-v{version}"
     zip_path = os.path.join(out_dir, f"{folder}.zip")
-    sum_path = os.path.join(out_dir, "SHA256SUMS.txt")
 
     files = tracked_files(root)
     if not files:
@@ -76,8 +75,6 @@ def build(version: str, out_dir: str) -> str:
     with open(zip_path, "rb") as fh:
         for chunk in iter(lambda: fh.read(1 << 20), b""):
             digest.update(chunk)
-    with open(sum_path, "w") as fh:
-        fh.write(f"{digest.hexdigest()}  {folder}.zip\n")
 
     size_mb = os.path.getsize(zip_path) / (1024 * 1024)
     print(f"{folder}.zip: {size_mb:.1f} MB, {len(files)} archivos")
@@ -87,7 +84,7 @@ def build(version: str, out_dir: str) -> str:
 
 if __name__ == "__main__":
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--version", required=True, help="Versión sin 'v', ej. 4.8.0")
+    ap.add_argument("--version", required=True, help="Versión sin 'v', ej. 4.8.2")
     ap.add_argument("--out-dir", default="/tmp/opencode", help="Carpeta de salida")
     args = ap.parse_args()
     os.makedirs(args.out_dir, exist_ok=True)
