@@ -1,4 +1,4 @@
-# 🎵 Melomaniac v4.8.0
+# 🎵 Melomaniac v4.8.2
 
 [Español](README.md) · **English**
 
@@ -49,9 +49,9 @@ Each GitHub release includes compiled packages that do not require Python; use t
 
 | Package | File |
 |---|---|
-| Portable source bundle | `Melomaniac-vX.Y.Z.zip` (+ `SHA256SUMS.txt`) |
-| Linux | `Melomaniac-vX.Y.Z-x86_64.AppImage`, `Melomaniac-vX.Y.Z-linux-x64.tar.gz` (+ `SHA256SUMS-linux.txt`) |
-| Windows | `Melomaniac-vX.Y.Z-windows-x64-Setup.exe`, `Melomaniac-vX.Y.Z-windows-x64.zip` (+ `SHA256SUMS-windows.txt`) |
+| Portable source bundle | `Melomaniac-vX.Y.Z.zip` |
+| Linux | `Melomaniac-vX.Y.Z-x86_64.AppImage`, `Melomaniac-vX.Y.Z-linux-x64.tar.gz` |
+| Windows | `Melomaniac-vX.Y.Z-windows-x64-Setup.exe`, `Melomaniac-vX.Y.Z-windows-x64.zip` |
 
 In the binaries, configuration is stored outside the install folder (`$XDG_CONFIG_HOME/melomaniac` on Linux, `%APPDATA%\Melomaniac` on Windows), unless portable mode is active (writable `config/` folder or `portable.flag`).
 

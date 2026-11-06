@@ -1,14 +1,15 @@
 # Release Notes — Melomaniac
 
-Notas enfocadas en **qué cambió para el usuario**, no en detalles internos. La versión de trabajo documentada es `4.8.0`. El detalle técnico está en [`CHANGELOG.md`](CHANGELOG.md). La descarga de la versión estable (ZIP portátil + SHA-256) está en los assets del release de GitHub.
+Notas enfocadas en **qué cambió para el usuario**, no en detalles internos. La versión de trabajo documentada es `4.8.2`. El detalle técnico está en [`CHANGELOG.md`](CHANGELOG.md). La descarga de la versión estable (ZIP portátil, binarios de Linux y Windows) está en los assets del release de GitHub.
 
 ---
 
-## Sin publicar — Bienvenida guiada y binarios standalone
+## v4.8.2 — Bienvenida guiada, binarios standalone y actualizaciones (2026-11-06)
 
 **Novedades:**
-- **Bienvenida de primera ejecución:** recorrido guiado de seis pantallas (Gestión, Biblioteca/Descargas, preferencias y conexión de plataformas). Se muestra al abrir la app por primera vez y se puede reabrir desde Config.
-- **Binarios sin instalar Python:** cada release incluirá paquetes compilados con hashes SHA-256: AppImage y `tar.gz` para Linux, instalador `Setup.exe` y ZIP para Windows, además del ZIP portátil del código fuente.
+- **Bienvenida de primera ejecución:** recorrido guiado de siete pantallas (Gestión, Biblioteca/Descargas, preferencias, sistema y actualizaciones, y conexión de plataformas). Se muestra al abrir la app por primera vez y se puede reabrir desde Config.
+- **Binarios sin instalar Python:** cada release incluye paquetes compilados: AppImage y `tar.gz` para Linux, instalador `Setup.exe` y ZIP para Windows, además del ZIP portátil del código fuente.
+- **Acceso directo y actualizaciones:** crea el lanzador en el menú de aplicaciones (Linux) o el acceso del Escritorio (Windows portable) desde la bienvenida o Config. Config incluye un botón para comprobar nuevas versiones en GitHub. El lanzador del AppImage se actualiza solo al abrir una versión nueva.
 
 ## v4.8.0 — Reproductor integrado, sesión de navegador y MPRIS (2026-10-29)
 

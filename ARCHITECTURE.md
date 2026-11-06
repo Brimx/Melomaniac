@@ -1,10 +1,10 @@
-# Melomaniac v4.8.0 — Arquitectura
+# Melomaniac v4.8.2 — Arquitectura
 
 [← README](README.md) · [English](ARCHITECTURE.en.md) · [Diseño](DESIGN.md) · [Cambios](CHANGELOG.md)
 
 Melomaniac separa la interfaz Flet, el estado de la aplicación, los servicios de plataforma y el motor de normalización/matching. La versión actual soporta YouTube Music, Apple Music, Spotify y dos entradas locales: archivo y texto pegado.
 
-La versión de trabajo documentada es `4.8.0`. Esta versión consolida el reproductor integrado, sesiones desde el navegador, descarga de audio con `yt-dlp` y la integración MPRIS para escritorios Linux. Los cambios posteriores sin publicar (bienvenida guiada, bundle ZIP portátil y empaquetado standalone con CI) se listan en `CHANGELOG.md`.
+La versión de trabajo documentada es `4.8.2`. Esta versión consolida el reproductor integrado, sesiones desde el navegador, descarga de audio con `yt-dlp` y la integración MPRIS para escritorios Linux. Los cambios posteriores sin publicar (bienvenida guiada, bundle ZIP portátil y empaquetado standalone con CI) se listan en `CHANGELOG.md`.
 
 ## Capas y dependencias
 
@@ -235,9 +235,9 @@ Cada tag `v*` dispara `.github/workflows/build-binaries.yml`, que compila los bi
 
 | Paquete | Script | Salida |
 |---|---|---|
-| ZIP portátil del fuente | `scripts/build_release_bundle.py` | `Melomaniac-vX.Y.Z.zip` + `SHA256SUMS.txt` (incluye `run.sh`/`run.bat`) |
-| Linux | `scripts/build_linux.py` (PyInstaller + appimagetool) | `Melomaniac-vX.Y.Z-x86_64.AppImage`, `Melomaniac-vX.Y.Z-linux-x64.tar.gz` + `SHA256SUMS-linux.txt` |
-| Windows | `flet pack` + Inno Setup (`scripts/windows/installer.iss`) | `Melomaniac-vX.Y.Z-windows-x64-Setup.exe`, `Melomaniac-vX.Y.Z-windows-x64.zip` + `SHA256SUMS-windows.txt` |
+| ZIP portátil del fuente | `scripts/build_release_bundle.py` | `Melomaniac-vX.Y.Z.zip` (incluye `run.sh`/`run.bat`) |
+| Linux | `scripts/build_linux.py` (PyInstaller + appimagetool) | `Melomaniac-vX.Y.Z-x86_64.AppImage`, `Melomaniac-vX.Y.Z-linux-x64.tar.gz` |
+| Windows | `flet pack` + Inno Setup (`scripts/windows/installer.iss`) | `Melomaniac-vX.Y.Z-windows-x64-Setup.exe`, `Melomaniac-vX.Y.Z-windows-x64.zip` |
 
 En modo `sys.frozen` (binarios), `services.authentication` desacopla `CONFIG_DIR` de la carpeta de instalación: `$XDG_CONFIG_HOME/melomaniac` en Linux y `%APPDATA%\Melomaniac` en Windows. Se preserva el modo portable si existe una carpeta `config/` escribible o un `portable.flag`.
 

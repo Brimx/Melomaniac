@@ -1,10 +1,10 @@
-# Melomaniac v4.8.0 — Architecture
+# Melomaniac v4.8.2 — Architecture
 
 [← README](README.en.md) · [Español](ARCHITECTURE.md) · [Design](DESIGN.md) · [Changes](CHANGELOG.md)
 
 Melomaniac separates the Flet UI, application state, platform services, and metadata normalization/matching engine. The current version supports YouTube Music, Apple Music, Spotify, and two local inputs: file and pasted text.
 
-The documented working version is `4.8.0`. This version consolidates the integrated player, browser session detection, audio downloads with `yt-dlp`, and MPRIS desktop integration on Linux. Later unreleased changes (guided onboarding, portable ZIP bundle, and standalone packaging with CI) are listed in `CHANGELOG.md`.
+The documented working version is `4.8.2`. This version consolidates the integrated player, browser session detection, audio downloads with `yt-dlp`, and MPRIS desktop integration on Linux. Later unreleased changes (guided onboarding, portable ZIP bundle, and standalone packaging with CI) are listed in `CHANGELOG.md`.
 
 ## Layers and dependencies
 
@@ -235,9 +235,9 @@ Every `v*` tag triggers `.github/workflows/build-binaries.yml`, which builds the
 
 | Package | Script | Output |
 |---|---|---|
-| Portable source ZIP | `scripts/build_release_bundle.py` | `Melomaniac-vX.Y.Z.zip` + `SHA256SUMS.txt` (includes `run.sh`/`run.bat`) |
-| Linux | `scripts/build_linux.py` (PyInstaller + appimagetool) | `Melomaniac-vX.Y.Z-x86_64.AppImage`, `Melomaniac-vX.Y.Z-linux-x64.tar.gz` + `SHA256SUMS-linux.txt` |
-| Windows | `flet pack` + Inno Setup (`scripts/windows/installer.iss`) | `Melomaniac-vX.Y.Z-windows-x64-Setup.exe`, `Melomaniac-vX.Y.Z-windows-x64.zip` + `SHA256SUMS-windows.txt` |
+| Portable source ZIP | `scripts/build_release_bundle.py` | `Melomaniac-vX.Y.Z.zip` (includes `run.sh`/`run.bat`) |
+| Linux | `scripts/build_linux.py` (PyInstaller + appimagetool) | `Melomaniac-vX.Y.Z-x86_64.AppImage`, `Melomaniac-vX.Y.Z-linux-x64.tar.gz` |
+| Windows | `flet pack` + Inno Setup (`scripts/windows/installer.iss`) | `Melomaniac-vX.Y.Z-windows-x64-Setup.exe`, `Melomaniac-vX.Y.Z-windows-x64.zip` |
 
 In `sys.frozen` mode (binaries), `services.authentication` decouples `CONFIG_DIR` from the install folder: `$XDG_CONFIG_HOME/melomaniac` on Linux and `%APPDATA%\Melomaniac` on Windows. Portable mode is preserved if a writable `config/` folder or a `portable.flag` file exists.
 
