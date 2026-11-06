@@ -9,7 +9,9 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import re
+import sys
 import time
 from pathlib import Path
 
@@ -18,7 +20,57 @@ from dotenv import dotenv_values, load_dotenv, set_key
 from core.config import PLATFORM_ORDER
 
 PROJECT_DIR = Path(__file__).resolve().parent.parent
-CONFIG_DIR = PROJECT_DIR / "config"
+
+
+def _resolve_config_dir() -> Path:
+    """Resuelve la ruta del directorio de configuración según el modo de ejecución.
+
+    1. Si se define la variable de entorno ``MELOMANIAC_CONFIG_DIR``, se usa esa ruta.
+    2. Si la app corre empaquetada (PyInstaller / binario standalone):
+       - Si no es AppImage y existe ``portable.flag`` o una carpeta ``config/`` escribible
+         junto al ejecutable, se mantiene el modo portátil (pendrives o carpetas locales).
+       - En Windows (instalado): ``%APPDATA%\\Melomaniac``.
+       - En Linux/macOS (AppImage, paquete de sistema): ``$XDG_CONFIG_HOME/melomaniac``
+         (por defecto ``~/.config/melomaniac``).
+    3. En desarrollo / ejecución directa desde script:
+       - Carpeta ``config/`` en la raíz del proyecto.
+    """
+    custom = os.environ.get("MELOMANIAC_CONFIG_DIR")
+    if custom:
+        return Path(custom).resolve()
+
+    if getattr(sys, "frozen", False):
+        exe_dir = Path(sys.executable).resolve().parent
+        portable_config = exe_dir / "config"
+        portable_flag = exe_dir / "portable.flag"
+        is_appimage = bool(os.environ.get("APPIMAGE"))
+
+        # En modo portátil (carpeta config/ escribible o portable.flag junto al binario fuera de AppImage)
+        if not is_appimage and (portable_flag.is_file() or portable_config.is_dir()):
+            try:
+                portable_config.mkdir(parents=True, exist_ok=True)
+                test_file = portable_config / ".write_test"
+                test_file.touch()
+                test_file.unlink()
+                return portable_config
+            except OSError:
+                pass  # Fallback a directorio del sistema si no hay permisos de escritura
+
+        # Directorio estándar del sistema operativo
+        if sys.platform == "win32":
+            appdata = os.environ.get("APPDATA")
+            base = Path(appdata) if appdata else Path.home() / "AppData" / "Roaming"
+            return base / "Melomaniac"
+        else:
+            xdg = os.environ.get("XDG_CONFIG_HOME")
+            base = Path(xdg) if xdg else Path.home() / ".config"
+            return base / "melomaniac"
+
+    # Modo estándar en desarrollo / repo local
+    return PROJECT_DIR / "config"
+
+
+CONFIG_DIR = _resolve_config_dir()
 ENV_FILE = CONFIG_DIR / ".env"
 BROWSER_JSON = CONFIG_DIR / "browser.json"
 SPOTIFY_COOKIES_JSON = CONFIG_DIR / "spotify_cookies.json"

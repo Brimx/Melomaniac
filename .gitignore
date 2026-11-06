@@ -1,5 +1,6 @@
 # Entornos de desarrollo y herramientas locales
 .vscode/
+.claude/
 .kiro/
 .opencode/
 opencode.json
@@ -28,3 +29,9 @@ exports/
 downloads/
 transfer_failed_report.txt
 .DS_Store
+
+# Artefactos de empaquetado y build
+dist/
+dist-release/
+build/
+*.spec

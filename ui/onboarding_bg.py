@@ -47,7 +47,16 @@ class OnboardingBackground(cv.Canvas):
         self._frame()
 
     def _on_resize(self, e) -> None:
-        self._w, self._h = float(e.width or self._w), float(e.height or self._h)
+        """Reescala las posiciones a la nueva área para cubrir toda la ventana."""
+        nw = float(e.width or 0)
+        nh = float(e.height or 0)
+        if nw <= 0 or nh <= 0:
+            return
+        sx, sy = nw / self._w, nh / self._h
+        for p in self._pts:
+            p[0] *= sx
+            p[1] *= sy
+        self._w, self._h = nw, nh
 
     def _frame(self, dt: float = 0.0) -> None:
         w, h = self._w, self._h
