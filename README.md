@@ -1,5 +1,7 @@
 # 🎵 Melomaniac v4.8.0
 
+[English](https://raw.githubusercontent.com/Brimx/Melomaniac/main/README.en.md)
+
 **Tu música. Tu librería. Tu elección.**
 
 [![Python](https://img.shields.io/badge/Python-3.10%2B-3776AB?logo=python&logoColor=white)](https://www.python.org/)
@@ -8,6 +10,7 @@
 [![YouTube Music](https://img.shields.io/badge/YouTube%20Music-Supported-FF0000?logo=youtubemusic&logoColor=white)](https://music.youtube.com/)
 [![Apple Music](https://img.shields.io/badge/Apple%20Music-Supported-FA243C?logo=applemusic&logoColor=white)](https://music.apple.com/)
 [![Spotify](https://img.shields.io/badge/Spotify-Supported-1DB954?logo=spotify&logoColor=white)](https://open.spotify.com/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-4c1f9e.svg)](LICENSE)
 
 Melomaniac es una aplicación de escritorio para sincronizar, reconstruir, descargar y reproducir playlists entre **YouTube Music, Apple Music y Spotify**, así como gestionar archivos locales de música.
 
@@ -21,10 +24,21 @@ La versión de trabajo documentada es `4.8.0`. Los cambios detallados de cada ve
 - 🎯 **Motor de coincidencia inteligente:** Algoritmo multi-fase con RapidFuzz, ISRC exacto (Apple Music), comparación de duración y etiquetas explícitas. Incluye transliteración cirílica, deduplicación de consultas (`SingleFlight`) y reporte Post-Mortem para resolver alternativas de pistas dudosas o no encontradas.
 - 📚 **Biblioteca unificada:** Explora tus playlists en streaming y tus carpetas locales en una sola vista. Permite crear una nueva playlist de streaming directamente a partir de cualquier carpeta local de tu disco.
 - 🎵 **Reproductor de audio integrado:** Barra de reproducción nativa en la parte inferior para archivos locales (FLAC, MP3, M4A, Opus, WAV) con cola reordenable (`PlayQueue`), soporte de arrastre de posición (*scrubbing*), modos shuffle/repeat y volumen persistente.
-- ⬇️ **Descargas con metadatos completos:** Descarga canciones en MP3, M4A, Opus, FLAC o WAV vía `yt-dlp`. Normaliza carátulas a 800 px cuadrados, escribe metadatos ID3/Vorbis con `mutagen`, valida la presencia de FFmpeg y omite automáticamente pistas ya descargadas.
+- ⬇️ **Descargas con metadatos completos (uso personal):** Guarda audio local para uso estrictamente personal en MP3, M4A, Opus, FLAC o WAV vía `yt-dlp`. Normaliza carátulas a 800 px cuadrados, escribe metadatos ID3/Vorbis con `mutagen`, valida la presencia de FFmpeg y omite automáticamente pistas ya descargadas.
 - 🖥️ **Integración con escritorio (MPRIS / D-Bus):** En Linux, control total desde widgets de escritorio (Waybar, Quickshell, GNOME, KDE) y teclas multimedia físicas del teclado, con carátulas y metadatos en tiempo real.
 - 🌐 **Sesión de navegador sin enredos:** Conexión automática de credenciales en memoria leyendo las cookies seguras de Firefox o Chromium sin necesidad de exportar JSONs manualmente.
 - 🛠️ **Organización avanzada y exportación:** Modos de vista Lista, Doble y Preview. Ordena y agrupa por artista, álbum, duración o fecha; divide playlists en segmentos manuales (2 a 5 divisiones) y exporta a `M3U8`, `CSV`, `TXT` o `XSPF`.
+
+---
+
+## Aviso legal y licencia
+
+- **Código:** Melomaniac se distribuye bajo licencia MIT (ver [`LICENSE`](LICENSE)). La licencia cubre el software, no los contenidos musicales.
+- **Uso personal:** Melomaniac se desarrolla con fines educativos y para gestión personal de medios. La función de Descargas es solo para uso personal y sin fines comerciales. No distribuyas, vendas, publiques ni pongas a disposición de terceros el audio descargado, ni lo uses con fines comerciales.
+- **Responsabilidad del usuario:** Los usuarios son responsables de cumplir los Términos de YouTube, YouTube Music, Apple Music y Spotify, y la legislación local aplicable sobre derecho de autor, incluida la colombiana (Ley 23 de 1982 y Ley 1915 de 2018).
+- **Sin afiliación:** Melomaniac no está afiliado ni respaldado por Google, YouTube, Apple, Spotify ni sus titulares de licencia.
+- **Sin garantía:** El software se proporciona "tal cual", sin garantía expresa o implícita. En la máxima medida permitida por la ley, los autores no responden por daños derivados de su uso.
+- **Tus credenciales:** Las cookies y tokens se resuelven en memoria o se guardan en `config/` (`browser.json`, `.env`, `spotify_cookies.json`). Cuida esos archivos: equivalen a tu sesión.
 
 ---
 

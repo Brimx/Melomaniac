@@ -1,5 +1,7 @@
 # 🎵 Melomaniac v4.8.0
 
+[Español](https://raw.githubusercontent.com/Brimx/Melomaniac/main/README.md)
+
 **Your music. Your library. Your way.**
 
 [![Python](https://img.shields.io/badge/Python-3.10%2B-3776AB?logo=python&logoColor=white)](https://www.python.org/)
@@ -8,6 +10,7 @@
 [![YouTube Music](https://img.shields.io/badge/YouTube%20Music-Supported-FF0000?logo=youtubemusic&logoColor=white)](https://music.youtube.com/)
 [![Apple Music](https://img.shields.io/badge/Apple%20Music-Supported-FA243C?logo=applemusic&logoColor=white)](https://music.apple.com/)
 [![Spotify](https://img.shields.io/badge/Spotify-Supported-1DB954?logo=spotify&logoColor=white)](https://open.spotify.com/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-4c1f9e.svg)](LICENSE)
 
 Melomaniac is a desktop application for syncing, rebuilding, downloading, and playing playlists between **YouTube Music, Apple Music, and Spotify**, as well as managing local music files.
 
@@ -21,10 +24,21 @@ The documented working version is `4.8.0`. Detailed changes for each version are
 - 🎯 **Intelligent Matching Engine:** Multi-stage matching using RapidFuzz, exact ISRC matching (Apple Music), duration comparisons, and explicit tags. Features Cyrillic transliteration, single-flight deduplication (`SingleFlight`), and an interactive Post-Mortem view to resolve alternative candidates.
 - 📚 **Unified Library:** Browse both your cloud streaming playlists and local music folders in a single place. Create streaming playlists directly from any local folder on your disk.
 - 🎵 **Integrated Audio Player:** Persistent bottom player bar for local audio files (FLAC, MP3, M4A, Opus, WAV) with reorderable queue (`PlayQueue`), scrubbing support, shuffle/repeat modes, and persistent volume.
-- ⬇️ **Audio Downloads with Full Metadata:** Download audio tracks in MP3, M4A, Opus, FLAC, or WAV via `yt-dlp`. Normalizes album art to square 800 px, embeds full ID3/Vorbis tags via `mutagen`, checks FFmpeg availability upfront, and automatically skips existing files.
+- ⬇️ **Audio downloads with full metadata (personal use):** Save audio locally for strictly personal use in MP3, M4A, Opus, FLAC, or WAV via `yt-dlp`. Normalizes album art to square 800 px, embeds full ID3/Vorbis tags via `mutagen`, checks FFmpeg availability upfront, and automatically skips existing files.
 - 🖥️ **Desktop Integration (MPRIS / D-Bus):** Full media player control on Linux via system widgets (Waybar, Quickshell, GNOME, KDE) and keyboard media keys, complete with real-time metadata and cover art.
 - 🌐 **Frictionless Browser Sessions:** Automatically detects active sessions in memory from Firefox or Chromium-based browsers without needing manual cookie JSON exports.
 - 🛠️ **Advanced Organization & Export:** List, Dual, and Preview view modes. Sort and group by artist, album, duration, or release date; split playlists into 2 to 5 manual divisions, and export locally to `M3U8`, `CSV`, `TXT`, or `XSPF`.
+
+---
+
+## Legal Notice and License
+
+- **Code:** Melomaniac is distributed under the MIT License (see [`LICENSE`](LICENSE)). The license covers the software, not any music content.
+- **Personal use only:** Melomaniac is developed for educational purposes and personal media management. The Downloads feature is for strictly personal, non-commercial use. Do not distribute, sell, publish, or make downloaded audio available to third parties, and do not use it for commercial purposes.
+- **User responsibility:** Users are responsible for complying with the Terms of YouTube, YouTube Music, Apple Music, and Spotify, and with applicable local copyright law, including Colombian law (Ley 23 de 1982 and Ley 1915 de 2018).
+- **No affiliation:** Melomaniac is not affiliated with or endorsed by Google, YouTube, Apple, Spotify, or their licensors.
+- **No warranty:** The software is provided "as is", without warranty of any kind. To the maximum extent permitted by law, the authors are not liable for damages arising from its use.
+- **Your credentials:** Cookies and tokens are resolved in memory or stored in `config/` (`browser.json`, `.env`, `spotify_cookies.json`). Protect these files: they are equivalent to your session.
 
 ---
 
