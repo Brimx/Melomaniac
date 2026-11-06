@@ -1,6 +1,6 @@
 # Release Notes — Melomaniac
 
-Notas enfocadas en **qué cambió para el usuario**, no en detalles internos. La versión de trabajo documentada es `4.8.0`; el último tag publicado sigue siendo `v4.6.0`. El detalle técnico está en [`CHANGELOG.md`](CHANGELOG.md).
+Notas enfocadas en **qué cambió para el usuario**, no en detalles internos. La versión de trabajo documentada es `4.8.0`. El detalle técnico está en [`CHANGELOG.md`](CHANGELOG.md). La descarga de la versión estable (ZIP portátil + SHA-256) está en los assets del release de GitHub.
 
 ---
 
@@ -25,7 +25,7 @@ Notas enfocadas en **qué cambió para el usuario**, no en detalles internos. La
 - Se estabiliza la autenticación de YouTube Music y se recupera la carga de su Biblioteca ante respuestas de sesión caducada.
 - La sincronización de playlists de Spotify deja de consultar secuencialmente cada detalle al cargar el catálogo.
 
-**Alcance actual:** Descargas no incluye reproductor integrado ni poda automática de caché. El último tag sigue siendo `v4.6.0`; `4.7.0` es la versión de trabajo documentada.
+**Alcance actual:** Descargas no incluye reproductor integrado ni poda automática de caché.
 
 ## v4.6.0 — Búsqueda más precisa y transferencias más resistentes (2026-10-23)
 
