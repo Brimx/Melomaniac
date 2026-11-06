@@ -27,6 +27,7 @@ Desktop application to **transfer playlists between YouTube Music, Apple Music, 
 - ⬇️ **Downloads (personal use)** — Save audio with `yt-dlp` in MP3, M4A, Opus, FLAC, or WAV, with metadata, 800 px artwork, and skipping of already downloaded files. Requires `ffmpeg`.
 - 🛠️ **Organization and export** — List/Dual/Preview views, sorting and grouping by artist, album, or date, manual splits into 2–5 blocks, and export to `M3U8`, `CSV`, `TXT`, or `XSPF`.
 - 🌐 **Browser session** — In most cases there is nothing to configure: it detects your active Firefox/Chromium session in memory. Manual credentials are available through the built-in wizard.
+- 🖥️ **System integration** — In binaries (AppImage/installer), it creates the shortcut in the app menu or Desktop, auto-updates it across versions, and checks for new releases from Config.
 
 ---
 
@@ -52,6 +53,8 @@ Each GitHub release includes compiled packages that do not require Python; use t
 | Portable source bundle | `Melomaniac-vX.Y.Z.zip` |
 | Linux | `Melomaniac-vX.Y.Z-x86_64.AppImage`, `Melomaniac-vX.Y.Z-linux-x64.tar.gz` |
 | Windows | `Melomaniac-vX.Y.Z-windows-x64-Setup.exe`, `Melomaniac-vX.Y.Z-windows-x64.zip` |
+
+The verifiable hash of each package is the SHA-256 `digest` GitHub shows per asset (no `.txt` hash files are published).
 
 In the binaries, configuration is stored outside the install folder (`$XDG_CONFIG_HOME/melomaniac` on Linux, `%APPDATA%\Melomaniac` on Windows), unless portable mode is active (writable `config/` folder or `portable.flag`).
 

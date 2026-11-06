@@ -4,7 +4,7 @@
 
 Melomaniac separates the Flet UI, application state, platform services, and metadata normalization/matching engine. The current version supports YouTube Music, Apple Music, Spotify, and two local inputs: file and pasted text.
 
-The documented working version is `4.8.2`. This version consolidates the integrated player, browser session detection, audio downloads with `yt-dlp`, and MPRIS desktop integration on Linux. Later unreleased changes (guided onboarding, portable ZIP bundle, and standalone packaging with CI) are listed in `CHANGELOG.md`.
+The documented working version is `4.8.2` (single source: `APP_VERSION` in `core/config.py:12`). This version consolidates the integrated player, browser session detection, audio downloads with `yt-dlp`, MPRIS desktop integration on Linux, the guided onboarding tour, the portable ZIP bundle, standalone binaries with CI, and system integration (desktop launchers and update checking). Per-version details live in `CHANGELOG.md`.
 
 ## Layers and dependencies
 
@@ -72,9 +72,11 @@ Melomaniac/
 │   ├── circuit_breaker.py         # RateLimitError and monotonic cooldowns
 │   ├── cover_cache.py             # Atomic artwork cache storage on disk
 │   ├── covers.py                  # Multi-source album artwork resolution pipeline
+│   ├── desktop_integration.py     # .desktop/.lnk launchers and binary auto-sync
 │   ├── library_state.py           # Library synchronization and state management
 │   ├── mpris_service.py           # Linux D-Bus MPRIS service for media controls
-│   └── settings_store.py          # User settings persistence
+│   ├── settings_store.py          # User settings persistence
+│   └── update_checker.py          # Update checking against GitHub Releases
 ├── ui/
 │   ├── auth_manager.py            # Authentication coordination and hot reload
 │   ├── config_view.py             # User settings (download format, covers, paths)
@@ -98,7 +100,7 @@ Melomaniac/
 │   └── widgets.py                 # Reusable styled UI controls
 ├── resources/fonts/               # Stack Sans and IBM Plex fonts; optional CJK
 ├── scripts/                       # Standalone packaging and portable bundle
-│   ├── build_linux.py             # AppImage + tar.gz with SHA-256 hashes
+│   ├── build_linux.py             # AppImage + tar.gz (SHA-256 digest via GitHub)
 │   ├── build_release_bundle.py    # Portable source ZIP bundle
 │   └── windows/installer.iss      # Inno Setup script for Windows
 └── tests/                         # Reserved for unit tests and regressions
@@ -227,17 +229,23 @@ Apple processes transfers sequentially to avoid bursts. Other platforms use task
 
 ## Guided onboarding
 
-On first run, `ui.onboarding.OnboardingView` shows a full-screen overlay with the steps in `ONBOARDING_STEPS` (single list: any new visible feature adds or updates a step there). The animated background lives in `ui.onboarding_bg`. On completion, `onboarding_done` is stored via `services.settings_store` (`config/settings.json`); the tour reopens from Config. Measurements live in `ui.tokens` (`ONBOARDING_*`).
+On first run, `ui.onboarding.OnboardingView` shows a full-screen overlay with the steps in `ONBOARDING_STEPS` (single list: any new visible feature adds or updates a step there; seven today, including "System and updates"). The animated background lives in `ui.onboarding_bg`. On completion, `onboarding_done` is stored via `services.settings_store` (`config/settings.json`); the tour reopens from Config. Measurements live in `ui.tokens` (`ONBOARDING_*`).
+
+## System integration and updates
+
+`services.desktop_integration` creates and installs `.desktop` launchers on Linux (`$XDG_DATA_HOME/applications` + hicolor icons from `resources/icon.png`) and `.lnk` shortcuts on Windows. It distinguishes AppImage (detects `$APPIMAGE`), binary, Inno Setup installer (preserves shortcuts on update), and portable ZIP. At startup (`app.py`) it silently auto-syncs the launcher if the executable path changed after an update; it only acts on packaged builds (`sys.frozen`), never from source.
+
+`services.update_checker` queries GitHub Releases from Config and shows contextual instructions based on the user's packaging mode (AppImage, installer, portable ZIP, or source).
 
 ## Standalone releases
 
-Every `v*` tag triggers `.github/workflows/build-binaries.yml`, which builds the binaries in GitHub Actions and uploads them to the release assets together with their SHA-256 hashes:
+Every `v*` tag (or manual `workflow_dispatch`) triggers `.github/workflows/build-binaries.yml`, which builds the binaries in GitHub Actions and uploads them to the release assets. **No `.txt` hash files are published**: the verifiable SHA-256 is the `digest` GitHub shows per asset:
 
 | Package | Script | Output |
 |---|---|---|
 | Portable source ZIP | `scripts/build_release_bundle.py` | `Melomaniac-vX.Y.Z.zip` (includes `run.sh`/`run.bat`) |
 | Linux | `scripts/build_linux.py` (PyInstaller + appimagetool) | `Melomaniac-vX.Y.Z-x86_64.AppImage`, `Melomaniac-vX.Y.Z-linux-x64.tar.gz` |
-| Windows | `flet pack` + Inno Setup (`scripts/windows/installer.iss`) | `Melomaniac-vX.Y.Z-windows-x64-Setup.exe`, `Melomaniac-vX.Y.Z-windows-x64.zip` |
+| Windows | `python -m flet_cli.cli pack` + Inno Setup (`scripts/windows/installer.iss`) | `Melomaniac-vX.Y.Z-windows-x64-Setup.exe`, `Melomaniac-vX.Y.Z-windows-x64.zip` |
 
 In `sys.frozen` mode (binaries), `services.authentication` decouples `CONFIG_DIR` from the install folder: `$XDG_CONFIG_HOME/melomaniac` on Linux and `%APPDATA%\Melomaniac` on Windows. Portable mode is preserved if a writable `config/` folder or a `portable.flag` file exists.
 

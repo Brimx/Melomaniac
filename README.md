@@ -27,6 +27,7 @@ Aplicación de escritorio para **transferir playlists entre YouTube Music, Apple
 - ⬇️ **Descargas (uso personal)** — Guarda audio con `yt-dlp` en MP3, M4A, Opus, FLAC o WAV, con metadatos, carátula a 800 px y omisión de archivos ya descargados. Requiere `ffmpeg`.
 - 🛠️ **Organización y exportación** — Vistas Lista/Doble/Preview, ordenación y agrupación por artista, álbum o fecha, división manual en 2–5 bloques y exportación a `M3U8`, `CSV`, `TXT` o `XSPF`.
 - 🌐 **Sesión desde el navegador** — En la mayoría de los casos no hay nada que configurar: detecta tu sesión activa de Firefox/Chromium en memoria. Credenciales manuales disponibles vía asistente integrado.
+- 🖥️ **Integración con el sistema** — En binarios (AppImage/instalador), crea el acceso directo en el menú de aplicaciones o el Escritorio, lo auto-actualiza al cambiar de versión y comprueba nuevas releases desde Config.
 
 ---
 
@@ -52,6 +53,8 @@ Cada release en GitHub incluye paquetes compilados que no requieren Python; úsa
 | Código fuente portátil | `Melomaniac-vX.Y.Z.zip` |
 | Linux | `Melomaniac-vX.Y.Z-x86_64.AppImage`, `Melomaniac-vX.Y.Z-linux-x64.tar.gz` |
 | Windows | `Melomaniac-vX.Y.Z-windows-x64-Setup.exe`, `Melomaniac-vX.Y.Z-windows-x64.zip` |
+
+El hash verificable de cada paquete es el `digest` SHA-256 que GitHub muestra por asset (no se publican archivos `.txt` de hashes).
 
 En los binarios, la configuración se guarda fuera de la carpeta de instalación (`$XDG_CONFIG_HOME/melomaniac` en Linux, `%APPDATA%\Melomaniac` en Windows), salvo modo portable (carpeta `config/` escribible o `portable.flag`).
 

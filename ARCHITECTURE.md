@@ -4,7 +4,7 @@
 
 Melomaniac separa la interfaz Flet, el estado de la aplicación, los servicios de plataforma y el motor de normalización/matching. La versión actual soporta YouTube Music, Apple Music, Spotify y dos entradas locales: archivo y texto pegado.
 
-La versión de trabajo documentada es `4.8.2`. Esta versión consolida el reproductor integrado, sesiones desde el navegador, descarga de audio con `yt-dlp` y la integración MPRIS para escritorios Linux. Los cambios posteriores sin publicar (bienvenida guiada, bundle ZIP portátil y empaquetado standalone con CI) se listan en `CHANGELOG.md`.
+La versión de trabajo documentada es `4.8.2` (fuente única: `APP_VERSION` en `core/config.py:12`). Esta versión consolida el reproductor integrado, sesiones desde el navegador, descarga de audio con `yt-dlp`, la integración MPRIS para escritorios Linux, la bienvenida guiada, el bundle ZIP portátil, los binarios standalone con CI y la integración con el sistema (lanzadores de escritorio y comprobación de actualizaciones). El detalle por versión está en `CHANGELOG.md`.
 
 ## Capas y dependencias
 
@@ -72,9 +72,11 @@ Melomaniac/
 │   ├── circuit_breaker.py         # RateLimitError y cooldowns
 │   ├── cover_cache.py             # Caché de portadas en disco
 │   ├── covers.py                  # Resolución inteligente de portadas por álbum
+│   ├── desktop_integration.py     # Lanzadores .desktop/.lnk y auto-sync en binarios
 │   ├── library_state.py           # Sincronización de la Biblioteca
 │   ├── mpris_service.py           # Servicio D-Bus MPRIS para control en Linux
-│   └── settings_store.py          # Persistencia de ajustes y preferencias
+│   ├── settings_store.py          # Persistencia de ajustes y preferencias
+│   └── update_checker.py          # Comprobación de actualizaciones contra GitHub Releases
 ├── ui/
 │   ├── auth_manager.py            # Coordinación de autenticación
 │   ├── config_view.py             # Ajustes de descarga, portadas y carpetas
@@ -98,7 +100,7 @@ Melomaniac/
 │   └── widgets.py                 # Controles reutilizables
 ├── resources/fonts/               # Stack Sans e IBM Plex; CJK opcional
 ├── scripts/                       # Empaquetado standalone y bundle portátil
-│   ├── build_linux.py             # AppImage + tar.gz con hashes SHA-256
+│   ├── build_linux.py             # AppImage + tar.gz (digest SHA-256 vía GitHub)
 │   ├── build_release_bundle.py    # ZIP portátil del código fuente
 │   └── windows/installer.iss      # Inno Setup para Windows
 └── tests/                         # Reservado para unittest y regresiones
@@ -227,17 +229,23 @@ Apple procesa la transferencia de forma secuencial para evitar ráfagas. El rest
 
 ## Bienvenida guiada (onboarding)
 
-Al primer arranque, `ui.onboarding.OnboardingView` muestra un overlay a pantalla completa con los pasos de `ONBOARDING_STEPS` (única lista: toda función visible nueva añade o actualiza un paso ahí). El fondo vive en `ui.onboarding_bg`. Al finalizar se guarda `onboarding_done` en `services.settings_store` (`config/settings.json`); la bienvenida se reabre desde Config. Medidas en `ui.tokens` (`ONBOARDING_*`).
+Al primer arranque, `ui.onboarding.OnboardingView` muestra un overlay a pantalla completa con los pasos de `ONBOARDING_STEPS` (única lista: toda función visible nueva añade o actualiza un paso ahí; hoy siete, incluido «Sistema y actualizaciones»). El fondo vive en `ui.onboarding_bg`. Al finalizar se guarda `onboarding_done` en `services.settings_store` (`config/settings.json`); la bienvenida se reabre desde Config. Medidas en `ui.tokens` (`ONBOARDING_*`).
+
+## Integración con el sistema y actualizaciones
+
+`services.desktop_integration` crea e instala lanzadores `.desktop` en Linux (`$XDG_DATA_HOME/applications` + iconos hicolor desde `resources/icon.png`) y accesos directos `.lnk` en Windows. Distingue AppImage (detecta `$APPIMAGE`), binario, instalador de Inno Setup (que preserva accesos en actualización) y ZIP portable. En el arranque (`app.py`) auto-sincroniza silenciosamente el lanzador si la ruta del ejecutable cambia tras una actualización; solo actúa en builds empaquetadas (`sys.frozen`), nunca desde código fuente.
+
+`services.update_checker` consulta GitHub Releases desde Config y muestra instrucciones contextuales según el modo de empaquetado del usuario (AppImage, instalador, ZIP portable o código fuente).
 
 ## Releases standalone
 
-Cada tag `v*` dispara `.github/workflows/build-binaries.yml`, que compila los binarios en GitHub Actions y los sube a los assets del release junto a sus hashes SHA-256:
+Cada tag `v*` (o `workflow_dispatch` manual) dispara `.github/workflows/build-binaries.yml`, que compila los binarios en GitHub Actions y los sube a los assets del release. **No se publican archivos `.txt` de hashes**: el SHA-256 verificable es el `digest` que GitHub muestra por asset:
 
 | Paquete | Script | Salida |
 |---|---|---|
 | ZIP portátil del fuente | `scripts/build_release_bundle.py` | `Melomaniac-vX.Y.Z.zip` (incluye `run.sh`/`run.bat`) |
 | Linux | `scripts/build_linux.py` (PyInstaller + appimagetool) | `Melomaniac-vX.Y.Z-x86_64.AppImage`, `Melomaniac-vX.Y.Z-linux-x64.tar.gz` |
-| Windows | `flet pack` + Inno Setup (`scripts/windows/installer.iss`) | `Melomaniac-vX.Y.Z-windows-x64-Setup.exe`, `Melomaniac-vX.Y.Z-windows-x64.zip` |
+| Windows | `python -m flet_cli.cli pack` + Inno Setup (`scripts/windows/installer.iss`) | `Melomaniac-vX.Y.Z-windows-x64-Setup.exe`, `Melomaniac-vX.Y.Z-windows-x64.zip` |
 
 En modo `sys.frozen` (binarios), `services.authentication` desacopla `CONFIG_DIR` de la carpeta de instalación: `$XDG_CONFIG_HOME/melomaniac` en Linux y `%APPDATA%\Melomaniac` en Windows. Se preserva el modo portable si existe una carpeta `config/` escribible o un `portable.flag`.
 
