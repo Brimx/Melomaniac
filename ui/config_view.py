@@ -20,15 +20,16 @@ import os
 
 import flet as ft
 
-from core.config import AUDIO_FORMATS
-from services import settings_store
+from core.config import APP_VERSION, AUDIO_FORMATS
+from services import desktop_integration, settings_store, update_checker
 from ui.fonts import FONT_HEADLINE, FONT_TEXT, mono_family
 from ui.tokens import (
     ACCENT, BG_LIST, BG_SURFACE, BORDER_MUTED, RADIUS_INPUT,
-    TEXT_MUTED, TEXT_PRIMARY,
+    SUCCESS, TEXT_MUTED, TEXT_PRIMARY, WARNING,
 )
 from ui.widgets import (
-    _ghost_btn, app_text, notify, organize_dropdown, section_label,
+    _ghost_btn, _primary_btn, app_text, notify, open_external,
+    organize_dropdown, section_label,
 )
 
 
@@ -105,6 +106,31 @@ class ConfigView(ft.Container):
             width=150, height=36,
         )
 
+        # ── Sistema y accesos directos ──
+        self._shortcut_status_text = app_text(
+            "", size=11, color=TEXT_PRIMARY, font_family=FONT_TEXT,
+        )
+        self._shortcut_location_text = app_text(
+            "", size=10, color=TEXT_MUTED, font_family=mono_family("light"),
+            max_lines=1, overflow=ft.TextOverflow.ELLIPSIS,
+        )
+        self._shortcut_warning_text = app_text(
+            "", size=11, color=WARNING, font_family=FONT_TEXT, visible=False,
+        )
+        self._shortcut_actions_row = ft.Row(spacing=8, vertical_alignment=ft.CrossAxisAlignment.CENTER)
+        self._refresh_shortcut_ui()
+
+        # ── Actualizaciones ──
+        self._version_text = app_text(
+            f"Versión instalada: v{APP_VERSION}", size=11, color=TEXT_PRIMARY,
+            font_family=mono_family("light"),
+        )
+        self._update_check_btn = _ghost_btn(
+            "Comprobar", ft.Icons.REFRESH, self._on_check_updates,
+            width=130, height=36,
+        )
+        self._update_result_col = ft.Column(spacing=6)
+
         header = ft.Row(controls=[
             ft.Icon(ft.Icons.SETTINGS_OUTLINED, size=18, color=TEXT_MUTED),
             app_text("Configuración", size=16, color=TEXT_PRIMARY,
@@ -147,6 +173,26 @@ class ConfigView(ft.Container):
                 "El caché de portadas deja de usarse si cambias de biblioteca; limpiarlo libera espacio.",
                 [ft.Row(controls=[self._cache_text, self._cache_btn],
                         spacing=10, vertical_alignment=ft.CrossAxisAlignment.CENTER)],
+            ),
+            self._card(
+                "SISTEMA Y ACCESO DIRECTO",
+                "Lanzador en el menú de aplicaciones del sistema o acceso en el escritorio.",
+                [
+                    self._shortcut_status_text,
+                    self._shortcut_location_text,
+                    self._shortcut_warning_text,
+                    ft.Container(height=4),
+                    self._shortcut_actions_row,
+                ],
+            ),
+            self._card(
+                "ACTUALIZACIONES Y RELEASES",
+                "Comprueba si existen nuevas versiones de Melomaniac en GitHub.",
+                [
+                    ft.Row(controls=[self._version_text, self._update_check_btn],
+                           spacing=12, vertical_alignment=ft.CrossAxisAlignment.CENTER),
+                    self._update_result_col,
+                ],
             ),
         ], spacing=12, scroll=ft.ScrollMode.AUTO, expand=True,
             horizontal_alignment=ft.CrossAxisAlignment.STRETCH)
@@ -198,10 +244,56 @@ class ConfigView(ft.Container):
         self._dir_text.value = self._download_dir
         self._dir_reset_btn.visible = bool(settings_store.get_download_dir())
         self._cache_text.value = self._cache_size_text()
+        self._refresh_shortcut_ui()
         try:
             self.update()
         except Exception:
             pass
+
+    def _refresh_shortcut_ui(self) -> None:
+        env = desktop_integration.get_runtime_environment()
+        st = desktop_integration.get_shortcut_status()
+
+        self._shortcut_status_text.value = st.summary
+        if st.installed and st.is_current:
+            self._shortcut_status_text.color = SUCCESS
+        elif st.is_broken or (st.installed and not st.is_current):
+            self._shortcut_status_text.color = WARNING
+        else:
+            self._shortcut_status_text.color = TEXT_PRIMARY
+
+        loc = st.location_path or ""
+        if st.target_path:
+            loc = f"{loc} → {st.target_path}"
+        self._shortcut_location_text.value = loc
+        self._shortcut_location_text.visible = bool(loc)
+
+        warn = st.warning or ""
+        self._shortcut_warning_text.value = warn
+        self._shortcut_warning_text.visible = bool(warn)
+
+        actions: list[ft.Control] = []
+        if env.is_windows_installer:
+            actions.append(
+                app_text("Gestionado por el instalador de Windows (Menú Inicio y Escritorio)",
+                         size=11, color=TEXT_MUTED, font_family=FONT_TEXT)
+            )
+        elif st.installed and st.is_current:
+            actions.extend([
+                _ghost_btn("Reinstalar", ft.Icons.REFRESH, self._on_install_shortcut, width=130, height=36),
+                _ghost_btn("Quitar", ft.Icons.DELETE_OUTLINE, self._on_remove_shortcut, width=110, height=36),
+            ])
+        elif st.installed and not st.is_current:
+            actions.extend([
+                _primary_btn("Actualizar acceso directo", ft.Icons.SYNC, self._on_install_shortcut, width=220, height=36),
+                _ghost_btn("Quitar", ft.Icons.DELETE_OUTLINE, self._on_remove_shortcut, width=110, height=36),
+            ])
+        else:
+            actions.append(
+                _primary_btn("Crear acceso directo", ft.Icons.ADD_TO_HOME_SCREEN, self._on_install_shortcut, width=200, height=36)
+            )
+
+        self._shortcut_actions_row.controls = actions
 
     # ── handlers ───────────────────────────────────────────────────────
 
@@ -265,3 +357,83 @@ class ConfigView(ft.Container):
             f"Caché de portadas limpiado ({removed} archivos)" if removed
             else "El caché de portadas ya estaba vacío",
         )
+
+    def _on_install_shortcut(self, e=None) -> None:
+        ok, msg = desktop_integration.install_shortcut()
+        notify(self._page_ref, msg, kind="info" if ok else "error")
+        self._refresh_shortcut_ui()
+        try:
+            self.update()
+        except Exception:
+            pass
+
+    def _on_remove_shortcut(self, e=None) -> None:
+        ok, msg = desktop_integration.remove_shortcut()
+        notify(self._page_ref, msg, kind="info" if ok else "error")
+        self._refresh_shortcut_ui()
+        try:
+            self.update()
+        except Exception:
+            pass
+
+    async def _on_check_updates(self, e=None) -> None:
+        self._update_check_btn.text = "Buscando…"
+        self._update_check_btn.disabled = True
+        try:
+            self._update_check_btn.update()
+        except Exception:
+            pass
+
+        try:
+            info = await update_checker.check_for_updates()
+            self._render_update_result(info)
+        finally:
+            self._update_check_btn.text = "Comprobar"
+            self._update_check_btn.disabled = False
+            try:
+                self._update_check_btn.update()
+            except Exception:
+                pass
+
+    def _render_update_result(self, info: update_checker.UpdateInfo) -> None:
+        ctrls: list[ft.Control] = []
+        if not info.checked:
+            ctrls.append(
+                app_text(f"No se pudo comprobar: {info.error_message or info.instructions}",
+                         size=11, color=WARNING, font_family=FONT_TEXT)
+            )
+        elif info.has_update:
+            ctrls.append(
+                app_text(f"¡Nueva versión disponible: v{info.latest_version}!",
+                         size=12, color=SUCCESS, font_family=FONT_HEADLINE)
+            )
+            ctrls.append(
+                app_text(info.instructions, size=11, color=TEXT_PRIMARY, font_family=FONT_TEXT)
+            )
+            btn_row = ft.Row(controls=[
+                _primary_btn(
+                    "Descargar actualización", ft.Icons.DOWNLOAD,
+                    lambda _: open_external(self._page_ref, info.download_url or info.release_url),
+                    width=210, height=36,
+                ),
+                _ghost_btn(
+                    "Ver notas de release", ft.Icons.OPEN_IN_NEW,
+                    lambda _: open_external(self._page_ref, info.release_url),
+                    width=180, height=36,
+                ),
+            ], spacing=8, vertical_alignment=ft.CrossAxisAlignment.CENTER)
+            ctrls.append(btn_row)
+        else:
+            ctrls.append(
+                app_text(f"✓ Estás usando la versión más reciente (v{APP_VERSION}).",
+                         size=11, color=SUCCESS, font_family=FONT_TEXT)
+            )
+            ctrls.append(
+                app_text(info.instructions, size=11, color=TEXT_MUTED, font_family=FONT_TEXT)
+            )
+
+        self._update_result_col.controls = ctrls
+        try:
+            self._update_result_col.update()
+        except Exception:
+            pass

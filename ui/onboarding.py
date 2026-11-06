@@ -27,7 +27,7 @@ from ui.tokens import (
     ACCENT, BG_DEEP, BG_SURFACE, BORDER_MUTED, MOTION_ENTER_MS, MOTION_PANEL_MS,
     ONBOARDING_CARD_ALPHA, ONBOARDING_CARD_H, ONBOARDING_CARD_W, ONBOARDING_SLIDE,
     ONBOARDING_STAGGER_MS, PLAYER_PROGRESS_ANIM_MS, PLAYER_PROGRESS_H,
-    RADIUS_DIALOG, RADIUS_INPUT, TEXT_MUTED, TEXT_PRIMARY,
+    RADIUS_DIALOG, RADIUS_INPUT, SUCCESS, TEXT_MUTED, TEXT_PRIMARY, WARNING,
 )
 from ui.widgets import _ghost_btn, _primary_btn, app_text, notify, organize_dropdown
 
@@ -119,6 +119,123 @@ def _step_prefs(view: "OnboardingView") -> list[ft.Control]:
     ]
 
 
+def _step_system(view: "OnboardingView") -> list[ft.Control]:
+    from services import desktop_integration
+
+    env = desktop_integration.get_runtime_environment()
+
+    if env.os_name == "linux":
+        launcher_title = "Lanzador en el menú de aplicaciones"
+        launcher_desc = (
+            "Crea la entrada .desktop en ~/.local/share/applications y su icono para que "
+            "Melomaniac aparezca en el menú de tu escritorio."
+        )
+        if env.is_appimage:
+            update_title = "AppImage y actualizaciones"
+            update_desc = (
+                "Conserva el AppImage en una carpeta estable (ej. ~/.local/bin). Si descargas "
+                "una versión nueva con otro nombre, Melomaniac actualizará el lanzador automáticamente al abrirla."
+            )
+        else:
+            update_title = "Actualizaciones y lanzador"
+            update_desc = (
+                "Al actualizar la aplicación, el lanzador se mantendrá sincronizado con tu ejecutable."
+            )
+    elif env.os_name == "windows":
+        if env.is_windows_installer:
+            launcher_title = "Integración con Windows"
+            launcher_desc = (
+                "Instalado vía Setup: tus accesos directos en el Menú Inicio y Escritorio "
+                "son administrados por el instalador."
+            )
+            update_title = "Actualizaciones automáticas"
+            update_desc = (
+                "Al instalar una nueva versión, el instalador actualiza Melomaniac en su sitio "
+                "conservando tus datos y accesos."
+            )
+        else:
+            launcher_title = "Acceso en el Escritorio"
+            launcher_desc = (
+                "Crea un acceso directo .lnk en tu Escritorio para abrir Melomaniac sin buscar la carpeta."
+            )
+            update_title = "Actualización de la versión portable"
+            update_desc = (
+                "Si descomprimes una versión nueva en otra ruta, puedes refrescar el acceso directo desde Configuración."
+            )
+    else:
+        launcher_title = "Integración con el sistema"
+        launcher_desc = "Acceso directo y ciclo de ejecución de la aplicación."
+        update_title = "Actualizaciones"
+        update_desc = "Consulta nuevas versiones y novedades desde la sección Configuración."
+
+    features = [
+        _feature(ft.Icons.DESKTOP_WINDOWS_OUTLINED, launcher_title, launcher_desc),
+        _feature(ft.Icons.SYSTEM_UPDATE_ALT, update_title, update_desc),
+    ]
+
+    action_slot = ft.Container()
+
+    def _render_action() -> None:
+        st = desktop_integration.get_shortcut_status()
+        if env.is_windows_installer:
+            action_slot.content = ft.Row(
+                controls=[
+                    ft.Icon(ft.Icons.CHECK_CIRCLE, color=SUCCESS, size=18),
+                    app_text("Gestionado por el instalador de Windows (Menú Inicio y Escritorio)",
+                             size=11, color=TEXT_MUTED, font_family=FONT_TEXT),
+                ],
+                spacing=8,
+                vertical_alignment=ft.CrossAxisAlignment.CENTER,
+            )
+        elif st.installed and st.is_current:
+            action_slot.content = ft.Row(
+                controls=[
+                    ft.Icon(ft.Icons.CHECK_CIRCLE, color=SUCCESS, size=18),
+                    app_text("Acceso directo instalado y sincronizado", size=11, color=SUCCESS, font_family=FONT_TEXT),
+                    ft.Container(width=6),
+                    _ghost_btn("Reinstalar", ft.Icons.REFRESH, _on_click_install, width=120, height=36),
+                ],
+                spacing=8,
+                vertical_alignment=ft.CrossAxisAlignment.CENTER,
+            )
+        elif st.installed and not st.is_current:
+            action_slot.content = ft.Row(
+                controls=[
+                    _primary_btn("Actualizar acceso directo", ft.Icons.SYNC, _on_click_install, width=220, height=38),
+                    app_text("Apunta a una ruta anterior", size=11, color=WARNING, font_family=FONT_TEXT),
+                ],
+                spacing=8,
+                vertical_alignment=ft.CrossAxisAlignment.CENTER,
+            )
+        else:
+            action_slot.content = ft.Row(
+                controls=[
+                    _primary_btn("Crear acceso directo", ft.Icons.ADD_TO_HOME_SCREEN, _on_click_install, width=200, height=38),
+                    app_text("Opcional: puedes crearlo o cambiarlo en Config", size=11, color=TEXT_MUTED, font_family=FONT_TEXT),
+                ],
+                spacing=8,
+                vertical_alignment=ft.CrossAxisAlignment.CENTER,
+            )
+        try:
+            action_slot.update()
+        except Exception:
+            pass
+
+    def _on_click_install(e=None) -> None:
+        ok, msg = desktop_integration.install_shortcut()
+        kind = "info" if ok else "error"
+        notify(view._page_ref, msg, kind=kind)
+        _render_action()
+
+    _render_action()
+
+    return [
+        *features,
+        ft.Container(height=4),
+        action_slot,
+    ]
+
+
 def _step_connect(view: "OnboardingView") -> list[ft.Control]:
     return [
         _feature(ft.Icons.LOCK_OUTLINE, "Es opcional",
@@ -164,6 +281,8 @@ ONBOARDING_STEPS: tuple[Step, ...] = (
          "Lo tuyo, sincronizado y en disco.", _step_library),
     Step("prefs", ft.Icons.TUNE, "Preferencias",
          "Tres ajustes para empezar cómodo.", _step_prefs),
+    Step("system", ft.Icons.DESKTOP_WINDOWS_OUTLINED, "Sistema y actualizaciones",
+         "Acceso directo y ciclo de vida de la aplicación.", _step_system),
     Step("connect", ft.Icons.LINK, "Conectar plataformas",
          "Para transferir y sincronizar necesitas una sesión.", _step_connect),
     Step("done", ft.Icons.ROCKET_LAUNCH_OUTLINED, "Listo",

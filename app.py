@@ -1,6 +1,6 @@
 """
 ╔══════════════════════════════════════════════════════════════════════╗
-║                    Melomaniac v4.8.0                               ║
+║                    Melomaniac v4.8.2                               ║
 ║              Transferencia Universal de Playlists                    ║
 ╚══════════════════════════════════════════════════════════════════════╝
 
@@ -15,7 +15,7 @@ Motor: Hunter Recovery · Universal Auth · Post-mortem
 Ciclo de vida: Hard exit · Session probes · Semáforo real
 
 Autor: Melomaniac Team
-Versión: 4.8.0
+Versión: 4.8.2
 Fecha: 2026
 """
 
@@ -194,11 +194,13 @@ async def main(page: ft.Page) -> None:
             """
             Rutina de inicialización post-renderizado.
             
-            Ejecuta verificación de sesiones de autenticación y notifica
-            al estado para actualizar la UI con el estado inicial de las
-            plataformas conectadas.
+            Ejecuta verificación de sesiones de autenticación, sincronización
+            automática de accesos directos tras actualización y notifica
+            al estado para actualizar la UI con el estado inicial.
             """
             await auth_manager.run_startup_check()
+            from services import desktop_integration
+            desktop_integration.auto_sync_if_installed()
             library_state = getattr(ui, "library_state", None)
             if library_state is not None and library_state.selected_platform:
                 await library_state.sync_source(library_state.selected_platform)

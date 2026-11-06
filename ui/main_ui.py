@@ -1,6 +1,6 @@
 """
 ╔══════════════════════════════════════════════════════════════════════╗
-║                    Melomaniac v4.8.0                             ║
+║                    Melomaniac v4.8.2                             ║
 ║              Interfaz Principal de Usuario                           ║
 ╚══════════════════════════════════════════════════════════════════════╝
 
@@ -46,7 +46,7 @@ Componentes Principales:
     - Dialogs: Modales para errores y confirmaciones
 
 Autor: Melomaniac Team
-Versión: 4.8.0
+Versión: 4.8.2
 Fecha: 2026
 """
 
@@ -61,7 +61,7 @@ import flet as ft
 
 from core.models import Track, LoadState, TransferState
 from core.state import AppState
-from core.config import EXPORT_DEST_LABEL, EXPORT_FORMATS, EXPORT_ORDERS
+from core.config import APP_VERSION, EXPORT_DEST_LABEL, EXPORT_FORMATS, EXPORT_ORDERS
 from engine.parsers import parse_local_playlist_with_paths, build_local_tracks
 from engine.exporters import export_tracks, default_export_path
 from ui.song_row import SongRow, SkeletonRow, PreviewSkeletonRow, build_preview_row, ITEM_H
@@ -784,7 +784,7 @@ class PlaylistManagerUI(DialogMixin):
 
         # versión — IBM Plex Mono Light 300 (datos técnicos § Mono)
         self._rail_version_text = ft.Text(
-            "v4.8.0", size=8, color=TEXT_DIM,
+            f"v{APP_VERSION}", size=8, color=TEXT_DIM,
             font_family=mono_family("light"),
             visible=True,
             height=RAIL_VERSION_H, no_wrap=True, max_lines=1,
@@ -1038,7 +1038,7 @@ class PlaylistManagerUI(DialogMixin):
                         ft.TextSpan("Melomaniac", ft.TextStyle(size=20,
                                                                color=TEXT_PRIMARY, font_family=brand_family("bold"))),
                     ], opacity=1.0),
-                    ft.Text("v4.8.0", size=9, color=TEXT_DIM, font_family=FONT_TEXT,
+                    ft.Text(f"v{APP_VERSION}", size=9, color=TEXT_DIM, font_family=FONT_TEXT,
                             style=ft.TextStyle(letter_spacing=0.8), opacity=1.0),
                 ], spacing=0, tight=True, expand=True),
                 self.btn_wizard,
