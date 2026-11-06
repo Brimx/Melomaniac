@@ -34,6 +34,7 @@ import flet as ft
 from core.state import AppState
 from core.config import PLATFORM_ORDER
 from services.api_service import MusicApiService
+from services import settings_store
 from services.authentication import ensure_config_dir, load_runtime_env
 from services.circuit_breaker import CircuitBreaker
 from ui.auth_manager import AuthManager
@@ -166,7 +167,28 @@ async def main(page: ft.Page) -> None:
         ui.auth_manager      = auth_manager
         service.auth_manager = auth_manager
 
-        page.add(ui.root)
+        # Pila raíz: la app y, encima, la bienvenida (primera ejecución o
+        # reabierta desde Config). Al cerrar se retira el overlay.
+        root_stack = ft.Stack([ui.root], expand=True, fit=ft.StackFit.EXPAND)
+        page.add(root_stack)
+
+        def show_onboarding() -> None:
+            from ui.onboarding import OnboardingView
+
+            def _close() -> None:
+                if overlay in root_stack.controls:
+                    root_stack.controls.remove(overlay)
+                    page.update()
+
+            overlay = OnboardingView(
+                page, on_connect=auth_manager.open_wizard, on_close=_close,
+            )
+            root_stack.controls.append(overlay)
+            page.update()
+
+        ui.on_show_welcome = show_onboarding
+        if not settings_store.get_onboarding_done():
+            show_onboarding()
 
         async def _startup() -> None:
             """

@@ -24,6 +24,7 @@ _KEY_SHUFFLE = "shuffle"
 _KEY_REPEAT = "repeat"
 _KEY_DOWNLOAD_FORMAT = "download_format"
 _KEY_COVERS_ONLINE = "covers_online"
+_KEY_ONBOARDING_DONE = "onboarding_done"
 _VALID_REPEAT = ("off", "all", "one")
 
 
@@ -161,6 +162,18 @@ def set_covers_online(enabled: bool) -> None:
     """Persiste el permiso para resolver portadas online."""
     data = load_settings()
     data[_KEY_COVERS_ONLINE] = bool(enabled)
+    save_settings(data)
+
+
+def get_onboarding_done() -> bool:
+    """Si el usuario ya completó u omitió la bienvenida de primera ejecución."""
+    return bool(load_settings().get(_KEY_ONBOARDING_DONE, False))
+
+
+def set_onboarding_done(done: bool = True) -> None:
+    """Persiste que la bienvenida ya se mostró."""
+    data = load_settings()
+    data[_KEY_ONBOARDING_DONE] = bool(done)
     save_settings(data)
 
 

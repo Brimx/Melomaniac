@@ -533,6 +533,7 @@ class PlaylistManagerUI(DialogMixin):
         self._completion_snack_shown: bool  = False
         self._pm_cleared_for_load:    bool  = False
         self.auth_manager                   = None
+        self.on_show_welcome                = None  # inyectado por app.py
         self._prev_dual_mode: str = "lista"
         self._view_shimmer_task: Optional[asyncio.Task] = None
 
@@ -891,7 +892,10 @@ class PlaylistManagerUI(DialogMixin):
         # abriéndose desde el engranaje del panel izquierdo.
         try:
             from ui.config_view import ConfigView
-            self._panel_config = ConfigView(page, on_change=self._on_config_changed)
+            self._panel_config = ConfigView(
+                page, on_change=self._on_config_changed,
+                on_welcome=lambda: self.on_show_welcome and self.on_show_welcome(),
+            )
         except Exception as exc:
             try:
                 state.log(f"[WARN] Config fallback: {exc}")  # type: ignore

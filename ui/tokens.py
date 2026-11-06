@@ -94,3 +94,19 @@ PLAYER_QUEUE_ANIM_MS    = RAIL_ANIM_MS
 # Listas de selección en diálogos: se muestran por tramos para no construir
 # cientos de checkboxes de golpe. El buscador sigue filtrando el total.
 DIALOG_OPTION_LIMIT = 80
+
+# Onboarding (primera ejecución): recuadro fijo + fondo de red de puntos.
+# Los colores salen de ACCENT/BORDER_MUTED/TEXT_DIM; aquí solo medidas y alfas.
+ONBOARDING_CARD_W      = 720
+ONBOARDING_CARD_H      = 500
+ONBOARDING_CARD_ALPHA  = 0.92   # opacidad de BG_SURFACE: deja ver la red detrás
+ONBOARDING_SLIDE       = 0.04   # desplazamiento horizontal relativo entre pasos
+ONBOARDING_STAGGER_MS  = 70     # retraso entre elementos al entrar un paso
+ONBOARDING_BG_POINTS   = 48
+ONBOARDING_BG_LINK     = 150    # distancia máxima (px) para unir dos puntos
+ONBOARDING_BG_FPS      = 30
+ONBOARDING_BG_SPEED    = 12     # px/s de la capa más cercana
+# Profundidad falsa por capas: (factor de velocidad, radio, alfa del punto).
+ONBOARDING_BG_LAYERS   = ((0.4, 1.4, 0.35), (0.7, 2.0, 0.55), (1.0, 2.8, 0.85))
+# Trazos por arista: continua, discontinua, punteada.
+ONBOARDING_BG_DASHES   = (None, (7, 5), (1.5, 5))

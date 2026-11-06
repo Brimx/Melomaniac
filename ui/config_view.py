@@ -41,10 +41,11 @@ class ConfigView(ft.Container):
             cambia, para que las vistas afectadas se refresquen.
     """
 
-    def __init__(self, page: ft.Page, on_change=None) -> None:
+    def __init__(self, page: ft.Page, on_change=None, on_welcome=None) -> None:
         super().__init__(expand=True, bgcolor=BG_LIST)
         self._page_ref = page
         self._on_change = on_change
+        self._on_welcome = on_welcome
         self._picker = ft.FilePicker()
         page.services.append(self._picker)
         self.content = self._build()
@@ -132,6 +133,14 @@ class ConfigView(ft.Container):
                                width=120, height=36),
                     self._dir_reset_btn,
                 ], spacing=8, vertical_alignment=ft.CrossAxisAlignment.CENTER)],
+            ),
+            self._card(
+                "BIENVENIDA",
+                "Repite la guía de primera ejecución con las funciones principales.",
+                [ft.Row(controls=[_ghost_btn(
+                    "Ver bienvenida", ft.Icons.WAVING_HAND_OUTLINED, self._on_show_welcome,
+                    width=190, height=36,
+                )])],
             ),
             self._card(
                 "MANTENIMIENTO",
@@ -230,6 +239,10 @@ class ConfigView(ft.Container):
         settings_store.set_download_dir("")
         self.refresh()
         self._changed()
+
+    def _on_show_welcome(self, e=None) -> None:
+        if self._on_welcome is not None:
+            self._on_welcome()
 
     def _on_clear_cache(self, e=None) -> None:
         from services import cover_cache
