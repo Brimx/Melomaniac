@@ -1,5 +1,11 @@
 # Changelog
 
+## Sin publicar — Bienvenida guiada, bundle ZIP y empaquetado standalone
+
+- **Bienvenida de primera ejecución:** overlay a pantalla completa (`ui/onboarding.py`, pasos en `ONBOARDING_STEPS`, fondo en `ui/onboarding_bg.py`) con seis pasos (bienvenida, Gestión, Biblioteca/Descargas, preferencias, conectar plataformas, listo). Al finalizar guarda `onboarding_done` en `config/settings.json`; se reabre desde Config.
+- **Bundle ZIP portátil:** `scripts/build_release_bundle.py` genera `Melomaniac-vX.Y.Z.zip` + `SHA256SUMS.txt` con los lanzadores `run.sh`/`run.bat` incluidos, reutilizable para cualquier versión.
+- **Empaquetado standalone Linux y Windows con CI:** `scripts/build_linux.py` (PyInstaller + appimagetool) produce el AppImage y el `tar.gz`; `scripts/windows/installer.iss` (Inno Setup) y `flet pack` producen el instalador y el ZIP de Windows. El workflow `.github/workflows/build-binaries.yml` compila ambos en GitHub Actions ante cada tag `v*` y sube los binarios con sus hashes SHA-256 a los assets del release. En binarios (`sys.frozen`), `services/authentication.py` desacopla `CONFIG_DIR` de la carpeta de instalación (`$XDG_CONFIG_HOME/melomaniac` en Linux, `%APPDATA%\Melomaniac` en Windows), preservando el modo portable si existe `config/` escribible o `portable.flag`.
+
 ## 4.8.0 — 2026-10-29 · Reproductor integrado, sesión de navegador y MPRIS
 
 > Versión de trabajo consolidada que incorpora el reproductor de audio nativo, derivación de sesiones de navegador en memoria y exposición D-Bus/MPRIS para el escritorio. Tag anterior: `v4.6.0`.

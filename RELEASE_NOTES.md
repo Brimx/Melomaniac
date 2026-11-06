@@ -4,6 +4,12 @@ Notas enfocadas en **qué cambió para el usuario**, no en detalles internos. La
 
 ---
 
+## Sin publicar — Bienvenida guiada y binarios standalone
+
+**Novedades:**
+- **Bienvenida de primera ejecución:** recorrido guiado de seis pantallas (Gestión, Biblioteca/Descargas, preferencias y conexión de plataformas). Se muestra al abrir la app por primera vez y se puede reabrir desde Config.
+- **Binarios sin instalar Python:** cada release incluirá paquetes compilados con hashes SHA-256: AppImage y `tar.gz` para Linux, instalador `Setup.exe` y ZIP para Windows, además del ZIP portátil del código fuente.
+
 ## v4.8.0 — Reproductor integrado, sesión de navegador y MPRIS (2026-10-29)
 
 **Novedades:**

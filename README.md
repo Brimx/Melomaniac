@@ -1,6 +1,6 @@
 # 🎵 Melomaniac v4.8.0
 
-[English](https://raw.githubusercontent.com/Brimx/Melomaniac/main/README.en.md)
+**Español** · [English](README.en.md)
 
 **Tu música. Tu librería. Tu elección.**
 
@@ -12,102 +12,60 @@
 [![Spotify](https://img.shields.io/badge/Spotify-Supported-1DB954?logo=spotify&logoColor=white)](https://open.spotify.com/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-4c1f9e.svg)](LICENSE)
 
-Melomaniac es una aplicación de escritorio para sincronizar, reconstruir, descargar y reproducir playlists entre **YouTube Music, Apple Music y Spotify**, así como gestionar archivos locales de música.
+Aplicación de escritorio para **transferir playlists entre YouTube Music, Apple Music y Spotify**, gestionar archivos locales de música, descargar audio para uso personal y reproducirlo en la propia app.
 
-La versión de trabajo documentada es `4.8.0`. Los cambios detallados de cada versión están en [`CHANGELOG.md`](CHANGELOG.md).
+> Documentación: [Arquitectura](ARCHITECTURE.md) (flujos, autenticación y detalles internos) · [Diseño](DESIGN.md) (tokens visuales) · [Cambios](CHANGELOG.md) · [Notas de release](RELEASE_NOTES.md)
 
 ---
 
-## Funcionalidades principales
+## Funcionalidades
 
-- 🔄 **Gestión y transferencia de playlists:** Reconstruye listas entre YouTube Music, Apple Music y Spotify. Soporta entradas locales por archivo (`M3U/M3U8`, `PLS`, `WPL`, `XSPF`, `CSV`, `TXT`), archivos de audio (`MP3`, `FLAC`, `AAC`, `OGG`, `WAV`, `M4A`, `OPUS`) o texto pegado.
-- 🎯 **Motor de coincidencia inteligente:** Algoritmo multi-fase con RapidFuzz, ISRC exacto (Apple Music), comparación de duración y etiquetas explícitas. Incluye transliteración cirílica, deduplicación de consultas (`SingleFlight`) y reporte Post-Mortem para resolver alternativas de pistas dudosas o no encontradas.
-- 📚 **Biblioteca unificada:** Explora tus playlists en streaming y tus carpetas locales en una sola vista. Permite crear una nueva playlist de streaming directamente a partir de cualquier carpeta local de tu disco.
-- 🎵 **Reproductor de audio integrado:** Barra de reproducción nativa en la parte inferior para archivos locales (FLAC, MP3, M4A, Opus, WAV) con cola reordenable (`PlayQueue`), soporte de arrastre de posición (*scrubbing*), modos shuffle/repeat y volumen persistente.
-- ⬇️ **Descargas con metadatos completos (uso personal):** Guarda audio local para uso estrictamente personal en MP3, M4A, Opus, FLAC o WAV vía `yt-dlp`. Normaliza carátulas a 800 px cuadrados, escribe metadatos ID3/Vorbis con `mutagen`, valida la presencia de FFmpeg y omite automáticamente pistas ya descargadas.
-- 🖥️ **Integración con escritorio (MPRIS / D-Bus):** En Linux, control total desde widgets de escritorio (Waybar, Quickshell, GNOME, KDE) y teclas multimedia físicas del teclado, con carátulas y metadatos en tiempo real.
-- 🌐 **Sesión de navegador sin enredos:** Conexión automática de credenciales en memoria leyendo las cookies seguras de Firefox o Chromium sin necesidad de exportar JSONs manualmente.
-- 🛠️ **Organización avanzada y exportación:** Modos de vista Lista, Doble y Preview. Ordena y agrupa por artista, álbum, duración o fecha; divide playlists en segmentos manuales (2 a 5 divisiones) y exporta a `M3U8`, `CSV`, `TXT` o `XSPF`.
+- 🔄 **Transferencia entre plataformas** — Reconstruye listas entre YouTube Music, Apple Music y Spotify desde una playlist en streaming, un archivo local (`M3U/M3U8`, `PLS`, `WPL`, `XSPF`, `CSV`, `TXT`), un archivo de audio o texto pegado.
+- 🎯 **Motor de coincidencia** — Matching multi-fase con RapidFuzz, ISRC exacto (Apple Music), duración y flag explícito. Incluye transliteración cirílica, deduplicación de consultas y reporte Post-Mortem para resolver pistas dudosas.
+- 📚 **Biblioteca unificada** — Tus playlists en streaming y tus carpetas locales en una sola vista; desde cualquier carpeta local puedes crear una playlist en streaming.
+- 🎵 **Reproductor integrado** — Barra inferior para archivos locales (MP3, FLAC, M4A, Opus, WAV) con cola reordenable, shuffle/repeat, volumen persistente e integración MPRIS en Linux (teclas multimedia y widgets como Waybar o GNOME).
+- ⬇️ **Descargas (uso personal)** — Guarda audio con `yt-dlp` en MP3, M4A, Opus, FLAC o WAV, con metadatos, carátula a 800 px y omisión de archivos ya descargados. Requiere `ffmpeg`.
+- 🛠️ **Organización y exportación** — Vistas Lista/Doble/Preview, ordenación y agrupación por artista, álbum o fecha, división manual en 2–5 bloques y exportación a `M3U8`, `CSV`, `TXT` o `XSPF`.
+- 🌐 **Sesión desde el navegador** — En la mayoría de los casos no hay nada que configurar: detecta tu sesión activa de Firefox/Chromium en memoria. Credenciales manuales disponibles vía asistente integrado.
 
 ---
 
 ## Aviso legal y licencia
 
-- **Código:** Melomaniac se distribuye bajo licencia MIT (ver [`LICENSE`](LICENSE)). La licencia cubre el software, no los contenidos musicales.
-- **Uso personal:** Melomaniac se desarrolla con fines educativos y para gestión personal de medios. La función de Descargas es solo para uso personal y sin fines comerciales. No distribuyas, vendas, publiques ni pongas a disposición de terceros el audio descargado, ni lo uses con fines comerciales.
-- **Responsabilidad del usuario:** Los usuarios son responsables de cumplir los Términos de YouTube, YouTube Music, Apple Music y Spotify, y la legislación local aplicable sobre derecho de autor, incluida la colombiana (Ley 23 de 1982 y Ley 1915 de 2018).
-- **Sin afiliación:** Melomaniac no está afiliado ni respaldado por Google, YouTube, Apple, Spotify ni sus titulares de licencia.
-- **Sin garantía:** El software se proporciona "tal cual", sin garantía expresa o implícita. En la máxima medida permitida por la ley, los autores no responden por daños derivados de su uso.
-- **Tus credenciales:** Las cookies y tokens se resuelven en memoria o se guardan en `config/` (`browser.json`, `.env`, `spotify_cookies.json`). Cuida esos archivos: equivalen a tu sesión.
+- **Código MIT:** Melomaniac se distribuye bajo licencia MIT (ver [`LICENSE`](LICENSE)). La licencia cubre el software, no los contenidos musicales.
+- **Uso personal:** la función de Descargas es solo para uso estrictamente personal y sin fines comerciales. No distribuyas, vendas, publiques ni pongas a disposición de terceros el audio descargado, ni lo uses con fines comerciales.
+- **Sin alojamiento de contenido:** Melomaniac no aloja, proporciona ni redistribuye contenido musical protegido por derechos de autor.
+- **Responsabilidad del usuario:** eres responsable de que cualquier contenido que obtengas, almacenes o utilices mediante Melomaniac esté autorizado, y de cumplir los términos de YouTube, YouTube Music, Apple Music y Spotify, así como la legislación local aplicable (incluida la colombiana: Ley 23 de 1982 y Ley 1915 de 2018).
+- **Sin afiliación:** no está afiliado ni respaldado por Google, YouTube, Apple, Spotify ni sus titulares de licencia.
+- **Sin garantía:** el software se proporciona «tal cual», sin garantía expresa o implícita; en la máxima medida permitida por la ley, los autores no responden por daños derivados de su uso.
 
 ---
 
-## Requisitos del sistema
+## Instalación
 
-| Requisito | Detalle |
+### Binarios standalone (recomendado)
+
+Cada release en GitHub incluye paquetes compilados que no requieren Python; úsalos si no quieres instalar desde código:
+
+| Paquete | Archivo |
 |---|---|
-| Python | 3.10 o superior |
-| Dependencias | Versiones fijadas en [`requirements.txt`](requirements.txt) |
-| Conversión de audio | `ffmpeg` 6 o superior en `PATH` (necesario para extracción y conversión en Descargas) |
-| Credenciales | Sesión activa en el navegador, o archivos manuales en `config/` (`browser.json`, `.env`, `spotify_cookies.json`) |
-| Interfaz | Flet Desktop 1.0.5; tema oscuro, Stack Sans, IBM Plex y fallback CJK opcional |
+| Código fuente portátil | `Melomaniac-vX.Y.Z.zip` (+ `SHA256SUMS.txt`) |
+| Linux | `Melomaniac-vX.Y.Z-x86_64.AppImage`, `Melomaniac-vX.Y.Z-linux-x64.tar.gz` (+ `SHA256SUMS-linux.txt`) |
+| Windows | `Melomaniac-vX.Y.Z-windows-x64-Setup.exe`, `Melomaniac-vX.Y.Z-windows-x64.zip` (+ `SHA256SUMS-windows.txt`) |
 
----
+En los binarios, la configuración se guarda fuera de la carpeta de instalación (`$XDG_CONFIG_HOME/melomaniac` en Linux, `%APPDATA%\Melomaniac` en Windows), salvo modo portable (carpeta `config/` escribible o `portable.flag`).
 
-## Instalación y ejecución
+### Desde el código
 
-### ⚡ Inicio rápido con scripts de un clic (Recomendado)
+**Requisitos:** Python 3.10+, `ffmpeg` 6+ en el `PATH` (para Descargas) y las dependencias fijadas en [`requirements.txt`](requirements.txt).
 
-El repositorio incluye lanzadores automáticos que crean el entorno virtual `.venv`, instalan las dependencias en el primer arranque y ejecutan la aplicación:
+Los lanzadores automáticos crean el entorno `.venv`, instalan dependencias en el primer arranque y ejecutan la app:
 
-- **Windows:** Haz doble clic en `run.bat` (o ejecuta `.\run.bat` en la terminal).
-- **Linux / macOS:** Ejecuta en la terminal:
-  ```bash
-  ./run.sh
-  ```
-
----
-
-### 🛠️ Instalación manual paso a paso
-
-Si prefieres realizar el proceso comando por comando:
-
-#### 1. Instalar prerrequisitos (Python y FFmpeg)
+- **Windows:** doble clic en `run.bat` (o `.\run.bat` en la terminal).
+- **Linux / macOS:** `./run.sh`
 
 <details>
-<summary><b>📦 Comandos por sistema operativo</b></summary>
-
-- **Windows (PowerShell):**
-  ```powershell
-  winget install Python.Python.3.12 Gyan.FFmpeg Git.Git
-  ```
-  *(Tras instalar, reinicia la terminal. Si descargas Python manualmente desde python.org, recuerda marcar **"Add python.exe to PATH"**).*
-
-- **Linux (Debian / Ubuntu / Mint):**
-  ```bash
-  sudo apt update && sudo apt install -y python3 python3-venv python3-pip ffmpeg git
-  ```
-
-- **Linux (Arch / Manjaro):**
-  ```bash
-  sudo pacman -S python python-pip ffmpeg git
-  ```
-
-- **Linux (Fedora):**
-  ```bash
-  sudo dnf install -y python3 python3-pip ffmpeg git
-  ```
-
-- **macOS (con Homebrew):**
-  ```bash
-  brew install python ffmpeg git
-  ```
-
-</details>
-
-#### 2. Clonar y arrancar
-
-##### 🐧 Linux / macOS
+<summary><b>Instalación manual paso a paso</b></summary>
 
 ```bash
 git clone https://github.com/Brimx/Melomaniac.git
@@ -118,212 +76,54 @@ pip install -r requirements.txt
 python app.py
 ```
 
-##### 🪟 Windows
+En Windows/PowerShell, si la activación está bloqueada (`running scripts is disabled`), usa `run.bat` o la ruta directa: `.\.venv\Scripts\python app.py`. En Ubuntu/Debian, si aparece `ensurepip is not available`, instala `sudo apt install python3-venv`.
 
-- **Método directo (sin problemas de permisos de PowerShell):**
-  ```powershell
-  git clone https://github.com/Brimx/Melomaniac.git
-  cd Melomaniac
-  python -m venv .venv
-  .\.venv\Scripts\pip install -r requirements.txt
-  .\.venv\Scripts\python app.py
-  ```
+</details>
 
-- **Método tradicional:**
-  ```powershell
-  .\.venv\Scripts\Activate.ps1   # En CMD clásico: .venv\Scripts\activate.bat
-  pip install -r requirements.txt
-  python app.py
-  ```
+### Actualización
 
----
-
-### 🔄 ¿Cómo actualizar a una nueva versión?
-
-Para actualizar la aplicación cuando se publiquen cambios nuevos en el repositorio:
-
-1. Abre la terminal en la carpeta de Melomaniac y descarga las novedades:
-   ```bash
-   git pull
-   ```
-   > [!NOTE]
-   > `git pull` solo actualiza los archivos del repositorio. Tus credenciales (`config/`), configuraciones personales, descargas (`downloads/`) y cachés están ignorados por Git, por lo que **no se tocan ni se pierden**.
-
-2. Vuelve a arrancar la aplicación:
-   - **Windows:** Haz doble clic en `run.bat` (o ejecuta `.\run.bat`).
-   - **Linux / macOS:** Ejecuta `./run.sh`.
-
-*(Los scripts `run.bat` y `run.sh` detectan automáticamente si la nueva versión actualizó `requirements.txt` e instalan las dependencias necesarias de forma transparente).*
-
----
-
-### 💡 Solución rápida a problemas frecuentes
-
-- **PowerShell bloquea la activación (`File ... cannot be loaded because running scripts is disabled`)**:
-  Usa el script `run.bat` o el **Método directo** (`.\.venv\Scripts\python app.py`), o habilita scripts una vez en PowerShell:
-  ```powershell
-  Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
-  ```
-- **FFmpeg no detectado en la vista de Descargas**:
-  Asegúrate de haber instalado FFmpeg y haber **reiniciado tu terminal o editor** para que cargue la variable de entorno `PATH`.
-- **Error `ensurepip is not available` en Ubuntu/Debian**:
-  Instala el paquete faltante con `sudo apt install python3-venv`.
-
----
-
-La pantalla inicial permite elegir un origen y un destino. El origen puede ser una de las tres plataformas o una fuente local; el destino siempre es una plataforma de streaming.
-
-### Configurar credenciales
-
-Melomaniac detecta automáticamente tu sesión activa en el navegador (Firefox y navegadores basados en Chromium) directamente en memoria, por lo que en la mayoría de los casos **no necesitas configurar nada manualmente**.
-
-Si prefieres usar credenciales manuales o tu navegador no es estándar, puedes usar el asistente integrado (accesible desde el icono de engranaje en la barra lateral):
-
-- **YouTube Music:** Guarda en `config/browser.json` las cabeceras `Cookie` y `Authorization` (con prefijo `SAPISIDHASH`) obtenidas de `music.youtube.com`.
-- **Apple Music:** Guarda en `config/.env` los tokens `APPLE_AUTH_BEARER` y `APPLE_MUSIC_USER_TOKEN` de `music.apple.com`.
-- **Spotify:** Guarda en `config/spotify_cookies.json` tus cookies `sp_dc` y `sp_key`.
-
-Las credenciales, ajustes y cachés residen dentro de `config/`, ignorado en `.gitignore`. No compartas ni subas esos archivos.
-
-### Cargar una playlist
-
-- **Streaming:** Selecciona la plataforma, introduce el ID o la URL de la playlist y pulsa **Cargar**.
-- **Archivo Local:** Selecciona un archivo de playlist (`M3U/M3U8`, `PLS`, `WPL`, `XSPF`, `CSV`, `TXT`) o un archivo de audio compatible para extraer sus etiquetas.
-- **Pegar Texto:** Pega una lista de canciones (una por línea, en formato `Título - Artista` o texto plano).
-
-En fuentes locales debes elegir explícitamente la plataforma de destino antes de transferir.
-
-### Revisar, transferir y reproducir
-
-1. Revisa las canciones y desmarca las que no desees incluir.
-2. Opcionalmente pulsa **Organizar** para ordenar/agrupar o **Dividir** para separar la lista en bloques manuales (de 2 a 5 divisiones).
-3. Alterna entre los modos **Lista**, **Doble** y **Preview** para comparar origen y destino.
-4. Pulsa **Transferir**, confirma nombre y descripción, y monitorea el progreso en vivo. Al finalizar, la pestaña **Post-Mortem** te permite buscar alternativas a canciones dudosas.
-5. Puedes reproducir cualquier archivo local o descargado haciendo clic en la pista o usando la barra del **Reproductor** inferior.
-
-Si eliges **Archivo Local (Exportar)** como destino, podrás guardar la lista en `M3U8`, `CSV`, `TXT` o `XSPF`.
-
-## Autenticación, API y resiliencia
-
-- **YouTube Music:** `ytmusicapi` para búsqueda y gestión de playlists.
-- **Apple Music:** Endpoint web `amp-api.music.apple.com` con catálogo y matching por ISRC/duración.
-- **Spotify:** `spotapi` con búsqueda `tracksV2`, duración en milisegundos y scoring con flag `explicit`.
-- **Reproductor y Audio:** `flet-audio` 1.0.5 (`FLET_DESKTOP_FLAVOR=full`) con cola `PlayQueue` y `services/mpris_service.py` (D-Bus en Linux).
-- **Semáforo y límites:** 2 solicitudes concurrentes globales en red; Apple Music procesa transferencias secuencialmente y con pausas preventivas para evitar HTTP 423/429.
-- **Caché atómica:** `config/search_cache.json` se persiste en disco por lotes cada 25 entradas y al completar transferencias.
-
-## Archivos de configuración
-
-| Archivo / Carpeta | Uso |
-|---|---|
-| `config/settings.json` | Formato predeterminado de descarga, carátulas online y carpetas locales |
-| `config/browser.json` | Headers manuales de YouTube Music |
-| `config/.env` | Tokens `APPLE_AUTH_BEARER` y `APPLE_MUSIC_USER_TOKEN` |
-| `config/spotify_cookies.json` | Cookies `sp_dc` y `sp_key` de Spotify |
-| `config/search_cache.json` | Caché de búsquedas previas (`título\|\|\|artista\|\|\|destino`) |
-| `config/transfer_history.jsonl` | Historial persistente de transferencias y resoluciones |
-| `config/cover_cache/` | Caché local de carátulas normalizadas (800 px) |
-| `exports/` | Salidas generadas por el exportador local (ignorado por Git) |
-| `transfer_failed_report.txt` | Reporte generado bajo demanda desde la UI |
-
-## Estructura del proyecto
-
-```text
-Melomaniac/
-├── app.py                         # Entrada, composición de servicios y ciclo de vida
-├── run.bat                        # Lanzador automático de un clic para Windows
-├── run.sh                         # Lanzador automático para Linux/macOS
-├── config/                        # Credenciales, ajustes y cachés (ignorado en Git)
-├── core/
-│   ├── availability.py            # Escaneo de disponibilidad e ISRC en Apple
-│   ├── cache.py                   # Manejo y compatibilidad de search_cache
-│   ├── config.py                  # Constantes, límites de red y tamaños de lote
-│   ├── library_models.py          # Modelos de resúmenes de playlists de Biblioteca
-│   ├── library_store.py           # Persistencia de metadatos de Biblioteca
-│   ├── models.py                  # Track, PlaylistMeta, SearchResult y enums
-│   ├── playback.py                # Cola PlayQueue y estados de reproducción
-│   ├── state.py                   # AppState centralizado (BLoC / Observer)
-│   └── transfer.py                # TransferReport y control de fallos en transferencias
-├── engine/
-│   ├── audio_metadata.py          # Lectura y escritura de tags con Mutagen
-│   ├── covers.py                  # Normalización de portadas a 800 px
-│   ├── downloader.py              # Cola y descarga de audio con yt-dlp
-│   ├── exporters.py               # Exportación local (M3U8, CSV, TXT, XSPF)
-│   ├── match.py                   # Scoring y Hunter Recovery con RapidFuzz
-│   ├── normalizer.py              # Limpieza de títulos, ISRC y cirílico
-│   ├── organizer.py               # Ordenación y divisiones en memoria
-│   └── parsers.py                 # Lectura de playlists y archivos locales
-├── services/
-│   ├── api_service.py             # Fachada de APIs para streaming
-│   ├── authentication.py          # Rutas runtime y preflight de credenciales
-│   ├── browser_session.py         # Extracción de sesiones de navegador en memoria
-│   ├── circuit_breaker.py         # Cooldowns monotónicos y protección contra 429
-│   ├── cover_cache.py             # Almacenamiento atómico de carátulas en disco
-│   ├── covers.py                  # Resolución inteligente de carátulas por álbum
-│   ├── library_state.py           # Sincronización y estado de Biblioteca
-│   ├── mpris_service.py           # Servicio D-Bus MPRIS para control multimedia en Linux
-│   └── settings_store.py          # Persistencia de preferencias del usuario
-├── ui/
-│   ├── auth_manager.py            # Orquestación de credenciales y recarga en caliente
-│   ├── config_view.py             # Pantalla de configuración y preferencias
-│   ├── config_wizard.py           # Asistente gráfico de credenciales
-│   ├── downloads_view.py          # Vista de descargas con progreso y preflight FFmpeg
-│   ├── fonts.py                   # Clasificación Unicode y fuentes tipográficas
-│   ├── library_view.py             # Vista de Biblioteca y exploración de carpetas locales
-│   ├── main_ui.py                 # Ventana principal, navegación por rail y vistas
-│   ├── organize_panel.py          # Diálogos de Organizar, Dividir y Reordenar
-│   ├── player_bar.py              # Barra inferior de reproducción interactiva
-│   ├── player_queue.py            # Drawer lateral con la cola de pistas
-│   ├── playlist_card.py           # Tarjetas visuales de playlist
-│   ├── playlist_detail_view.py    # Vista detallada de canciones en Biblioteca
-│   ├── playlist_meta_dialog.py    # Edición de metadatos de playlist
-│   ├── song_row.py                # Filas de canciones y skeletons animados
-│   ├── telemetry.py               # Monitor de transferencia, consola y Post-Mortem
-│   ├── tokens.py                  # Paleta, radios, elevaciones y animaciones
-│   ├── transfer_report.py         # Reporte interactivo con inserción de alternativas
-│   └── widgets.py                 # Componentes estilizados reutilizables
-└── resources/fonts/               # Fuentes locales Stack Sans e IBM Plex
+```bash
+git pull
 ```
 
-La tipografía se elige por escritura: Stack Sans para texto latino, IBM Plex
-Sans para cirílico, IBM Plex Mono para datos técnicos y Noto CJK si está
-disponible. Sin una fuente CJK registrada, Flet usa el fallback nativo.
+Vuelve a arrancar con `run.bat`/`run.sh` (detectan cambios en `requirements.txt` e instalan dependencias automáticamente). `config/`, descargas y cachés están ignorados por Git y no se tocan. Si `ffmpeg` no se detecta en Descargas, reinicia la terminal para que cargue el nuevo `PATH`.
+
+---
+
+## Uso
+
+1. En la pantalla inicial elige origen (plataforma, archivo local o texto pegado) y destino (una plataforma de streaming, o *Archivo Local (Exportar)*).
+2. Carga la playlist (ID o URL, archivo o lista pegada) y revisa las pistas; desmarca las que no quieras.
+3. Opcional: **Organizar** (ordenar/agrupar) o **Dividir** (bloques manuales) y alterna entre vistas Lista, Doble y Preview.
+4. Pulsa **Transferir**, confirma nombre y descripción, y sigue el progreso. Al terminar, el reporte Post-Mortem permite buscar alternativas para las pistas dudosas.
+5. Reproduce cualquier archivo local o descargado desde la barra inferior o desde Biblioteca/Descargas.
+
+La primera ejecución muestra una bienvenida guiada (reabrible desde Config).
+
+### Credenciales y configuración
+
+La sesión se resuelve en memoria desde tu navegador (Firefox/Chromium). Si necesitas credenciales manuales, el asistente (icono de engranaje del rail lateral) las guarda en `config/`:
+
+| Archivo | Uso |
+|---|---|
+| `config/browser.json` | YouTube Music: `Cookie` y `Authorization` (`SAPISIDHASH`) |
+| `config/.env` | Apple Music: `APPLE_AUTH_BEARER`, `APPLE_MUSIC_USER_TOKEN` |
+| `config/spotify_cookies.json` | Spotify: `sp_dc`, `sp_key` |
+| `config/settings.json` | Formato de descarga, carátulas online y carpetas locales |
+| `config/search_cache.json` | Caché de búsquedas previas |
+| `config/transfer_history.jsonl` | Historial de transferencias y resoluciones |
+
+Los archivos de `config/` equivalen a tu sesión: no los compartas ni los subas a Git.
+
+---
 
 ## Verificación
 
-La comprobación rápida de los módulos Python es:
-
 ```bash
-python -m compileall -q app.py core engine services ui
+python -m compileall -q app.py core engine services ui scripts
 ```
 
-La UI Flet se valida manualmente, en especial los modos de vista, los diálogos de Organizar/Dividir, la navegación responsive y el diálogo de exportación. La carpeta `tests/` queda reservada para regresiones futuras.
-
-## Aviso legal
-
-### Español
-
-Melomaniac es una aplicación local para gestionar, organizar, transferir y descubrir música a partir de información proporcionada por servicios de terceros.
-
-Melomaniac no aloja, proporciona ni redistribuye contenido musical protegido por derechos de autor. Las funciones de adquisición de archivos utilizan herramientas y fuentes de terceros y no implican acceso directo al contenido de los servicios de streaming.
-
-El usuario es responsable de asegurarse de que cualquier contenido que obtenga, almacene o utilice mediante Melomaniac esté autorizado para dicho uso y de cumplir las leyes aplicables y los términos de los servicios de origen.
-
-Melomaniac no está afiliado, patrocinado ni respaldado por Spotify, Apple, Google, YouTube ni otros servicios de terceros.
-
-### English
-
-Melomaniac is a local application for managing, organizing, transferring, and discovering music using information provided by third-party services.
-
-Melomaniac does not host, provide, or redistribute copyrighted music content. File-acquisition features use third-party tools and sources and do not imply direct access to streaming service content.
-
-The user is responsible for ensuring that any content obtained, stored, or used through Melomaniac is authorized for that use and for complying with applicable laws and the terms of the source services.
-
-Melomaniac is not affiliated with, sponsored by, or endorsed by Spotify, Apple, Google, YouTube, or any other third-party service.
-
-## Estado y licencia
-
-La versión documentada es `4.8.0` en la rama `main`. Es un proyecto para uso personal; cada plataforma y sus APIs están sujetas a sus propios términos de servicio.
+La UI de Flet se valida manualmente (modos de vista, diálogos Organizar/Dividir, navegación responsive, exportación). La carpeta `tests/` está reservada para regresiones futuras.
 
 ## Agradecimientos
 

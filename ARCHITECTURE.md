@@ -1,8 +1,10 @@
 # Melomaniac v4.8.0 — Arquitectura
 
+[← README](README.md) · [English](ARCHITECTURE.en.md) · [Diseño](DESIGN.md) · [Cambios](CHANGELOG.md)
+
 Melomaniac separa la interfaz Flet, el estado de la aplicación, los servicios de plataforma y el motor de normalización/matching. La versión actual soporta YouTube Music, Apple Music, Spotify y dos entradas locales: archivo y texto pegado.
 
-La versión de trabajo documentada es `4.8.0`. Esta versión consolida el reproductor integrado, sesiones desde el navegador, descarga de audio con `yt-dlp` y la integración MPRIS para escritorios Linux.
+La versión de trabajo documentada es `4.8.0`. Esta versión consolida el reproductor integrado, sesiones desde el navegador, descarga de audio con `yt-dlp` y la integración MPRIS para escritorios Linux. Los cambios posteriores sin publicar (bienvenida guiada, bundle ZIP portátil y empaquetado standalone con CI) se listan en `CHANGELOG.md`.
 
 ## Capas y dependencias
 
@@ -81,6 +83,8 @@ Melomaniac/
 │   ├── fonts.py                   # Clasificación Unicode y registro de fuentes
 │   ├── library_view.py            # Biblioteca y acceso al módulo Descargas
 │   ├── main_ui.py                 # Ventana principal y rail de navegación
+│   ├── onboarding.py              # Bienvenida de primera ejecución (ONBOARDING_STEPS)
+│   ├── onboarding_bg.py           # Fondo animado de la bienvenida
 │   ├── organize_panel.py          # Diálogos Organizar/Dividir/Reorganizar
 │   ├── player_bar.py              # Barra de reproducción persistente con scrubbing
 │   ├── player_queue.py            # Panel de cola de reproducción
@@ -93,6 +97,10 @@ Melomaniac/
 │   ├── transfer_report.py         # Reporte de cierre e inserción de alternativas
 │   └── widgets.py                 # Controles reutilizables
 ├── resources/fonts/               # Stack Sans e IBM Plex; CJK opcional
+├── scripts/                       # Empaquetado standalone y bundle portátil
+│   ├── build_linux.py             # AppImage + tar.gz con hashes SHA-256
+│   ├── build_release_bundle.py    # ZIP portátil del código fuente
+│   └── windows/installer.iss      # Inno Setup para Windows
 └── tests/                         # Reservado para unittest y regresiones
 ```
 
@@ -216,6 +224,22 @@ La caché se carga al iniciar desde `config/search_cache.json` y se guarda con a
 `CircuitBreaker` usa reloj monotónico, notifica el estado, crea un auto-reset y puede cancelar su tarea durante el cierre. `429` abre el breaker; Apple convierte `423` en rate limit con mínimo de `120` segundos y trata `401/403` como errores de autenticación. Spotify detecta `429/423` en los errores de SpotAPI.
 
 Apple procesa la transferencia de forma secuencial para evitar ráfagas. El resto usa tareas acotadas por semáforo. Las búsquedas no asociadas a rate limit tienen hasta tres intentos en `AppState`, con esperas de `1` y `2` segundos.
+
+## Bienvenida guiada (onboarding)
+
+Al primer arranque, `ui.onboarding.OnboardingView` muestra un overlay a pantalla completa con los pasos de `ONBOARDING_STEPS` (única lista: toda función visible nueva añade o actualiza un paso ahí). El fondo vive en `ui.onboarding_bg`. Al finalizar se guarda `onboarding_done` en `services.settings_store` (`config/settings.json`); la bienvenida se reabre desde Config. Medidas en `ui.tokens` (`ONBOARDING_*`).
+
+## Releases standalone
+
+Cada tag `v*` dispara `.github/workflows/build-binaries.yml`, que compila los binarios en GitHub Actions y los sube a los assets del release junto a sus hashes SHA-256:
+
+| Paquete | Script | Salida |
+|---|---|---|
+| ZIP portátil del fuente | `scripts/build_release_bundle.py` | `Melomaniac-vX.Y.Z.zip` + `SHA256SUMS.txt` (incluye `run.sh`/`run.bat`) |
+| Linux | `scripts/build_linux.py` (PyInstaller + appimagetool) | `Melomaniac-vX.Y.Z-x86_64.AppImage`, `Melomaniac-vX.Y.Z-linux-x64.tar.gz` + `SHA256SUMS-linux.txt` |
+| Windows | `flet pack` + Inno Setup (`scripts/windows/installer.iss`) | `Melomaniac-vX.Y.Z-windows-x64-Setup.exe`, `Melomaniac-vX.Y.Z-windows-x64.zip` + `SHA256SUMS-windows.txt` |
+
+En modo `sys.frozen` (binarios), `services.authentication` desacopla `CONFIG_DIR` de la carpeta de instalación: `$XDG_CONFIG_HOME/melomaniac` en Linux y `%APPDATA%\Melomaniac` en Windows. Se preserva el modo portable si existe una carpeta `config/` escribible o un `portable.flag`.
 
 ## Ciclo de vida
 

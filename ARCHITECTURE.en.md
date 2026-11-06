@@ -1,8 +1,10 @@
 # Melomaniac v4.8.0 — Architecture
 
+[← README](README.en.md) · [Español](ARCHITECTURE.md) · [Design](DESIGN.md) · [Changes](CHANGELOG.md)
+
 Melomaniac separates the Flet UI, application state, platform services, and metadata normalization/matching engine. The current version supports YouTube Music, Apple Music, Spotify, and two local inputs: file and pasted text.
 
-The documented working version is `4.8.0`. This version consolidates the integrated player, browser session detection, audio downloads with `yt-dlp`, and MPRIS desktop integration on Linux.
+The documented working version is `4.8.0`. This version consolidates the integrated player, browser session detection, audio downloads with `yt-dlp`, and MPRIS desktop integration on Linux. Later unreleased changes (guided onboarding, portable ZIP bundle, and standalone packaging with CI) are listed in `CHANGELOG.md`.
 
 ## Layers and dependencies
 
@@ -81,6 +83,8 @@ Melomaniac/
 │   ├── fonts.py                   # Unicode classification and font registry
 │   ├── library_view.py            # Library view and local music folder exploration
 │   ├── main_ui.py                 # Main window, navigation rail, and view modes
+│   ├── onboarding.py              # First-run welcome tour (ONBOARDING_STEPS)
+│   ├── onboarding_bg.py           # Animated onboarding background
 │   ├── organize_panel.py          # Organize, Split, and Reorder dialogs
 │   ├── player_bar.py              # Interactive persistent bottom player bar
 │   ├── player_queue.py            # Playback queue drawer panel
@@ -93,6 +97,10 @@ Melomaniac/
 │   ├── transfer_report.py         # Completion report and alternative track insertion
 │   └── widgets.py                 # Reusable styled UI controls
 ├── resources/fonts/               # Stack Sans and IBM Plex fonts; optional CJK
+├── scripts/                       # Standalone packaging and portable bundle
+│   ├── build_linux.py             # AppImage + tar.gz with SHA-256 hashes
+│   ├── build_release_bundle.py    # Portable source ZIP bundle
+│   └── windows/installer.iss      # Inno Setup script for Windows
 └── tests/                         # Reserved for unit tests and regressions
 ```
 
@@ -116,19 +124,19 @@ Main states:
 
 | Platform | Read/search | Create | Credentials |
 |---|---|---|---|
-| YouTube Music | `ytmusicapi` | `YTMusic.create_playlist` | `config/browser.json` |
-| Apple Music | `amp-api.music.apple.com` web catalog | library endpoint | `config/.env` |
-| Spotify | `spotapi`/`tracksV2` | `PrivatePlaylist` | `config/spotify_cookies.json` |
+| YouTube Music | `ytmusicapi` | `YTMusic.create_playlist` | Browser session (`SAPISID`) or `config/browser.json` |
+| Apple Music | `amp-api.music.apple.com` web catalog | library endpoint | Browser session (`media-user-token` + bundle bearer) or `config/.env` |
+| Spotify | `spotapi`/`tracksV2` | `PrivatePlaylist` | Browser session (`sp_dc`/`sp_key`) or `config/spotify_cookies.json` |
 | Local File | parsers + Mutagen | — | — |
 | Pasted Text | line parser | — | — |
 
-`services.authentication` is the single owner of credential paths and persistence:
+`services.browser_session` first resolves active browser sessions in memory (Firefox-family: copies `cookies.sqlite` + `-wal`/`-shm` to RAM via `sqlite3`; Chromium-family: standard paths via `yt-dlp`) without writing anything to disk. `services.authentication` is the single owner of runtime paths and manual-override files in `config/`:
 
-- YouTube: `Authorization` and `Cookie`; fixed fields (`Accept`, `Content-Type`, `X-Goog-AuthUser`, `x-origin`) are written automatically.
-- Apple: `APPLE_AUTH_BEARER` and `APPLE_MUSIC_USER_TOKEN`.
-- Spotify: `identifier`, `cookies.sp_dc`, and `cookies.sp_key`.
+- YouTube: `Cookie` and `SAPISIDHASH` recomputed on each read from `SAPISID` (a saved legacy `Authorization` is ignored); fixed fields (`Accept`, `Content-Type`, `X-Goog-AuthUser`, `x-origin`) are filled in automatically.
+- Apple: `media-user-token` from the cookie and a bearer derived from the public bundle (`kid == "WebPlayKid"` and `iss == "AMPWebPlay"`) or `APPLE_AUTH_BEARER` / `APPLE_MUSIC_USER_TOKEN` in `config/.env`.
+- Spotify: `cookies.sp_dc` and `cookies.sp_key` (with optional `identifier` in `config/spotify_cookies.json`).
 
-`AuthManager` checks YouTube through `MusicApiService` and Apple/Spotify through `run_preflight()`, only at startup or after a user action. YouTube distinguishes session rejection (`401`/`403`) from rate limits (`429`) and transient failures; transient failures do not change authentication state. Saving in the wizard triggers a hot reload without restarting.
+`AuthManager` validates all three platforms via `MusicApiService.init_youtube()`, `init_apple()`, and `init_spotify()`, which iterate the candidates (`*_candidates()`) and verify against the real API (`/v1/me/storefront` on Apple, `get_library_playlists(limit=1)` on YouTube, `_spotify_library_page(limit=1)` on Spotify). Startup preflight records the winning source and refreshes the icons without opening the wizard automatically. YouTube distinguishes session rejection (`401`/`403`) from rate limits (`429`) and transient failures; the latter do not change authentication state. Saving or retrying in the wizard clears the `browser_session` cache and reloads without a restart.
 
 ## Loading flow
 
@@ -216,6 +224,22 @@ The cache loads at startup from `config/search_cache.json` and is saved using a 
 `CircuitBreaker` uses a monotonic clock, notifies listeners, schedules an auto-reset, and can cancel its task during shutdown. `429` opens the breaker; Apple converts `423` to a rate limit with a minimum of `120` seconds and treats `401/403` as authentication failures. Spotify detects `429/423` in SpotAPI errors.
 
 Apple processes transfers sequentially to avoid bursts. Other platforms use tasks bounded by a semaphore. Non-rate-limit searches get up to three attempts in `AppState`, with one- and two-second waits.
+
+## Guided onboarding
+
+On first run, `ui.onboarding.OnboardingView` shows a full-screen overlay with the steps in `ONBOARDING_STEPS` (single list: any new visible feature adds or updates a step there). The animated background lives in `ui.onboarding_bg`. On completion, `onboarding_done` is stored via `services.settings_store` (`config/settings.json`); the tour reopens from Config. Measurements live in `ui.tokens` (`ONBOARDING_*`).
+
+## Standalone releases
+
+Every `v*` tag triggers `.github/workflows/build-binaries.yml`, which builds the binaries in GitHub Actions and uploads them to the release assets together with their SHA-256 hashes:
+
+| Package | Script | Output |
+|---|---|---|
+| Portable source ZIP | `scripts/build_release_bundle.py` | `Melomaniac-vX.Y.Z.zip` + `SHA256SUMS.txt` (includes `run.sh`/`run.bat`) |
+| Linux | `scripts/build_linux.py` (PyInstaller + appimagetool) | `Melomaniac-vX.Y.Z-x86_64.AppImage`, `Melomaniac-vX.Y.Z-linux-x64.tar.gz` + `SHA256SUMS-linux.txt` |
+| Windows | `flet pack` + Inno Setup (`scripts/windows/installer.iss`) | `Melomaniac-vX.Y.Z-windows-x64-Setup.exe`, `Melomaniac-vX.Y.Z-windows-x64.zip` + `SHA256SUMS-windows.txt` |
+
+In `sys.frozen` mode (binaries), `services.authentication` decouples `CONFIG_DIR` from the install folder: `$XDG_CONFIG_HOME/melomaniac` on Linux and `%APPDATA%\Melomaniac` on Windows. Portable mode is preserved if a writable `config/` folder or a `portable.flag` file exists.
 
 ## Lifecycle
 
