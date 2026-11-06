@@ -98,7 +98,7 @@ jobs:
 
       - name: Build Windows folder with Flet pack
         run: |
-          flet pack app.py --onedir --name Melomaniac --add-data "resources;resources" --hidden-import "mutagen" -y -- --collect-data ytmusicapi
+          flet pack app.py --onedir --name Melomaniac --add-data "resources;resources" --hidden-import "mutagen" -y --pyinstaller-build-args="--collect-data=ytmusicapi"
 
       - name: Create release directory
         shell: bash
@@ -107,7 +107,16 @@ jobs:
 
       - name: Compile Inno Setup installer
         run: |
-          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" /DMyAppVersion=${{ env.VERSION }} scripts\windows\installer.iss
+          if (Get-Command iscc -ErrorAction SilentlyContinue) {
+            iscc /DMyAppVersion=${{ env.VERSION }} scripts\windows\installer.iss
+          } elseif (Test-Path "C:\Program Files (x86)\Inno Setup 6\ISCC.exe") {
+            & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" /DMyAppVersion=${{ env.VERSION }} scripts\windows\installer.iss
+          } elseif (Test-Path "C:\Program Files\Inno Setup 6\ISCC.exe") {
+            & "C:\Program Files\Inno Setup 6\ISCC.exe" /DMyAppVersion=${{ env.VERSION }} scripts\windows\installer.iss
+          } else {
+            Write-Error "ISCC.exe no fue encontrado."
+            exit 1
+          }
 
       - name: Create Portable ZIP
         shell: bash
@@ -136,10 +145,18 @@ jobs:
     name: Upload Binaries to GitHub Release
     needs: [build-linux, build-windows]
     runs-on: ubuntu-latest
-    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+
+      - name: Determine Target Release Tag
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "TARGET_TAG=v${{ github.event.inputs.version }}" >> $GITHUB_ENV
+          else
+            echo "TARGET_TAG=${{ github.ref_name }}" >> $GITHUB_ENV
+          fi
 
       - name: Download Linux artifacts
         uses: actions/download-artifact@v4
@@ -157,4 +174,4 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh release upload ${{ github.ref_name }} dist-release/* --clobber
+          gh release upload ${{ env.TARGET_TAG }} dist-release/* --clobber
