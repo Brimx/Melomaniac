@@ -98,7 +98,7 @@ jobs:
 
       - name: Build Windows folder with Flet pack
         run: |
-          flet pack app.py --onedir --name Melomaniac --add-data "resources;resources" --hidden-import "mutagen" -y --pyinstaller-build-args="--collect-data=ytmusicapi"
+          python -m flet_cli pack app.py --onedir --name Melomaniac --add-data "resources;resources" --hidden-import "mutagen" -y --pyinstaller-build-args="--collect-data=ytmusicapi"
 
       - name: Create release directory
         shell: bash
