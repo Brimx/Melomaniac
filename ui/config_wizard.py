@@ -16,6 +16,7 @@ import flet as ft
 
 from core.config import PLATFORM_ORDER
 from ui.fonts import FONT_HEADLINE, FONT_HEADLINE_BOLD, FONT_HEADLINE_SEMI, FONT_TEXT, mono_family
+from ui.icons import PIcons, app_icon, app_icon_button
 from ui.tokens import (
     BG_PANEL, BG_SURFACE, BG_INPUT, BORDER_LIGHT,
     ACCENT, SUCCESS, WARNING, ERROR_COL,
@@ -46,9 +47,9 @@ from services.authentication import (
 
 # ── Platform order and tab metadata (single source of truth) ───────────
 PLATFORM_TAB_META = {
-    "YouTube Music": (ft.Icons.MUSIC_VIDEO, ft.Icons.WARNING_AMBER_ROUNDED),
-    "Apple Music":   (ft.Icons.APPLE, ft.Icons.WARNING_AMBER_ROUNDED),
-    "Spotify":       (ft.Icons.MUSIC_NOTE, ft.Icons.WARNING_AMBER_ROUNDED),
+    "YouTube Music": (PIcons.YOUTUBE_LOGO, PIcons.WARNING),
+    "Apple Music":   (PIcons.APPLE_LOGO, PIcons.WARNING),
+    "Spotify":       (PIcons.SPOTIFY_LOGO, PIcons.WARNING),
 }
 
 PLATFORM_LOGIN_URLS = {
@@ -283,7 +284,7 @@ class ConfigWizard(DialogMixin):
         return ft.Container(
             content=ft.Row(
                 controls=[
-                    ft.Icon(icon, color=color, size=13),
+                    app_icon(icon, color=color, size=13),
                     ft.Text(
                         label, size=11, color=color,
                         font_family=(
@@ -474,7 +475,7 @@ class ConfigWizard(DialogMixin):
             "Guardar y Aplicar",
             self._on_save_click,
             kind="primary",
-            icon=ft.Icons.SAVE_OUTLINED,
+            icon=PIcons.FLOPPY_DISK,
         )
         return ft.AlertDialog(
             modal=True,
@@ -482,7 +483,7 @@ class ConfigWizard(DialogMixin):
             clip_behavior=ft.ClipBehavior.ANTI_ALIAS,
             title=ft.Row(
                 controls=[
-                    ft.Icon(ft.Icons.SETTINGS, color=ACCENT, size=18),
+                    app_icon(PIcons.GEAR, color=ACCENT, size=18),
                     ft.Text(
                         "Configuración de Credenciales",
                         size=14, font_family=FONT_HEADLINE_BOLD,
@@ -623,15 +624,14 @@ class ConfigWizard(DialogMixin):
             expanded = not expanded
             field.min_lines = min_lines if expanded else 1
             field.max_lines = max_lines if expanded else 1
-            toggle.icon = ft.Icons.EXPAND_LESS if expanded else ft.Icons.EXPAND_MORE
+            toggle.content.value = PIcons.CARET_UP if expanded else PIcons.CARET_DOWN
             toggle.tooltip = "Contraer campo" if expanded else "Expandir campo"
             self._safe_dialog_update()
 
-        toggle = ft.IconButton(
-            icon=ft.Icons.EXPAND_MORE,
+        toggle = app_icon_button(
+            glyph=PIcons.CARET_DOWN,
             icon_color=TEXT_MUTED,
-            icon_size=16,
-            padding=ft.Padding.all(0),
+            size=16,
             tooltip="Expandir campo",
             on_click=_toggle,
         )
@@ -732,13 +732,13 @@ class ConfigWizard(DialogMixin):
         icon_ctrl = row.controls[0]
         text_ctrl = row.controls[1]
         if ok:
-            icon_ctrl.icon = ft.Icons.CHECK_CIRCLE_OUTLINE
+            icon_ctrl.value = PIcons.CHECK_CIRCLE
             icon_ctrl.color = SUCCESS
             src_label = source or "sesión activa"
             text_ctrl.value = f"Verificado con {src_label}"
             text_ctrl.color = SUCCESS
         else:
-            icon_ctrl.icon = ft.Icons.WARNING_AMBER_ROUNDED
+            icon_ctrl.value = PIcons.WARNING
             icon_ctrl.color = WARNING
             text_ctrl.value = error or "Sesión no verificada — inicia sesión en el navegador y pulsa Reintentar"
             text_ctrl.color = WARNING
@@ -792,7 +792,7 @@ class ConfigWizard(DialogMixin):
         dd.on_select = lambda e, p=platform: self._set_preferred_source(p, e.control.value)
         self._source_dropdowns[platform] = dd
 
-        status_icon = ft.Icon(ft.Icons.INFO_OUTLINED, size=15, color=TEXT_MUTED)
+        status_icon = app_icon(PIcons.INFO, size=15, color=TEXT_MUTED)
         status_text = app_text("", size=11, color=TEXT_MUTED, expand=True)
         status_row = ft.Row(
             controls=[status_icon, status_text],
@@ -807,13 +807,13 @@ class ConfigWizard(DialogMixin):
             controls=[
                 _primary_btn(
                     "Abrir y iniciar sesión",
-                    ft.Icons.OPEN_IN_BROWSER,
+                    PIcons.ARROW_SQUARE_OUT,
                     lambda _e, u=login_url: open_external(self.page, u),
                     height=38,
                 ),
                 _ghost_btn(
                     "Reintentar",
-                    ft.Icons.REFRESH,
+                    PIcons.ARROWS_CLOCKWISE,
                     lambda _e, p=platform: self._on_retry_platform(p),
                     height=38,
                 ),
@@ -843,12 +843,12 @@ class ConfigWizard(DialogMixin):
             )
 
         adv_container = ft.Container(content=advanced_body, visible=False, padding=ft.Padding.only(top=6))
-        adv_icon = ft.Icon(ft.Icons.EXPAND_MORE, size=16, color=TEXT_MUTED)
+        adv_icon = app_icon(PIcons.CARET_DOWN, size=16, color=TEXT_MUTED)
         adv_label = app_text("Avanzado (credenciales manuales)", size=11, color=TEXT_MUTED, font_family=FONT_HEADLINE)
 
         def _toggle_adv(_e: ft.ControlEvent) -> None:
             adv_container.visible = not adv_container.visible
-            adv_icon.icon = ft.Icons.EXPAND_LESS if adv_container.visible else ft.Icons.EXPAND_MORE
+            adv_icon.value = PIcons.CARET_UP if adv_container.visible else PIcons.CARET_DOWN
             self._safe_dialog_update()
 
         adv_header = ft.Container(
@@ -1026,7 +1026,7 @@ class ConfigWizard(DialogMixin):
         return ft.Container(
             content=ft.Row(
                 controls=[
-                    ft.Icon(ft.Icons.WARNING_AMBER_ROUNDED, color=WARNING, size=14),
+                    app_icon(PIcons.WARNING, color=WARNING, size=14),
                     ft.Text(
                         text, size=10, color=WARNING,
                         font_family=FONT_TEXT, expand=True,

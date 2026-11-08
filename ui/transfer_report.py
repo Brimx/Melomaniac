@@ -41,6 +41,7 @@ from ui.fonts import (
     mono_family,
 )
 from ui.song_row import build_preview_row
+from ui.icons import PIcons, app_icon, app_icon_button
 from ui.tokens import (
     ACCENT,
     BG_INPUT,
@@ -105,13 +106,13 @@ class TransferReportDialog(DialogMixin):
         actions: list[ft.Control] = [
             dialog_action(
                 "Exportar", self._on_export, kind="muted",
-                icon=ft.Icons.DOWNLOAD_OUTLINED,
+                icon=PIcons.DOWNLOAD_SIMPLE,
             ),
         ]
         if self.report.playlist_id:
             actions.append(dialog_action(
                 "Abrir playlist", self._on_open_playlist, kind="muted",
-                icon=ft.Icons.OPEN_IN_NEW,
+                icon=PIcons.ARROW_SQUARE_OUT,
             ))
         actions.append(dialog_action("Cerrar", self._on_close, kind="primary"))
         self._dlg = app_dialog(
@@ -122,7 +123,7 @@ class TransferReportDialog(DialogMixin):
             ),
             actions,
             width=680,
-            icon=ft.Icons.FACT_CHECK_OUTLINED,
+            icon=PIcons.CHECK_CIRCLE,
         )
         self.page.show_dialog(self._dlg)
 
@@ -172,7 +173,7 @@ class TransferReportDialog(DialogMixin):
             autofocus=True,
         )
         self._search_btn = _primary_btn(
-            "Buscar", ft.Icons.SEARCH,
+            "Buscar", PIcons.MAGNIFYING_GLASS,
             lambda _e: self.page.run_task(self._run_search),
             height=38,
         )
@@ -183,10 +184,14 @@ class TransferReportDialog(DialogMixin):
         self._results = ft.Column(spacing=2)
         self._body.controls = [
             ft.Row([
-                ft.IconButton(
-                    icon=ft.Icons.ARROW_BACK,
+                app_icon_button(
+                    PIcons.ARROW_LEFT,
+                    size=16,
                     icon_color=TEXT_MUTED,
+                    tooltip="Volver",
                     on_click=lambda _e: self._render_report(),
+                    width=28,
+                    height=28,
                 ),
                 app_text("Volver al reporte", size=11, color=TEXT_MUTED),
             ], spacing=2),
@@ -262,7 +267,7 @@ class TransferReportDialog(DialogMixin):
     def _build_success_banner(self) -> ft.Control:
         return ft.Container(
             content=ft.Row([
-                ft.Icon(ft.Icons.CHECK_CIRCLE_OUTLINE, color=SUCCESS, size=18),
+                app_icon(PIcons.CHECK_CIRCLE, color=SUCCESS, size=18, fill=True),
                 app_text(
                     "Todas las canciones quedaron confirmadas en la playlist.",
                     size=11, color=SUCCESS, font_family=FONT_TEXT, expand=True,
@@ -276,7 +281,7 @@ class TransferReportDialog(DialogMixin):
     def _build_warning_banner(self, message: str) -> ft.Control:
         return ft.Container(
             content=ft.Row([
-                ft.Icon(ft.Icons.ERROR_OUTLINE, color=WARNING, size=18),
+                app_icon(PIcons.WARNING_CIRCLE, color=WARNING, size=18, fill=True),
                 app_text(
                     message, size=10, color=WARNING,
                     font_family=FONT_TEXT, expand=True,
@@ -354,7 +359,7 @@ class TransferReportDialog(DialogMixin):
                     "Buscar",
                     lambda _e, i=issue: self._show_search(i),
                     kind="primary",
-                    icon=ft.Icons.SEARCH,
+                    icon=PIcons.MAGNIFYING_GLASS,
                 ),
             ], spacing=8, vertical_alignment=ft.CrossAxisAlignment.CENTER),
             padding=ft.Padding.symmetric(horizontal=6, vertical=4),
@@ -445,7 +450,7 @@ class TransferReportDialog(DialogMixin):
             preview = build_preview_row(track, index)
             preview.bgcolor = BG_PANEL
             insert = _primary_btn(
-                "Insertar", ft.Icons.ADD,
+                "Insertar", PIcons.PLUS,
                 lambda _e, t=track: self.page.run_task(self._insert, t),
                 width=124, height=36,
             )

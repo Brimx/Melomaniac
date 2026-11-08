@@ -33,6 +33,7 @@ from ui.tokens import (
     BG_PANEL, BG_INPUT, BORDER_LIGHT,
     ACCENT, TEXT_PRIMARY, TEXT_MUTED, TEXT_DIM,
 )
+from ui.icons import PIcons
 from ui.widgets import _section_label, app_text_field, dialog_action, app_dialog, DialogMixin
 
 CONTENT_W = 420
@@ -196,7 +197,7 @@ class PlaylistMetaDialog(DialogMixin):
             ft.Text("Desmarcado por defecto — crea nueva sin borrar original.", size=9, color=TEXT_DIM, font_family="IBM Plex Sans"),
         ]
         # Botón Guardar + primario Siguiente/Crear
-        self._primary_btn = dialog_action("Siguiente" if self._divisions and len(self._divisions) > 1 else "Crear y transferir", self._on_next_or_confirm, kind="primary", icon=ft.Icons.SWAP_HORIZ)
+        self._primary_btn = dialog_action("Siguiente" if self._divisions and len(self._divisions) > 1 else "Crear y transferir", self._on_next_or_confirm, kind="primary", icon=PIcons.ARROWS_LEFT_RIGHT)
         self._dlg = app_dialog(
             "Personalizar playlist",
             ft.Column(
@@ -212,7 +213,7 @@ class PlaylistMetaDialog(DialogMixin):
                 dialog_action("Cancelar", self._on_cancel, kind="muted"),
             ],
             width=CONTENT_W,
-            icon=ft.Icons.EDIT,
+            icon=PIcons.PENCIL_SIMPLE,
         )
 
     # ── Eventos ──────────────────────────────────────────────────

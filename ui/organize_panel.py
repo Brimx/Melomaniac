@@ -20,6 +20,7 @@ from ui.tokens import (
     BG_SURFACE, BG_INPUT, BORDER_LIGHT, ACCENT, TEXT_PRIMARY, TEXT_MUTED,
     TEXT_DIM, CHIP_BG, DIALOG_OPTION_LIMIT,
 )
+from ui.icons import PIcons, app_icon
 from ui.widgets import (
     dialog_action, app_dialog, organize_dropdown, input_border, debounce,
     limit_label,
@@ -305,9 +306,9 @@ def show_group_dialog(page: ft.Page, state) -> None:
         name_fields[div_key] = name_tf
 
         # buscadores + listas por tipo
-        art_search = ft.TextField(hint_text="Buscar artista…", prefix_icon=ft.Icons.SEARCH, width=360, height=32, bgcolor=BG_INPUT, border=input_border(), dense=True, content_padding=ft.Padding.symmetric(horizontal=8, vertical=4), text_style=ft.TextStyle(size=11))
-        alb_search = ft.TextField(hint_text="Buscar álbum…", prefix_icon=ft.Icons.SEARCH, width=360, height=32, bgcolor=BG_INPUT, border=input_border(), dense=True, content_padding=ft.Padding.symmetric(horizontal=8, vertical=4), text_style=ft.TextStyle(size=11))
-        song_search = ft.TextField(hint_text="Buscar canción…", prefix_icon=ft.Icons.SEARCH, width=360, height=36, bgcolor=BG_INPUT, border=input_border(), dense=True, content_padding=ft.Padding.symmetric(horizontal=8, vertical=4), text_style=ft.TextStyle(size=11))
+        art_search = ft.TextField(hint_text="Buscar artista…", prefix=app_icon(PIcons.MAGNIFYING_GLASS, size=14, color=TEXT_DIM), width=360, height=32, bgcolor=BG_INPUT, border=input_border(), dense=True, content_padding=ft.Padding.symmetric(horizontal=8, vertical=4), text_style=ft.TextStyle(size=11))
+        alb_search = ft.TextField(hint_text="Buscar álbum…", prefix=app_icon(PIcons.MAGNIFYING_GLASS, size=14, color=TEXT_DIM), width=360, height=32, bgcolor=BG_INPUT, border=input_border(), dense=True, content_padding=ft.Padding.symmetric(horizontal=8, vertical=4), text_style=ft.TextStyle(size=11))
+        song_search = ft.TextField(hint_text="Buscar canción…", prefix=app_icon(PIcons.MAGNIFYING_GLASS, size=14, color=TEXT_DIM), width=360, height=36, bgcolor=BG_INPUT, border=input_border(), dense=True, content_padding=ft.Padding.symmetric(horizontal=8, vertical=4), text_style=ft.TextStyle(size=11))
         art_limit = ft.Text("", size=9, color=TEXT_DIM, font_family="IBM Plex Sans")
         alb_limit = ft.Text("", size=9, color=TEXT_DIM, font_family="IBM Plex Sans")
         song_limit = ft.Text("", size=9, color=TEXT_DIM, font_family="IBM Plex Sans")
@@ -542,14 +543,14 @@ def show_reorganize_dialog(page: ft.Page, state) -> None:
                 if 0 <= oi < len(art_items) and 0 <= ni < len(art_items):
                     val = art_items.pop(oi); art_items.insert(ni, val)
                     try:
-                        art_lv.controls = [ft.ListTile(title=ft.Text(a, size=11, color=TEXT_PRIMARY, font_family="IBM Plex Sans"), leading=ft.Icon(ft.Icons.DRAG_HANDLE, size=14, color=TEXT_DIM)) for a in art_items]
+                        art_lv.controls = [ft.ListTile(title=ft.Text(a, size=11, color=TEXT_PRIMARY, font_family="IBM Plex Sans"), leading=app_icon(PIcons.DOTS_SIX_VERTICAL, size=14, color=TEXT_DIM)) for a in art_items]
                         art_lv.update()
                     except Exception:
                         pass
             except Exception:
                 pass
 
-        art_lv = ft.ReorderableListView(controls=[ft.ListTile(title=ft.Text(a, size=11, color=TEXT_PRIMARY, font_family="IBM Plex Sans"), leading=ft.Icon(ft.Icons.DRAG_HANDLE, size=14, color=TEXT_DIM)) for a in art_items], on_reorder=_art_on_reorder, height=180)
+        art_lv = ft.ReorderableListView(controls=[ft.ListTile(title=ft.Text(a, size=11, color=TEXT_PRIMARY, font_family="IBM Plex Sans"), leading=app_icon(PIcons.DOTS_SIX_VERTICAL, size=14, color=TEXT_DIM)) for a in art_items], on_reorder=_art_on_reorder, height=180)
 
         def _alb_on_reorder(e):
             try:
@@ -557,14 +558,14 @@ def show_reorganize_dialog(page: ft.Page, state) -> None:
                 if 0 <= oi < len(alb_items) and 0 <= ni < len(alb_items):
                     val = alb_items.pop(oi); alb_items.insert(ni, val)
                     try:
-                        alb_lv.controls = [ft.ListTile(title=ft.Text(a, size=11, color=TEXT_PRIMARY, font_family="IBM Plex Sans"), leading=ft.Icon(ft.Icons.DRAG_HANDLE, size=14, color=TEXT_DIM)) for a in alb_items]
+                        alb_lv.controls = [ft.ListTile(title=ft.Text(a, size=11, color=TEXT_PRIMARY, font_family="IBM Plex Sans"), leading=app_icon(PIcons.DOTS_SIX_VERTICAL, size=14, color=TEXT_DIM)) for a in alb_items]
                         alb_lv.update()
                     except Exception:
                         pass
             except Exception:
                 pass
 
-        alb_lv = ft.ReorderableListView(controls=[ft.ListTile(title=ft.Text(a, size=11, color=TEXT_PRIMARY, font_family="IBM Plex Sans"), leading=ft.Icon(ft.Icons.DRAG_HANDLE, size=14, color=TEXT_DIM)) for a in alb_items], on_reorder=_alb_on_reorder, height=180)
+        alb_lv = ft.ReorderableListView(controls=[ft.ListTile(title=ft.Text(a, size=11, color=TEXT_PRIMARY, font_family="IBM Plex Sans"), leading=app_icon(PIcons.DOTS_SIX_VERTICAL, size=14, color=TEXT_DIM)) for a in alb_items], on_reorder=_alb_on_reorder, height=180)
 
         def _apply(_e):
             if art_items != artists:

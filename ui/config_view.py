@@ -23,6 +23,7 @@ import flet as ft
 from core.config import APP_VERSION, AUDIO_FORMATS
 from services import desktop_integration, settings_store, update_checker
 from ui.fonts import FONT_HEADLINE, FONT_TEXT, mono_family
+from ui.icons import PIcons, app_icon
 from ui.tokens import (
     ACCENT, BG_LIST, BG_SURFACE, BORDER_MUTED, RADIUS_INPUT,
     SUCCESS, TEXT_MUTED, TEXT_PRIMARY, WARNING,
@@ -93,7 +94,7 @@ class ConfigView(ft.Container):
             max_lines=1, overflow=ft.TextOverflow.ELLIPSIS, expand=True,
         )
         self._dir_reset_btn = _ghost_btn(
-            "Restablecer", ft.Icons.RESTART_ALT, self._on_reset_dir,
+            "Restablecer", PIcons.ARROWS_CLOCKWISE, self._on_reset_dir,
             width=130, height=36,
         )
         self._dir_reset_btn.visible = bool(settings_store.get_download_dir())
@@ -102,7 +103,7 @@ class ConfigView(ft.Container):
         self._cache_text = app_text(cache_size, size=11, color=TEXT_MUTED,
                                     font_family=mono_family("light"))
         self._cache_btn = _ghost_btn(
-            "Limpiar caché", ft.Icons.DELETE_OUTLINE, self._on_clear_cache,
+            "Limpiar caché", PIcons.TRASH, self._on_clear_cache,
             width=150, height=36,
         )
 
@@ -126,13 +127,13 @@ class ConfigView(ft.Container):
             font_family=mono_family("light"),
         )
         self._update_check_btn = _ghost_btn(
-            "Comprobar", ft.Icons.REFRESH, self._on_check_updates,
+            "Comprobar", PIcons.ARROWS_CLOCKWISE, self._on_check_updates,
             width=130, height=36,
         )
         self._update_result_col = ft.Column(spacing=6)
 
         header = ft.Row(controls=[
-            ft.Icon(ft.Icons.SETTINGS_OUTLINED, size=18, color=TEXT_MUTED),
+            app_icon(PIcons.GEAR, size=18, color=TEXT_MUTED),
             app_text("Configuración", size=16, color=TEXT_PRIMARY,
                      font_family=FONT_HEADLINE),
         ], spacing=8)
@@ -153,9 +154,9 @@ class ConfigView(ft.Container):
                 "DESTINO",
                 "Carpeta donde se guardan los archivos descargados.",
                 [ft.Row(controls=[
-                    ft.Icon(ft.Icons.FOLDER_OUTLINED, size=18, color=TEXT_MUTED),
+                    app_icon(PIcons.FOLDER, size=18, color=TEXT_MUTED),
                     self._dir_text,
-                    _ghost_btn("Cambiar", ft.Icons.EDIT_OUTLINED, self._on_pick_dir,
+                    _ghost_btn("Cambiar", PIcons.PENCIL_SIMPLE, self._on_pick_dir,
                                width=120, height=36),
                     self._dir_reset_btn,
                 ], spacing=8, vertical_alignment=ft.CrossAxisAlignment.CENTER)],
@@ -164,7 +165,7 @@ class ConfigView(ft.Container):
                 "BIENVENIDA",
                 "Repite la guía de primera ejecución con las funciones principales.",
                 [ft.Row(controls=[_ghost_btn(
-                    "Ver bienvenida", ft.Icons.WAVING_HAND_OUTLINED, self._on_show_welcome,
+                    "Ver bienvenida", PIcons.SPARKLE, self._on_show_welcome,
                     width=190, height=36,
                 )])],
             ),
@@ -280,17 +281,17 @@ class ConfigView(ft.Container):
             )
         elif st.installed and st.is_current:
             actions.extend([
-                _ghost_btn("Reinstalar", ft.Icons.REFRESH, self._on_install_shortcut, width=130, height=36),
-                _ghost_btn("Quitar", ft.Icons.DELETE_OUTLINE, self._on_remove_shortcut, width=110, height=36),
+                _ghost_btn("Reinstalar", PIcons.ARROWS_CLOCKWISE, self._on_install_shortcut, width=130, height=36),
+                _ghost_btn("Quitar", PIcons.TRASH, self._on_remove_shortcut, width=110, height=36),
             ])
         elif st.installed and not st.is_current:
             actions.extend([
-                _primary_btn("Actualizar acceso directo", ft.Icons.SYNC, self._on_install_shortcut, width=220, height=36),
-                _ghost_btn("Quitar", ft.Icons.DELETE_OUTLINE, self._on_remove_shortcut, width=110, height=36),
+                _primary_btn("Actualizar acceso directo", PIcons.ARROWS_CLOCKWISE, self._on_install_shortcut, width=220, height=36),
+                _ghost_btn("Quitar", PIcons.TRASH, self._on_remove_shortcut, width=110, height=36),
             ])
         else:
             actions.append(
-                _primary_btn("Crear acceso directo", ft.Icons.ADD_TO_HOME_SCREEN, self._on_install_shortcut, width=200, height=36)
+                _primary_btn("Crear acceso directo", PIcons.PLUS, self._on_install_shortcut, width=200, height=36)
             )
 
         self._shortcut_actions_row.controls = actions
@@ -412,12 +413,12 @@ class ConfigView(ft.Container):
             )
             btn_row = ft.Row(controls=[
                 _primary_btn(
-                    "Descargar actualización", ft.Icons.DOWNLOAD,
+                    "Descargar actualización", PIcons.DOWNLOAD_SIMPLE,
                     lambda _: open_external(self._page_ref, info.download_url or info.release_url),
                     width=210, height=36,
                 ),
                 _ghost_btn(
-                    "Ver notas de release", ft.Icons.OPEN_IN_NEW,
+                    "Ver notas de release", PIcons.ARROW_SQUARE_OUT,
                     lambda _: open_external(self._page_ref, info.release_url),
                     width=180, height=36,
                 ),

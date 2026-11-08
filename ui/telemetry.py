@@ -4,7 +4,7 @@ from __future__ import annotations
 import flet as ft
 
 from ui.fonts import FONT_HEADLINE, FONT_HEADLINE_SEMI, FONT_TEXT, mono_family
-
+from ui.icons import PIcons, app_icon
 from ui.tokens import (
     BG_PANEL, BG_HOVER, BORDER_LIGHT, BORDER_MUTED,
     ACCENT, SUCCESS, ERROR_COL,
@@ -78,7 +78,7 @@ class TelemetryDrawer:
             animate_size=_TELE_ANIM,
         )
 
-        self._arrow = ft.Icon(icon=ft.Icons.ARROW_FORWARD, color=TEXT_DIM, size=14)
+        self._arrow = app_icon(PIcons.ARROW_RIGHT, color=TEXT_DIM, size=14)
         self.handle = ft.Container(
             content=ft.Row(
                 controls=[
@@ -162,7 +162,7 @@ class TelemetryDrawer:
         )
         export_btn = ft.Container(
             content=ft.Row([
-                ft.Icon(ft.Icons.DOWNLOAD_OUTLINED, size=11, color=ACCENT),
+                app_icon(PIcons.DOWNLOAD_SIMPLE, size=11, color=ACCENT),
                 ft.Text("Exportar a TXT", size=10, color=ACCENT, font_family=FONT_HEADLINE, opacity=1.0),
             ], spacing=4, tight=True),
             padding=ft.Padding.symmetric(horizontal=8, vertical=4),
@@ -311,13 +311,13 @@ class TelemetryDrawer:
         if self._overlay_panel not in self.page.overlay:
             self.page.overlay.append(self._overlay_panel)
         self._overlay_panel.width = target_w
-        self._arrow.icon = ft.Icons.ARROW_BACK
+        self._arrow.value = PIcons.ARROW_LEFT
         self.page.update()
 
     def _close_overlay(self) -> None:
         self._open                = False
         self._overlay_panel.width = 0
-        self._arrow.icon          = ft.Icons.ARROW_FORWARD
+        self._arrow.value         = PIcons.ARROW_RIGHT
         self.page.update()
 
     def update_counters(self, detected: int, candidates: int, processed: int,

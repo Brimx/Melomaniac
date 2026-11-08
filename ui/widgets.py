@@ -159,6 +159,12 @@ def app_text_field(
     _fbc = kwargs.pop("focused_border_color", ACCENT)
     _br = kwargs.pop("border", None)
     border = _br if _br is not None else input_border(_bc, _fbc, border_radius)
+
+    prefix_icon = kwargs.pop("prefix_icon", None)
+    if prefix_icon and len(prefix_icon) == 1 and ord(prefix_icon) >= 0xE000:
+        kwargs["prefix"] = app_icon(prefix_icon, size=14, color=TEXT_DIM)
+    elif prefix_icon:
+        kwargs["prefix_icon"] = prefix_icon
     return ft.TextField(
         label=label,
         hint_text=hint_text,
@@ -192,6 +198,19 @@ def dialog_action(
 ) -> ft.TextButton:
     """Acción de diálogo canónica. kind: primary/muted/danger."""
     color = {"primary": ACCENT, "muted": TEXT_MUTED, "danger": WARNING}.get(kind, ACCENT)
+    is_glyph = bool(icon and len(icon) == 1 and ord(icon) >= 0xE000)
+    if is_glyph:
+        content = ft.Row(
+            [app_icon(icon, size=16, color=color), ft.Text(text, color=color, font_family=FONT_HEADLINE)],
+            alignment=ft.MainAxisAlignment.CENTER,
+            tight=True,
+            spacing=6,
+        )
+        return ft.TextButton(
+            content=content,
+            on_click=on_click,
+            style=ft.ButtonStyle(color={ft.ControlState.DEFAULT: color}),
+        )
     return ft.TextButton(
         text,
         icon=icon,
@@ -213,9 +232,12 @@ def app_dialog(
 ) -> ft.AlertDialog:
     """AlertDialog canónico OLED: modal + BG_PANEL + radius 14."""
     if isinstance(title, str):
+        ic = icon or PIcons.INFO
+        is_glyph = bool(ic and len(ic) == 1 and ord(ic) >= 0xE000)
+        ico_ctrl = app_icon(ic, color=ACCENT, size=18) if is_glyph else ft.Icon(ic, color=ACCENT, size=18)
         title_ctrl: ft.Control = ft.Row(
             controls=[
-                ft.Icon(icon or ft.Icons.INFO_OUTLINED, color=ACCENT, size=18),
+                ico_ctrl,
                 ft.Text(title, size=14, color=TEXT_PRIMARY, font_family=FONT_HEADLINE_BOLD),
             ],
             spacing=8,
@@ -299,7 +321,7 @@ def notify(
 def status_banner(
     message: str,
     *,
-    icon: str = ft.Icons.INFO_OUTLINE,
+    icon: str = PIcons.INFO,
     kind: str = "warning",
     action: ft.Control | None = None,
 ) -> ft.Container:
@@ -543,17 +565,17 @@ def _status_icon(status: str) -> ft.Control:
         texto de 13-14px en filas de canciones.
     """
     icons = {
-        "found":                (ft.Icons.CHECK_CIRCLE_OUTLINE,  SUCCESS),
-        "not_found":            (ft.Icons.CANCEL_OUTLINED,        ERROR_COL),
-        "searching":            (ft.Icons.LOOP,                   ACCENT),
-        "transferred":          (ft.Icons.CLOUD_DONE_OUTLINED,    SUCCESS),
-        "error":                (ft.Icons.ERROR_OUTLINE,          ERROR_COL),
-        "pending":              (ft.Icons.RADIO_BUTTON_UNCHECKED, TEXT_DIM),
-        "local_pending":        (ft.Icons.FOLDER_OPEN_OUTLINED,   WARNING),
-        "revision_necesaria":   (ft.Icons.FLAG_OUTLINED,          WARNING),
+        "found":                (PIcons.CHECK_CIRCLE,     SUCCESS,   True),
+        "not_found":            (PIcons.X,                ERROR_COL, False),
+        "searching":            (PIcons.ARROWS_CLOCKWISE, ACCENT,    False),
+        "transferred":          (PIcons.CHECK_CIRCLE,     SUCCESS,   True),
+        "error":                (PIcons.WARNING_CIRCLE,   ERROR_COL, True),
+        "pending":              (PIcons.CLOCK,            TEXT_DIM,  False),
+        "local_pending":        (PIcons.FOLDER,           WARNING,   False),
+        "revision_necesaria":   (PIcons.WARNING,          WARNING,   True),
     }
-    ico, col = icons.get(status, (ft.Icons.RADIO_BUTTON_UNCHECKED, TEXT_DIM))
-    return ft.Icon(ico, color=col, size=15)
+    ico, col, fill = icons.get(status, (PIcons.CLOCK, TEXT_DIM, False))
+    return app_icon(ico, color=col, size=15, fill=fill)
 
 
 def open_external(page: ft.Page | None, url: str) -> None:

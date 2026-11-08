@@ -44,7 +44,7 @@ class PlayerQueuePanel(ft.Container):
         )
         self._clear_btn = _ghost_btn(
             "Limpiar",
-            ft.Icons.DELETE_SWEEP_OUTLINED,
+            PIcons.TRASH,
             lambda _e: self.player_bar.clear_queue(),
             height=30,
         )
