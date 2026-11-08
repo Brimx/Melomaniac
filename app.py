@@ -121,6 +121,9 @@ async def main(page: ft.Page) -> None:
         page.fonts = build_font_registry(FONTS_DIR)
         page.theme = ft.Theme(
             font_family=FONT_TEXT,
+            hover_color=ft.Colors.TRANSPARENT,
+            splash_color=ft.Colors.TRANSPARENT,
+            highlight_color=ft.Colors.TRANSPARENT,
             color_scheme=ft.ColorScheme(
                 primary=ACCENT, surface=BG_SURFACE,
                 on_primary=TEXT_PRIMARY, on_surface=TEXT_PRIMARY,

@@ -34,6 +34,10 @@ FONT_IBM = "IBM Plex Sans"
 FONT_MONO = "IBM Plex Mono"
 FONT_MONO_LIGHT = "IBM Plex Mono Light"
 
+FONT_PHOSPHOR = "Phosphor"
+FONT_PHOSPHOR_FILL = "Phosphor Fill"
+FONT_PHOSPHOR_DUOTONE = "Phosphor Duotone"
+
 # Compatibilidad con los nombres internos que ya importan algunos widgets.
 FONT = FONT_TEXT
 FONT_LIGHT = FONT_TEXT_LIGHT
@@ -164,6 +168,18 @@ def build_font_registry(fonts_dir: Path) -> dict[str, str]:
     mono_dir = fonts_dir / "IBM_Plex_Mono"
     registry[FONT_MONO] = str(mono_dir / "IBMPlexMono-Regular.ttf")
     registry[FONT_MONO_LIGHT] = str(mono_dir / "IBMPlexMono-Light.ttf")
+
+    phosphor_dir = fonts_dir / "Phosphor"
+    if phosphor_dir.is_dir():
+        reg_ttf = phosphor_dir / "Phosphor.ttf"
+        fill_ttf = phosphor_dir / "Phosphor-Fill.ttf"
+        duo_ttf = phosphor_dir / "Phosphor-Duotone.ttf"
+        if reg_ttf.is_file():
+            registry[FONT_PHOSPHOR] = str(reg_ttf)
+        if fill_ttf.is_file():
+            registry[FONT_PHOSPHOR_FILL] = str(fill_ttf)
+        if duo_ttf.is_file():
+            registry[FONT_PHOSPHOR_DUOTONE] = str(duo_ttf)
 
     cjk_path = _find_cjk_font(fonts_dir)
     if cjk_path is None:
