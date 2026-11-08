@@ -67,8 +67,10 @@ from engine.exporters import export_tracks, default_export_path
 from ui.song_row import SongRow, SkeletonRow, PreviewSkeletonRow, build_preview_row, ITEM_H
 from ui.fonts import (
     FONT_HEADLINE, FONT_HEADLINE_BOLD, FONT_HEADLINE_MEDIUM, FONT_TEXT,
+    FONT_PHOSPHOR, FONT_PHOSPHOR_FILL,
     brand_family, font_family_for, mono_family,
 )
+from ui.icons import PIcons, app_icon, app_icon_button
 from ui.telemetry import TelemetryDrawer
 from ui.transfer_report import TransferReportDialog
 from ui.widgets import (
@@ -573,10 +575,10 @@ class PlaylistManagerUI(DialogMixin):
         self._rail_w_expanded = RAIL_W_EXPANDED
         # metadata destinos (label, icon, selected_icon)
         self._rail_dests = [
-            ("Gestión", ft.Icons.TUNE_OUTLINED, ft.Icons.TUNE),
-            ("Biblioteca", ft.Icons.LIBRARY_MUSIC_OUTLINED, ft.Icons.LIBRARY_MUSIC),
-            ("Descargas", ft.Icons.DOWNLOAD_OUTLINED, ft.Icons.DOWNLOAD),
-            ("Config", ft.Icons.SETTINGS_OUTLINED, ft.Icons.SETTINGS),
+            ("Gestión", PIcons.ARROWS_LEFT_RIGHT, PIcons.ARROWS_LEFT_RIGHT),
+            ("Biblioteca", PIcons.BOOKS, PIcons.BOOKS),
+            ("Descargas", PIcons.DOWNLOAD_SIMPLE, PIcons.DOWNLOAD_SIMPLE),
+            ("Config", PIcons.GEAR, PIcons.GEAR),
         ]
         self._rail_label_boxes: list[ft.Container] = []
         self._rail_item_refs: list[ft.Container] = []
@@ -647,7 +649,7 @@ class PlaylistManagerUI(DialogMixin):
                 animate_opacity=ft.Animation(RAIL_ANIM_MS, ft.AnimationCurve.EASE_IN_OUT),
             )
             self._rail_label_boxes.append(label_box)
-            icon = ft.Icon(icon_sel if is_sel else icon_out, size=20, color=ACCENT if is_sel else TEXT_DIM)
+            icon = app_icon(icon_sel if is_sel else icon_out, size=20, color=ACCENT if is_sel else TEXT_DIM, fill=is_sel)
             # Row fija: el centrado/izquierda lo resuelve el Container padre.
             row = ft.Row(
                 [icon, label_box],
@@ -680,8 +682,6 @@ class PlaylistManagerUI(DialogMixin):
             expanded = not self._rail_collapsed
             try:
                 self._nav_rail.width = self._rail_w_expanded if expanded else self._rail_w_collapsed
-                # icon toggle
-                self._rail_toggle_btn.icon = ft.Icons.MENU_OPEN if expanded else ft.Icons.MENU
                 self._rail_toggle_btn.tooltip = "Colapsar" if expanded else "Expandir"
                 # header brand: caja que crece/decrece y se desvanece
                 if self._rail_header_brand_box is not None:
@@ -710,16 +710,15 @@ class PlaylistManagerUI(DialogMixin):
             except Exception:
                 pass
 
-        self._rail_toggle_btn = ft.IconButton(
-            icon=ft.Icons.MENU if self._rail_collapsed else ft.Icons.MENU_OPEN,
-            icon_size=18, icon_color=TEXT_MUTED,
+        self._rail_toggle_btn = app_icon_button(
+            PIcons.SIDEBAR_SIMPLE,
+            size=18,
+            icon_color=TEXT_MUTED,
+            hover_color_icon=TEXT_PRIMARY,
             tooltip="Expandir" if self._rail_collapsed else "Colapsar",
             on_click=_toggle_rail,
-            style=ft.ButtonStyle(
-                padding=4,
-                bgcolor={ft.ControlState.HOVERED: BG_HOVER},
-                shape=ft.RoundedRectangleBorder(radius=RADIUS_BUTTON),
-            ),
+            width=32,
+            height=32,
         )
         # header del rail con toggle — Stack Sans Notch Bold, tamaño similar a sidebar (14-16)
         self._rail_header_brand = ft.Text(
@@ -773,7 +772,9 @@ class PlaylistManagerUI(DialogMixin):
                         icon_ctrl = row.controls[0]
                         label_box = row.controls[1]
                         lbl_ctrl = label_box.content if isinstance(label_box, ft.Container) else None
-                        icon_ctrl.name = self._rail_dests[i][2] if is_sel else self._rail_dests[i][1]
+                        glyph = self._rail_dests[i][2] if is_sel else self._rail_dests[i][1]
+                        icon_ctrl.value = glyph
+                        icon_ctrl.font_family = FONT_PHOSPHOR_FILL if is_sel else FONT_PHOSPHOR
                         icon_ctrl.color = ACCENT if is_sel else TEXT_DIM
                         if lbl_ctrl:
                             lbl_ctrl.color = TEXT_PRIMARY if is_sel else TEXT_MUTED
@@ -1021,16 +1022,15 @@ class PlaylistManagerUI(DialogMixin):
     def _build_sidebar(self) -> None:
         s = self.state
 
-        self.btn_wizard = ft.IconButton(
-            icon=ft.Icons.SETTINGS_OUTLINED, icon_color=TEXT_DIM, icon_size=16,
+        self.btn_wizard = app_icon_button(
+            PIcons.GEAR, icon_color=TEXT_DIM, hover_color_icon=TEXT_PRIMARY, size=16,
             tooltip="Configurar credenciales", on_click=self._on_open_wizard,
-            style=ft.ButtonStyle(overlay_color={ft.ControlState.HOVERED: BG_HOVER},
-                                 shape=ft.RoundedRectangleBorder(radius=8)),
+            width=28, height=28,
         )
         logo = ft.Column([
             ft.Row([
                 ft.Container(
-                    content=ft.Icon(ft.Icons.HEADPHONES, color=ACCENT, size=22),
+                    content=app_icon(PIcons.MUSIC_NOTES, color=ACCENT, size=20, fill=True),
                     bgcolor=ACCENT_HALO, border_radius=8, padding=ft.Padding.all(6),
                 ),
                 ft.Column([
@@ -1103,12 +1103,11 @@ class PlaylistManagerUI(DialogMixin):
             self._dest_session_warn,
         ], spacing=8)
 
-        self._id_clear_btn = ft.IconButton(
-            icon=ft.Icons.CLEAR, icon_color=TEXT_DIM, icon_size=10,
-            width=24, height=24, padding=0,
+        self._id_clear_btn = app_icon_button(
+            PIcons.X, icon_color=TEXT_DIM, hover_color_icon=TEXT_PRIMARY, size=12,
+            width=24, height=24,
             tooltip="Limpiar ID", visible=False,
             on_click=self._on_clear_id,
-            style=ft.ButtonStyle(bgcolor={ft.ControlState.DEFAULT: ft.Colors.TRANSPARENT}),
         )
 
         def _on_id_change(_):

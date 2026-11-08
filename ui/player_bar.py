@@ -26,7 +26,11 @@ from core.models import Track
 from core.playback import PlayableTrack, PlayQueue, RepeatMode, build_playable_track
 from services.mpris_service import LoopStatus, MPRISService, PlaybackStatus
 from services import settings_store
-from ui.fonts import FONT_HEADLINE_BOLD, FONT_TEXT, font_family_for, mono_family
+from ui.fonts import (
+    FONT_HEADLINE_BOLD, FONT_TEXT, FONT_PHOSPHOR, FONT_PHOSPHOR_FILL,
+    font_family_for, mono_family
+)
+from ui.icons import PIcons, app_icon, app_icon_button
 from ui.tokens import (
     ACCENT, BG_HOVER, BG_LIST, BG_PANEL, BG_SURFACE, BORDER_MUTED, CHIP_BG,
     OVERLAY_08, PLAYER_BAR_H, PLAYER_PROGRESS_ANIM_MS, PLAYER_PROGRESS_H,
@@ -211,7 +215,7 @@ class PlayerBar(ft.Container):
 
     def _build_ui(self) -> None:
         # [thumb]
-        self._thumb_icon = ft.Icon(ft.Icons.MUSIC_NOTE, size=18, color=TEXT_DIM)
+        self._thumb_icon = app_icon(PIcons.DISC, size=18, color=TEXT_DIM)
         self._thumb_img = ft.Image(
             src="",
             width=PLAYER_THUMB_SIZE,
@@ -274,30 +278,39 @@ class PlayerBar(ft.Container):
         )
 
         # [⏮ ▶/⏸ ⏭]
-        self._prev_btn = ft.IconButton(
-            icon=ft.Icons.SKIP_PREVIOUS_ROUNDED,
+        self._prev_btn = app_icon_button(
+            glyph=PIcons.SKIP_BACK,
+            size=18,
             icon_color=TEXT_PRIMARY,
-            icon_size=20,
             tooltip="Anterior (o reiniciar si > 3 s)",
             on_click=self._on_prev_click,
+            width=32,
+            height=32,
         )
-        self._play_btn = ft.IconButton(
-            icon=ft.Icons.PLAY_CIRCLE_FILL,
+        self._play_btn = app_icon_button(
+            glyph=PIcons.PLAY,
+            fill=True,
+            size=28,
             icon_color=ACCENT,
-            icon_size=32,
+            hover_color_icon=ACCENT,
+            hover_scale=1.12,
             tooltip="Reproducir / Pausar",
             on_click=self._on_play_pause_click,
+            width=36,
+            height=36,
         )
-        self._next_btn = ft.IconButton(
-            icon=ft.Icons.SKIP_NEXT_ROUNDED,
+        self._next_btn = app_icon_button(
+            glyph=PIcons.SKIP_FORWARD,
+            size=18,
             icon_color=TEXT_PRIMARY,
-            icon_size=20,
             tooltip="Siguiente",
             on_click=self._on_next_click,
+            width=32,
+            height=32,
         )
         self._transport_row = ft.Row(
             controls=[self._prev_btn, self._play_btn, self._next_btn],
-            spacing=2,
+            spacing=4,
             vertical_alignment=ft.CrossAxisAlignment.CENTER,
         )
 
@@ -341,12 +354,14 @@ class PlayerBar(ft.Container):
         )
 
         # [volumen]
-        self._mute_btn = ft.IconButton(
-            icon=ft.Icons.VOLUME_UP_ROUNDED,
+        self._mute_btn = app_icon_button(
+            glyph=PIcons.SPEAKER_HIGH,
+            size=18,
             icon_color=TEXT_MUTED,
-            icon_size=18,
             tooltip="Silenciar / Activar sonido",
             on_click=self._on_mute_click,
+            width=28,
+            height=28,
         )
         self._vol_slider = ft.Slider(
             min=0.0,
@@ -365,19 +380,23 @@ class PlayerBar(ft.Container):
         )
 
         # [aleatorio] [repetir] [cola]
-        self._shuffle_btn = ft.IconButton(
-            icon=ft.Icons.SHUFFLE_ROUNDED,
+        self._shuffle_btn = app_icon_button(
+            glyph=PIcons.SHUFFLE,
+            size=18,
             icon_color=TEXT_MUTED,
-            icon_size=18,
             tooltip="Aleatorio",
             on_click=self._on_shuffle_click,
+            width=28,
+            height=28,
         )
-        self._repeat_btn = ft.IconButton(
-            icon=ft.Icons.REPEAT_ROUNDED,
+        self._repeat_btn = app_icon_button(
+            glyph=PIcons.REPEAT,
+            size=18,
             icon_color=TEXT_MUTED,
-            icon_size=18,
             tooltip="Repetir: desactivado",
             on_click=self._on_repeat_click,
+            width=28,
+            height=28,
         )
         self._queue_count_txt = app_text(
             "0",
@@ -390,12 +409,11 @@ class PlayerBar(ft.Container):
             border=ft.Border.all(0.8, BORDER_MUTED),
             border_radius=RADIUS_BUTTON,
             padding=ft.Padding.symmetric(horizontal=10, vertical=6),
-            ink=True,
             tooltip="Mostrar / ocultar cola de reproducción",
             on_click=lambda _e: self._on_toggle_queue() if self._on_toggle_queue else None,
             content=ft.Row(
                 controls=[
-                    ft.Icon(ft.Icons.QUEUE_MUSIC_ROUNDED, size=16, color=TEXT_PRIMARY),
+                    app_icon(PIcons.QUEUE, size=16, color=TEXT_PRIMARY),
                     self._queue_count_txt,
                 ],
                 spacing=6,
@@ -1043,14 +1061,14 @@ class PlayerBar(ft.Container):
 
     def _sync_volume_icon(self) -> None:
         if self._muted or self._volume <= 0.0:
-            self._mute_btn.icon = ft.Icons.VOLUME_OFF_ROUNDED
-            self._mute_btn.icon_color = ACCENT if self._muted else TEXT_MUTED
+            self._mute_btn.icon_text.value = PIcons.SPEAKER_SLASH
+            self._mute_btn.icon_text.color = ACCENT if self._muted else TEXT_MUTED
         elif self._volume < 0.5:
-            self._mute_btn.icon = ft.Icons.VOLUME_DOWN_ROUNDED
-            self._mute_btn.icon_color = TEXT_MUTED
+            self._mute_btn.icon_text.value = PIcons.SPEAKER_LOW
+            self._mute_btn.icon_text.color = TEXT_MUTED
         else:
-            self._mute_btn.icon = ft.Icons.VOLUME_UP_ROUNDED
-            self._mute_btn.icon_color = TEXT_MUTED
+            self._mute_btn.icon_text.value = PIcons.SPEAKER_HIGH
+            self._mute_btn.icon_text.color = TEXT_MUTED
         try:
             self._mute_btn.update()
         except Exception:
@@ -1089,29 +1107,37 @@ class PlayerBar(ft.Container):
             self._badge_box.tooltip = "Formato real del archivo"
             self._badge_box.visible = False
 
-        self._play_btn.icon = (
-            ft.Icons.PAUSE_CIRCLE_FILLED if playing else ft.Icons.PLAY_CIRCLE_FILL
-        )
+        self._play_btn.icon_text.value = PIcons.PAUSE if playing else PIcons.PLAY
+        self._play_btn.icon_text.font_family = FONT_PHOSPHOR_FILL
         self._play_btn.disabled = not has_queue
+        self._play_btn.opacity = 0.4 if not has_queue else 1.0
         self._prev_btn.disabled = not has_queue
+        self._prev_btn.opacity = 0.4 if not has_queue else 1.0
         self._next_btn.disabled = not has_queue
+        self._next_btn.opacity = 0.4 if not has_queue else 1.0
 
-        self._shuffle_btn.icon_color = ACCENT if self.queue.shuffle else TEXT_MUTED
+        self._shuffle_btn.icon_text.color = ACCENT if self.queue.shuffle else TEXT_MUTED
+        self._shuffle_btn.icon_text.font_family = (
+            FONT_PHOSPHOR_FILL if self.queue.shuffle else FONT_PHOSPHOR
+        )
         self._shuffle_btn.tooltip = (
             "Aleatorio: activado" if self.queue.shuffle else "Aleatorio: desactivado"
         )
 
         if self.queue.repeat == RepeatMode.ONE:
-            self._repeat_btn.icon = ft.Icons.REPEAT_ONE_ROUNDED
-            self._repeat_btn.icon_color = ACCENT
+            self._repeat_btn.icon_text.value = PIcons.REPEAT_ONCE
+            self._repeat_btn.icon_text.font_family = FONT_PHOSPHOR_FILL
+            self._repeat_btn.icon_text.color = ACCENT
             self._repeat_btn.tooltip = "Repetir: esta canción"
         elif self.queue.repeat == RepeatMode.ALL:
-            self._repeat_btn.icon = ft.Icons.REPEAT_ROUNDED
-            self._repeat_btn.icon_color = ACCENT
+            self._repeat_btn.icon_text.value = PIcons.REPEAT
+            self._repeat_btn.icon_text.font_family = FONT_PHOSPHOR_FILL
+            self._repeat_btn.icon_text.color = ACCENT
             self._repeat_btn.tooltip = "Repetir: toda la cola"
         else:
-            self._repeat_btn.icon = ft.Icons.REPEAT_ROUNDED
-            self._repeat_btn.icon_color = TEXT_MUTED
+            self._repeat_btn.icon_text.value = PIcons.REPEAT
+            self._repeat_btn.icon_text.font_family = FONT_PHOSPHOR
+            self._repeat_btn.icon_text.color = TEXT_MUTED
             self._repeat_btn.tooltip = "Repetir: desactivado"
 
         self._queue_count_txt.value = str(len(self.queue.order))

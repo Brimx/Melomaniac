@@ -14,6 +14,7 @@ import flet as ft
 
 from core.playback import PlayableTrack
 from ui.fonts import FONT_HEADLINE_BOLD, FONT_TEXT, font_family_for, mono_family
+from ui.icons import PIcons, app_icon, app_icon_button
 from ui.song_row import ITEM_H
 from ui.tokens import (
     ACCENT, ACCENT_HALO, BG_HOVER, BG_PANEL, BG_SURFACE, BORDER_MUTED, CHIP_BG,
@@ -47,12 +48,14 @@ class PlayerQueuePanel(ft.Container):
             lambda _e: self.player_bar.clear_queue(),
             height=30,
         )
-        self._close_btn = ft.IconButton(
-            icon=ft.Icons.CLOSE_ROUNDED,
-            icon_size=16,
+        self._close_btn = app_icon_button(
+            PIcons.X,
+            size=16,
             icon_color=TEXT_MUTED,
             tooltip="Cerrar cola",
             on_click=lambda _e: self.set_open(False),
+            width=28,
+            height=28,
         )
 
         self._list_view = ft.ReorderableListView(
@@ -69,7 +72,7 @@ class PlayerQueuePanel(ft.Container):
             alignment=ft.Alignment.CENTER,
             content=ft.Column(
                 controls=[
-                    ft.Icon(ft.Icons.QUEUE_MUSIC_OUTLINED, size=40, color=TEXT_DIM),
+                    app_icon(PIcons.QUEUE, size=40, color=TEXT_DIM, duotone=True),
                     app_text(
                         "Cola vacía",
                         size=13,
@@ -163,21 +166,21 @@ class PlayerQueuePanel(ft.Container):
                 width=24,
                 height=ITEM_H - 12,
                 alignment=ft.Alignment.CENTER,
-                content=ft.Icon(ft.Icons.DRAG_INDICATOR, size=16, color=TEXT_DIM),
+                content=app_icon(PIcons.DOTS_SIX_VERTICAL, size=16, color=TEXT_DIM),
             ),
         )
 
-        lead_icon = ft.Icon(
-            ft.Icons.GRAPHIC_EQ_ROUNDED if is_current else ft.Icons.PLAY_ARROW_ROUNDED,
-            size=16,
+        lead_icon = app_icon(
+            PIcons.WAVEFORM if is_current else PIcons.PLAY,
+            size=14,
             color=ACCENT if is_current else TEXT_MUTED,
+            fill=is_current,
         )
         lead_btn = ft.Container(
             width=26,
             height=26,
             border_radius=RADIUS_BUTTON,
             alignment=ft.Alignment.CENTER,
-            ink=True,
             tooltip="Reproducir esta pista",
             on_click=lambda _e, pos=queue_pos: self.player_bar.select_queue_index(pos),
             content=lead_icon,
@@ -225,17 +228,15 @@ class PlayerQueuePanel(ft.Container):
             ),
         )
 
-        remove_btn = ft.IconButton(
-            icon=ft.Icons.CLOSE_ROUNDED,
-            icon_size=14,
+        remove_btn = app_icon_button(
+            PIcons.X,
+            size=14,
             icon_color=TEXT_DIM,
+            hover_color_icon=ACCENT,
             tooltip="Quitar de la cola",
             on_click=lambda _e, pos=queue_pos: self.player_bar.remove_queue_index(pos),
-            style=ft.ButtonStyle(
-                padding=4,
-                bgcolor={ft.ControlState.HOVERED: BG_HOVER},
-                shape=ft.RoundedRectangleBorder(radius=RADIUS_BUTTON),
-            ),
+            width=24,
+            height=24,
         )
 
         return ft.Container(

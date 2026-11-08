@@ -160,6 +160,7 @@ def app_icon_button(
     padding: Optional[ft.Padding] = None,
     bgcolor: Optional[str] = None,
     border_radius: Optional[float | ft.BorderRadius] = None,
+    visible: bool = True,
     on_hover: Optional[Callable] = None,
 ) -> ft.Container:
     """Crea un botón interactivo sin halos Material, con luminancia y micro-escala.
@@ -211,6 +212,7 @@ def app_icon_button(
         bgcolor=bgcolor,
         border_radius=border_radius,
         tooltip=tooltip,
+        visible=visible,
         scale=1.0,
         animate_scale=ft.Animation(MOTION_HOVER_MS, ft.AnimationCurve.EASE_OUT) if hover_scale != 1.0 else None,
         on_click=on_click,
