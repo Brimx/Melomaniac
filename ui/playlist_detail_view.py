@@ -101,6 +101,7 @@ class PlaylistDetailView(ft.Container):
         # list area — skeletons dinámicos según altura disponible (paridad Gestión)
         self._skeletons: list[LibrarySkeletonRow] = []
         self._skeleton_tasks: list[asyncio.Task] = []
+        self._press_tasks: set[asyncio.Task] = set()
         self._skeleton_list = ft.ListView(expand=True, spacing=0)
         self._skeleton_wrap = ft.Container(content=self._skeleton_list, expand=True, visible=True)
         self._sync_skeleton_count()
@@ -514,26 +515,35 @@ class PlaylistDetailView(ft.Container):
                     row.scale = 0.99
                     row.opacity = 0.85
                     row.update()
-                except Exception:
-                    pass
-                try:
-                    await asyncio.sleep(0.08)
-                except asyncio.CancelledError:
-                    return
-                try:
-                    row.scale = 1.0
-                    row.opacity = 1.0
-                    row.update()
-                except Exception:
-                    pass
+                    try:
+                        await asyncio.sleep(0.08)
+                    except asyncio.CancelledError:
+                        raise
+                finally:
+                    # El estado visual se restaura siempre, también si la tarea
+                    # se cancela al desmontar la vista: la fila nunca queda
+                    # encogida ni translúcida.
+                    try:
+                        row.scale = 1.0
+                        row.opacity = 1.0
+                        row.update()
+                    except Exception:
+                        pass
                 if track.source_path and os.path.isfile(track.source_path):
                     self._play_single_track(track, index)
                 else:
                     self._download_single_track(track, action_icon)
 
             try:
-                asyncio.create_task(_press_and_act())
+                task = asyncio.create_task(_press_and_act())
+                self._press_tasks.add(task)
+                task.add_done_callback(self._press_tasks.discard)
             except Exception:
+                try:
+                    row.scale = 1.0
+                    row.opacity = 1.0
+                except Exception:
+                    pass
                 if track.source_path and os.path.isfile(track.source_path):
                     self._play_single_track(track, index)
                 else:
