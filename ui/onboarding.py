@@ -22,6 +22,7 @@ import flet as ft
 from core.config import AUDIO_FORMATS
 from services import settings_store
 from ui.fonts import FONT_HEADLINE, FONT_TEXT, mono_family
+from ui.icons import PIcons, app_icon
 from ui.onboarding_bg import OnboardingBackground
 from ui.tokens import (
     ACCENT, BG_DEEP, BG_SURFACE, BORDER_MUTED, MOTION_ENTER_MS, MOTION_PANEL_MS,
@@ -41,7 +42,7 @@ def _feature(icon: str, title: str, text: str) -> ft.Control:
         ft.Container(
             width=36, height=36, border_radius=RADIUS_INPUT,
             border=ft.Border.all(0.8, BORDER_MUTED), alignment=ft.Alignment.CENTER,
-            content=ft.Icon(icon, size=18, color=ACCENT),
+            content=app_icon(icon, size=18, color=ACCENT),
         ),
         ft.Column(controls=[
             app_text(title, size=13, color=TEXT_PRIMARY, font_family=FONT_HEADLINE),
@@ -54,35 +55,35 @@ def _feature(icon: str, title: str, text: str) -> ft.Control:
 
 def _step_welcome(view: "OnboardingView") -> list[ft.Control]:
     return [
-        _feature(ft.Icons.SWAP_HORIZ, "Muévete entre plataformas",
+        _feature(PIcons.ARROWS_LEFT_RIGHT, "Muévete entre plataformas",
                  "Spotify, YouTube Music y Apple Music en un mismo lugar."),
-        _feature(ft.Icons.FOLDER_OPEN, "Tu música local también cuenta",
+        _feature(PIcons.FOLDER_OPEN, "Tu música local también cuenta",
                  "Carpetas con audio, descargas y listas importadas."),
-        _feature(ft.Icons.TUNE, "Tú decides cómo se ordena",
+        _feature(PIcons.SLIDERS_HORIZONTAL, "Tú decides cómo se ordena",
                  "Organiza, divide y revisa antes de transferir nada."),
     ]
 
 
 def _step_gestion(view: "OnboardingView") -> list[ft.Control]:
     return [
-        _feature(ft.Icons.LINK, "Carga una playlist",
+        _feature(PIcons.LINK, "Carga una playlist",
                  "Por URL o ID de cualquier plataforma, o desde un archivo TXT, CSV, M3U, PLS, XSPF…"),
-        _feature(ft.Icons.SORT, "Organiza y divide",
+        _feature(PIcons.SORT_ASCENDING, "Organiza y divide",
                  "Ordena por artista, álbum o duración; reparte en listas por género, año o artista."),
-        _feature(ft.Icons.COMPARE_ARROWS, "Transfiere con revisión",
+        _feature(PIcons.ARROWS_LEFT_RIGHT, "Transfiere con revisión",
                  "Las coincidencias dudosas se marcan para que las confirmes y quedan en un reporte."),
-        _feature(ft.Icons.FILE_DOWNLOAD_OUTLINED, "Exporta",
+        _feature(PIcons.DOWNLOAD_SIMPLE, "Exporta",
                  "Guarda la lista en el formato que necesites."),
     ]
 
 
 def _step_library(view: "OnboardingView") -> list[ft.Control]:
     return [
-        _feature(ft.Icons.LIBRARY_MUSIC_OUTLINED, "Biblioteca",
+        _feature(PIcons.BOOKS, "Biblioteca",
                  "Sincroniza tus playlists, añade carpetas locales y reprodúcelas con el reproductor integrado."),
-        _feature(ft.Icons.DOWNLOAD_OUTLINED, "Descargas",
+        _feature(PIcons.DOWNLOAD_SIMPLE, "Descargas",
                  "Cola con yt-dlp. No se baja audio de Apple Music ni Spotify: se usa la coincidencia en YouTube."),
-        _feature(ft.Icons.IMAGE_OUTLINED, "Portadas y metadatos",
+        _feature(PIcons.IMAGE, "Portadas y metadatos",
                  "Se resuelven portadas por álbum y se escriben etiquetas en los archivos."),
     ]
 
@@ -103,9 +104,9 @@ def _step_prefs(view: "OnboardingView") -> list[ft.Control]:
         max_lines=1, overflow=ft.TextOverflow.ELLIPSIS, expand=True,
     )
     folder = ft.Row(controls=[
-        ft.Icon(ft.Icons.FOLDER_OUTLINED, size=18, color=TEXT_MUTED),
+        app_icon(PIcons.FOLDER, size=18, color=TEXT_MUTED),
         view.dir_text,
-        _ghost_btn("Cambiar", ft.Icons.EDIT_OUTLINED, view.pick_dir, width=120, height=36),
+        _ghost_btn("Cambiar", PIcons.PENCIL_SIMPLE, view.pick_dir, width=120, height=36),
     ], spacing=8, vertical_alignment=ft.CrossAxisAlignment.CENTER)
     return [
         app_text("Carpeta donde se guardan las descargas", size=11, color=TEXT_MUTED,
@@ -169,8 +170,8 @@ def _step_system(view: "OnboardingView") -> list[ft.Control]:
         update_desc = "Consulta nuevas versiones y novedades desde la sección Configuración."
 
     features = [
-        _feature(ft.Icons.DESKTOP_WINDOWS_OUTLINED, launcher_title, launcher_desc),
-        _feature(ft.Icons.SYSTEM_UPDATE_ALT, update_title, update_desc),
+        _feature(PIcons.DESKTOP, launcher_title, launcher_desc),
+        _feature(PIcons.ARROWS_CLOCKWISE, update_title, update_desc),
     ]
 
     action_slot = ft.Container()
@@ -180,7 +181,7 @@ def _step_system(view: "OnboardingView") -> list[ft.Control]:
         if env.is_windows_installer:
             action_slot.content = ft.Row(
                 controls=[
-                    ft.Icon(ft.Icons.CHECK_CIRCLE, color=SUCCESS, size=18),
+                    app_icon(PIcons.CHECK_CIRCLE, color=SUCCESS, size=18, fill=True),
                     app_text("Gestionado por el instalador de Windows (Menú Inicio y Escritorio)",
                              size=11, color=TEXT_MUTED, font_family=FONT_TEXT),
                 ],
@@ -190,10 +191,10 @@ def _step_system(view: "OnboardingView") -> list[ft.Control]:
         elif st.installed and st.is_current:
             action_slot.content = ft.Row(
                 controls=[
-                    ft.Icon(ft.Icons.CHECK_CIRCLE, color=SUCCESS, size=18),
+                    app_icon(PIcons.CHECK_CIRCLE, color=SUCCESS, size=18, fill=True),
                     app_text("Acceso directo instalado y sincronizado", size=11, color=SUCCESS, font_family=FONT_TEXT),
                     ft.Container(width=6),
-                    _ghost_btn("Reinstalar", ft.Icons.REFRESH, _on_click_install, width=120, height=36),
+                    _ghost_btn("Reinstalar", PIcons.ARROWS_CLOCKWISE, _on_click_install, width=120, height=36),
                 ],
                 spacing=8,
                 vertical_alignment=ft.CrossAxisAlignment.CENTER,
@@ -201,7 +202,7 @@ def _step_system(view: "OnboardingView") -> list[ft.Control]:
         elif st.installed and not st.is_current:
             action_slot.content = ft.Row(
                 controls=[
-                    _primary_btn("Actualizar acceso directo", ft.Icons.SYNC, _on_click_install, width=220, height=38),
+                    _primary_btn("Actualizar acceso directo", PIcons.ARROWS_CLOCKWISE, _on_click_install, width=220, height=38),
                     app_text("Apunta a una ruta anterior", size=11, color=WARNING, font_family=FONT_TEXT),
                 ],
                 spacing=8,
@@ -210,7 +211,7 @@ def _step_system(view: "OnboardingView") -> list[ft.Control]:
         else:
             action_slot.content = ft.Row(
                 controls=[
-                    _primary_btn("Crear acceso directo", ft.Icons.ADD_TO_HOME_SCREEN, _on_click_install, width=200, height=38),
+                    _primary_btn("Crear acceso directo", PIcons.PLUS, _on_click_install, width=200, height=38),
                     app_text("Opcional: puedes crearlo o cambiarlo en Config", size=11, color=TEXT_MUTED, font_family=FONT_TEXT),
                 ],
                 spacing=8,
@@ -238,15 +239,15 @@ def _step_system(view: "OnboardingView") -> list[ft.Control]:
 
 def _step_connect(view: "OnboardingView") -> list[ft.Control]:
     return [
-        _feature(ft.Icons.LOCK_OUTLINE, "Es opcional",
+        _feature(PIcons.LOCK, "Es opcional",
                  "Sin credenciales puedes usar lo local y cargar playlists públicas."),
-        _feature(ft.Icons.PUBLIC, "Sesión del navegador",
+        _feature(PIcons.GLOBE, "Sesión del navegador",
                  "Melomaniac lee primero la sesión de tu navegador, en memoria y sin guardarla."),
-        _feature(ft.Icons.KEY_OUTLINED, "Credenciales manuales",
+        _feature(PIcons.KEY, "Credenciales manuales",
                  "Si hace falta, pégalas en el asistente. Se guardan solo en tu equipo, en config/."),
         ft.Container(height=4),
         ft.Row(controls=[
-            _primary_btn("Configurar plataformas", ft.Icons.SETTINGS_OUTLINED,
+            _primary_btn("Configurar plataformas", PIcons.GEAR,
                          view.connect, width=240, height=40),
         ]),
     ]
@@ -254,9 +255,9 @@ def _step_connect(view: "OnboardingView") -> list[ft.Control]:
 
 def _step_done(view: "OnboardingView") -> list[ft.Control]:
     return [
-        _feature(ft.Icons.CHECK_CIRCLE_OUTLINE, "Todo listo",
+        _feature(PIcons.CHECK_CIRCLE, "Todo listo",
                  "Empieza cargando una playlist en Gestión o añadiendo una carpeta en Biblioteca."),
-        _feature(ft.Icons.REPLAY, "Volver a verla",
+        _feature(PIcons.ARROWS_CLOCKWISE, "Volver a verla",
                  "Esta guía está en Config > Ver bienvenida."),
     ]
 
@@ -272,20 +273,20 @@ class Step:
 
 # Única lista de pasos. Añadir aquí al integrar funciones nuevas.
 ONBOARDING_STEPS: tuple[Step, ...] = (
-    Step("welcome", ft.Icons.WAVING_HAND_OUTLINED, "Bienvenido a Melomaniac",
+    Step("welcome", PIcons.HAND_WAVING, "Bienvenido a Melomaniac",
          "Gestiona, transfiere y reproduce tu música sin depender de una sola plataforma.",
          _step_welcome),
-    Step("gestion", ft.Icons.QUEUE_MUSIC, "Gestión",
+    Step("gestion", PIcons.ARROWS_LEFT_RIGHT, "Gestión",
          "El espacio de trabajo para una playlist.", _step_gestion),
-    Step("library", ft.Icons.LIBRARY_MUSIC_OUTLINED, "Biblioteca y Descargas",
+    Step("library", PIcons.BOOKS, "Biblioteca y Descargas",
          "Lo tuyo, sincronizado y en disco.", _step_library),
-    Step("prefs", ft.Icons.TUNE, "Preferencias",
+    Step("prefs", PIcons.SLIDERS_HORIZONTAL, "Preferencias",
          "Tres ajustes para empezar cómodo.", _step_prefs),
-    Step("system", ft.Icons.DESKTOP_WINDOWS_OUTLINED, "Sistema y actualizaciones",
+    Step("system", PIcons.DESKTOP, "Sistema y actualizaciones",
          "Acceso directo y ciclo de vida de la aplicación.", _step_system),
-    Step("connect", ft.Icons.LINK, "Conectar plataformas",
+    Step("connect", PIcons.LINK, "Conectar plataformas",
          "Para transferir y sincronizar necesitas una sesión.", _step_connect),
-    Step("done", ft.Icons.ROCKET_LAUNCH_OUTLINED, "Listo",
+    Step("done", PIcons.ROCKET_LAUNCH, "Listo",
          "Ya puedes empezar.", _step_done),
 )
 
@@ -323,7 +324,7 @@ class OnboardingView(ft.Container):
         self._counter = app_text("", size=11, color=TEXT_MUTED, font_family=mono_family("light"))
         self._title = app_text("", size=22, color=TEXT_PRIMARY, font_family=FONT_HEADLINE)
         self._subtitle = app_text("", size=12, color=TEXT_MUTED, font_family=FONT_TEXT)
-        self._icon = ft.Icon(ft.Icons.CIRCLE, size=26, color=ACCENT)
+        self._icon = app_icon(PIcons.CIRCLE, size=26, color=ACCENT)
         self._items = ft.Column(spacing=14)
         self._body = ft.Container(
             expand=True, opacity=1, offset=ft.Offset(0, 0),
@@ -337,8 +338,8 @@ class OnboardingView(ft.Container):
                 self._items,
             ], spacing=6),
         )
-        self._skip_btn = _ghost_btn("Omitir", ft.Icons.SKIP_NEXT, self._on_skip, width=120, height=40)
-        self._back_btn = _ghost_btn("Anterior", ft.Icons.ARROW_BACK, self._on_back, width=130, height=40)
+        self._skip_btn = _ghost_btn("Omitir", PIcons.SKIP_FORWARD, self._on_skip, width=120, height=40)
+        self._back_btn = _ghost_btn("Anterior", PIcons.ARROW_LEFT, self._on_back, width=130, height=40)
         self._next_slot = ft.Container()
 
         card = ft.Container(
@@ -416,7 +417,7 @@ class OnboardingView(ft.Container):
     def _render(self, initial: bool = False) -> None:
         step = ONBOARDING_STEPS[self._index]
         last = self._index == len(ONBOARDING_STEPS) - 1
-        self._icon.icon = step.icon
+        self._icon.value = step.icon
         self._title.value = step.title
         self._subtitle.value = step.subtitle
         self._counter.value = f"{self._index + 1}/{len(ONBOARDING_STEPS)}"
@@ -428,8 +429,8 @@ class OnboardingView(ft.Container):
         self._back_btn.visible = self._index > 0
         self._skip_btn.visible = not last
         self._next_slot.content = (
-            _primary_btn("Empezar", ft.Icons.CHECK, self._on_finish, width=150, height=40) if last
-            else _primary_btn("Siguiente", ft.Icons.ARROW_FORWARD, self._on_next, width=150, height=40)
+            _primary_btn("Empezar", PIcons.CHECK, self._on_finish, width=150, height=40) if last
+            else _primary_btn("Siguiente", PIcons.ARROW_RIGHT, self._on_next, width=150, height=40)
         )
         if not initial:
             self.update()

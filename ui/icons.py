@@ -67,12 +67,26 @@ class PIcons:
     TRASH = "\ue4a6"  # trash (eliminar)
     PENCIL_SIMPLE = "\ue3b4"  # pencil-simple (editar)
     ARROWS_CLOCKWISE = "\ue094"  # arrows-clockwise (refrescar / sync)
+    ARROWS_COUNTER_CLOCKWISE = "\ue096"  # arrows-counter-clockwise
     FLOPPY_DISK = "\ue248"  # floppy-disk (guardar)
     EXPORT = "\ueaf0"  # export (exportar)
     SLIDERS_HORIZONTAL = "\ue434"  # sliders-horizontal (organizar / filtros)
+    FUNNEL = "\ue266"  # funnel (filtrar)
+    SORT_ASCENDING = "\ue444"  # sort-ascending
+    SORT_DESCENDING = "\ue446"  # sort-descending
+    SPLIT_HORIZONTAL = "\ue872"  # split-horizontal
+    SPLIT_VERTICAL = "\ue876"  # split-vertical
+    SWAP = "\ue83c"  # swap
+    GIT_BRANCH = "\ue278"  # git-branch (divisiones)
+    COLUMNS = "\ue546"  # columns (doble vista)
     LIST = "\ue2f0"  # list
+    LIST_BULLETS = "\ue2f2"  # list-bullets
+    LIST_DASHES = "\ue2f4"  # list-dashes
     DOTS_SIX_VERTICAL = "\ueae2"  # dots-six-vertical (drag handle)
     DOTS_THREE_VERTICAL = "\ue208"  # dots-three-vertical (menú contextual)
+    WRENCH = "\ue5d4"  # wrench (herramientas / construcción)
+    LINK = "\ue2e2"  # link
+    IMAGE = "\ue2ca"  # image
 
     # Archivos y Carpetas
     FOLDER = "\ue24a"  # folder
@@ -86,6 +100,7 @@ class PIcons:
     WARNING_CIRCLE = "\ue4e2"  # warning-circle
     INFO = "\ue2ce"  # info
     QUESTION = "\ue3e8"  # question
+    CIRCLE = "\ue18a"  # circle
 
     # Seguridad y Accesos
     EYE = "\ue220"  # eye
@@ -97,6 +112,12 @@ class PIcons:
     APPLE_LOGO = "\ue516"  # apple-logo
     SPOTIFY_LOGO = "\ue66e"  # spotify-logo
     YOUTUBE_LOGO = "\ue4fc"  # youtube-logo
+
+    # Sistema y Entorno
+    DESKTOP = "\ue560"  # desktop
+    GLOBE = "\ue288"  # globe
+    ROCKET_LAUNCH = "\ue3fe"  # rocket-launch
+    HAND_WAVING = "\ue580"  # hand-waving
 
     # Otros
     HEART = "\ue2a8"  # heart
