@@ -948,18 +948,28 @@ class PlaylistManagerUI(DialogMixin):
         # ──────────────────────────────────────────────────────────────
         # ENSAMBLAJE DE LAYOUT RAÍZ
         # ──────────────────────────────────────────────────────────────
-        # Layout principal: rail flotante + módulo + cola lateral, barra de reproducción abajo
+        # Layout principal: rail flotante + módulo, barra de reproducción abajo.
+        # La cola es overlay posicionado (derecha) sobre el área de módulos:
+        # abrirla no cambia el ancho de la vista activa, así que listas y
+        # grilla no se redimensionan durante su animación.
         self.root = ft.Container(
             content=ft.Column(
                 controls=[
-                    ft.Row(
+                    ft.Stack(
                         controls=[
-                            self._nav_rail,
-                            self._module_stack,
+                            ft.Row(
+                                controls=[
+                                    self._nav_rail,
+                                    self._module_stack,
+                                ],
+                                spacing=0, expand=True,
+                                vertical_alignment=ft.CrossAxisAlignment.STRETCH,
+                            ),
                             self.player_queue,
                         ],
-                        spacing=0, expand=True,
-                        vertical_alignment=ft.CrossAxisAlignment.STRETCH,
+                        expand=True,
+                        fit=ft.StackFit.EXPAND,
+                        clip_behavior=ft.ClipBehavior.HARD_EDGE,
                     ),
                     self.player_bar,
                 ],
