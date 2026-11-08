@@ -215,9 +215,15 @@ def sanitize_filename(name: str, fallback: str = "audio") -> str:
 
 
 def _target_stem(track: Any) -> str:
-    """Nombre base ``artista - título`` para el archivo final."""
+    """Nombre base ``artista - título`` para el archivo final.
+
+    Si la pista no trae ``artist`` se usa ``album_artist``; el nombre del
+    archivo y el tag deben coincidir.
+    """
     title = sanitize_filename(getattr(track, "name", ""), "")
-    artist = sanitize_filename(getattr(track, "artist", ""), "")
+    artist = sanitize_filename(
+        str(getattr(track, "artist", "") or getattr(track, "album_artist", "") or ""), ""
+    )
     if artist and title:
         return f"{artist} - {title}"
     return title or artist or "audio"
@@ -658,6 +664,35 @@ def download_audio(
     return result
 
 
+def _artifact_artist_from_filename(audio_path: Path) -> str:
+    """Deriva un artista plausible de ``"Artista - Título.ext"``.
+
+    Solo se usa cuando el ``Track`` no trae artista ni ``album_artist``. Si
+    el nombre no sigue el patrón, devuelve cadena vacía y el tag del vídeo
+    se deja como esté en vez de escribirse vacío.
+    """
+    stem = audio_path.stem.strip()
+    if " - " not in stem:
+        return ""
+    return stem.split(" - ", 1)[0].strip()
+
+
+def _resolve_artist(track: Any, audio_path: Path) -> tuple[str, str]:
+    """Devuelve ``(artist, album_artist)`` con el mejor dato disponible.
+
+    Prioriza los campos del ``Track``, cae al nombre del archivo y por
+    último deja vacío para que ``write_audio_metadata`` no sobrescriba un
+    tag existente con una cadena vacía.
+    """
+    artist = str(getattr(track, "artist", "") or "").strip()
+    album_artist = str(getattr(track, "album_artist", "") or "").strip()
+    if not artist:
+        artist = album_artist or _artifact_artist_from_filename(audio_path)
+    if not album_artist:
+        album_artist = artist
+    return artist, album_artist
+
+
 def _apply_playlist_metadata(track: Any, audio_path: Path, artwork: bytes | None) -> bool:
     """Corrige los tags con los datos reales de la playlist.
 
@@ -671,11 +706,12 @@ def _apply_playlist_metadata(track: Any, audio_path: Path, artwork: bytes | None
         from engine.audio_metadata import write_audio_metadata
     except ImportError:
         return False
+    artist, album_artist = _resolve_artist(track, audio_path)
     metadata = {
         "title": str(getattr(track, "name", "") or ""),
-        "artist": str(getattr(track, "artist", "") or ""),
+        "artist": artist,
         "album": str(getattr(track, "album", "") or ""),
-        "album_artist": str(getattr(track, "album_artist", "") or ""),
+        "album_artist": album_artist,
         "track_number": getattr(track, "track_number", "") or "",
         "date": str(getattr(track, "release_date", "") or ""),
         "isrc": str(getattr(track, "isrc", "") or ""),
