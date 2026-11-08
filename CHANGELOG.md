@@ -1,5 +1,9 @@
 # Changelog
 
+## 4.9.0 — en curso
+
+- **Rendimiento de animaciones de paneles:** el panel de cola de reproducción pasa a ser un overlay deslizante por transformación (`offset`/opacidad) en vez de animar su ancho dentro del `Row`, así que abrirlo ya no redimensiona las listas ni la grilla de Biblioteca. El colapso del rail recorta las etiquetas por ancho/opacidad con clip, sin invertir propiedades no animadas (`visible`, `alignment`, `padding`) en el mismo parche, que era el origen de los saltos bruscos. Las tarjetas de Biblioteca conservan su tamaño fijo dentro de la celda de grilla, así que al redimensionar la vista solo cambia el ritmo de celdas.
+
 ## 4.8.2 — 2026-11-06 · Bienvenida guiada, bundle ZIP y empaquetado standalone
 
 - **Bienvenida de primera ejecución:** overlay a pantalla completa (`ui/onboarding.py`, pasos en `ONBOARDING_STEPS`, fondo en `ui/onboarding_bg.py`) con siete pasos (bienvenida, Gestión, Biblioteca/Descargas, preferencias, sistema y actualizaciones, conectar plataformas, listo). Al finalizar guarda `onboarding_done` en `config/settings.json`; se reabre desde Config.
