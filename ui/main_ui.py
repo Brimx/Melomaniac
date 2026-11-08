@@ -94,7 +94,7 @@ from ui.tokens import (
     RAIL_HEADER_H, RAIL_LABEL_W, RAIL_BRAND_W,
     RAIL_VERSION_H, RAIL_VERSION_H_COLLAPSED,
     RAIL_ANIM_MS, RAIL_ITEM_ANIM_MS,
-    MOTION_PANEL_MS,
+    MOTION_PANEL_MS, MOTION_HOVER_MS,
 )
 
 # Por encima de este número conviene un único update del ListView en vez de
@@ -624,14 +624,14 @@ class PlaylistManagerUI(DialogMixin):
         self._rail_version_text: ft.Text | None = None
         self._rail_version_box: ft.Container | None = None
 
-        # builder de items (Container con animate + ink) — Headline para labels, Notch para brand
+        # builder de items (Container con animate + hover reactivo) — Headline para labels, Notch para brand
         def _rail_item(idx: int, label: str, icon_out: str, icon_sel: str) -> ft.Container:
             is_sel = (idx == self._current_module)
             # Stack Sans Headline para labels (§ Headline: labels/botones)
             txt = ft.Text(
                 label, size=13, color=TEXT_PRIMARY if is_sel else TEXT_MUTED,
                 font_family=FONT_HEADLINE_MEDIUM if is_sel else FONT_HEADLINE,
-                visible=True,
+                visible=not self._rail_collapsed,
                 expand=True, no_wrap=True, max_lines=1,
                 overflow=ft.TextOverflow.CLIP,
             )
@@ -647,32 +647,50 @@ class PlaylistManagerUI(DialogMixin):
                 clip_behavior=ft.ClipBehavior.HARD_EDGE,
                 animate=ft.Animation(RAIL_ANIM_MS, ft.AnimationCurve.EASE_IN_OUT),
                 animate_opacity=ft.Animation(RAIL_ANIM_MS, ft.AnimationCurve.EASE_IN_OUT),
+                visible=not self._rail_collapsed,
             )
             self._rail_label_boxes.append(label_box)
             icon = app_icon(icon_sel if is_sel else icon_out, size=20, color=ACCENT if is_sel else TEXT_DIM, fill=is_sel)
-            # Row fija: el centrado/izquierda lo resuelve el Container padre.
+            # Row fija: centrado en colapsado y arranque a la izquierda al expandir.
             row = ft.Row(
                 [icon, label_box],
                 spacing=0,
                 vertical_alignment=ft.CrossAxisAlignment.CENTER,
                 tight=True,
-                alignment=ft.MainAxisAlignment.START,
+                alignment=ft.MainAxisAlignment.START if not self._rail_collapsed else ft.MainAxisAlignment.CENTER,
             )
+
             cont = ft.Container(
                 content=row,
                 bgcolor=ACCENT_HALO if is_sel else ft.Colors.TRANSPARENT,
-                border=ft.Border.all(0.6, ACCENT if is_sel else ft.Colors.TRANSPARENT),
+                border=ft.Border.all(0.8, ACCENT if is_sel else ft.Colors.TRANSPARENT),
                 border_radius=RADIUS_RAIL_ITEM,
-                padding=ft.Padding.symmetric(horizontal=RAIL_ITEM_PAD_H, vertical=RAIL_ITEM_PAD_V),
+                padding=ft.Padding.symmetric(
+                    horizontal=12 if not self._rail_collapsed else 0,
+                    vertical=RAIL_ITEM_PAD_V,
+                ),
                 height=RAIL_ITEM_H,
-                ink=True,
                 data=str(idx),
                 tooltip=label if self._rail_collapsed else None,
                 on_click=_on_rail_item_click,
-                animate=ft.Animation(RAIL_ITEM_ANIM_MS, ft.AnimationCurve.EASE_IN_OUT),
+                animate=ft.Animation(MOTION_HOVER_MS, ft.AnimationCurve.EASE_OUT),
                 animate_align=ft.Animation(RAIL_ANIM_MS, ft.AnimationCurve.EASE_IN_OUT),
-                alignment=ft.Alignment.CENTER if self._rail_collapsed else ft.Alignment.CENTER_LEFT,
+                alignment=ft.Alignment.CENTER_LEFT if not self._rail_collapsed else ft.Alignment.CENTER,
             )
+
+            def _on_hover(e: ft.HoverEvent) -> None:
+                is_currently_sel = (idx == self._current_module)
+                if is_currently_sel:
+                    return
+                is_h = e.data == "true" or e.data is True
+                cont.bgcolor = BG_HOVER if is_h else ft.Colors.TRANSPARENT
+                cont.border = ft.Border.all(0.8, ACCENT if is_h else ft.Colors.TRANSPARENT)
+                icon.color = TEXT_PRIMARY if is_h else TEXT_DIM
+                txt.color = TEXT_PRIMARY if is_h else TEXT_MUTED
+                if cont.page:
+                    cont.update()
+
+            cont.on_hover = _on_hover
             self._rail_item_refs.append(cont)
             return cont
 
@@ -697,13 +715,24 @@ class PlaylistManagerUI(DialogMixin):
                     self._rail_version_box.height = RAIL_VERSION_H if expanded else RAIL_VERSION_H_COLLAPSED
                 # items: el ancho del label y el align del ítem animan juntos
                 for i, label_box in enumerate(self._rail_label_boxes):
+                    label_box.visible = expanded
                     label_box.width = RAIL_LABEL_W if expanded else 0
                     label_box.margin = ft.Margin.only(left=12) if expanded else ft.Margin.only(left=0)
                     label_box.opacity = 1.0 if expanded else 0.0
                     try:
+                        lbl_ctrl = label_box.content
+                        if isinstance(lbl_ctrl, ft.Text):
+                            lbl_ctrl.visible = expanded
                         cont = self._rail_item_refs[i]
                         cont.tooltip = None if expanded else self._rail_dests[i][0]
                         cont.alignment = ft.Alignment.CENTER_LEFT if expanded else ft.Alignment.CENTER
+                        cont.padding = ft.Padding.symmetric(
+                            horizontal=12 if expanded else 0,
+                            vertical=RAIL_ITEM_PAD_V,
+                        )
+                        row_ctrl = cont.content
+                        if isinstance(row_ctrl, ft.Row):
+                            row_ctrl.alignment = ft.MainAxisAlignment.START if expanded else ft.MainAxisAlignment.CENTER
                     except Exception:
                         pass
                 self._nav_rail.update()
@@ -766,7 +795,7 @@ class PlaylistManagerUI(DialogMixin):
                 is_sel = (i == self._current_module)
                 try:
                     cont.bgcolor = ACCENT_HALO if is_sel else ft.Colors.TRANSPARENT
-                    cont.border = ft.Border.all(0.6, ACCENT if is_sel else ft.Colors.TRANSPARENT)
+                    cont.border = ft.Border.all(0.8, ACCENT if is_sel else ft.Colors.TRANSPARENT)
                     row = cont.content  # Row([icon, label_box])
                     if row and len(row.controls) >= 2:
                         icon_ctrl = row.controls[0]
@@ -1675,8 +1704,8 @@ class PlaylistManagerUI(DialogMixin):
         self._search_field = app_text_field(
             hint_text="Buscar título, artista…",
             prefix_icon=PIcons.MAGNIFYING_GLASS,
-            width=240, height=38,
-            content_padding=ft.Padding.symmetric(horizontal=10, vertical=6),
+            width=240, height=36,
+            content_padding=ft.Padding.symmetric(horizontal=10, vertical=0),
             on_change=self._on_search_change,
         )
         self._segment_dd = ft.Dropdown(
