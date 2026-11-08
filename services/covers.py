@@ -33,8 +33,9 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import io
+import os
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Iterable, Optional
 
@@ -54,17 +55,25 @@ from core.config import (
 )
 from core.models import Track
 from engine.covers import (
-    _GOOGLE_CDN_HOSTS, is_acceptable_cover, normalize_cover, probe_cover, upscale_cover_url,
+    _GOOGLE_CDN_HOSTS, is_acceptable_cover, is_video_thumbnail_url,
+    normalize_cover, probe_cover, upscale_cover_url,
+)
+from engine.audio_metadata import (
+    SIDECAR_COVER_NAME, read_audio_metadata, read_cover, write_cover,
 )
 from engine.normalizer import _normalize_title
+from engine.parsers import list_audio_files
 from services import cover_cache
 from services.circuit_breaker import CircuitBreaker
 
 __all__ = [
     "CoverResolution",
     "CoverResolver",
+    "RefreshReport",
     "album_key",
     "cover_breaker",
+    "refresh_downloaded_covers",
+    "tracks_from_files",
 ]
 
 _ITUNES_SEARCH_URL = "https://itunes.apple.com/search"
@@ -118,11 +127,19 @@ def _norm(text: str) -> str:
 
 
 def _is_youtube_cover_url(url: str) -> bool:
-    """``True`` si la URL es una miniatura de vídeo de YouTube/Google.
+    """``True`` si la URL es una miniatura de vídeo de YouTube.
 
-    Reutiliza los hosts del CDN declarados en ``engine.covers`` para no tener
-    dos listas de hosts que mantener.
+    Cubre los dos casos, que son distintos:
+
+    - ``i.ytimg.com`` / ``img.youtube.com``: fotograma 16:9 del vídeo. No es
+      artwork y nunca debe adelantar a una carátula de álbum.
+    - ``yt3.googleusercontent.com`` y ``ggpht.com``: CDN de Google. YouTube
+      Music sirve ahí artwork 1:1 real, pero *también* miniaturas de vídeo, y
+      la URL no lo distingue a simple vista. Tratarlas como sospechosas solo
+      las pospone detrás de iTunes/Deezer; no las descarta.
     """
+    if is_video_thumbnail_url(url):
+        return True
     return any(host in url for host in _GOOGLE_CDN_HOSTS)
 
 
@@ -411,8 +428,16 @@ class CoverResolver:
         return [*chain, platform]
 
     def _from_platform_url(self, track: Track, *, require_square: bool = True) -> CoverResolution:
-        """Portada ya asociada a la pista por su plataforma de origen."""
-        url = upscale_cover_url((track.img_url or "").strip())
+        """Portada ya asociada a la pista por su plataforma de origen.
+
+        Una miniatura de vídeo (``i.ytimg.com``) se descarta aquí aunque sea
+        cuadrada: ilustra el vídeo, no el disco. El thumbnail de ``yt-dlp``
+        llega por otro camino y solo como último recurso.
+        """
+        raw_url = (track.img_url or "").strip()
+        if is_video_thumbnail_url(raw_url):
+            return CoverResolution()
+        url = upscale_cover_url(raw_url)
         if not url.startswith("http"):
             return CoverResolution()
         payload = self._get_bytes(url)
@@ -459,3 +484,130 @@ class CoverResolver:
             except Exception:
                 pass
             self._session = None
+
+
+@dataclass
+class RefreshReport:
+    """Resultado de recalcular las portadas de archivos ya descargados.
+
+    Attributes:
+        total: Archivos de audio encontrados.
+        updated: Archivos a los que se les escribió una portada nueva.
+        unchanged: Archivos que ya tenían la portada resuelta (mismo hash).
+        missing: Archivos para los que no se encontró artwork.
+        failed: Archivos que no se pudieron escribir.
+        previews: ``[(ruta, portada, origen)]`` para revisar antes de aplicar.
+    """
+
+    total: int = 0
+    updated: int = 0
+    unchanged: int = 0
+    missing: int = 0
+    failed: int = 0
+    previews: list[tuple[str, bytes, str]] = field(default_factory=list)
+
+
+def tracks_from_files(paths: Iterable[str | Path]) -> list[Track]:
+    """Construye ``Track`` mínimos a partir de archivos locales.
+
+    Lee los tags con Mutagen y cae al nombre ``Artista - Título``. Sin esto el
+    resolver no tiene álbum con el que consultar proveedores.
+    """
+    out: list[Track] = []
+    for raw in paths:
+        path = str(raw)
+        try:
+            tags = read_audio_metadata(path)
+        except Exception:
+            tags = {}
+        stem = Path(path).stem
+        artist = str(tags.get("artist") or "")
+        title = str(tags.get("title") or "")
+        if not artist and " - " in stem:
+            artist, _, title_from_name = stem.partition(" - ")
+            title = title or title_from_name
+        out.append(Track(
+            id=path,
+            name=title or stem,
+            artist=artist,
+            album=str(tags.get("album") or ""),
+            duration="",
+            img_url="",
+            platform="local",
+            album_artist=str(tags.get("album_artist") or ""),
+            isrc=str(tags.get("isrc") or ""),
+            release_date=str(tags.get("date") or ""),
+            source_path=path,
+        ))
+    return out
+
+
+def _write_cover_to_file(path: str, data: bytes) -> bool:
+    """Escribe la portada en el contenedor o, si no la admite, en el sidecar."""
+    return write_cover(path, data)
+
+
+def _current_cover(path: str) -> bytes:
+    """Portada que ya tiene el archivo: incrustada o, si no, el sidecar.
+
+    ``read_cover`` solo ve tags incrustados; Opus y WAV guardan ``cover.jpg``
+    junto al audio y sin esto se reescribirían en cada pasada.
+    """
+    embedded = read_cover(path) or b""
+    if embedded:
+        return embedded
+    sidecar = Path(path).parent / SIDECAR_COVER_NAME
+    try:
+        return sidecar.read_bytes() if sidecar.is_file() else b""
+    except OSError:
+        return b""
+
+
+def refresh_downloaded_covers(
+    folder: str | Path,
+    *,
+    resolver: CoverResolver | None = None,
+    apply: bool = True,
+    limit: int = 2000,
+) -> RefreshReport:
+    """Recalcula las portadas de los audios de ``folder``.
+
+    Con ``apply=False`` solo recopila las portadas resueltas en ``previews``
+    para que el usuario decida antes de sobrescribir nada. Recorrido no
+    recursivo: la carpeta de Descargas es plana.
+
+    Es bloqueante (red y Mutagen): despacharla con ``asyncio.to_thread``.
+    """
+    report = RefreshReport()
+    paths = list_audio_files(folder, recursive=False, limit=limit)
+    report.total = len(paths)
+    if not paths:
+        return report
+
+    own_resolver = resolver is None
+    res = resolver or CoverResolver()
+    try:
+        for track in tracks_from_files(paths):
+            try:
+                resolution = res.resolve(track)
+            except Exception:
+                resolution = CoverResolution()
+            if not resolution.data:
+                report.missing += 1
+                continue
+            path = track.source_path
+            current = _current_cover(path)
+            if current and current == resolution.data:
+                report.unchanged += 1
+                continue
+            if not apply:
+                report.previews.append((path, resolution.data, resolution.source))
+                continue
+            if _write_cover_to_file(path, resolution.data):
+                report.updated += 1
+            else:
+                report.failed += 1
+    finally:
+        if own_resolver:
+            res.close()
+    return report

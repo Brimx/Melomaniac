@@ -794,7 +794,10 @@ def _resolve_artwork(
     (a menudo WebP) y ``write_audio_metadata`` los etiquetaba como
     ``image/jpeg``, generando portadas corruptas.
     """
-    from engine.covers import normalize_cover, upscale_cover_url
+    from engine.covers import (
+        is_acceptable_cover, is_video_thumbnail_url, normalize_cover, probe_cover,
+        upscale_cover_url,
+    )
 
     if fetcher is not None:
         try:
@@ -806,11 +809,15 @@ def _resolve_artwork(
 
     candidates: list[bytes] = []
 
-    platform_cover = _fetch_url_bytes(
-        upscale_cover_url(str(getattr(track, "img_url", "") or ""))
-    )
-    if platform_cover:
-        candidates.append(platform_cover)
+    # Un thumbnail de vídeo no compite con una carátula: si la plataforma solo
+    # ofrece eso, se prefiere el respaldo de ``yt-dlp`` y, en último término,
+    # el relleno; incrustar el fotograma de un vídeo es peor que un cuadrado
+    # neutro.
+    raw_img = str(getattr(track, "img_url", "") or "")
+    if not is_video_thumbnail_url(raw_img):
+        platform_cover = _fetch_url_bytes(upscale_cover_url(raw_img))
+        if platform_cover and is_acceptable_cover(probe_cover(platform_cover)):
+            candidates.append(platform_cover)
 
     youtube_cover = _read_artwork(produced_files)
     if youtube_cover:
