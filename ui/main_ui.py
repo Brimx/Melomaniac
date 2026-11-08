@@ -2060,23 +2060,32 @@ class PlaylistManagerUI(DialogMixin):
 
     def _sync_auth_icons(self, s) -> bool:
         for plat, ic in (("YouTube Music", self._auth_yt), ("Apple Music", self._auth_am), ("Spotify", self._auth_sp)):
-            ok = s.auth_session_ok.get(plat, True)
-            col = SUCCESS if ok else ERROR_COL
+            ok = s.auth_session_ok.get(plat)
+            # None = preflight sin ejecutar todavía: gris, no verde.
+            col = SUCCESS if ok else (TEXT_DIM if ok is None else ERROR_COL)
             if hasattr(ic, "content") and hasattr(ic.content, "color"):
                 ic.content.color = col
             else:
                 ic.icon_color = col
             hint = s.auth_session_hint.get(plat) or ""
             base = f"{plat}: clic para revalidar ahora"
-            ic.tooltip = f"{base} \u00b7 {hint}" if hint else f"{base} \u00b7 {'OK' if ok else 'fallo'}"
+            state_txt = "OK" if ok else ("sin validar" if ok is None else "fallo")
+            ic.tooltip = f"{base} \u00b7 {hint}" if hint else f"{base} \u00b7 {state_txt}"
         if s.destination == EXPORT_DEST_LABEL:
             dest_ok = True
             self._dest_session_warn.visible = False
             self._dest_session_warn.value = ""
         else:
-            dest_ok = s.auth_session_ok.get(s.destination, True)
-            self._dest_session_warn.visible = not dest_ok
-            self._dest_session_warn.value = "" if dest_ok else f"No se confirmó la sesión en {s.destination}"
+            session = s.auth_session_ok.get(s.destination)
+            # ``None`` no bloquea el botón: se confirma en _on_transfer. Solo
+            # un fallo explícito (False) deshabilita la transferencia.
+            dest_ok = session is not False
+            self._dest_session_warn.visible = session is not True
+            self._dest_session_warn.value = "" if session is True else (
+                f"Sesión de {s.destination} sin validar · pulsa el icono para comprobarla"
+                if session is None
+                else f"No se confirmó la sesión en {s.destination}"
+            )
         has_transform = bool(s.segments or getattr(s, 'show_dual', False) or (getattr(s, 'source_tracks', None) and s.tracks != s.source_tracks))
         if s.source == s.destination and not has_transform:
             self._status_badge.value = "\u26a0 Origen y destino iguales"
@@ -2278,6 +2287,10 @@ class PlaylistManagerUI(DialogMixin):
             self._transfer_btn.tooltip = "\u26a0 Elige un destino antes de transferir"
         elif not dest_ok:
             self._transfer_btn.tooltip = f"Sesi\u00f3n expirada en {s.destination}"
+        elif s.auth_session_ok.get(s.destination) is None:
+            self._transfer_btn.tooltip = (
+                f"Sesi\u00f3n de {s.destination} sin validar \u00b7 se comprobar\u00e1 al transferir"
+            )
         else:
             self._transfer_btn.tooltip = "Transferir selecci\u00f3n al destino"
 
@@ -2597,6 +2610,36 @@ class PlaylistManagerUI(DialogMixin):
         self._snack(f"Audio importado: '{name}'")
         self.state.log(f"[INFO] Audio local importado · {path}")
 
+    async def _ensure_destination_session(self) -> bool:
+        """Preflight del destino antes de transferir.
+
+        ``auth_session_ok`` puede estar en ``None`` (sin validar) o desactualizado.
+        Aquí se confirma contra la plataforma real; si falla, se bloquea la
+        transferencia con un mensaje accionable en vez de arrancar y fallar pista
+        por pista.
+        """
+        dest = self.state.destination
+        if dest not in AppState.PLATFORMS:
+            return True
+        am = getattr(self, "auth_manager", None)
+        if am is None:
+            return True
+        self._snack(f"Comprobando sesión de {dest}…")
+        try:
+            results = await am.check_sessions([dest])
+        except Exception as exc:  # pylint: disable=broad-exception-caught
+            self.state.log(f"[ERROR] Preflight de {dest}: {exc}")
+            return True  # no bloquear por un fallo del propio preflight
+        am.ingest_preflight_results(results)
+        result = next((r for r in results if r.platform == dest), None)
+        if result is None or result.ok:
+            return True
+        self.state.log(f"[ERROR] Transferencia bloqueada: sesión de {dest} no válida")
+        self._snack(f"Sesión de {dest} no válida: {result.error or 'revisa Configuración'}", error=True)
+        if getattr(result, "expired", False):
+            am.open_wizard(dest)
+        return False
+
     async def _on_transfer(self, _) -> None:
         # Ruta export local como destino — no va por MusicApiService
         if self.state.destination == EXPORT_DEST_LABEL:
@@ -2628,8 +2671,13 @@ class PlaylistManagerUI(DialogMixin):
             if self.state.selected_count == 0:
                 self._snack("Selecciona al menos una canción", error=True)
                 return
+        if not await self._ensure_destination_session():
+            return
         from ui.playlist_meta_dialog import PlaylistMetaDialog
-        src_requires_auth = self.state.source not in AppState.LOCAL_SOURCES and self.state.auth_session_ok.get(self.state.source, True)
+        src_requires_auth = (
+            self.state.source not in AppState.LOCAL_SOURCES
+            and self.state.auth_session_ok.get(self.state.source) is True
+        )
         divisions_for_dialog = list(sel_divs) if has_divisions else None
         meta = await PlaylistMetaDialog(
             self.page,

@@ -275,7 +275,9 @@ class AppState:
         # ESTADO DE AUTENTICACIÓN
         # ──────────────────────────────────────────────────────────────
         
-        self.auth_session_ok:   dict[str, bool] = {p: True for p in self.PLATFORMS}
+        # True = válida, False = falló, None = sin validar (preflight pendiente).
+        # Arrancar en None evita que la UI confíe en una sesión no comprobada.
+        self.auth_session_ok:   dict[str, Optional[bool]] = {p: None for p in self.PLATFORMS}
         self.auth_session_hint: dict[str, str]  = {p: "" for p in self.PLATFORMS}
 
         # ──────────────────────────────────────────────────────────────
