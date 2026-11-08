@@ -57,17 +57,52 @@ class LibraryState:
         return settings_store.get_local_folders()
 
     def local_summaries(self) -> list[PlaylistSummary]:
-        """Una ``PlaylistSummary`` por carpeta local (id = ruta absoluta)."""
+        """Una ``PlaylistSummary`` por carpeta local (id = ruta absoluta).
+
+        Incluye las subcarpetas creadas por Descargas que llevan
+        ``playlist.json``: son playlists descargadas, no carpetas sueltas. La
+        carpeta raíz sigue apareciendo para no perder las descargas antiguas,
+        que se hicieron en plano.
+        """
         out: list[PlaylistSummary] = []
         for folder in self.local_folders:
-            cover = _folder_cover_data_uri(folder)
-            out.append(PlaylistSummary(
-                platform=LOCAL_LIBRARY_LABEL, id=folder,
-                name=Path(folder).name or folder, description=folder,
-                track_count=len(list_audio_files(folder)),
-                cover_urls=[cover] if cover else [],
-            ))
+            out.append(self._summary_for(folder))
+            for child in self._playlist_subfolders(folder):
+                out.append(self._summary_for(child, playlist_folder=True))
         return out
+
+    @staticmethod
+    def _playlist_subfolders(folder: str) -> list[str]:
+        """Subcarpetas de ``folder`` que contienen un manifiesto de playlist."""
+        from engine.downloader import PLAYLIST_MANIFEST_NAME
+
+        try:
+            return sorted(
+                str(child) for child in Path(folder).iterdir()
+                if child.is_dir() and (child / PLAYLIST_MANIFEST_NAME).is_file()
+            )
+        except OSError:
+            return []
+
+    @staticmethod
+    def _summary_for(folder: str, *, playlist_folder: bool = False) -> PlaylistSummary:
+        """Tarjeta de una carpeta; con manifiesto usa su nombre y su orden."""
+        from engine.downloader import read_playlist_manifest
+
+        manifest = read_playlist_manifest(folder) if playlist_folder else {}
+        name = str(manifest.get("name") or "") or Path(folder).name or folder
+        if manifest.get("platform"):
+            name = f"{name} · {manifest['platform']}"
+        cover = _folder_cover_data_uri(folder)
+        count = manifest.get("count") if manifest else None
+        return PlaylistSummary(
+            platform=LOCAL_LIBRARY_LABEL, id=folder,
+            name=name, description=folder,
+            track_count=int(count) if isinstance(count, int) and count else len(
+                list_audio_files(folder)
+            ),
+            cover_urls=[cover] if cover else [],
+        )
 
     def add_local_folder(self, path: str) -> bool:
         added = settings_store.add_local_folder(path)

@@ -149,6 +149,81 @@ class DownloadResult:
 # Rutas y nombres
 # ──────────────────────────────────────────────────────────────────────
 
+PLAYLIST_MANIFEST_NAME = "playlist.json"
+"""Manifiesto que conserva el orden original de una playlist descargada."""
+
+
+def playlist_folder_name(playlist_name: str, platform: str = "") -> str:
+    """Nombre de subcarpeta por playlist.
+
+    Una carpeta plana mezcla pistas de listas distintas y todos los ``cover.jpg``
+    del mismo álbum. La subcarpeta conserva la unidad de la playlist; el nombre
+    se sanea igual que un archivo para no romper el sistema de archivos.
+    """
+    base = sanitize_filename(playlist_name, "") or "Playlist"
+    plat = sanitize_filename(platform, "")
+    return f"{base} [{plat}]" if plat else base
+
+
+def resolve_playlist_dir(
+    base_dir: Path | str | None,
+    playlist_name: str,
+    platform: str = "",
+    *,
+    create: bool = True,
+) -> Path:
+    """Carpeta de destino de una playlist dentro de la carpeta configurada."""
+    base = resolve_download_dir(base_dir, create=create)
+    target = base / playlist_folder_name(playlist_name, platform)
+    if create:
+        target.mkdir(parents=True, exist_ok=True)
+    return target
+
+
+def write_playlist_manifest(
+    folder: Path | str,
+    *,
+    name: str,
+    platform: str = "",
+    entries: list[dict[str, Any]],
+) -> str:
+    """Escribe ``playlist.json`` con el orden original de las pistas.
+
+    ``entries`` es la lista de pistas en el orden de la playlist, cada una con
+    al menos ``name``/``artist``/``path``. Se escribe de forma atómica para no
+    dejar un manifiesto a medias si la app se cierra durante la descarga.
+    """
+    import json
+
+    target = Path(folder) / PLAYLIST_MANIFEST_NAME
+    payload = {
+        "name": name,
+        "platform": platform,
+        "count": len(entries),
+        "tracks": entries,
+    }
+    try:
+        target.parent.mkdir(parents=True, exist_ok=True)
+        tmp = target.with_suffix(".json.tmp")
+        tmp.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+        os.replace(tmp, target)
+        return str(target)
+    except (OSError, TypeError, ValueError):
+        return ""
+
+
+def read_playlist_manifest(folder: Path | str) -> dict[str, Any]:
+    """Lee ``playlist.json`` de ``folder``; ``{}`` si no existe o está roto."""
+    import json
+
+    target = Path(folder) / PLAYLIST_MANIFEST_NAME
+    try:
+        data = json.loads(target.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
 def resolve_download_dir(preferred: Path | str | None = None, *, create: bool = True) -> Path:
     """Devuelve el directorio de caché de audio, creándolo si no existe.
 

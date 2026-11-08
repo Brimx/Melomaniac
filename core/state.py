@@ -933,9 +933,13 @@ class AppState:
             La tarea creada. Si ya hay una descarga en curso, devuelve esa
             misma tarea sin lanzar otra.
         """
+        selected = [t for t in self.tracks if t.selected]
+        platforms = {t.platform for t in selected if t.platform}
         return self.download_tracks(
-            [t for t in self.tracks if t.selected],
+            selected,
             audio_format=audio_format, destination_dir=destination_dir,
+            playlist_name=self.playlist_name if self.playlist_name else "",
+            platform=platforms.pop() if len(platforms) == 1 else "",
         )
 
     def download_tracks(
@@ -944,11 +948,19 @@ class AppState:
         *,
         audio_format: str = "",
         destination_dir: str = "",
+        playlist_name: str = "",
+        platform: str = "",
     ) -> asyncio.Task:
         """Lanza la descarga de una lista arbitraria de pistas.
 
         Reutiliza la misma cola que ``download_selected``; Biblioteca la usa
         para bajar una playlist completa sin cargarla en Gestión.
+
+        Args:
+            playlist_name: Si se indica, las pistas van a una subcarpeta con
+                ese nombre dentro de ``destination_dir`` y se escribe
+                ``playlist.json`` con el orden original.
+            platform: Plataforma de origen, para nombrar la subcarpeta.
 
         Returns:
             La tarea creada, o la en curso si ya hay una descarga activa.
@@ -957,7 +969,8 @@ class AppState:
             return self._download_task
         self._download_task = asyncio.create_task(
             self._run_downloads(
-                list(tracks), audio_format=audio_format, destination_dir=destination_dir
+                list(tracks), audio_format=audio_format, destination_dir=destination_dir,
+                playlist_name=playlist_name, platform=platform,
             )
         )
         return self._download_task
@@ -968,20 +981,28 @@ class AppState:
             self._download_cancel.set()
 
     async def _run_downloads(
-        self, selected: list[Track], *, audio_format: str = "", destination_dir: str = ""
+        self, selected: list[Track], *, audio_format: str = "", destination_dir: str = "",
+        playlist_name: str = "", platform: str = "",
     ) -> None:
         """Ejecuta la cola de descargas con concurrencia acotada.
 
         Implementa la fase 1 del pendiente de Descargas: módulo de descarga
         con ``yt_dlp`` como librería, caché en disco y cancelación. El
         progreso se publica por pista para que la UI muestre avance real.
+
+        Con ``playlist_name`` las pistas van a una subcarpeta propia y se deja
+        un manifiesto con el orden original: una carpeta plana mezclaba listas
+        distintas y todos los ``cover.jpg`` acababan en el mismo sitio.
         """
         from core.config import (
             AUDIO_BITRATES,
             DEFAULT_AUDIO_FORMAT,
             DOWNLOAD_CONCURRENCY,
         )
-        from engine.downloader import download_audio, ffmpeg_available, resolve_download_dir
+        from engine.downloader import (
+            download_audio, ffmpeg_available, resolve_download_dir, resolve_playlist_dir,
+            write_playlist_manifest,
+        )
 
         if not selected:
             return
@@ -989,7 +1010,12 @@ class AppState:
         fmt = (audio_format or DEFAULT_AUDIO_FORMAT).lower().lstrip(".")
         if fmt not in AUDIO_BITRATES:
             fmt = DEFAULT_AUDIO_FORMAT
-        target_dir = resolve_download_dir(destination_dir or None)
+        if playlist_name:
+            target_dir = resolve_playlist_dir(
+                destination_dir or None, playlist_name, platform
+            )
+        else:
+            target_dir = resolve_download_dir(destination_dir or None)
 
         self.audio_format      = fmt
         self.download_dir      = str(target_dir)
@@ -1140,6 +1166,10 @@ class AppState:
                 + (f" · Omitidas: {skipped}" if skipped else "")
             )
             self._log(f"[INFO] {summary}")
+            if playlist_name:
+                self._write_download_manifest(
+                    target_dir, playlist_name, platform, selected, write_playlist_manifest
+                )
         except Exception as exc:  # noqa: BLE001
             self.download_state = TransferState.ERROR
             self._log(f"[ERROR] Descargas interrumpidas: {exc}")
@@ -1147,6 +1177,36 @@ class AppState:
             self.download_current = ""
             self._download_cancel = None
             self.notify()
+
+    def _write_download_manifest(
+        self, target_dir, playlist_name: str, platform: str,
+        selected: list[Track], writer,
+    ) -> None:
+        """Deja ``playlist.json`` con el orden original de la playlist.
+
+        El orden se toma de ``selected``, no de ``download_done``: esa lista
+        se llena a medida que terminan las descargas concurrentes y no
+        representa el orden de la lista. Las pistas sin archivo quedan con
+        ``path`` vacío para saber qué falta.
+        """
+        entries = [
+            {
+                "position": i,
+                "name": t.name,
+                "artist": t.artist,
+                "album": t.album,
+                "platform": t.platform,
+                "path": t.source_path or "",
+            }
+            for i, t in enumerate(selected, 1)
+        ]
+        written = writer(
+            target_dir, name=playlist_name, platform=platform, entries=entries
+        )
+        if written:
+            self._log(f"[INFO] Manifiesto de playlist: {written}")
+        else:
+            self._log("[WARN] No se pudo escribir el manifiesto de la playlist")
 
     def _prepare_transfer_tracks(self, selected: list[Track]) -> None:
         """Limpia contadores y estados de una transferencia anterior.

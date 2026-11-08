@@ -102,6 +102,7 @@ class PlaylistDetailView(ft.Container):
         self._skeletons: list[LibrarySkeletonRow] = []
         self._skeleton_tasks: list[asyncio.Task] = []
         self._press_tasks: set[asyncio.Task] = set()
+        self._manifest_cache: dict[str, dict] = {}
         self._skeleton_list = ft.ListView(expand=True, spacing=0)
         self._skeleton_wrap = ft.Container(content=self._skeleton_list, expand=True, visible=True)
         self._sync_skeleton_count()
@@ -242,7 +243,7 @@ class PlaylistDetailView(ft.Container):
                 _meta, tracks = await self._loader()
             else:
                 _meta, tracks = await self.service.fetch_playlist(self.summary.platform, self.summary.id, None)
-            self._tracks = tracks
+            self._tracks = self._apply_manifest_order(tracks)
 
             # Mapear pistas que ya existen en descargas o carpetas locales
             self._match_local_files()
@@ -281,6 +282,43 @@ class PlaylistDetailView(ft.Container):
             self.update()
         except Exception:
             pass
+
+    def _apply_manifest_order(self, tracks: list[Track]) -> list[Track]:
+        """Ordena una carpeta descargada según el ``playlist.json``.
+
+        ``list_audio_files`` devuelve los archivos por fecha de modificación,
+        así que sin manifiesto una playlist descargada se ve desordenada. Si
+        no hay manifiesto o no se puede emparejar nada, se respeta el orden
+        del sistema de archivos.
+        """
+        from engine.downloader import read_playlist_manifest
+
+        variant = self.summary.id
+        if variant not in self._manifest_cache:
+            self._manifest_cache[variant] = read_playlist_manifest(variant)
+        manifest = self._manifest_cache[variant]
+        entries = manifest.get("tracks") if isinstance(manifest, dict) else None
+        if not isinstance(entries, list) or not entries:
+            return tracks
+
+        by_path = {
+            os.path.normpath(str(t.source_path)): t
+            for t in tracks if t.source_path
+        }
+        ordered: list[Track] = []
+        used: set[int] = set()
+        for entry in entries:
+            if not isinstance(entry, dict):
+                continue
+            path = str(entry.get("path") or "")
+            track = by_path.get(os.path.normpath(path)) if path else None
+            if track is not None and id(track) not in used:
+                ordered.append(track)
+                used.add(id(track))
+        # Lo que el manifiesto no cubre (archivos añadidos después) va al final
+        # en su orden original, sin duplicar.
+        ordered.extend(t for t in tracks if id(t) not in used)
+        return ordered
 
     def _match_local_files(self) -> int:
         """Asocia source_path a las pistas que ya existen en el directorio de descargas o carpetas locales."""
