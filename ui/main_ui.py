@@ -631,12 +631,12 @@ class PlaylistManagerUI(DialogMixin):
             txt = ft.Text(
                 label, size=13, color=TEXT_PRIMARY if is_sel else TEXT_MUTED,
                 font_family=FONT_HEADLINE_MEDIUM if is_sel else FONT_HEADLINE,
-                visible=not self._rail_collapsed,
                 expand=True, no_wrap=True, max_lines=1,
                 overflow=ft.TextOverflow.CLIP,
             )
-            # La caja del label anima ancho/margen/opacidad. Así el texto no
-            # desaparece de golpe ni reacomoda la altura al colapsar.
+            # Solo animan ancho/margen/opacidad de la caja: el texto permanece
+            # montado y recortado (clip), nunca visible/invisible, para que el
+            # colapso sea un recorte progresivo y no un salto.
             label_box = ft.Container(
                 content=txt,
                 width=RAIL_LABEL_W if not self._rail_collapsed else 0,
@@ -647,17 +647,16 @@ class PlaylistManagerUI(DialogMixin):
                 clip_behavior=ft.ClipBehavior.HARD_EDGE,
                 animate=ft.Animation(RAIL_ANIM_MS, ft.AnimationCurve.EASE_IN_OUT),
                 animate_opacity=ft.Animation(RAIL_ANIM_MS, ft.AnimationCurve.EASE_IN_OUT),
-                visible=not self._rail_collapsed,
             )
             self._rail_label_boxes.append(label_box)
             icon = app_icon(icon_sel if is_sel else icon_out, size=20, color=ACCENT if is_sel else TEXT_DIM, fill=is_sel)
-            # Row fija: centrado en colapsado y arranque a la izquierda al expandir.
+            # Row fija: el icono nunca se recentra; solo se recorta el label.
             row = ft.Row(
                 [icon, label_box],
                 spacing=0,
                 vertical_alignment=ft.CrossAxisAlignment.CENTER,
                 tight=True,
-                alignment=ft.MainAxisAlignment.START if not self._rail_collapsed else ft.MainAxisAlignment.CENTER,
+                alignment=ft.MainAxisAlignment.START,
             )
 
             cont = ft.Container(
@@ -666,7 +665,7 @@ class PlaylistManagerUI(DialogMixin):
                 border=ft.Border.all(0.8, ACCENT if is_sel else ft.Colors.TRANSPARENT),
                 border_radius=RADIUS_RAIL_ITEM,
                 padding=ft.Padding.symmetric(
-                    horizontal=12 if not self._rail_collapsed else 0,
+                    horizontal=12,
                     vertical=RAIL_ITEM_PAD_V,
                 ),
                 height=RAIL_ITEM_H,
@@ -674,8 +673,7 @@ class PlaylistManagerUI(DialogMixin):
                 tooltip=label if self._rail_collapsed else None,
                 on_click=_on_rail_item_click,
                 animate=ft.Animation(MOTION_HOVER_MS, ft.AnimationCurve.EASE_OUT),
-                animate_align=ft.Animation(RAIL_ANIM_MS, ft.AnimationCurve.EASE_IN_OUT),
-                alignment=ft.Alignment.CENTER_LEFT if not self._rail_collapsed else ft.Alignment.CENTER,
+                alignment=ft.Alignment.CENTER_LEFT,
             )
 
             def _on_hover(e: ft.HoverEvent) -> None:
@@ -707,32 +705,22 @@ class PlaylistManagerUI(DialogMixin):
                     self._rail_header_brand_box.margin = ft.Margin.only(left=8) if expanded else ft.Margin.only(left=0)
                     self._rail_header_brand_box.opacity = 1.0 if expanded else 0.0
                 if self._rail_header_box is not None:
-                    self._rail_header_box.alignment = ft.Alignment.CENTER_LEFT if expanded else ft.Alignment.CENTER
+                    self._rail_header_box.alignment = ft.Alignment.CENTER_LEFT
                 if self._rail_version_text is not None:
                     self._rail_version_text.opacity = 0.7 if expanded else 0.0
                 if self._rail_version_box is not None:
                     # En compacto no deja espacio muerto bajo Config.
                     self._rail_version_box.height = RAIL_VERSION_H if expanded else RAIL_VERSION_H_COLLAPSED
-                # items: el ancho del label y el align del ítem animan juntos
+                # items: solo cambian ancho/margen/opacidad del label (animados).
+                # Sin invertir visible/alineación/padding en el mismo parche:
+                # esas propiedades no se animan y provocaban el salto brusco.
                 for i, label_box in enumerate(self._rail_label_boxes):
-                    label_box.visible = expanded
                     label_box.width = RAIL_LABEL_W if expanded else 0
                     label_box.margin = ft.Margin.only(left=12) if expanded else ft.Margin.only(left=0)
                     label_box.opacity = 1.0 if expanded else 0.0
                     try:
-                        lbl_ctrl = label_box.content
-                        if isinstance(lbl_ctrl, ft.Text):
-                            lbl_ctrl.visible = expanded
                         cont = self._rail_item_refs[i]
                         cont.tooltip = None if expanded else self._rail_dests[i][0]
-                        cont.alignment = ft.Alignment.CENTER_LEFT if expanded else ft.Alignment.CENTER
-                        cont.padding = ft.Padding.symmetric(
-                            horizontal=12 if expanded else 0,
-                            vertical=RAIL_ITEM_PAD_V,
-                        )
-                        row_ctrl = cont.content
-                        if isinstance(row_ctrl, ft.Row):
-                            row_ctrl.alignment = ft.MainAxisAlignment.START if expanded else ft.MainAxisAlignment.CENTER
                     except Exception:
                         pass
                 self._nav_rail.update()
@@ -777,8 +765,7 @@ class PlaylistManagerUI(DialogMixin):
         self._rail_header_box = ft.Container(
             content=self._rail_header_row,
             height=RAIL_HEADER_H,
-            alignment=ft.Alignment.CENTER_LEFT if not self._rail_collapsed else ft.Alignment.CENTER,
-            animate_align=ft.Animation(RAIL_ANIM_MS, ft.AnimationCurve.EASE_IN_OUT),
+            alignment=ft.Alignment.CENTER_LEFT,
         )
         rail_header = self._rail_header_box
         # Grupo principal: Gestión, Biblioteca y Descargas
