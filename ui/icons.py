@@ -93,6 +93,11 @@ class PIcons:
     LOCK = "\ue2fa"  # lock
     KEY = "\ue2d6"  # key
 
+    # Logos de Plataformas
+    APPLE_LOGO = "\ue516"  # apple-logo
+    SPOTIFY_LOGO = "\ue66e"  # spotify-logo
+    YOUTUBE_LOGO = "\ue4fc"  # youtube-logo
+
     # Otros
     HEART = "\ue2a8"  # heart
     USER = "\ue4c2"  # user

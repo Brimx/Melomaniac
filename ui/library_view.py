@@ -19,14 +19,15 @@ from ui.tokens import (
     ACCENT, ACCENT_HALO, BG_HOVER, BG_LIST, BG_SURFACE, BORDER_LIGHT,
     RADIUS_BUTTON, TEXT_DIM, TEXT_MUTED, TEXT_PRIMARY,
 )
+from ui.icons import PIcons, app_icon, app_icon_button
 from ui.widgets import _ghost_btn, app_text, notify, section_label
 
 
 PLATFORM_ICONS = {
-    "YouTube Music": ft.Icons.VIDEO_LIBRARY_OUTLINED,
-    "Apple Music": ft.Icons.APPLE,
-    "Spotify": ft.Icons.MUSIC_NOTE,
-    LOCAL_LIBRARY_LABEL: ft.Icons.FOLDER_OUTLINED,
+    "YouTube Music": PIcons.YOUTUBE_LOGO,
+    "Apple Music": PIcons.APPLE_LOGO,
+    "Spotify": PIcons.SPOTIFY_LOGO,
+    LOCAL_LIBRARY_LABEL: PIcons.FOLDER,
 }
 SOURCES = (*PLATFORM_ORDER, LOCAL_LIBRARY_LABEL)
 
@@ -69,8 +70,8 @@ class LibraryView(ft.Container):
         self._rebuild_platform_selector()
 
         self._status_text = app_text("", size=11, color=TEXT_MUTED, font_family=FONT_TEXT)
-        self._refresh_btn = _ghost_btn("Actualizar", ft.Icons.REFRESH, lambda e: self._on_refresh(), width=140, height=36)
-        self._add_folder_btn = _ghost_btn("Añadir carpeta", ft.Icons.CREATE_NEW_FOLDER_OUTLINED,
+        self._refresh_btn = _ghost_btn("Actualizar", PIcons.ARROWS_CLOCKWISE, lambda e: self._on_refresh(), width=140, height=36)
+        self._add_folder_btn = _ghost_btn("Añadir carpeta", PIcons.FOLDER_PLUS,
                                           lambda e: self._page_ref.run_task(self._pick_folder), height=36)
         self._add_folder_btn.visible = self._platform == LOCAL_LIBRARY_LABEL
 
@@ -78,7 +79,7 @@ class LibraryView(ft.Container):
         self._empty_title = app_text("Sin playlists cacheadas", size=13, color=TEXT_PRIMARY, font_family=FONT_HEADLINE_BOLD)
         self._empty_sub = app_text("Elige una fuente para sincronizar", size=11, color=TEXT_MUTED, font_family=FONT_TEXT)
         self._empty = ft.Container(expand=True, visible=False, alignment=ft.Alignment.CENTER, content=ft.Column(controls=[
-            ft.Icon(ft.Icons.LIBRARY_MUSIC_OUTLINED, size=48, color=TEXT_DIM),
+            app_icon(PIcons.BOOKS, size=48, color=TEXT_DIM, duotone=True),
             self._empty_title,
             self._empty_sub,
         ], horizontal_alignment=ft.CrossAxisAlignment.CENTER, spacing=8))
@@ -101,11 +102,12 @@ class LibraryView(ft.Container):
         self._platform_row.controls.clear()
         for plat in SOURCES:
             selected = plat == self._platform
-            icon = PLATFORM_ICONS.get(plat, ft.Icons.MUSIC_NOTE)
+            icon = PLATFORM_ICONS.get(plat, PIcons.MUSIC_NOTE)
+            ico_ctrl = app_icon(icon, size=18, color=ACCENT if selected else TEXT_DIM, fill=selected)
             btn = ft.Container(
                 content=ft.Column(
                     controls=[
-                        ft.Icon(icon, size=18, color=ACCENT if selected else TEXT_DIM),
+                        ico_ctrl,
                         ft.Text(
                             _SHORT_LABELS.get(plat, plat),
                             size=10,

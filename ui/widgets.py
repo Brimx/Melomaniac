@@ -41,6 +41,7 @@ from ui.fonts import (
     FONT_HEADLINE, FONT_HEADLINE_BOLD,
     FONT_TEXT, FONT_TEXT_MEDIUM, FONT_TEXT_SEMI, mono_family,
 )
+from ui.icons import app_icon, PIcons
 
 from ui.tokens import (
     TEXT_PRIMARY, TEXT_MUTED, TEXT_DIM,
@@ -310,8 +311,14 @@ def status_banner(
     reconstruir el banner.
     """
     accent = WARNING if kind == "warning" else ERROR_COL
+    is_glyph = bool(icon and len(icon) == 1 and ord(icon) >= 0xE000)
+    icon_ctrl = (
+        app_icon(icon, color=accent, size=14)
+        if is_glyph
+        else ft.Icon(icon, color=accent, size=14)
+    )
     row_controls: list[ft.Control] = [
-        ft.Icon(icon, color=accent, size=14),
+        icon_ctrl,
         ft.Text(message, size=10, color=accent, font_family=mono_family("light"), opacity=1.0),
     ]
     if action is not None:
@@ -395,9 +402,22 @@ def _primary_btn(text: str, icon: str, on_click, width=None, height=None) -> ft.
         táctil visual que indica interactividad. La animación de 120ms
         es suficientemente rápida para sentirse responsiva sin ser abrupta.
     """
+    is_glyph = bool(icon and len(icon) == 1 and ord(icon) >= 0xE000)
+    if is_glyph:
+        btn_content = ft.Row(
+            [app_icon(icon, size=18, color=TEXT_PRIMARY), ft.Text(text, opacity=1.0, font_family=FONT_HEADLINE)],
+            alignment=ft.MainAxisAlignment.CENTER,
+            tight=True,
+            spacing=8,
+        )
+        btn_icon = None
+    else:
+        btn_content = ft.Text(text, opacity=1.0, font_family=FONT_HEADLINE)
+        btn_icon = icon
+
     return ft.Button(
-        content=ft.Text(text, opacity=1.0, font_family=FONT_HEADLINE),
-        icon=icon,
+        content=btn_content,
+        icon=btn_icon,
         on_click=on_click,
         style=ft.ButtonStyle(
             bgcolor={
@@ -418,7 +438,7 @@ def _primary_btn(text: str, icon: str, on_click, width=None, height=None) -> ft.
     )
 
 
-def _ghost_btn(text: str, icon: str, on_click, width=None, height=None, disabled: bool = False) -> ft.OutlinedButton:
+def _ghost_btn(text: str, icon: str | None, on_click, width=None, height=None, disabled: bool = False) -> ft.OutlinedButton:
     """
     Crea un botón secundario con borde y fondo transparente.
     
@@ -429,7 +449,7 @@ def _ghost_btn(text: str, icon: str, on_click, width=None, height=None, disabled
     
     Args:
         text: Texto del botón.
-        icon: Nombre del icono de Flet.
+        icon: Nombre del icono de Flet o glifo Unicode de PIcons.
         on_click: Callback ejecutado al hacer clic.
         width: Ancho opcional del botón en píxeles.
         height: Alto opcional del botón en píxeles.
@@ -452,9 +472,22 @@ def _ghost_btn(text: str, icon: str, on_click, width=None, height=None, disabled
         primaria. El cambio de borde a acento en hover proporciona
         feedback claro sin ser intrusivo.
     """
+    is_glyph = bool(icon and len(icon) == 1 and ord(icon) >= 0xE000)
+    if is_glyph:
+        btn_content = ft.Row(
+            [app_icon(icon, size=18, color=TEXT_MUTED), ft.Text(text, opacity=1.0, font_family=FONT_HEADLINE)],
+            alignment=ft.MainAxisAlignment.CENTER,
+            tight=True,
+            spacing=8,
+        )
+        btn_icon = None
+    else:
+        btn_content = ft.Text(text, opacity=1.0, font_family=FONT_HEADLINE)
+        btn_icon = icon
+
     return ft.OutlinedButton(
-        content=ft.Text(text, opacity=1.0, font_family=FONT_HEADLINE),
-        icon=icon,
+        content=btn_content,
+        icon=btn_icon,
         on_click=on_click,
         disabled=disabled,
         style=ft.ButtonStyle(

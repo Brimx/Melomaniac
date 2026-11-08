@@ -39,6 +39,7 @@ import flet as ft
 
 from core.models import Track
 from ui.fonts import font_family_for, mono_family
+from ui.icons import PIcons, app_icon
 from ui.tokens import (
     BG_LIST, BG_HOVER, SKELETON_DARK,
     TEXT_PRIMARY, TEXT_MUTED, TEXT_DIM,
@@ -151,11 +152,11 @@ def _thumb_content_for(
         return ft.Image(
             src=img_url,
             fit=ft.BoxFit.COVER,
-            error_content=ft.Icon(ft.Icons.MUSIC_NOTE, color=TEXT_DIM, size=icon_size),
+            error_content=app_icon(PIcons.MUSIC_NOTE, color=TEXT_DIM, size=icon_size),
             **size,
         )
     return ft.Container(
-        content=ft.Icon(ft.Icons.MUSIC_NOTE, color=TEXT_DIM, size=icon_size),
+        content=app_icon(PIcons.MUSIC_NOTE, color=TEXT_DIM, size=icon_size),
         alignment=ft.Alignment.CENTER,
     )
 
@@ -599,13 +600,13 @@ class SongRow(ft.Container):
         status = self.track.transfer_status
         transfer_active = status in ("searching", "transferred", "not_found", "error", "revision_necesaria")
         if self._download_done:
-            self._status_cell.content = ft.Icon(ft.Icons.CHECK_CIRCLE_OUTLINE, color=SUCCESS, size=15)
+            self._status_cell.content = app_icon(PIcons.CHECK_CIRCLE, color=SUCCESS, size=15, fill=True)
             self._status_cell.tooltip = "Descargada"
             self._status_cell.on_click = None
             return
         if self._hovered and self._on_download is not None and not transfer_active:
-            self._status_cell.content = ft.Icon(
-                ft.Icons.DOWNLOAD_ROUNDED,
+            self._status_cell.content = app_icon(
+                PIcons.DOWNLOAD_SIMPLE,
                 color=TEXT_DIM if self._download_busy else ACCENT,
                 size=16,
             )

@@ -25,6 +25,7 @@ from engine.downloader import ffmpeg_available, open_in_file_manager, resolve_do
 from engine.parsers import list_audio_files
 from services import settings_store
 from ui.fonts import FONT_HEADLINE, FONT_HEADLINE_BOLD, FONT_TEXT, mono_family
+from ui.icons import PIcons, app_icon, app_icon_button
 from ui.tokens import (
     ACCENT, BG_LIST, BG_SURFACE, BORDER_MUTED, ERROR_COL, RADIUS_INPUT,
     SUCCESS, TEXT_DIM, TEXT_MUTED, TEXT_PRIMARY,
@@ -96,32 +97,32 @@ class DownloadsView(ft.Container):
         self._count_text = app_text("", size=11, color=TEXT_MUTED, font_family=FONT_TEXT)
 
         self._start_btn = _primary_btn(
-            "Descargar seleccionadas", ft.Icons.DOWNLOAD, self._on_start, width=220
+            "Descargar seleccionadas", PIcons.DOWNLOAD_SIMPLE, self._on_start, width=220
         )
         self._start_btn.disabled = True
         self._cancel_btn = _ghost_btn(
-            "Cancelar", ft.Icons.STOP_CIRCLE_OUTLINED, self._on_cancel,
+            "Cancelar", PIcons.X, self._on_cancel,
             width=120, disabled=True,
         )
 
-        self._open_dir_btn = ft.IconButton(
-            icon=ft.Icons.FOLDER_OPEN, icon_color=TEXT_MUTED, icon_size=18,
-            tooltip="Abrir carpeta en el explorador", on_click=self._on_open_dir,
+        self._open_dir_btn = app_icon_button(
+            PIcons.FOLDER_OPEN, icon_color=TEXT_MUTED, hover_color_icon=TEXT_PRIMARY, size=18,
+            tooltip="Abrir carpeta en el explorador", on_click=self._on_open_dir, width=32, height=32,
         )
-        self._pick_dir_btn = ft.IconButton(
-            icon=ft.Icons.EDIT_OUTLINED, icon_color=TEXT_MUTED, icon_size=18,
+        self._pick_dir_btn = app_icon_button(
+            PIcons.PENCIL_SIMPLE, icon_color=TEXT_MUTED, hover_color_icon=TEXT_PRIMARY, size=18,
             tooltip="Cambiar carpeta de descargas",
-            on_click=lambda e: self._page_ref.run_task(self._pick_dir),
+            on_click=lambda e: self._page_ref.run_task(self._pick_dir), width=32, height=32,
         )
-        self._reset_dir_btn = ft.IconButton(
-            icon=ft.Icons.RESTART_ALT, icon_color=TEXT_MUTED, icon_size=18,
-            tooltip="Restablecer carpeta por defecto", on_click=self._on_reset_dir,
+        self._reset_dir_btn = app_icon_button(
+            PIcons.ARROWS_CLOCKWISE, icon_color=TEXT_MUTED, hover_color_icon=TEXT_PRIMARY, size=18,
+            tooltip="Restablecer carpeta por defecto", on_click=self._on_reset_dir, width=32, height=32,
         )
         destination = ft.Container(
             bgcolor=BG_SURFACE, border=ft.Border.all(0.8, BORDER_MUTED),
             border_radius=RADIUS_INPUT, padding=ft.Padding.symmetric(horizontal=12, vertical=4),
             content=ft.Row(controls=[
-                ft.Icon(ft.Icons.FOLDER_OUTLINED, size=18, color=TEXT_MUTED),
+                app_icon(PIcons.FOLDER, size=18, color=TEXT_MUTED),
                 ft.Column(controls=[section_label("DESTINO"), self._dir_text], spacing=1, expand=True),
                 self._open_dir_btn, self._pick_dir_btn, self._reset_dir_btn,
             ], spacing=8, vertical_alignment=ft.CrossAxisAlignment.CENTER),
@@ -150,20 +151,20 @@ class DownloadsView(ft.Container):
         # estado B: historial de la carpeta
         self._play_all_btn = _ghost_btn(
             "Reproducir descargadas (0)",
-            ft.Icons.PLAY_ARROW_ROUNDED,
+            PIcons.PLAY,
             self._on_play_downloaded,
             height=36,
             disabled=True,
         )
         self._index_btn = _ghost_btn(
-            "Indexar a Biblioteca", ft.Icons.LIBRARY_ADD_OUTLINED, self._on_index, height=36,
+            "Indexar a Biblioteca", PIcons.PLUS, self._on_index, height=36,
         )
         self._index_btn.visible = self.library_state is not None
         self._history_list = ft.ListView(expand=True, spacing=0, padding=0)
         self._history_empty = ft.Container(
             expand=True, alignment=ft.Alignment.CENTER,
             content=ft.Column(controls=[
-                ft.Icon(ft.Icons.DOWNLOAD_OUTLINED, size=48, color=TEXT_DIM),
+                app_icon(PIcons.DOWNLOAD_SIMPLE, size=48, color=TEXT_DIM, duotone=True),
                 app_text("Sin descargas todavía", size=13, color=TEXT_PRIMARY,
                          font_family=FONT_HEADLINE_BOLD),
                 app_text("Selecciona pistas en Gestión o descarga una playlist desde Biblioteca",
@@ -200,7 +201,7 @@ class DownloadsView(ft.Container):
         # Condición persistente que el usuario debe resolver; no un toast.
         self._ffmpeg_banner = status_banner(
             "FFmpeg no está disponible. Instálalo y añádelo al PATH para descargar audio.",
-            icon=ft.Icons.WARNING_AMBER_ROUNDED,
+            icon=PIcons.WARNING,
             kind="warning",
         )
 
@@ -339,12 +340,15 @@ class DownloadsView(ft.Container):
             padding=ft.Padding.symmetric(horizontal=12, vertical=6),
             border=ft.Border.only(bottom=ft.BorderSide(0.5, BORDER_MUTED)),
             content=ft.Row(controls=[
-                ft.IconButton(
-                    icon=ft.Icons.PLAY_ARROW_ROUNDED,
-                    icon_size=18,
+                app_icon_button(
+                    PIcons.PLAY,
+                    size=16,
                     icon_color=ACCENT,
+                    hover_color_icon=ACCENT,
                     tooltip="Reproducir archivo",
                     on_click=lambda _e, p=path: self._play_path(p),
+                    width=28,
+                    height=28,
                 ),
                 app_text(name, size=12, color=TEXT_PRIMARY, font_family=FONT_TEXT,
                          max_lines=1, overflow=ft.TextOverflow.ELLIPSIS, expand=True),
@@ -366,7 +370,7 @@ class DownloadsView(ft.Container):
         for item in items:
             bar = ft.ProgressBar(value=0, color=ACCENT, bgcolor=BG_LIST, height=4, border_radius=2)
             pct = app_text("", size=10, color=TEXT_MUTED, font_family=mono_family("light"))
-            icon = ft.Icon(ft.Icons.SCHEDULE, size=18, color=TEXT_DIM)
+            icon = app_icon(PIcons.CLOCK, size=18, color=TEXT_DIM)
             rows.append(ft.Container(
                 bgcolor=BG_SURFACE, border=ft.Border.all(0.8, BORDER_MUTED),
                 border_radius=RADIUS_INPUT,
@@ -390,25 +394,30 @@ class DownloadsView(ft.Container):
             if status == "done":
                 bar.value, bar.color = 1, SUCCESS
                 pct.value = "100%"
-                icon.icon, icon.color = ft.Icons.CHECK_CIRCLE_OUTLINE, SUCCESS
+                icon.value, icon.color = PIcons.CHECK_CIRCLE, SUCCESS
+                icon.font_family = FONT_PHOSPHOR_FILL
             elif status == "failed":
                 bar.value, bar.color = 0, ERROR_COL
                 pct.value = item["error"][:12] if item["error"] == "Cancelada" else "Error"
-                icon.icon, icon.color = ft.Icons.ERROR_OUTLINE, ERROR_COL
+                icon.value, icon.color = PIcons.WARNING_CIRCLE, ERROR_COL
+                icon.font_family = FONT_PHOSPHOR_FILL
             elif status == "skipped":
                 # Ya existía en disco; no se reescribió.
                 bar.value, bar.color = 1, TEXT_MUTED
                 pct.value = "Omitida"
-                icon.icon, icon.color = ft.Icons.SKIP_NEXT_ROUNDED, TEXT_MUTED
+                icon.value, icon.color = PIcons.SKIP_FORWARD, TEXT_MUTED
+                icon.font_family = FONT_PHOSPHOR
             elif status == "running":
                 bar.color = ACCENT
                 # indeterminado hasta que yt-dlp reporte bytes
                 bar.value = (item["percent"] / 100) if item["percent"] > 0 else None
                 pct.value = f"{item['percent']:.0f}%" if item["percent"] > 0 else "…"
-                icon.icon, icon.color = ft.Icons.DOWNLOADING, ACCENT
+                icon.value, icon.color = PIcons.DOWNLOAD_SIMPLE, ACCENT
+                icon.font_family = FONT_PHOSPHOR
             else:
                 bar.value, pct.value = 0, ""
-                icon.icon, icon.color = ft.Icons.SCHEDULE, TEXT_DIM
+                icon.value, icon.color = PIcons.CLOCK, TEXT_DIM
+                icon.font_family = FONT_PHOSPHOR
 
     # ── refresco ───────────────────────────────────────────────────────
 
@@ -444,11 +453,15 @@ class DownloadsView(ft.Container):
             self.library_state is not None
             and str(Path(self._dir).expanduser()) in self.library_state.local_folders
         )
-        self._index_btn.content = ft.Text(
-            "Indexada en Biblioteca" if indexed else "Indexar a Biblioteca",
-            opacity=1.0, font_family=FONT_HEADLINE,
+        indexed_text = "Indexada en Biblioteca" if indexed else "Indexar a Biblioteca"
+        indexed_glyph = PIcons.CHECK if indexed else PIcons.PLUS
+        self._index_btn.content = ft.Row(
+            [app_icon(indexed_glyph, size=18, color=TEXT_MUTED if not indexed else SUCCESS),
+             ft.Text(indexed_text, opacity=1.0, font_family=FONT_HEADLINE)],
+            alignment=ft.MainAxisAlignment.CENTER,
+            tight=True,
+            spacing=8,
         )
-        self._index_btn.icon = ft.Icons.CHECK if indexed else ft.Icons.LIBRARY_ADD_OUTLINED
         self._index_btn.disabled = indexed or running
 
         self._progress_area.visible = running or (state != TransferState.IDLE and total > 0)
@@ -557,22 +570,25 @@ class DownloadsView(ft.Container):
         porque ya existía: ambas son ``ok`` pero no significan lo mismo.
         """
         skipped = kind == "skipped"
-        lead_icon = (
-            ft.Icons.SKIP_NEXT_ROUNDED if skipped
-            else ft.Icons.CHECK_CIRCLE_OUTLINE if ok
-            else ft.Icons.ERROR_OUTLINE
+        glyph = (
+            PIcons.SKIP_FORWARD if skipped
+            else PIcons.CHECK_CIRCLE if ok
+            else PIcons.WARNING_CIRCLE
         )
         lead_color = TEXT_MUTED if skipped else SUCCESS if ok else ERROR_COL
         lead = (
-            ft.IconButton(
-                icon=ft.Icons.PLAY_ARROW_ROUNDED,
-                icon_size=18,
+            app_icon_button(
+                PIcons.PLAY,
+                size=16,
                 icon_color=ACCENT,
+                hover_color_icon=ACCENT,
                 tooltip="Reproducir archivo descargado",
                 on_click=on_play,
+                width=28,
+                height=28,
             )
             if ok and on_play is not None
-            else ft.Icon(lead_icon, size=18, color=lead_color)
+            else app_icon(glyph, size=18, color=lead_color, fill=ok)
         )
         return ft.Container(
             bgcolor=BG_SURFACE,

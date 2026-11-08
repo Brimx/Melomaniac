@@ -21,6 +21,7 @@ from core.models import Track, TransferState
 from engine.downloader import open_in_file_manager
 from services import settings_store
 from ui.fonts import FONT_HEADLINE, FONT_HEADLINE_BOLD, FONT_TEXT, font_family_for, mono_family
+from ui.icons import PIcons, app_icon, app_icon_button
 from ui.song_row import ITEM_H, LibrarySkeletonRow, _thumb_content_for
 from ui.tokens import (
     ACCENT, BG_HOVER, BG_LIST, BG_SURFACE, BORDER_LIGHT, BORDER_MUTED, BORDER_ROW,
@@ -55,37 +56,37 @@ class PlaylistDetailView(ft.Container):
         # header
         cover_url = summary.cover_urls[0] if summary.cover_urls else ""
         if cover_url:
-            cover = ft.Container(width=120, height=120, border_radius=10, bgcolor=SKELETON_DARK, clip_behavior=ft.ClipBehavior.ANTI_ALIAS, content=ft.Image(src=cover_url, fit=ft.BoxFit.COVER, error_content=ft.Icon(ft.Icons.MUSIC_NOTE, color=TEXT_DIM)))
+            cover = ft.Container(width=120, height=120, border_radius=10, bgcolor=SKELETON_DARK, clip_behavior=ft.ClipBehavior.ANTI_ALIAS, content=ft.Image(src=cover_url, fit=ft.BoxFit.COVER, error_content=app_icon(PIcons.MUSIC_NOTE, color=TEXT_DIM)))
         else:
-            cover = ft.Container(width=120, height=120, border_radius=10, bgcolor=SKELETON_DARK, content=ft.Icon(ft.Icons.MUSIC_NOTE, color=TEXT_DIM, size=32), alignment=ft.Alignment.CENTER)
+            cover = ft.Container(width=120, height=120, border_radius=10, bgcolor=SKELETON_DARK, content=app_icon(PIcons.MUSIC_NOTE, color=TEXT_DIM, size=32), alignment=ft.Alignment.CENTER)
 
         self._title = app_text(summary.name, size=16, color=TEXT_PRIMARY, font_family=FONT_HEADLINE_BOLD)
         self._desc = app_text(summary.description or "", size=11, color=TEXT_MUTED, font_family=FONT_TEXT, max_lines=3, overflow=ft.TextOverflow.ELLIPSIS) if summary.description else ft.Container()
         count_label = f"{summary.track_count} canciones" if summary.track_count is not None else "Conteo al abrir"
         self._count = app_text(f"{count_label} • {summary.platform}", size=11, color=TEXT_DIM, font_family=mono_family("light"))
 
-        self._open_btn = _ghost_btn("Ver playlist en plataforma", ft.Icons.OPEN_IN_NEW, lambda e: self._launch(summary.external_url), width=260, height=40) if summary.external_url else ft.Container()
+        self._open_btn = _ghost_btn("Ver playlist en plataforma", PIcons.ARROW_SQUARE_OUT, lambda e: self._launch(summary.external_url), width=260, height=40) if summary.external_url else ft.Container()
 
         if self._is_local:
-            self._play_all_btn = _primary_btn("Reproducir", ft.Icons.PLAY_ARROW_ROUNDED, self._on_play_all, height=40)
+            self._play_all_btn = _primary_btn("Reproducir", PIcons.PLAY, self._on_play_all, height=40)
             self._play_all_btn.disabled = True
             self._create_btn = _ghost_btn(
-                "Crear playlist", ft.Icons.QUEUE_MUSIC_OUTLINED,
+                "Crear playlist", PIcons.PLAYLIST,
                 lambda e: self._on_create_playlist(), height=40,
             )
             self._create_btn.disabled = True
             actions = [
                 self._play_all_btn,
                 self._create_btn,
-                _ghost_btn("Abrir carpeta", ft.Icons.FOLDER_OPEN, lambda e: self._open_folder(), height=40),
-                _ghost_btn("Quitar de la Biblioteca", ft.Icons.REMOVE_CIRCLE_OUTLINE, lambda e: on_remove() if on_remove else None, height=40),
+                _ghost_btn("Abrir carpeta", PIcons.FOLDER_OPEN, lambda e: self._open_folder(), height=40),
+                _ghost_btn("Quitar de la Biblioteca", PIcons.TRASH, lambda e: on_remove() if on_remove else None, height=40),
             ]
             self._download_btn = None
         else:
             self._create_btn = None
-            self._play_all_btn = _primary_btn("Reproducir", ft.Icons.PLAY_ARROW_ROUNDED, self._on_play_all, height=40)
+            self._play_all_btn = _primary_btn("Reproducir", PIcons.PLAY, self._on_play_all, height=40)
             self._play_all_btn.visible = False
-            self._download_btn = _primary_btn("Descargar playlist", ft.Icons.DOWNLOAD, self._on_download, height=40)
+            self._download_btn = _primary_btn("Descargar playlist", PIcons.DOWNLOAD_SIMPLE, self._on_download, height=40)
             self._download_btn.disabled = True
             actions = [self._play_all_btn, self._download_btn]
         if summary.external_url:
@@ -107,11 +108,11 @@ class PlaylistDetailView(ft.Container):
         self._error_box = ft.Container(visible=False, bgcolor=BG_SURFACE, border=ft.Border.all(0.8, BORDER_MUTED), border_radius=10, padding=ft.Padding.all(12), content=ft.Column(controls=[
             app_text("No se pudo cargar", size=13, color=TEXT_PRIMARY, font_family=FONT_HEADLINE_BOLD),
             app_text("", size=11, color=TEXT_MUTED, font_family=FONT_TEXT),
-            _ghost_btn("Reintentar", ft.Icons.REFRESH, lambda e: self.reload()),
+            _ghost_btn("Reintentar", PIcons.ARROWS_CLOCKWISE, lambda e: self.reload()),
         ], spacing=8))
 
         body = ft.Column(controls=[
-            ft.Row(controls=[ft.IconButton(icon=ft.Icons.ARROW_BACK, icon_color=TEXT_MUTED, on_click=lambda e: on_back()), app_text("Volver", size=12, color=TEXT_MUTED)], spacing=4),
+            ft.Row(controls=[app_icon_button(PIcons.ARROW_LEFT, size=16, icon_color=TEXT_MUTED, on_click=lambda e: on_back(), width=28, height=28), app_text("Volver", size=12, color=TEXT_MUTED)], spacing=4),
             header,
             ft.Divider(height=1, color=BORDER_MUTED),
             ft.Stack(controls=[self._skeleton_wrap, self._list_view, self._error_box], expand=True),
@@ -365,7 +366,7 @@ class PlaylistDetailView(ft.Container):
                 await task
             except Exception as exc:  # noqa: BLE001
                 notify(self._page_ref, f"Error al descargar: {exc}", kind="error")
-                action_container.content = ft.Icon(ft.Icons.DOWNLOAD_ROUNDED, size=16, color=TEXT_MUTED)
+                action_container.content = app_icon(PIcons.DOWNLOAD_SIMPLE, size=16, color=TEXT_MUTED)
                 action_container.tooltip = "Descargar canción"
                 try:
                     action_container.update()
@@ -380,7 +381,7 @@ class PlaylistDetailView(ft.Container):
                     action="Reproducir",
                     on_action=lambda e: self._play_single_track(track, 1),
                 )
-                action_container.content = ft.Icon(ft.Icons.PLAY_ARROW_ROUNDED, size=16, color=ACCENT)
+                action_container.content = app_icon(PIcons.PLAY, size=16, color=ACCENT, fill=True)
                 action_container.tooltip = "Reproducir"
                 try:
                     action_container.update()
@@ -393,7 +394,7 @@ class PlaylistDetailView(ft.Container):
                     pass
             else:
                 notify(self._page_ref, f"No se pudo descargar «{track.name}»", kind="error")
-                action_container.content = ft.Icon(ft.Icons.DOWNLOAD_ROUNDED, size=16, color=TEXT_MUTED)
+                action_container.content = app_icon(PIcons.DOWNLOAD_SIMPLE, size=16, color=TEXT_MUTED)
                 action_container.tooltip = "Descargar canción"
                 try:
                     action_container.update()
@@ -460,10 +461,11 @@ class PlaylistDetailView(ft.Container):
         dur = ft.Text(track.duration, size=11, color=TEXT_DIM, font_family=mono_family("light"))
 
         action_icon = ft.Container(
-            content=ft.Icon(
-                ft.Icons.PLAY_ARROW_ROUNDED if has_file else ft.Icons.DOWNLOAD_ROUNDED,
+            content=app_icon(
+                PIcons.PLAY if has_file else PIcons.DOWNLOAD_SIMPLE,
                 size=16,
                 color=ACCENT if has_file else TEXT_MUTED,
+                fill=has_file,
             ),
             width=32,
             height=32,
