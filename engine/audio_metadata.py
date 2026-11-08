@@ -347,6 +347,59 @@ def write_audio_metadata(
         return False
 
 
+def write_cover(path: str, artwork: bytes) -> bool:
+    """Escribe solo la portada, sin tocar el resto de tags.
+
+    ``write_audio_metadata`` sale temprano si el diccionario de metadatos está
+    vacío, así que no sirve para recargar portadas de archivos ya escritos.
+    Aquí se reutiliza la misma maquinaria por contenedor: APIC en ID3,
+    ``covr`` en MP4, ``Picture`` en FLAC y sidecar en Opus/WAV.
+    """
+    if not path or not artwork:
+        return False
+    ext = os.path.splitext(path)[1].lower().lstrip(".")
+    if ext in SIDECAR_COVER_FORMATS:
+        return bool(write_cover_sidecar(path, artwork))
+    try:
+        from mutagen import File as MutagenFile
+        from mutagen.id3 import APIC, ID3
+        from mutagen.mp4 import MP4, MP4Cover
+        from mutagen.flac import Picture
+    except ImportError:
+        return False
+    try:
+        try:
+            audio = MutagenFile(path, easy=False)
+        except Exception:
+            audio = None
+        if audio is None and ext == "mp3":
+            audio = ID3(path)
+        if audio is None:
+            return False
+        is_id3_file = isinstance(audio, ID3)
+        if not is_id3_file and getattr(audio, "tags", None) is None:
+            audio.add_tags()
+        if is_id3_file or isinstance(audio.tags, ID3):
+            tags = audio if is_id3_file else audio.tags
+            tags.delall("APIC")
+            tags.add(APIC(encoding=3, mime="image/jpeg", type=3, desc="Cover", data=artwork))
+        elif isinstance(audio, MP4):
+            audio.tags["covr"] = [MP4Cover(artwork, imageformat=MP4Cover.FORMAT_JPEG)]
+        elif hasattr(audio, "add_picture"):
+            picture = Picture()
+            picture.type = 3
+            picture.mime = "image/jpeg"
+            picture.data = artwork
+            audio.clear_pictures()
+            audio.add_picture(picture)
+        else:
+            return bool(write_cover_sidecar(path, artwork))
+        audio.save()
+        return True
+    except Exception:
+        return False
+
+
 def write_track_metadata(track: Any, path: str | None = None, artwork: bytes | None = None) -> bool:
     """Adaptador para escribir los campos de un `Track` en un archivo."""
     target = path or getattr(track, "source_path", "")

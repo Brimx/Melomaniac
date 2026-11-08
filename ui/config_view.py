@@ -10,6 +10,7 @@ el usuario cambia sin autenticarse:
 
 - formato de audio por defecto de Descargas
 - permitir portadas online (iTunes/Deezer/ISRC)
+- recálculo de portadas de archivos ya descargados
 - carpeta de descargas
 - limpieza del caché de portadas
 """
@@ -107,6 +108,16 @@ class ConfigView(ft.Container):
             width=150, height=36,
         )
 
+        # Recarga de portadas: revisa qué se resolvería y solo escribe si el
+        # usuario confirma, para no sobrescribir artwork bueno a ciegas.
+        self._cover_refresh_text = app_text(
+            "", size=11, color=TEXT_MUTED, font_family=FONT_TEXT, visible=False,
+        )
+        self._cover_refresh_btn = _ghost_btn(
+            "Recalcular portadas", PIcons.IMAGE, self._on_cover_preview,
+            width=190, height=36,
+        )
+
         # ── Sistema y accesos directos ──
         self._shortcut_status_text = app_text(
             "", size=11, color=TEXT_PRIMARY, font_family=FONT_TEXT,
@@ -148,7 +159,13 @@ class ConfigView(ft.Container):
                 "PORTADAS",
                 "Consulta iTunes, Deezer y MusicBrainz por ISRC cuando la portada de la "
                 "plataforma no sirve. Desactivarlo mantiene el uso solo en red de descarga.",
-                [self._covers_sw],
+                [
+                    self._covers_sw,
+                    ft.Container(height=4),
+                    ft.Row(controls=[self._cover_refresh_btn],
+                           spacing=8, vertical_alignment=ft.CrossAxisAlignment.CENTER),
+                    self._cover_refresh_text,
+                ],
             ),
             self._card(
                 "DESTINO",
@@ -358,6 +375,121 @@ class ConfigView(ft.Container):
             f"Caché de portadas limpiado ({removed} archivos)" if removed
             else "El caché de portadas ya estaba vacío",
         )
+
+    async def _on_cover_preview(self, e=None) -> None:
+        """Calcula qué portadas cambiarían antes de escribir nada."""
+        import asyncio
+
+        from services.covers import refresh_downloaded_covers
+
+        folder = self._download_dir
+        if not folder or not os.path.isdir(folder):
+            notify(self._page_ref, "No hay carpeta de descargas configurada", kind="error")
+            return
+        self._cover_refresh_btn.disabled = True
+        self._cover_refresh_text.visible = True
+        self._cover_refresh_text.value = "Buscando portadas… (puede tardar)"
+        try:
+            self.update()
+        except Exception:
+            pass
+        try:
+            report = await asyncio.to_thread(
+                refresh_downloaded_covers, folder, apply=False
+            )
+        except Exception as exc:  # noqa: BLE001
+            notify(self._page_ref, f"No se pudo calcular: {exc}", kind="error")
+            self._cover_refresh_btn.disabled = False
+            return
+
+        pending = len(report.previews)
+        if not report.total:
+            self._cover_refresh_text.value = "No hay archivos de audio en la carpeta"
+        elif not pending:
+            self._cover_refresh_text.value = (
+                f"{report.total} archivos · {report.unchanged} ya tienen portada · "
+                f"{report.missing} sin artwork"
+            )
+        else:
+            self._cover_refresh_text.value = (
+                f"{pending} de {report.total} archivos cambiarían de portada"
+            )
+            await self._confirm_cover_apply(folder, report.previews)
+        self._cover_refresh_btn.disabled = False
+        try:
+            self.update()
+        except Exception:
+            pass
+
+    async def _confirm_cover_apply(self, folder: str, previews: list) -> None:
+        """Pide confirmación y escribe solo las portadas revisadas."""
+        import asyncio
+
+        from engine.audio_metadata import write_cover
+
+        sources: dict[str, int] = {}
+        for _, _, source in previews:
+            sources[source or "desconocido"] = sources.get(source or "desconocido", 0) + 1
+        detail = ", ".join(f"{n} de {s}" for s, n in sorted(sources.items(), key=lambda kv: -kv[1]))
+
+        confirmed = await self._ask_confirm(
+            "Sobrescribir portadas",
+            f"Se reemplazará la portada de {len(previews)} archivos en {folder}.\n\n"
+            f"Orígenes: {detail}.\n\n¿Continuar?",
+        )
+        if not confirmed:
+            self._cover_refresh_text.value = "Cancelado: no se modificó ningún archivo"
+            return
+
+        def _write() -> tuple[int, int]:
+            ok = failed = 0
+            for path, data, _ in previews:
+                if write_cover(path, data):
+                    ok += 1
+                else:
+                    failed += 1
+            return ok, failed
+
+        ok, failed = await asyncio.to_thread(_write)
+        self._cover_refresh_text.value = (
+            f"{ok} portadas actualizadas" + (f" · {failed} con error" if failed else "")
+        )
+        notify(self._page_ref, f"{ok} portadas actualizadas", kind="info" if not failed else "error")
+
+    async def _ask_confirm(self, title: str, message: str) -> bool:
+        """Diálogo de confirmación simple; ``False`` si se cierra sin aceptar."""
+        import asyncio
+
+        loop = asyncio.get_running_loop()
+        future: asyncio.Future[bool] = loop.create_future()
+
+        def _close(value: bool) -> None:
+            if not future.done():
+                future.set_result(value)
+            dlg.open = False
+            try:
+                self._page_ref.update()
+            except Exception:
+                pass
+
+        dlg = ft.AlertDialog(
+            modal=True,
+            title=app_text(title, size=15, color=TEXT_PRIMARY, font_family=FONT_HEADLINE),
+            content=ft.Container(
+                width=420,
+                content=app_text(message, size=12, color=TEXT_MUTED, font_family=FONT_TEXT),
+            ),
+            actions=[
+                _ghost_btn("Cancelar", PIcons.X, lambda _: _close(False), width=110, height=36),
+                _primary_btn("Sobrescribir", PIcons.CHECK, lambda _: _close(True), width=150, height=36),
+            ],
+            actions_alignment=ft.MainAxisAlignment.END,
+            on_dismiss=lambda _: _close(False),
+        )
+        self._page_ref.overlay.append(dlg)
+        dlg.open = True
+        self._page_ref.update()
+        return await future
 
     def _on_install_shortcut(self, e=None) -> None:
         ok, msg = desktop_integration.install_shortcut()
