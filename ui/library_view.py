@@ -79,7 +79,7 @@ class LibraryView(ft.Container):
         self._empty_title = app_text("Sin playlists cacheadas", size=13, color=TEXT_PRIMARY, font_family=FONT_HEADLINE_BOLD)
         self._empty_sub = app_text("Elige una fuente para sincronizar", size=11, color=TEXT_MUTED, font_family=FONT_TEXT)
         self._empty = ft.Container(expand=True, visible=False, alignment=ft.Alignment.CENTER, content=ft.Column(controls=[
-            app_icon(PIcons.BOOKS, size=48, color=TEXT_DIM, duotone=True),
+            app_icon(PIcons.BOOKS, size=48, color=TEXT_DIM),
             self._empty_title,
             self._empty_sub,
         ], horizontal_alignment=ft.CrossAxisAlignment.CENTER, spacing=8))

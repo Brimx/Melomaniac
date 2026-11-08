@@ -54,8 +54,8 @@ class PlayerQueuePanel(ft.Container):
             icon_color=TEXT_MUTED,
             tooltip="Cerrar cola",
             on_click=lambda _e: self.set_open(False),
-            width=28,
-            height=28,
+            width=30,
+            height=30,
         )
 
         self._list_view = ft.ReorderableListView(
@@ -72,7 +72,7 @@ class PlayerQueuePanel(ft.Container):
             alignment=ft.Alignment.CENTER,
             content=ft.Column(
                 controls=[
-                    app_icon(PIcons.QUEUE, size=40, color=TEXT_DIM, duotone=True),
+                    app_icon(PIcons.QUEUE, size=40, color=TEXT_DIM, fill=True),
                     app_text(
                         "Cola vacía",
                         size=13,

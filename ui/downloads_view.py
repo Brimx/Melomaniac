@@ -164,7 +164,7 @@ class DownloadsView(ft.Container):
         self._history_empty = ft.Container(
             expand=True, alignment=ft.Alignment.CENTER,
             content=ft.Column(controls=[
-                app_icon(PIcons.DOWNLOAD_SIMPLE, size=48, color=TEXT_DIM, duotone=True),
+                app_icon(PIcons.DOWNLOAD_SIMPLE, size=48, color=TEXT_DIM),
                 app_text("Sin descargas todavía", size=13, color=TEXT_PRIMARY,
                          font_family=FONT_HEADLINE_BOLD),
                 app_text("Selecciona pistas en Gestión o descarga una playlist desde Biblioteca",

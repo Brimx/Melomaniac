@@ -35,7 +35,7 @@ from ui.tokens import (
     ACCENT, BG_HOVER, BG_LIST, BG_PANEL, BG_SURFACE, BORDER_MUTED, CHIP_BG,
     OVERLAY_08, PLAYER_BAR_H, PLAYER_PROGRESS_ANIM_MS, PLAYER_PROGRESS_H,
     PLAYER_THUMB_SIZE, RADIUS_BUTTON, RADIUS_INPUT, TEXT_DIM, TEXT_MUTED,
-    TEXT_PRIMARY,
+    TEXT_PRIMARY, MOTION_HOVER_MS,
 )
 from ui.widgets import app_text, notify
 
@@ -312,6 +312,7 @@ class PlayerBar(ft.Container):
             controls=[self._prev_btn, self._play_btn, self._next_btn],
             spacing=4,
             vertical_alignment=ft.CrossAxisAlignment.CENTER,
+            tight=True,
         )
 
         # [tiempo]
@@ -360,8 +361,8 @@ class PlayerBar(ft.Container):
             icon_color=TEXT_MUTED,
             tooltip="Silenciar / Activar sonido",
             on_click=self._on_mute_click,
-            width=28,
-            height=28,
+            width=32,
+            height=32,
         )
         self._vol_slider = ft.Slider(
             min=0.0,
@@ -377,6 +378,7 @@ class PlayerBar(ft.Container):
             controls=[self._mute_btn, self._vol_slider],
             spacing=0,
             vertical_alignment=ft.CrossAxisAlignment.CENTER,
+            tight=True,
         )
 
         # [aleatorio] [repetir] [cola]
@@ -386,8 +388,8 @@ class PlayerBar(ft.Container):
             icon_color=TEXT_MUTED,
             tooltip="Aleatorio",
             on_click=self._on_shuffle_click,
-            width=28,
-            height=28,
+            width=32,
+            height=32,
         )
         self._repeat_btn = app_icon_button(
             glyph=PIcons.REPEAT,
@@ -395,29 +397,43 @@ class PlayerBar(ft.Container):
             icon_color=TEXT_MUTED,
             tooltip="Repetir: desactivado",
             on_click=self._on_repeat_click,
-            width=28,
-            height=28,
+            width=32,
+            height=32,
         )
+        self._queue_icon = app_icon(PIcons.QUEUE, size=16, color=TEXT_PRIMARY)
         self._queue_count_txt = app_text(
             "0",
             size=10,
             color=TEXT_MUTED,
             font_family=mono_family("medium"),
         )
+        def _on_queue_hover(e: ft.HoverEvent) -> None:
+            is_h = e.data == "true" or e.data is True
+            self._queue_btn.bgcolor = BG_HOVER if is_h else OVERLAY_08
+            self._queue_btn.border = ft.Border.all(0.8, ACCENT if is_h else BORDER_MUTED)
+            if self._queue_btn.page:
+                self._queue_btn.update()
+
         self._queue_btn = ft.Container(
             bgcolor=OVERLAY_08,
             border=ft.Border.all(0.8, BORDER_MUTED),
             border_radius=RADIUS_BUTTON,
-            padding=ft.Padding.symmetric(horizontal=10, vertical=6),
+            padding=ft.Padding.symmetric(horizontal=10, vertical=0),
+            height=32,
+            alignment=ft.Alignment.CENTER,
             tooltip="Mostrar / ocultar cola de reproducción",
+            animate=ft.Animation(MOTION_HOVER_MS, ft.AnimationCurve.EASE_OUT),
             on_click=lambda _e: self._on_toggle_queue() if self._on_toggle_queue else None,
+            on_hover=_on_queue_hover,
             content=ft.Row(
                 controls=[
-                    app_icon(PIcons.QUEUE, size=16, color=TEXT_PRIMARY),
+                    self._queue_icon,
                     self._queue_count_txt,
                 ],
                 spacing=6,
+                alignment=ft.MainAxisAlignment.CENTER,
                 vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                tight=True,
             ),
         )
 
