@@ -239,11 +239,16 @@ class LibraryView(ft.Container):
         else:
             self._loading_bar.visible = False
             self._status_text.value = ""
-        # grid
+        # grid: la tarjeta va en un envoltorio que llena la celda pero
+        # alinea arriba-izquierda con constraints sueltos, así conserva
+        # su ancho fijo (160) y lo que cambia al redimensionar la vista
+        # es el ritmo de celdas, no el tamaño de la tarjeta.
         self._grid.controls.clear()
         for summ in snap.items:
             card = PlaylistCard(summ, state=state, on_tap=self._on_open_playlist)
-            self._grid.controls.append(card)
+            self._grid.controls.append(
+                ft.Container(alignment=ft.Alignment.TOP_LEFT, content=card)
+            )
         self._grid.visible = True
         self._empty.visible = not snap.items and state != LibraryLoadState.LOADING
         # if empty
@@ -264,7 +269,10 @@ class LibraryView(ft.Container):
         self._empty_title.value = "Sin carpetas locales"
         self._empty_sub.value = "Añade una carpeta con audio o indexa tu carpeta de Descargas"
         self._grid.controls = [
-            PlaylistCard(summ, state=LibraryLoadState.READY, on_tap=self._on_open_playlist)
+            ft.Container(
+                alignment=ft.Alignment.TOP_LEFT,
+                content=PlaylistCard(summ, state=LibraryLoadState.READY, on_tap=self._on_open_playlist),
+            )
             for summ in folders
         ]
         self._grid.visible = bool(folders)
