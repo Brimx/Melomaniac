@@ -132,9 +132,11 @@ class PIcons:
 
 def _resolve_font_family(fill: bool = False, duotone: bool = False) -> str:
     """Resuelve la familia de fuente según el peso solicitado."""
-    if duotone:
-        return FONT_PHOSPHOR_DUOTONE
-    if fill:
+    # Nota: la fuente Phosphor-Duotone TTF oficial de Phosphor Icons únicamente
+    # contiene la máscara de opacidad secundaria (destinada a composición web con
+    # pseudo-elementos). En renderizado monolítico de escritorio, usarla sola deja
+    # el glifo mutilado; por ende se resuelve al peso Fill o Regular correspondiente.
+    if fill or duotone:
         return FONT_PHOSPHOR_FILL
     return FONT_PHOSPHOR
 
@@ -164,10 +166,13 @@ def app_icon(
         glyph,
         font_family=family,
         size=size,
+        width=size,
+        height=size,
         color=color or TEXT_PRIMARY,
         text_align=ft.TextAlign.CENTER,
         tooltip=tooltip,
         animate_opacity=animate_opacity,
+        style=ft.TextStyle(height=1.0),
     )
 
 
@@ -185,8 +190,12 @@ def app_icon_button(
     height: Optional[float] = None,
     padding: Optional[ft.Padding] = None,
     bgcolor: Optional[str] = None,
+    hover_bgcolor: Optional[str] = None,
+    border: Optional[ft.Border] = None,
+    hover_border: Optional[ft.Border] = None,
     border_radius: Optional[float | ft.BorderRadius] = None,
     visible: bool = True,
+    disabled: bool = False,
     on_hover: Optional[Callable] = None,
 ) -> ft.Container:
     """Crea un botón interactivo sin halos Material, con luminancia y micro-escala.
@@ -204,12 +213,21 @@ def app_icon_button(
         width: Ancho del contenedor clickeable (None = tamaño intrínseco).
         height: Alto del contenedor clickeable (None = tamaño intrínseco).
         padding: Padding interno opcional.
-        bgcolor: Fondo opcional.
+        bgcolor: Fondo opcional en reposo.
+        hover_bgcolor: Fondo opcional en hover.
+        border: Borde opcional en reposo.
+        hover_border: Borde opcional en hover.
         border_radius: Radio de borde opcional.
+        visible: Visibilidad del botón.
+        disabled: Desactiva clics y atenúa opacidad.
         on_hover: Callback adicional de hover si se requiere.
     """
     base_color = icon_color or TEXT_MUTED
     target_hover_color = hover_color_icon or TEXT_PRIMARY
+    base_bg = bgcolor or ft.Colors.TRANSPARENT
+    target_hover_bg = hover_bgcolor or base_bg
+    base_border = border or ft.Border.all(0.8, ft.Colors.TRANSPARENT)
+    target_hover_border = hover_border or base_border
 
     text_ctrl = app_icon(
         glyph=glyph,
@@ -220,10 +238,16 @@ def app_icon_button(
     )
 
     def _handle_hover(e: ft.HoverEvent) -> None:
+        if btn.disabled:
+            return
         is_h = e.data == "true" or e.data is True
         if hover_scale != 1.0:
             btn.scale = hover_scale if is_h else 1.0
         text_ctrl.color = target_hover_color if is_h else base_color
+        if hover_bgcolor is not None:
+            btn.bgcolor = target_hover_bg if is_h else base_bg
+        if hover_border is not None:
+            btn.border = target_hover_border if is_h else base_border
         if on_hover:
             on_hover(e)
         if btn.page:
@@ -235,12 +259,16 @@ def app_icon_button(
         width=width,
         height=height,
         padding=padding,
-        bgcolor=bgcolor,
+        bgcolor=base_bg,
+        border=base_border if (border or hover_border) else None,
         border_radius=border_radius,
         tooltip=tooltip,
         visible=visible,
+        disabled=disabled,
+        clip_behavior=ft.ClipBehavior.NONE,
         scale=1.0,
         animate_scale=ft.Animation(MOTION_HOVER_MS, ft.AnimationCurve.EASE_OUT) if hover_scale != 1.0 else None,
+        animate=ft.Animation(MOTION_HOVER_MS, ft.AnimationCurve.EASE_OUT) if (hover_bgcolor or hover_border) else None,
         on_click=on_click,
         on_hover=_handle_hover,
     )

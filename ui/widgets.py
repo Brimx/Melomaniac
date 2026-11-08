@@ -162,9 +162,15 @@ def app_text_field(
 
     prefix_icon = kwargs.pop("prefix_icon", None)
     if prefix_icon and len(prefix_icon) == 1 and ord(prefix_icon) >= 0xE000:
-        kwargs["prefix"] = app_icon(prefix_icon, size=14, color=TEXT_DIM)
+        kwargs["prefix_icon"] = app_icon(prefix_icon, size=16, color=TEXT_DIM)
     elif prefix_icon:
         kwargs["prefix_icon"] = prefix_icon
+
+    suffix_icon = kwargs.pop("suffix_icon", None)
+    if suffix_icon and len(suffix_icon) == 1 and ord(suffix_icon) >= 0xE000:
+        kwargs["suffix_icon"] = app_icon(suffix_icon, size=16, color=TEXT_DIM)
+    elif suffix_icon:
+        kwargs["suffix_icon"] = suffix_icon
     return ft.TextField(
         label=label,
         hint_text=hint_text,
@@ -429,6 +435,7 @@ def _primary_btn(text: str, icon: str, on_click, width=None, height=None) -> ft.
         btn_content = ft.Row(
             [app_icon(icon, size=18, color=TEXT_PRIMARY), ft.Text(text, opacity=1.0, font_family=FONT_HEADLINE)],
             alignment=ft.MainAxisAlignment.CENTER,
+            vertical_alignment=ft.CrossAxisAlignment.CENTER,
             tight=True,
             spacing=8,
         )
@@ -437,6 +444,7 @@ def _primary_btn(text: str, icon: str, on_click, width=None, height=None) -> ft.
         btn_content = ft.Text(text, opacity=1.0, font_family=FONT_HEADLINE)
         btn_icon = icon
 
+    pad_v = 6 if (height and height <= 34) else 12
     return ft.Button(
         content=btn_content,
         icon=btn_icon,
@@ -452,7 +460,7 @@ def _primary_btn(text: str, icon: str, on_click, width=None, height=None) -> ft.
             elevation={ft.ControlState.DEFAULT: 0, ft.ControlState.HOVERED: 6},
             shadow_color={ft.ControlState.HOVERED: ACCENT_HALO},
             shape=ft.RoundedRectangleBorder(radius=RADIUS_BUTTON),
-            padding=ft.Padding.symmetric(horizontal=16, vertical=12),
+            padding=ft.Padding.symmetric(horizontal=16, vertical=pad_v),
             animation_duration=MOTION_HOVER_MS,
         ),
         width=width,
@@ -499,6 +507,7 @@ def _ghost_btn(text: str, icon: str | None, on_click, width=None, height=None, d
         btn_content = ft.Row(
             [app_icon(icon, size=18, color=TEXT_MUTED), ft.Text(text, opacity=1.0, font_family=FONT_HEADLINE)],
             alignment=ft.MainAxisAlignment.CENTER,
+            vertical_alignment=ft.CrossAxisAlignment.CENTER,
             tight=True,
             spacing=8,
         )
@@ -507,6 +516,7 @@ def _ghost_btn(text: str, icon: str | None, on_click, width=None, height=None, d
         btn_content = ft.Text(text, opacity=1.0, font_family=FONT_HEADLINE)
         btn_icon = icon
 
+    pad_v = 6 if (height and height <= 34) else 12
     return ft.OutlinedButton(
         content=btn_content,
         icon=btn_icon,
@@ -522,7 +532,7 @@ def _ghost_btn(text: str, icon: str | None, on_click, width=None, height=None, d
                 ft.ControlState.HOVERED: ft.BorderSide(0.8, ACCENT),
             },
             shape=ft.RoundedRectangleBorder(radius=RADIUS_BUTTON),
-            padding=ft.Padding.symmetric(horizontal=14, vertical=12),
+            padding=ft.Padding.symmetric(horizontal=14, vertical=pad_v),
             animation_duration=MOTION_HOVER_MS,
         ),
         width=width,
