@@ -404,7 +404,7 @@ def _primary_btn(text: str, icon: str, on_click, width=None, height=None) -> ft.
     
     Args:
         text: Texto del botón.
-        icon: Nombre del icono de Flet (ej: ft.Icons.PLAY_ARROW).
+        icon: Glifo Unicode de Phosphor (ej: PIcons.PLAY) o icono de Flet.
         on_click: Callback ejecutado al hacer clic.
         width: Ancho opcional del botón en píxeles.
         height: Alto opcional del botón en píxeles.
@@ -415,7 +415,7 @@ def _primary_btn(text: str, icon: str, on_click, width=None, height=None) -> ft.
     Example:
         >>> btn = _primary_btn(
         ...     "Transferir",
-        ...     ft.Icons.UPLOAD,
+        ...     PIcons.ARROWS_LEFT_RIGHT,
         ...     on_click=lambda e: print("Transferir")
         ... )
     
@@ -483,7 +483,7 @@ def _ghost_btn(text: str, icon: str | None, on_click, width=None, height=None, d
     Example:
         >>> btn = _ghost_btn(
         ...     "Cancelar",
-        ...     ft.Icons.CLOSE,
+        ...     PIcons.X,
         ...     on_click=lambda e: print("Cancelar"),
         ...     disabled=False
         ... )

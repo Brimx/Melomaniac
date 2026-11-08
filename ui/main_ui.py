@@ -225,7 +225,7 @@ class PlaylistManagerUI(DialogMixin):
         return ft.Container(
             bgcolor=BG_LIST,
             content=ft.Column(controls=[
-                ft.Container(content=ft.Icon(ft.Icons.CONSTRUCTION, size=52, color=TEXT_DIM),
+                ft.Container(content=app_icon(PIcons.WRENCH, size=52, color=TEXT_DIM),
                              bgcolor=CHIP_BG, border=ft.Border.all(0.8, BORDER_LIGHT),
                              border_radius=20, padding=ft.Padding.all(20)),
                 ft.Text(title, size=18, color=TEXT_PRIMARY, font_family=FONT_HEADLINE_BOLD, opacity=1.0),
@@ -391,20 +391,20 @@ class PlaylistManagerUI(DialogMixin):
             if is_dual:
                 # izq = Playlist original base (§1), der = División activa §6
                 self._lista_header_text.value = "PLAYLIST ORIGINAL"
-                self._lista_header_icon.icon = ft.Icons.HISTORY
+                self._lista_header_icon.value = PIcons.CLOCK
                 if s.segments:
                     seg = s.active_segment_key or ""
                     # §6 una División a la vez; §7 División activa vs seleccionadas
                     self._preview_header_text.value = f"DIVISIÓN — {seg}" if seg else f"DIVISIONES — {len(s.segments)} divisiones"
-                    self._preview_header_icon.icon = ft.Icons.CALL_SPLIT
+                    self._preview_header_icon.value = PIcons.GIT_BRANCH
                 else:
                     self._preview_header_text.value = "RESULTADO — organizado"
-                    self._preview_header_icon.icon = ft.Icons.SORT
+                    self._preview_header_icon.value = PIcons.SORT_ASCENDING
             else:
                 self._lista_header_text.value = "PLAYLIST ORIGINAL"
-                self._lista_header_icon.icon = ft.Icons.LIST_ALT
+                self._lista_header_icon.value = PIcons.LIST_BULLETS
                 self._preview_header_text.value = "DIVISIÓN ACTIVA — preview"
-                self._preview_header_icon.icon = ft.Icons.VISIBILITY_OUTLINED
+                self._preview_header_icon.value = PIcons.EYE
         except Exception:
             pass
         try:
@@ -1068,15 +1068,21 @@ class PlaylistManagerUI(DialogMixin):
             s.set_destination(val)
             if val == EXPORT_DEST_LABEL:
                 # Export local no requiere sesión
-                self._transfer_btn.content.value = "Exportar"  # type: ignore
-                self._transfer_btn.icon = ft.Icons.SAVE_ALT  # type: ignore
+                if isinstance(self._transfer_btn.content, ft.Row) and len(self._transfer_btn.content.controls) >= 2:
+                    self._transfer_btn.content.controls[0].value = PIcons.EXPORT
+                    self._transfer_btn.content.controls[1].value = "Exportar"
+                elif hasattr(self._transfer_btn.content, "value"):
+                    self._transfer_btn.content.value = "Exportar"
                 self._transfer_btn.update()
                 return
             else:
                 # restaura icono transfer si venía de export
                 try:
-                    self._transfer_btn.content.value = "Transferir"  # type: ignore
-                    self._transfer_btn.icon = ft.Icons.SWAP_HORIZ  # type: ignore
+                    if isinstance(self._transfer_btn.content, ft.Row) and len(self._transfer_btn.content.controls) >= 2:
+                        self._transfer_btn.content.controls[0].value = PIcons.ARROWS_LEFT_RIGHT
+                        self._transfer_btn.content.controls[1].value = "Transferir"
+                    elif hasattr(self._transfer_btn.content, "value"):
+                        self._transfer_btn.content.value = "Transferir"
                 except Exception:
                     pass
             if val in AppState.PLATFORMS:
@@ -1130,11 +1136,11 @@ class PlaylistManagerUI(DialogMixin):
         )
 
         _BTN_W, _BTN_H = 129, 44
-        self._load_btn     = _primary_btn("Cargar",      ft.Icons.DOWNLOAD,   self._on_load,     width=_BTN_W, height=_BTN_H)
-        self._transfer_btn = _ghost_btn(  "Transferir",  ft.Icons.SWAP_HORIZ, self._on_transfer, width=_BTN_W, height=_BTN_H)
-        self._organize_btn = _ghost_btn(  "Organizar",   ft.Icons.SORT,       self._on_organize, width=_BTN_W, height=_BTN_H, disabled=True)
-        self._split_btn    = _ghost_btn(  "Dividir",     ft.Icons.CALL_SPLIT, self._on_split,    width=_BTN_W, height=_BTN_H, disabled=True)
-        self._reorganize_btn = _ghost_btn("Reorganizar", ft.Icons.REORDER, self._on_reorganize, width=_BTN_W*2+6, height=_BTN_H, disabled=True)
+        self._load_btn     = _primary_btn("Cargar",      PIcons.DOWNLOAD_SIMPLE,   self._on_load,     width=_BTN_W, height=_BTN_H)
+        self._transfer_btn = _ghost_btn(  "Transferir",  PIcons.ARROWS_LEFT_RIGHT, self._on_transfer, width=_BTN_W, height=_BTN_H)
+        self._organize_btn = _ghost_btn(  "Organizar",   PIcons.SLIDERS_HORIZONTAL,       self._on_organize, width=_BTN_W, height=_BTN_H, disabled=True)
+        self._split_btn    = _ghost_btn(  "Dividir",     PIcons.GIT_BRANCH, self._on_split,    width=_BTN_W, height=_BTN_H, disabled=True)
+        self._reorganize_btn = _ghost_btn("Reorganizar", PIcons.ARROWS_CLOCKWISE, self._on_reorganize, width=_BTN_W*2+6, height=_BTN_H, disabled=True)
 
         actions = ft.Column([
             ft.Row([self._load_btn,  self._transfer_btn], spacing=6),
@@ -1144,7 +1150,7 @@ class PlaylistManagerUI(DialogMixin):
 
         self._rl_banner = ft.Container(
             content=ft.Row([
-                ft.Icon(ft.Icons.TIMER_OUTLINED, color=WARNING, size=14),
+                app_icon(PIcons.CLOCK, color=WARNING, size=14),
                 ft.Text("", size=10, color=WARNING, font_family=mono_family("light"), opacity=1.0),
             ], spacing=6),
             bgcolor=BG_PANEL, border=ft.Border.all(0.8, WARNING),
@@ -1329,7 +1335,7 @@ class PlaylistManagerUI(DialogMixin):
         # estado local mutable — §7 División activa vs seleccionadas para transferir
         selected: set[str] = set(s.active_segment_keys) if s.active_segment_keys is not None else set(s.segments.keys())
 
-        search_field = app_text_field(hint_text="Buscar división…", prefix_icon=ft.Icons.SEARCH, width=360, height=36, content_padding=ft.Padding.symmetric(horizontal=10, vertical=6))
+        search_field = app_text_field(hint_text="Buscar división…", prefix_icon=PIcons.MAGNIFYING_GLASS, width=360, height=36, content_padding=ft.Padding.symmetric(horizontal=10, vertical=6))
         list_view = ft.ListView(height=260, spacing=4, padding=ft.Padding.all(4), expand=False)
 
         def _rebuild(filter_q: str = ""):
@@ -1443,12 +1449,12 @@ class PlaylistManagerUI(DialogMixin):
         add_criterion = {"value": "song"}
         remove_criterion = {"value": "song"}
         def _icon_for(v: str):
-            return ft.Icons.PERSON if v == "artist" else ft.Icons.ALBUM if v == "album" else ft.Icons.MUSIC_NOTE
+            return PIcons.USER if v == "artist" else PIcons.DISC if v == "album" else PIcons.MUSIC_NOTE
         # listas buscables
         left_sel: set[str] = set()
         right_sel: set[str] = set()
-        left_search = app_text_field(hint_text="Buscar en ORIGINAL…", prefix_icon=ft.Icons.SEARCH, expand=True, height=32, content_padding=ft.Padding.symmetric(horizontal=8, vertical=4))
-        right_search = app_text_field(hint_text="Buscar en División…", prefix_icon=ft.Icons.SEARCH, expand=True, height=32, content_padding=ft.Padding.symmetric(horizontal=8, vertical=4))
+        left_search = app_text_field(hint_text="Buscar en ORIGINAL…", prefix_icon=PIcons.MAGNIFYING_GLASS, expand=True, height=32, content_padding=ft.Padding.symmetric(horizontal=8, vertical=4))
+        right_search = app_text_field(hint_text="Buscar en División…", prefix_icon=PIcons.MAGNIFYING_GLASS, expand=True, height=32, content_padding=ft.Padding.symmetric(horizontal=8, vertical=4))
         left_lv = ft.ListView(spacing=4, padding=ft.Padding.all(6), height=lv_h)
         right_lv = ft.ListView(spacing=4, padding=ft.Padding.all(6), height=lv_h)
         left_limit = ft.Text("", size=9, color=TEXT_DIM, font_family=FONT_TEXT)
@@ -1542,32 +1548,33 @@ class PlaylistManagerUI(DialogMixin):
             except: pass
 
         # IconButton + ContextMenu a la IZQUIERDA de cada buscador, icono cambia según criterio.
-        # Se usa el icon nativo de PopupMenuButton (sin IconButton anidado, que consumía el click).
+        add_icon_ctrl = app_icon(PIcons.MUSIC_NOTE, size=16, color=ACCENT)
         add_popup = ft.PopupMenuButton(
-            icon=ft.Icons.MUSIC_NOTE, icon_size=16, icon_color=ACCENT, tooltip="Añadir por",
+            content=add_icon_ctrl, tooltip="Añadir por",
             items=[
-                ft.PopupMenuItem(content=ft.Text("Artista"), icon=ft.Icons.PERSON, on_click=lambda _: _set_add_crit("artist")),
-                ft.PopupMenuItem(content=ft.Text("Álbum"), icon=ft.Icons.ALBUM, on_click=lambda _: _set_add_crit("album")),
-                ft.PopupMenuItem(content=ft.Text("Canción"), icon=ft.Icons.MUSIC_NOTE, on_click=lambda _: _set_add_crit("song")),
+                ft.PopupMenuItem(content=ft.Row([app_icon(PIcons.USER, size=15, color=TEXT_PRIMARY), ft.Text("Artista", font_family=FONT_TEXT, size=12)], spacing=8), on_click=lambda _: _set_add_crit("artist")),
+                ft.PopupMenuItem(content=ft.Row([app_icon(PIcons.DISC, size=15, color=TEXT_PRIMARY), ft.Text("Álbum", font_family=FONT_TEXT, size=12)], spacing=8), on_click=lambda _: _set_add_crit("album")),
+                ft.PopupMenuItem(content=ft.Row([app_icon(PIcons.MUSIC_NOTE, size=15, color=TEXT_PRIMARY), ft.Text("Canción", font_family=FONT_TEXT, size=12)], spacing=8), on_click=lambda _: _set_add_crit("song")),
             ],
         )
+        remove_icon_ctrl = app_icon(PIcons.MUSIC_NOTE, size=16, color=WARNING)
         remove_popup = ft.PopupMenuButton(
-            icon=ft.Icons.MUSIC_NOTE, icon_size=16, icon_color=WARNING, tooltip="Eliminar por",
+            content=remove_icon_ctrl, tooltip="Eliminar por",
             items=[
-                ft.PopupMenuItem(content=ft.Text("Artista"), icon=ft.Icons.PERSON, on_click=lambda _: _set_remove_crit("artist")),
-                ft.PopupMenuItem(content=ft.Text("Álbum"), icon=ft.Icons.ALBUM, on_click=lambda _: _set_remove_crit("album")),
-                ft.PopupMenuItem(content=ft.Text("Canción"), icon=ft.Icons.MUSIC_NOTE, on_click=lambda _: _set_remove_crit("song")),
+                ft.PopupMenuItem(content=ft.Row([app_icon(PIcons.USER, size=15, color=TEXT_PRIMARY), ft.Text("Artista", font_family=FONT_TEXT, size=12)], spacing=8), on_click=lambda _: _set_remove_crit("artist")),
+                ft.PopupMenuItem(content=ft.Row([app_icon(PIcons.DISC, size=15, color=TEXT_PRIMARY), ft.Text("Álbum", font_family=FONT_TEXT, size=12)], spacing=8), on_click=lambda _: _set_remove_crit("album")),
+                ft.PopupMenuItem(content=ft.Row([app_icon(PIcons.MUSIC_NOTE, size=15, color=TEXT_PRIMARY), ft.Text("Canción", font_family=FONT_TEXT, size=12)], spacing=8), on_click=lambda _: _set_remove_crit("song")),
             ],
         )
         def _set_add_crit(v: str):
             add_criterion["value"] = v
-            add_popup.icon = _icon_for(v)
+            add_icon_ctrl.value = _icon_for(v)
             try: add_popup.update()
             except: pass
             _rebuild_left(left_search.value or "")
         def _set_remove_crit(v: str):
             remove_criterion["value"] = v
-            remove_popup.icon = _icon_for(v)
+            remove_icon_ctrl.value = _icon_for(v)
             try: remove_popup.update()
             except: pass
             _rebuild_right(right_search.value or "")
@@ -1641,8 +1648,8 @@ class PlaylistManagerUI(DialogMixin):
                 content=ft.Column([
                     name_field,
                     ft.Row([
-                        ft.Column([ft.Row([add_popup, left_search], spacing=4, vertical_alignment=ft.CrossAxisAlignment.CENTER), left_limit, ft.Container(content=left_lv, bgcolor=CHIP_BG, border=ft.Border.all(0.5, BORDER_LIGHT), border_radius=8, height=lv_h + 12, width=390), ft.TextButton("Agregar →", icon=ft.Icons.ARROW_FORWARD, on_click=_add_to_division, style=ft.ButtonStyle(color=ACCENT))], spacing=6, width=390),
-                        ft.Column([ft.Row([remove_popup, right_search], spacing=4, vertical_alignment=ft.CrossAxisAlignment.CENTER), right_limit, ft.Container(content=right_lv, bgcolor=CHIP_BG, border=ft.Border.all(0.5, BORDER_LIGHT), border_radius=8, height=lv_h + 12, width=390), ft.TextButton("← Quitar", icon=ft.Icons.ARROW_BACK, on_click=_remove_from_division, style=ft.ButtonStyle(color=WARNING))], spacing=6, width=390),
+                        ft.Column([ft.Row([add_popup, left_search], spacing=4, vertical_alignment=ft.CrossAxisAlignment.CENTER), left_limit, ft.Container(content=left_lv, bgcolor=CHIP_BG, border=ft.Border.all(0.5, BORDER_LIGHT), border_radius=8, height=lv_h + 12, width=390), dialog_action("Agregar →", _add_to_division, kind="primary", icon=PIcons.ARROW_RIGHT)], spacing=6, width=390),
+                        ft.Column([ft.Row([remove_popup, right_search], spacing=4, vertical_alignment=ft.CrossAxisAlignment.CENTER), right_limit, ft.Container(content=right_lv, bgcolor=CHIP_BG, border=ft.Border.all(0.5, BORDER_LIGHT), border_radius=8, height=lv_h + 12, width=390), dialog_action("← Quitar", _remove_from_division, kind="danger", icon=PIcons.ARROW_LEFT)], spacing=6, width=390),
                     ], spacing=10, vertical_alignment=ft.CrossAxisAlignment.START),
                 ], tight=True, spacing=8),
                 width=820,
@@ -1667,7 +1674,7 @@ class PlaylistManagerUI(DialogMixin):
         self._track_count = ft.Text("", size=12, color=TEXT_MUTED, font_family=mono_family("light"), opacity=1.0)
         self._search_field = app_text_field(
             hint_text="Buscar título, artista…",
-            prefix_icon=ft.Icons.SEARCH,
+            prefix_icon=PIcons.MAGNIFYING_GLASS,
             width=240, height=38,
             content_padding=ft.Padding.symmetric(horizontal=10, vertical=6),
             on_change=self._on_search_change,
@@ -1682,20 +1689,30 @@ class PlaylistManagerUI(DialogMixin):
             hint_text="Segmento..."
         )
 
-        _ib_style = dict(icon_size=17, style=ft.ButtonStyle(
-            padding=4, bgcolor={ft.ControlState.DEFAULT: ft.Colors.TRANSPARENT}))
-        self._auth_yt = ft.IconButton(icon=ft.Icons.VIDEO_LIBRARY_OUTLINED, icon_color=TEXT_DIM,
-                                      tooltip="YouTube Music · clic = validar sesión ahora",
-                                      on_click=lambda _: asyncio.create_task(self._on_auth_probe("YouTube Music")),
-                                      **_ib_style)
-        self._auth_am = ft.IconButton(icon=ft.Icons.APPLE, icon_color=TEXT_DIM,
-                                      tooltip="Apple Music · clic = validar sesión ahora",
-                                      on_click=lambda _: asyncio.create_task(self._on_auth_probe("Apple Music")),
-                                      **_ib_style)
-        self._auth_sp = ft.IconButton(icon=ft.Icons.MUSIC_NOTE, icon_color=TEXT_DIM,
-                                      tooltip="Spotify · clic = validar sesión ahora",
-                                      on_click=lambda _: asyncio.create_task(self._on_auth_probe("Spotify")),
-                                      **_ib_style)
+        self._auth_yt = app_icon_button(
+            glyph=PIcons.YOUTUBE_LOGO,
+            icon_color=TEXT_DIM,
+            size=17,
+            tooltip="YouTube Music · clic = validar sesión ahora",
+            on_click=lambda _: asyncio.create_task(self._on_auth_probe("YouTube Music")),
+            width=28, height=28,
+        )
+        self._auth_am = app_icon_button(
+            glyph=PIcons.APPLE_LOGO,
+            icon_color=TEXT_DIM,
+            size=17,
+            tooltip="Apple Music · clic = validar sesión ahora",
+            on_click=lambda _: asyncio.create_task(self._on_auth_probe("Apple Music")),
+            width=28, height=28,
+        )
+        self._auth_sp = app_icon_button(
+            glyph=PIcons.SPOTIFY_LOGO,
+            icon_color=TEXT_DIM,
+            size=17,
+            tooltip="Spotify · clic = validar sesión ahora",
+            on_click=lambda _: asyncio.create_task(self._on_auth_probe("Spotify")),
+            width=28, height=28,
+        )
         self._auth_strip = ft.Row(controls=[self._auth_yt, self._auth_am, self._auth_sp],
                                   spacing=2, vertical_alignment=ft.CrossAxisAlignment.CENTER)
 
@@ -1721,11 +1738,13 @@ class PlaylistManagerUI(DialogMixin):
             padding=ft.Padding.symmetric(horizontal=8, vertical=6),
         )
 
-        self._clear_session_btn = ft.IconButton(
-            icon=ft.Icons.DELETE_SWEEP, icon_color=TEXT_DIM, icon_size=17,
+        self._clear_session_btn = app_icon_button(
+            glyph=PIcons.TRASH,
+            icon_color=TEXT_DIM,
+            size=16,
             tooltip="Limpiar playlist cargada",
             on_click=self._on_clear_session,
-            style=ft.ButtonStyle(padding=4, bgcolor={ft.ControlState.DEFAULT: ft.Colors.TRANSPARENT}),
+            width=28, height=28,
         )
 
         # header sin selector de partición (movido junto a Vista §)
@@ -1776,7 +1795,7 @@ class PlaylistManagerUI(DialogMixin):
         self._empty_state = ft.Container(
             bgcolor=BG_LIST,
             content=ft.Column(controls=[
-                ft.Container(content=ft.Icon(ft.Icons.LIBRARY_MUSIC, size=52, color=TEXT_DIM),
+                ft.Container(content=app_icon(PIcons.PLAYLIST, size=52, color=TEXT_DIM),
                              bgcolor=CHIP_BG, border=ft.Border.all(0.8, BORDER_LIGHT),
                              border_radius=20, padding=ft.Padding.all(20)),
                 ft.Text("Carga una playlist", size=20, color=TEXT_PRIMARY, font_family=FONT_HEADLINE_BOLD,
@@ -1792,7 +1811,7 @@ class PlaylistManagerUI(DialogMixin):
         self._error_text  = ft.Text("", size=13, color=ERROR_COL, font_family=FONT_TEXT, opacity=1.0)
         self._error_state = ft.Container(
             bgcolor=BG_LIST,
-            content=ft.Column([ft.Icon(ft.Icons.ERROR_OUTLINE, size=48, color=ERROR_COL), self._error_text],
+            content=ft.Column([app_icon(PIcons.WARNING_CIRCLE, size=48, color=ERROR_COL, fill=True), self._error_text],
                               horizontal_alignment=ft.CrossAxisAlignment.CENTER, spacing=8),
             alignment=ft.Alignment.CENTER, visible=False, **_sf,
         )
@@ -1811,7 +1830,7 @@ class PlaylistManagerUI(DialogMixin):
         self._preview_skeleton_wrap = ft.Container(content=self._preview_skeleton_view, bgcolor=BG_LIST, visible=False, **_sf)
         self._preview_stack = ft.Stack(controls=[self._preview_view_wrap, self._preview_skeleton_wrap, self._preview_empty_wrap], expand=True)
         self._preview_header_text = ft.Text("Preview — cómo se va a pasar", size=11, color=TEXT_MUTED, font_family=FONT_HEADLINE_BOLD)
-        self._preview_header_icon = ft.Icon(ft.Icons.VISIBILITY_OUTLINED, size=14, color=TEXT_MUTED)
+        self._preview_header_icon = app_icon(PIcons.EYE, size=14, color=TEXT_MUTED)
         self._preview_panel = ft.Container(
             expand=True, bgcolor=BG_LIST, border=ft.Border.all(0.5, BORDER_LIGHT), border_radius=10,
             clip_behavior=ft.ClipBehavior.ANTI_ALIAS,
@@ -1833,7 +1852,7 @@ class PlaylistManagerUI(DialogMixin):
             self._list_view_wrap, self._skeleton_view_wrap, self._empty_state, self._error_state,
         ], expand=True)
         self._lista_header_text = ft.Text("Lista editable", size=11, color=TEXT_MUTED, font_family=FONT_HEADLINE_BOLD)
-        self._lista_header_icon = ft.Icon(ft.Icons.LIST_ALT, size=14, color=TEXT_MUTED)
+        self._lista_header_icon = app_icon(PIcons.LIST_BULLETS, size=14, color=TEXT_MUTED)
         self._lista_panel = ft.Container(
             expand=True, bgcolor=BG_LIST, border=ft.Border.all(0.5, BORDER_LIGHT), border_radius=10,
             clip_behavior=ft.ClipBehavior.ANTI_ALIAS,
@@ -1862,9 +1881,9 @@ class PlaylistManagerUI(DialogMixin):
         self._division_label = ft.Text("División", size=9, color=TEXT_DIM, font_family=FONT_HEADLINE_BOLD)
         self._division_popup = ft.PopupMenuButton(
             content=ft.Row([
-                ft.Icon(ft.Icons.FILTER_LIST, size=14, color=TEXT_DIM),
+                app_icon(PIcons.FUNNEL, size=14, color=TEXT_DIM),
                 self._division_btn_text,
-                ft.Icon(ft.Icons.ARROW_DROP_DOWN, size=16, color=TEXT_DIM),
+                app_icon(PIcons.CARET_DOWN, size=14, color=TEXT_DIM),
             ], spacing=4, tight=True, vertical_alignment=ft.CrossAxisAlignment.CENTER),
             items=[],
             style=ft.ButtonStyle(
@@ -1879,41 +1898,31 @@ class PlaylistManagerUI(DialogMixin):
         self._division_col = ft.Column([self._division_label, self._division_popup], spacing=0, tight=True)
         # Compat: dropdown antiguo eliminado, botón Todos oculto (dropdown cumple papel)
         self._partition_dd = None
-        self._partition_btn = ft.OutlinedButton(
-            content=ft.Text("Todos", size=11, color=TEXT_MUTED, font_family=FONT_HEADLINE),
-            icon=ft.Icons.FILTER_LIST,
-            on_click=lambda _: self._open_partition_picker(),
-            style=ft.ButtonStyle(
-                padding=ft.Padding.symmetric(horizontal=10, vertical=6),
-                side={ft.ControlState.DEFAULT: ft.BorderSide(0.7, BORDER_LIGHT)},
-                shape=ft.RoundedRectangleBorder(radius=8),
-            ),
-            visible=False,
-            tooltip="Seleccionar divisiones para transferir — multi §7",
+        self._partition_btn = _ghost_btn(
+            "Todos",
+            PIcons.FUNNEL,
+            lambda _: self._open_partition_picker(),
         )
-        self._edit_division_btn = ft.OutlinedButton(
-            content=ft.Text("Editar", size=11, color=TEXT_MUTED, font_family=FONT_HEADLINE),
-            icon=ft.Icons.EDIT_NOTE,
-            on_click=lambda _: self._open_edit_division_dialog(),
-            style=ft.ButtonStyle(
-                padding=ft.Padding.symmetric(horizontal=10, vertical=6),
-                side={ft.ControlState.DEFAULT: ft.BorderSide(0.7, BORDER_LIGHT)},
-                shape=ft.RoundedRectangleBorder(radius=8),
-            ),
-            visible=False,
-            tooltip="Editar división — quitar/agregar entre ORIGINAL y División activa §4 (animación nativa)",
+        self._partition_btn.visible = False
+        self._partition_btn.tooltip = "Seleccionar divisiones para transferir — multi §7"
+        self._edit_division_btn = _ghost_btn(
+            "Editar",
+            PIcons.PENCIL_SIMPLE,
+            lambda _: self._open_edit_division_dialog(),
         )
+        self._edit_division_btn.visible = False
+        self._edit_division_btn.tooltip = "Editar división — quitar/agregar entre ORIGINAL y División activa §4 (animación nativa)"
         self._mode_bar = ft.Row([
             ft.Text("Vista:", size=10, color=TEXT_MUTED, font_family=FONT_HEADLINE),
             self._mode_seg,
             ft.VerticalDivider(width=1, color=BORDER_MUTED),
-            ft.Icon(ft.Icons.CALL_SPLIT, size=14, color=TEXT_DIM),
+            app_icon(PIcons.GIT_BRANCH, size=14, color=TEXT_DIM),
             self._division_col,
             self._edit_division_btn,
             ft.Container(expand=True),
-            ft.IconButton(icon=ft.Icons.CLOSE, icon_size=14, icon_color=TEXT_DIM, tooltip="Cerrar doble vista",
-                          on_click=lambda _: self.state.set_show_dual(False),
-                          style=ft.ButtonStyle(padding=4, bgcolor={ft.ControlState.DEFAULT: ft.Colors.TRANSPARENT})),
+            app_icon_button(glyph=PIcons.X, size=14, icon_color=TEXT_DIM, tooltip="Cerrar doble vista",
+                            on_click=lambda _: self.state.set_show_dual(False),
+                            width=24, height=24),
         ], spacing=8, vertical_alignment=ft.CrossAxisAlignment.CENTER, visible=False)
 
         # Doble fila — Row persistente con ambos paneles (cookbook: evita reparent, preserva virtualización ListView)
@@ -2026,7 +2035,11 @@ class PlaylistManagerUI(DialogMixin):
     def _sync_auth_icons(self, s) -> bool:
         for plat, ic in (("YouTube Music", self._auth_yt), ("Apple Music", self._auth_am), ("Spotify", self._auth_sp)):
             ok = s.auth_session_ok.get(plat, True)
-            ic.icon_color = SUCCESS if ok else ERROR_COL
+            col = SUCCESS if ok else ERROR_COL
+            if hasattr(ic, "content") and hasattr(ic.content, "color"):
+                ic.content.color = col
+            else:
+                ic.icon_color = col
             hint = s.auth_session_hint.get(plat) or ""
             base = f"{plat}: clic para revalidar ahora"
             ic.tooltip = f"{base} \u00b7 {hint}" if hint else f"{base} \u00b7 {'OK' if ok else 'fallo'}"
@@ -2056,11 +2069,12 @@ class PlaylistManagerUI(DialogMixin):
         try:
             is_export = s.destination == EXPORT_DEST_LABEL
             label = "Exportar" if is_export else "Transferir"
-            icon = ft.Icons.SAVE_ALT if is_export else ft.Icons.SWAP_HORIZ
-            if self._transfer_btn.content.value != label:  # type: ignore[attr-defined]
-                self._transfer_btn.content.value = label  # type: ignore[attr-defined]
-            if self._transfer_btn.icon != icon:
-                self._transfer_btn.icon = icon
+            glyph = PIcons.EXPORT if is_export else PIcons.ARROWS_LEFT_RIGHT
+            if isinstance(self._transfer_btn.content, ft.Row) and len(self._transfer_btn.content.controls) >= 2:
+                self._transfer_btn.content.controls[0].value = glyph
+                self._transfer_btn.content.controls[1].value = label
+            elif hasattr(self._transfer_btn.content, "value"):
+                self._transfer_btn.content.value = label
         except Exception:
             pass
         return dest_ok
@@ -2436,7 +2450,7 @@ class PlaylistManagerUI(DialogMixin):
                         size=9, color=TEXT_DIM, font_family=FONT_HEADLINE),
             ], spacing=10, tight=True),
             [
-                dialog_action("Procesar", _process, kind="primary", icon=ft.Icons.PLAY_ARROW_OUTLINED),
+                dialog_action("Procesar", _process, kind="primary", icon=PIcons.PLAY),
                 dialog_action("Cancelar", lambda _: _close_paste(), kind="muted"),
             ],
             width=520,
@@ -2484,11 +2498,11 @@ class PlaylistManagerUI(DialogMixin):
                         size=9, color=TEXT_DIM, font_family=FONT_HEADLINE),
             ], spacing=10, tight=True),
             [
-                dialog_action("Importar", _confirm, kind="primary", icon=ft.Icons.CHECK_OUTLINED),
+                dialog_action("Importar", _confirm, kind="primary", icon=PIcons.CHECK),
                 dialog_action("Cancelar", lambda _: _close(), kind="muted"),
             ],
             width=460,
-            icon=ft.Icons.DRIVE_FILE_RENAME_OUTLINE,
+            icon=PIcons.PENCIL_SIMPLE,
         )
         self.page.show_dialog(name_dlg)
 
@@ -2690,7 +2704,7 @@ class PlaylistManagerUI(DialogMixin):
         default_path = str(default_export_path(self.state.playlist_name, fmt_val))  # type: ignore
         path_field = app_text_field(
             value=default_path, label="Ruta destino", hint_text=str(default_path),
-            prefix_icon=ft.Icons.FOLDER_OUTLINED, expand=True,
+            prefix_icon=PIcons.FOLDER, expand=True,
         )
 
         async def _pick_save(_):
@@ -2712,7 +2726,7 @@ class PlaylistManagerUI(DialogMixin):
                 # fallback: usa path por defecto
                 pass
 
-        pick_btn = _ghost_btn("Elegir…", ft.Icons.FOLDER_OPEN, lambda e: self.page.run_task(_pick_save(e)), width=90, height=38)
+        pick_btn = _ghost_btn("Elegir…", PIcons.FOLDER_OPEN, lambda e: self.page.run_task(_pick_save(e)), width=90, height=38)
 
         # preview count
         info_txt = ft.Text(f"{len(src_tracks)} canciones · {self.state.playlist_name[:30]}", size=10, color=TEXT_MUTED, font_family=mono_family("light"))
@@ -2749,10 +2763,10 @@ class PlaylistManagerUI(DialogMixin):
             ], spacing=12, tight=True),
             [
                 dialog_action("Cancelar", lambda _: self._close_dlg(dlg), kind="muted"),
-                dialog_action("Exportar", _do_export, kind="primary", icon=ft.Icons.SAVE_ALT),
+                dialog_action("Exportar", _do_export, kind="primary", icon=PIcons.EXPORT),
             ],
             width=560,
-            icon=ft.Icons.SAVE_OUTLINED,
+            icon=PIcons.EXPORT,
         )
         dlg_ref["dlg"] = dlg
         self.page.show_dialog(dlg)
