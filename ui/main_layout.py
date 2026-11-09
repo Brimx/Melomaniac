@@ -10,6 +10,25 @@ import asyncio
 import flet as ft
 
 from ui.tokens import (
+    BG_DEEP,
+    BG_HOVER,
+    MOTION_HOVER_MS,
+    RADIUS_RAIL,
+    RADIUS_RAIL_ITEM,
+    RAIL_ANIM_MS,
+    RAIL_BRAND_W,
+    RAIL_HEADER_H,
+    RAIL_ITEM_H,
+    RAIL_ITEM_PAD_V,
+    RAIL_ITEM_SPACING,
+    RAIL_LABEL_W,
+    RAIL_MARGIN,
+    RAIL_PAD_H,
+    RAIL_PAD_V,
+    RAIL_VERSION_H,
+    RAIL_VERSION_H_COLLAPSED,
+    RAIL_W_COLLAPSED,
+    RAIL_W_EXPANDED,
     ACCENT,
     ACCENT_HALO,
     BG_INPUT,
@@ -37,8 +56,9 @@ from ui.widgets import (
     app_text_field,
     input_border,
 )
-from ui.icons import PIcons, app_icon, app_icon_button
+from ui.icons import FONT_PHOSPHOR, FONT_PHOSPHOR_FILL, PIcons, app_icon, app_icon_button
 from ui.fonts import (
+    FONT_HEADLINE_MEDIUM,
     FONT_HEADLINE,
     FONT_HEADLINE_BOLD,
     FONT_TEXT,
@@ -360,6 +380,13 @@ class LayoutMixin:
         )
 
     def _build_content(self) -> None:
+        header_bar = self._build_content_header()
+        col_headers = self._build_col_headers()
+        self._build_list_and_preview_panels()
+        self._build_mode_bar()
+        self._assemble_content_area(header_bar, col_headers)
+
+    def _build_content_header(self) -> ft.Row:
         self._playlist_title = ft.Text(
             "Cargar una playlist", size=22,
             color=TEXT_PRIMARY, font_family=FONT_HEADLINE_BOLD, opacity=1.0,
@@ -448,6 +475,9 @@ class LayoutMixin:
             self._clear_session_btn,
         ], vertical_alignment=ft.CrossAxisAlignment.CENTER)
 
+        return header_bar
+
+    def _build_col_headers(self) -> ft.Container:
         def _col_header(text, width=None, expand=False, center=False):
             align = ft.Alignment.CENTER if center else ft.Alignment.CENTER_LEFT
             ctrl  = ft.Text(text, size=9, color=TEXT_DIM, font_family=FONT_HEADLINE_BOLD,
@@ -471,6 +501,9 @@ class LayoutMixin:
             clip_behavior=ft.ClipBehavior.ANTI_ALIAS,
         )
 
+        return col_headers
+
+    def _build_list_and_preview_panels(self) -> None:
         self._list_view = ft.ListView(item_extent=ITEM_H, spacing=0, expand=True,
                                       padding=ft.Padding.only(bottom=20))
         _sf = dict(left=0, top=0, right=0, bottom=0)
@@ -560,6 +593,7 @@ class LayoutMixin:
             padding=ft.Padding.all(10), visible=True,
         )
 
+    def _build_mode_bar(self) -> None:
         # Modo Lista|Doble|Preview (SegmentedButton principal, solo visible cuando hay dual)
         def _on_mode_change(e):
             try:
@@ -618,6 +652,7 @@ class LayoutMixin:
                             width=24, height=24),
         ], spacing=8, vertical_alignment=ft.CrossAxisAlignment.CENTER, visible=False)
 
+    def _assemble_content_area(self, header_bar: ft.Row, col_headers: ft.Container) -> None:
         # Doble fila — Row persistente con ambos paneles (cookbook: evita reparent, preserva virtualización ListView)
         # _lista_panel y _preview_panel viven siempre dentro de _dual_row; se controla via visible, no moviendo hijos.
         self._dual_row = ft.Row(
@@ -640,4 +675,423 @@ class LayoutMixin:
             expand=True, bgcolor=BG_LIST, padding=ft.Padding.all(24),
             content=ft.Column(controls=[self._content_progress, header_bar, col_headers, self._mode_bar, list_area],
                               spacing=10, expand=True),
+        )
+
+    def _build_nav_rail(self) -> None:
+        # ──────────────────────────────────────────────────────────────
+        # NAVIGATION RAIL FLOTANTE — docked, desplaza el contenido
+        # Shell con margen exterior y radio de diálogo; ítems con radio de botón.
+        # ──────────────────────────────────────────────────────────────
+        self._current_module = 0  # 0=Gestión, 1=Biblioteca, 2=Descargas, 3=Config
+        self._rail_collapsed = True  # arranca docked: solo iconos
+        self._rail_w_collapsed = RAIL_W_COLLAPSED
+        self._rail_w_expanded = RAIL_W_EXPANDED
+        # metadata destinos (label, icon, selected_icon)
+        self._rail_dests = [
+            ("Gestión", PIcons.ARROWS_LEFT_RIGHT, PIcons.ARROWS_LEFT_RIGHT),
+            ("Biblioteca", PIcons.BOOKS, PIcons.BOOKS),
+            ("Descargas", PIcons.DOWNLOAD_SIMPLE, PIcons.DOWNLOAD_SIMPLE),
+            ("Config", PIcons.GEAR, PIcons.GEAR),
+        ]
+        self._rail_label_boxes: list[ft.Container] = []
+        self._rail_item_refs: list[ft.Container] = []
+
+        def _select_module(idx: int) -> None:
+            if idx == self._current_module:
+                return
+            self._current_module = idx
+            try:
+                for i, panel in enumerate(self._module_panels):
+                    panel.visible = (i == idx)
+                    # Config lee preferencias al mostrarse: otra vista pudo
+                    # cambiarlas mientras estaba oculto.
+                    if i == idx and hasattr(panel, "refresh"):
+                        panel.refresh()
+                self._refresh_rail_selection()
+                if idx == 0:
+                    self._sync_skeleton_count()
+                if hasattr(self, "player_bar") and self.player_bar is not None:
+                    self.player_bar.log_audio_services_count(
+                        f"vista={self._rail_dests[idx][0]}"
+                    )
+                self.page.update()
+            except Exception:
+                pass
+
+        # Biblioteca y otras vistas necesitan cambiar de módulo después del
+        # arranque (p. ej. «Crear playlist» desde una carpeta local).
+        self._select_module = _select_module
+
+        def _on_rail_item_click(e):
+            try:
+                idx = int(e.control.data)
+            except Exception:
+                idx = 0
+            _select_module(idx)
+
+        # refs para animación header/version
+        self._rail_header_brand: ft.Text | None = None
+        self._rail_header_brand_box: ft.Container | None = None
+        self._rail_header_box: ft.Container | None = None
+        self._rail_header_row: ft.Row | None = None
+        self._rail_version_text: ft.Text | None = None
+        self._rail_version_box: ft.Container | None = None
+
+        # builder de items (Container con animate + hover reactivo) — Headline para labels, Notch para brand
+        def _rail_item(idx: int, label: str, icon_out: str, icon_sel: str) -> ft.Container:
+            is_sel = (idx == self._current_module)
+            # Stack Sans Headline para labels (§ Headline: labels/botones)
+            txt = ft.Text(
+                label, size=13, color=TEXT_PRIMARY if is_sel else TEXT_MUTED,
+                font_family=FONT_HEADLINE_MEDIUM if is_sel else FONT_HEADLINE,
+                expand=True, no_wrap=True, max_lines=1,
+                overflow=ft.TextOverflow.CLIP,
+            )
+            # Solo animan ancho/margen/opacidad de la caja: el texto permanece
+            # montado y recortado (clip), nunca visible/invisible, para que el
+            # colapso sea un recorte progresivo y no un salto.
+            label_box = ft.Container(
+                content=txt,
+                width=RAIL_LABEL_W if not self._rail_collapsed else 0,
+                height=20,
+                margin=ft.Margin.only(left=12) if not self._rail_collapsed else ft.Margin.only(left=0),
+                opacity=1.0 if not self._rail_collapsed else 0.0,
+                alignment=ft.Alignment.CENTER_LEFT,
+                clip_behavior=ft.ClipBehavior.HARD_EDGE,
+                animate=ft.Animation(RAIL_ANIM_MS, ft.AnimationCurve.EASE_IN_OUT),
+                animate_opacity=ft.Animation(RAIL_ANIM_MS, ft.AnimationCurve.EASE_IN_OUT),
+            )
+            self._rail_label_boxes.append(label_box)
+            icon = app_icon(icon_sel if is_sel else icon_out, size=20, color=ACCENT if is_sel else TEXT_DIM, fill=is_sel)
+            # Row fija: el icono nunca se recentra; solo se recorta el label.
+            row = ft.Row(
+                [icon, label_box],
+                spacing=0,
+                vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                tight=True,
+                alignment=ft.MainAxisAlignment.START,
+            )
+
+            cont = ft.Container(
+                content=row,
+                bgcolor=ACCENT_HALO if is_sel else ft.Colors.TRANSPARENT,
+                border=ft.Border.all(0.8, ACCENT if is_sel else ft.Colors.TRANSPARENT),
+                border_radius=RADIUS_RAIL_ITEM,
+                padding=ft.Padding.symmetric(
+                    horizontal=12,
+                    vertical=RAIL_ITEM_PAD_V,
+                ),
+                height=RAIL_ITEM_H,
+                data=str(idx),
+                tooltip=label if self._rail_collapsed else None,
+                on_click=_on_rail_item_click,
+                animate=ft.Animation(MOTION_HOVER_MS, ft.AnimationCurve.EASE_OUT),
+                alignment=ft.Alignment.CENTER_LEFT,
+            )
+
+            def _on_hover(e: ft.HoverEvent) -> None:
+                is_currently_sel = (idx == self._current_module)
+                if is_currently_sel:
+                    return
+                is_h = e.data == "true" or e.data is True
+                cont.bgcolor = BG_HOVER if is_h else ft.Colors.TRANSPARENT
+                cont.border = ft.Border.all(0.8, ACCENT if is_h else ft.Colors.TRANSPARENT)
+                icon.color = TEXT_PRIMARY if is_h else TEXT_DIM
+                txt.color = TEXT_PRIMARY if is_h else TEXT_MUTED
+                if cont.page:
+                    cont.update()
+
+            cont.on_hover = _on_hover
+            self._rail_item_refs.append(cont)
+            return cont
+
+        # toggle colapso: ancho del shell + ancho/opacidad de labels en paralelo
+        def _toggle_rail(_e=None):
+            self._rail_collapsed = not self._rail_collapsed
+            expanded = not self._rail_collapsed
+            try:
+                self._nav_rail.width = self._rail_w_expanded if expanded else self._rail_w_collapsed
+                self._rail_toggle_btn.tooltip = "Colapsar" if expanded else "Expandir"
+                # header brand: caja que crece/decrece y se desvanece
+                if self._rail_header_brand_box is not None:
+                    self._rail_header_brand_box.width = RAIL_BRAND_W if expanded else 0
+                    self._rail_header_brand_box.margin = ft.Margin.only(left=8) if expanded else ft.Margin.only(left=0)
+                    self._rail_header_brand_box.opacity = 1.0 if expanded else 0.0
+                if self._rail_header_box is not None:
+                    self._rail_header_box.alignment = ft.Alignment.CENTER_LEFT
+                if self._rail_version_text is not None:
+                    self._rail_version_text.opacity = 0.7 if expanded else 0.0
+                if self._rail_version_box is not None:
+                    # En compacto no deja espacio muerto bajo Config.
+                    self._rail_version_box.height = RAIL_VERSION_H if expanded else RAIL_VERSION_H_COLLAPSED
+                # items: solo cambian ancho/margen/opacidad del label (animados).
+                # Sin invertir visible/alineación/padding en el mismo parche:
+                # esas propiedades no se animan y provocaban el salto brusco.
+                for i, label_box in enumerate(self._rail_label_boxes):
+                    label_box.width = RAIL_LABEL_W if expanded else 0
+                    label_box.margin = ft.Margin.only(left=12) if expanded else ft.Margin.only(left=0)
+                    label_box.opacity = 1.0 if expanded else 0.0
+                    try:
+                        cont = self._rail_item_refs[i]
+                        cont.tooltip = None if expanded else self._rail_dests[i][0]
+                    except Exception:
+                        pass
+                self._nav_rail.update()
+            except Exception:
+                pass
+
+        self._rail_toggle_btn = app_icon_button(
+            PIcons.SIDEBAR_SIMPLE,
+            size=18,
+            icon_color=TEXT_MUTED,
+            hover_color_icon=TEXT_PRIMARY,
+            tooltip="Expandir" if self._rail_collapsed else "Colapsar",
+            on_click=_toggle_rail,
+            width=32,
+            height=32,
+        )
+        # header del rail con toggle — Stack Sans Notch Bold, tamaño similar a sidebar (14-16)
+        self._rail_header_brand = ft.Text(
+            "Melomaniac", size=20, color=TEXT_PRIMARY,
+            font_family=brand_family("bold"),
+            visible=True,
+            expand=True, no_wrap=True, max_lines=1,
+            overflow=ft.TextOverflow.CLIP,
+        )
+        self._rail_header_brand_box = ft.Container(
+            content=self._rail_header_brand,
+            width=RAIL_BRAND_W if not self._rail_collapsed else 0,
+            height=20,
+            margin=ft.Margin.only(left=8) if not self._rail_collapsed else ft.Margin.only(left=0),
+            opacity=1.0 if not self._rail_collapsed else 0.0,
+            alignment=ft.Alignment.CENTER_LEFT,
+            clip_behavior=ft.ClipBehavior.HARD_EDGE,
+            animate=ft.Animation(RAIL_ANIM_MS, ft.AnimationCurve.EASE_IN_OUT),
+            animate_opacity=ft.Animation(RAIL_ANIM_MS, ft.AnimationCurve.EASE_IN_OUT),
+        )
+        self._rail_header_row = ft.Row(
+            [self._rail_toggle_btn, self._rail_header_brand_box],
+            spacing=0, height=RAIL_HEADER_H, tight=True,
+            vertical_alignment=ft.CrossAxisAlignment.CENTER,
+            alignment=ft.MainAxisAlignment.START,
+        )
+        self._rail_header_box = ft.Container(
+            content=self._rail_header_row,
+            height=RAIL_HEADER_H,
+            alignment=ft.Alignment.CENTER_LEFT,
+        )
+        rail_header = self._rail_header_box
+        # Grupo principal: Gestión, Biblioteca y Descargas
+        rail_items = [
+            _rail_item(i, lbl, ico, sel)
+            for i, (lbl, ico, sel) in enumerate(self._rail_dests[:3])
+        ]
+        # Config queda separado al fondo, antes de la versión
+        config_item = _rail_item(3, *self._rail_dests[3])
+
+        # helper para refrescar selección; el update lo hace el caller una sola vez
+        def _refresh_rail_selection():
+            for i, cont in enumerate(self._rail_item_refs):
+                is_sel = (i == self._current_module)
+                try:
+                    cont.bgcolor = ACCENT_HALO if is_sel else ft.Colors.TRANSPARENT
+                    cont.border = ft.Border.all(0.8, ACCENT if is_sel else ft.Colors.TRANSPARENT)
+                    row = cont.content  # Row([icon, label_box])
+                    if row and len(row.controls) >= 2:
+                        icon_ctrl = row.controls[0]
+                        label_box = row.controls[1]
+                        lbl_ctrl = label_box.content if isinstance(label_box, ft.Container) else None
+                        glyph = self._rail_dests[i][2] if is_sel else self._rail_dests[i][1]
+                        icon_ctrl.value = glyph
+                        icon_ctrl.font_family = FONT_PHOSPHOR_FILL if is_sel else FONT_PHOSPHOR
+                        icon_ctrl.color = ACCENT if is_sel else TEXT_DIM
+                        if lbl_ctrl:
+                            lbl_ctrl.color = TEXT_PRIMARY if is_sel else TEXT_MUTED
+                            lbl_ctrl.font_family = FONT_HEADLINE_MEDIUM if is_sel else FONT_HEADLINE
+                except Exception:
+                    pass
+        self._refresh_rail_selection = _refresh_rail_selection  # type: ignore
+
+        # versión — IBM Plex Mono Light 300 (datos técnicos § Mono)
+        self._rail_version_text = ft.Text(
+            f"v{APP_VERSION}", size=8, color=TEXT_DIM,
+            font_family=mono_family("light"),
+            visible=True,
+            height=RAIL_VERSION_H, no_wrap=True, max_lines=1,
+            opacity=0.7 if not self._rail_collapsed else 0.0,
+            animate_opacity=ft.Animation(RAIL_ANIM_MS, ft.AnimationCurve.EASE_IN_OUT),
+            text_align=ft.TextAlign.CENTER,
+        )
+        self._rail_version_box = ft.Container(
+            content=self._rail_version_text,
+            height=RAIL_VERSION_H if not self._rail_collapsed else RAIL_VERSION_H_COLLAPSED,
+            clip_behavior=ft.ClipBehavior.HARD_EDGE,
+            animate=ft.Animation(RAIL_ANIM_MS, ft.AnimationCurve.EASE_IN_OUT),
+        )
+        rail_bottom = ft.Column(
+            controls=[config_item, self._rail_version_box],
+            spacing=2,
+            horizontal_alignment=ft.CrossAxisAlignment.STRETCH,
+        )
+        # Shell flotante: margen respecto a la ventana + radio de diálogo
+        self._nav_rail = ft.Container(
+            width=self._rail_w_expanded if not self._rail_collapsed else self._rail_w_collapsed,
+            margin=ft.Margin.all(RAIL_MARGIN),
+            bgcolor=SIDEBAR_BG,
+            border=ft.Border.all(0.8, BORDER_MUTED),
+            border_radius=RADIUS_RAIL,
+            padding=ft.Padding.symmetric(horizontal=RAIL_PAD_H, vertical=RAIL_PAD_V),
+            shadow=ft.BoxShadow(
+                blur_radius=18,
+                color=ft.Colors.with_opacity(0.45, BG_DEEP),
+                offset=ft.Offset(0, 4),
+            ),
+            animate=ft.Animation(RAIL_ANIM_MS, ft.AnimationCurve.EASE_IN_OUT),
+            clip_behavior=ft.ClipBehavior.ANTI_ALIAS,
+            content=ft.Column(
+                controls=[
+                    rail_header,
+                    ft.Divider(height=1, color=BORDER_MUTED, thickness=0.5),
+                    ft.Column(
+                        controls=rail_items,
+                        spacing=RAIL_ITEM_SPACING,
+                        horizontal_alignment=ft.CrossAxisAlignment.STRETCH,
+                    ),
+                    ft.Container(expand=True),
+                    ft.Divider(height=1, color=BORDER_MUTED, thickness=0.5),
+                    rail_bottom,
+                ],
+                spacing=10, expand=True, horizontal_alignment=ft.CrossAxisAlignment.STRETCH,
+            ),
+        )
+
+    def _build_modules_and_root(self) -> None:
+        # Paneles de módulos — Gestión es Row([sidebar, content]); Biblioteca y Descargas tienen vistas propias
+        self._panel_gestion = ft.Row(controls=[self._sidebar, self._content], spacing=0, expand=True,
+                                     vertical_alignment=ft.CrossAxisAlignment.STRETCH)
+        # Biblioteca: LibraryView con selector de fuente (plataformas + Local)
+        try:
+            from services.library_state import LibraryState
+            from ui.library_view import LibraryView
+            # library_state con inyección service (respeta core->services)
+            lib_state = LibraryState(service=getattr(self.state, "service", None) or getattr(self.state, "service", None))
+            # si service aún None (init temprano), se inyectará luego via app.py/ui.library_state
+            self.library_state = lib_state  # type: ignore
+            self._panel_biblioteca = LibraryView(
+                self.page, lib_state,
+                getattr(self.state, "service", None) or getattr(self.state, "service", None),
+                app_state=self.state,
+                on_open_downloads=lambda: self._select_module(2),
+                on_open_gestion=self._open_folder_in_gestion,
+            )
+        except Exception as exc:
+            # fallback placeholder no rompe app
+            try:
+                self.state.log(f"[WARN] Biblioteca fallback: {exc}")  # type: ignore
+            except Exception:
+                pass
+            self._panel_biblioteca = ft.Container(expand=True, bgcolor=BG_LIST, alignment=ft.Alignment.CENTER,
+                                                  content=self._make_cono_empty("Biblioteca", "Colección local, historial 20 y portadas — pronto.", visible=True))
+        self._auto_play_download_ids: set[str] = set()
+        from services.mpris_service import MPRISService
+        from ui.player_bar import PlayerBar
+        from ui.player_queue import PlayerQueuePanel
+
+        self.player_bar = PlayerBar(
+            self.page,
+            self.state,
+            on_toggle_queue=lambda: self.player_queue.toggle(),
+        )
+        self.player_bar.attach_mpris(MPRISService())
+        self.player_queue = PlayerQueuePanel(self.page, self.player_bar)
+        self.player_bar.log_audio_services_count("init")
+        if hasattr(self, "_panel_biblioteca") and self._panel_biblioteca is not None:
+            self._panel_biblioteca.player_bar = self.player_bar
+
+        # El selector de playlists de Gestión se rellena cuando Biblioteca
+        # termina de sincronizar, sin acoplar ambas vistas.
+        lib_for_picker = getattr(self, "library_state", None)
+        if lib_for_picker is not None and hasattr(lib_for_picker, "subscribe"):
+            def _on_library_change() -> None:
+                try:
+                    self._refresh_playlist_picker(self.state.source)
+                except Exception:
+                    pass
+
+            lib_for_picker.subscribe(_on_library_change)
+            # Primer relleno con lo que ya haya en caché para el origen actual.
+            try:
+                self._refresh_playlist_picker(self.state.source)
+            except Exception:
+                pass
+
+        try:
+            from ui.downloads_view import DownloadsView
+            self._panel_descargas = DownloadsView(self.page, self.state, library_state=getattr(self, "library_state", None))
+            self._panel_descargas.player_bar = self.player_bar  # type: ignore[attr-defined]
+        except Exception as exc:
+            try:
+                self.state.log(f"[WARN] Descargas fallback: {exc}")  # type: ignore
+            except Exception:
+                pass
+            self._panel_descargas = ft.Container(expand=True, bgcolor=BG_LIST, alignment=ft.Alignment.CENTER,
+                                                 content=self._make_cono_empty("Descargas", "yt-dlp + progreso — no disponible.", visible=True))
+        # Config: preferencias persistentes. El wizard de credenciales sigue
+        # abriéndose desde el engranaje del panel izquierdo.
+        try:
+            from ui.config_view import ConfigView
+            self._panel_config = ConfigView(
+                self.page, on_change=self._on_config_changed,
+                on_welcome=lambda: self.on_show_welcome and self.on_show_welcome(),
+            )
+        except Exception as exc:
+            try:
+                self.state.log(f"[WARN] Config fallback: {exc}")  # type: ignore
+            except Exception:
+                pass
+            self._panel_config = ft.Container(expand=True, bgcolor=BG_LIST, alignment=ft.Alignment.CENTER,
+                                              content=self._make_cono_empty("Configuración", "Preferencias no disponibles.", visible=True))
+        self._module_panels = [self._panel_gestion, self._panel_biblioteca, self._panel_descargas, self._panel_config]
+        # apila módulos, solo uno visible a la vez
+        for i, p in enumerate(self._module_panels):
+            p.visible = (i == 0)
+        # El stack debe entregar toda la altura a cada panel para que los
+        # estados vacíos puedan centrar su contenido también verticalmente.
+        self._module_stack = ft.Stack(
+            controls=self._module_panels,
+            expand=True,
+            fit=ft.StackFit.EXPAND,
+        )
+
+        # ──────────────────────────────────────────────────────────────
+        # ENSAMBLAJE DE LAYOUT RAÍZ
+        # ──────────────────────────────────────────────────────────────
+        # Layout principal: rail flotante + módulo, barra de reproducción abajo.
+        # La cola es overlay posicionado (derecha) sobre el área de módulos:
+        # abrirla no cambia el ancho de la vista activa, así que listas y
+        # grilla no se redimensionan durante su animación.
+        self.root = ft.Container(
+            content=ft.Column(
+                controls=[
+                    ft.Stack(
+                        controls=[
+                            ft.Row(
+                                controls=[
+                                    self._nav_rail,
+                                    self._module_stack,
+                                ],
+                                spacing=0, expand=True,
+                                vertical_alignment=ft.CrossAxisAlignment.STRETCH,
+                            ),
+                            self.player_queue,
+                        ],
+                        expand=True,
+                        fit=ft.StackFit.EXPAND,
+                        clip_behavior=ft.ClipBehavior.HARD_EDGE,
+                    ),
+                    self.player_bar,
+                ],
+                spacing=0, expand=True,
+            ),
+            bgcolor=BG_LIST, expand=True,
         )

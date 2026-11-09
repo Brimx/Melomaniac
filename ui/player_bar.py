@@ -222,6 +222,12 @@ class PlayerBar(ft.Container, MprisBridgeMixin):
     # ── construcción visual ────────────────────────────────────────────
 
     def _build_ui(self) -> None:
+        meta_col = self._build_now_playing_section()
+        self._build_transport_and_progress_section()
+        vol_row = self._build_volume_and_queue_section()
+        self._assemble_bar_row(meta_col, vol_row)
+
+    def _build_now_playing_section(self) -> ft.Container:
         # [thumb]
         self._thumb_icon = app_icon(PIcons.DISC, size=18, color=TEXT_DIM)
         self._thumb_img = ft.Image(
@@ -285,6 +291,9 @@ class PlayerBar(ft.Container, MprisBridgeMixin):
             visible=False,
         )
 
+        return meta_col
+
+    def _build_transport_and_progress_section(self) -> None:
         # [⏮ ▶/⏸ ⏭]
         self._prev_btn = app_icon_button(
             glyph=PIcons.SKIP_BACK,
@@ -362,6 +371,7 @@ class PlayerBar(ft.Container, MprisBridgeMixin):
             expand=True,
         )
 
+    def _build_volume_and_queue_section(self) -> ft.Row:
         # [volumen]
         self._mute_btn = app_icon_button(
             glyph=PIcons.SPEAKER_HIGH,
@@ -445,6 +455,9 @@ class PlayerBar(ft.Container, MprisBridgeMixin):
             ),
         )
 
+        return vol_row
+
+    def _assemble_bar_row(self, meta_col: ft.Container, vol_row: ft.Row) -> None:
         self.content = ft.Row(
             controls=[
                 self._thumb_box,
