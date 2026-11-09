@@ -75,8 +75,8 @@ from ui.telemetry import TelemetryDrawer
 from ui.transfer_report import TransferReportDialog
 from ui.widgets import (
     _primary_btn, _ghost_btn, _section_label, _status_icon,
-    app_text_field, dialog_action, app_dialog, DialogMixin, notify,
-    input_border, debounce, limit_label,
+    app_text, app_text_field, dialog_action, app_dialog, DialogMixin, notify,
+    input_border, debounce, limit_label, organize_dropdown,
 )
 
 from ui.tokens import (
@@ -894,6 +894,23 @@ class PlaylistManagerUI(DialogMixin):
         if hasattr(self, "_panel_biblioteca") and self._panel_biblioteca is not None:
             self._panel_biblioteca.player_bar = self.player_bar
 
+        # El selector de playlists de Gestión se rellena cuando Biblioteca
+        # termina de sincronizar, sin acoplar ambas vistas.
+        lib_for_picker = getattr(self, "library_state", None)
+        if lib_for_picker is not None and hasattr(lib_for_picker, "subscribe"):
+            def _on_library_change() -> None:
+                try:
+                    self._refresh_playlist_picker(self.state.source)
+                except Exception:
+                    pass
+
+            lib_for_picker.subscribe(_on_library_change)
+            # Primer relleno con lo que ya haya en caché para el origen actual.
+            try:
+                self._refresh_playlist_picker(self.state.source)
+            except Exception:
+                pass
+
         try:
             from ui.downloads_view import DownloadsView
             self._panel_descargas = DownloadsView(page, state, library_state=getattr(self, "library_state", None))
@@ -1088,6 +1105,7 @@ class PlaylistManagerUI(DialogMixin):
                 self._open_paste_dialog()
             elif val in AppState.PLATFORMS:
                 asyncio.create_task(self._refresh_auth_live(val))
+                self._refresh_playlist_picker(val)
 
         def _on_dst_select(e) -> None:
             val = e.control.value
@@ -1153,9 +1171,49 @@ class PlaylistManagerUI(DialogMixin):
             on_change=_on_id_change,
             on_submit=lambda e: asyncio.create_task(self._do_cloud_load(e)),
         )
+
+        # Selector de playlists ya sincronizadas. Es la vía principal: elegir
+        # una playlist de la biblioteca no exige pegar un ID. El campo de
+        # ID/URL queda detrás de «Usar URL o ID» como alternativa avanzada, y
+        # se rellena en cada cambio de origen con lo que haya en caché (sin
+        # disparar sincronización: eso haría tres llamadas al abrir Gestión).
+        # Mismo estilo que los dropdowns de plataforma/destino del sidebar,
+        # sin ``expand``: aquí vive en una Column, donde expandiría en alto.
+        _dd_col_style = {k: v for k, v in _dd_style.items() if k != "expand"}
+        self._playlist_pick = ft.Dropdown(
+            label="Playlist de la biblioteca", value="", options=[],
+            on_select=self._on_playlist_pick, **_dd_col_style,
+        )
+        self._playlist_pick.visible = False
+        self._playlist_help = app_text(
+            "", size=9, color=TEXT_DIM, font_family=FONT_TEXT, visible=False,
+        )
+        self._url_toggle_label = ft.Text(
+            "Usar URL o ID", size=10, color=TEXT_MUTED, font_family=FONT_HEADLINE,
+        )
+        self._use_url_btn = ft.TextButton(
+            content=ft.Row([
+                app_icon(PIcons.LINK, size=13, color=TEXT_MUTED),
+                self._url_toggle_label,
+            ], spacing=6, tight=True),
+            on_click=self._on_toggle_url_field,
+        )
+        self._url_mode = False
+
         self._playlist_section = ft.Column([
-            _section_label("PLAYLIST"), self._id_field,
+            _section_label("PLAYLIST"),
+            self._playlist_pick,
+            self._playlist_help,
+            self._id_field,
+            self._use_url_btn,
         ], spacing=8, visible=(s.source not in AppState.LOCAL_SOURCES))
+        # Estado inicial sin tocar la página: aún no existe durante el build.
+        self._id_field.visible = False
+        self._playlist_help.value = (
+            "Sin playlists sincronizadas: usa «Usar URL o ID» o sincroniza "
+            "la plataforma en Biblioteca."
+        )
+        self._playlist_help.visible = True
         self._playlist_divider = ft.Divider(
             height=1, color=BORDER_MUTED, thickness=0.5,
             visible=(s.source not in AppState.LOCAL_SOURCES),
@@ -1235,7 +1293,6 @@ class PlaylistManagerUI(DialogMixin):
         except Exception as exc:
             # fallback legacy mínimo — incluye Mantener orden para agrupar
             try:
-                from ui.widgets import organize_dropdown
                 from engine.organizer import group_tracks_stable
                 _dd = organize_dropdown([("artist","Artista"),("album","Álbum"),("name","Título"),("duration_ms","Duración"),("release_date","Fecha")], getattr(self.state, "organize_sort_key", "artist"),"Ordenar por")
                 _ord_raw = getattr(self.state, "organize_order", "az")
@@ -1296,7 +1353,6 @@ class PlaylistManagerUI(DialogMixin):
             show_group_dialog(self.page, self.state)
         except Exception as exc:
             try:
-                from ui.widgets import organize_dropdown
                 _dd=organize_dropdown([("artist","Artista"),("album","Álbum"),("genre","Género"),("name","Título")],"artist","Dividir por")
                 def _ap(_e): self.state.organize_split(_dd.value, scope="all"); self._close_dlg(dlg)
                 def _cl(_e): self.state.clear_split(); self._close_dlg(dlg)
@@ -2409,12 +2465,101 @@ class PlaylistManagerUI(DialogMixin):
             asyncio.create_task(self._do_cloud_load())
 
     async def _do_cloud_load(self, _=None) -> None:
-        pid = self._id_field.value.strip()
+        # El selector manda cuando está visible: elegir una playlist de la
+        # biblioteca es el camino normal y el campo de ID solo aparece como
+        # alternativa avanzada.
+        pid = ""
+        if not self._url_mode:
+            pid = str(self._playlist_pick.value or "")
         if not pid:
-            self._snack("Introduce un ID o una URL de playlist")
+            pid = (self._id_field.value or "").strip()
+        if not pid:
+            self._snack("Elige una playlist o introduce un ID o una URL")
             return
         self._completion_snack_shown = False
         await self.state.load_playlist(pid)
+
+    # ── selector de playlists de la biblioteca ─────────────────────────
+
+    def _on_toggle_url_field(self, _e=None) -> None:
+        """Alterna entre elegir de la biblioteca y pegar una URL o ID."""
+        self._apply_url_mode(not self._url_mode)
+
+    def _apply_url_mode(self, enabled: bool) -> None:
+        """Muestra el campo de ID solo en modo avanzado; el selector, si no."""
+        self._url_mode = bool(enabled)
+        self._id_field.visible = self._url_mode
+        self._url_toggle_label.value = (
+            "Elegir de la biblioteca" if self._url_mode else "Usar URL o ID"
+        )
+        if self._url_mode:
+            self._playlist_pick.visible = False
+            self._playlist_help.visible = False
+        else:
+            self._id_field.value = ""
+            # Se releen las opciones: mientras estaba en modo URL pudo
+            # cambiar el origen o terminar una sincronización en Biblioteca.
+            self._refresh_playlist_picker(self.state.source)
+        for ctrl in (self._id_field, self._url_toggle_label, self._use_url_btn):
+            try:
+                ctrl.update()
+            except Exception:
+                pass
+
+    def _on_playlist_pick(self, e=None) -> None:
+        """Carga la playlist elegida en el selector."""
+        pid = str(getattr(e.control, "value", "") or "")
+        if not pid:
+            return
+        asyncio.create_task(self._load_picked_playlist(pid))
+
+    async def _load_picked_playlist(self, pid: str) -> None:
+        self._completion_snack_shown = False
+        await self.state.load_playlist(pid)
+
+    def _refresh_playlist_picker(self, platform: str) -> None:
+        """Rellena el selector con lo ya sincronizado para ``platform``.
+
+        Solo lee la caché de ``LibraryState``: abrir Gestión no debe disparar
+        tres sincronizaciones contra las APIs.
+        """
+        if self._url_mode:
+            return
+        picker = getattr(self, "_playlist_pick", None)
+        if picker is None:
+            return
+        lib = getattr(self, "library_state", None)
+        items = []
+        if lib is not None:
+            try:
+                items = lib.get_playlists(platform) or []
+            except Exception:
+                items = []
+        picker.options = [
+            ft.dropdown.Option(key=str(p.id), text=str(p.name or p.id))
+            for p in items
+        ]
+        # Una recarga del origen no debe conservar ni cargar por accidente la
+        # playlist anterior.
+        picker.value = ""
+        has_items = bool(picker.options)
+        picker.visible = has_items
+        self._playlist_help.visible = True
+        if has_items:
+            self._playlist_help.value = (
+                "1 playlist sincronizada" if len(items) == 1
+                else f"{len(items)} playlists sincronizadas"
+            )
+        else:
+            self._playlist_help.value = (
+                "Sin playlists sincronizadas: usa «Usar URL o ID» o sincroniza "
+                "la plataforma en Biblioteca."
+            )
+        for ctrl in (picker, self._playlist_help):
+            try:
+                ctrl.update()
+            except Exception:
+                pass
 
     def _on_clear_id(self, _) -> None:
         """Limpia solo el campo de ID pegado."""
