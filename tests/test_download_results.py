@@ -17,7 +17,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from core.models import Track
 from core.state import AppState
-from engine import downloader
+from engine import download_search, downloader
 
 
 def _state() -> AppState:
@@ -132,7 +132,7 @@ class SearchCandidatesTest(unittest.TestCase):
             self._entry("bbb", "Song", 199),
             self._entry("ccc", "Song live", 9000),
         ]
-        with mock.patch.object(downloader, "_search_entries", return_value=(entries, "")):
+        with mock.patch.object(download_search, "_search_entries", return_value=(entries, "")):
             found = downloader.search_candidates(track)
 
         self.assertEqual(found["error"], "")
@@ -147,7 +147,7 @@ class SearchCandidatesTest(unittest.TestCase):
         track = Track(id="t", name="Song", artist="Band", album="", duration="",
                       img_url="", platform="")
         with mock.patch.object(
-            downloader, "_search_entries", return_value=([], "Sin resultados en YouTube")
+            download_search, "_search_entries", return_value=([], "Sin resultados en YouTube")
         ):
             found = downloader.search_candidates(track)
 
@@ -158,7 +158,7 @@ class SearchCandidatesTest(unittest.TestCase):
         track = Track(id="t", name="Song", artist="Band", album="", duration="",
                       img_url="", platform="", duration_ms=200000)
         entries = [self._entry("aaa", "Otra cosa", 30), self._entry("bbb", "Song", 200)]
-        with mock.patch.object(downloader, "_search_entries", return_value=(entries, "")):
+        with mock.patch.object(download_search, "_search_entries", return_value=(entries, "")):
             result = downloader.search_video_id(track)
 
         self.assertTrue(result.ok)
