@@ -37,7 +37,7 @@ from ui.tokens import (
     PLAYER_THUMB_SIZE, RADIUS_BUTTON, RADIUS_INPUT, TEXT_DIM, TEXT_MUTED,
     TEXT_PRIMARY, MOTION_HOVER_MS,
 )
-from ui.widgets import app_text, notify
+from ui.widgets import app_text, fmt_ms as _fmt_ms, notify
 
 _TICKER_INTERVAL_S = 0.25
 _DEFAULT_TRACK_WIDTH = 240.0
@@ -65,12 +65,6 @@ def _to_ms(value) -> int:
         return max(0, int(value))
     except (TypeError, ValueError):
         return 0
-
-
-def _fmt_ms(ms: int) -> str:
-    sec = max(0, int(ms) // 1000)
-    m, s = divmod(sec, 60)
-    return f"{m}:{s:02d}"
 
 
 def _resolve_pos_log_path() -> str | None:

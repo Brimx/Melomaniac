@@ -89,6 +89,13 @@ def debounce(key: Any, fn: Callable[[], None], delay: float = 0.25) -> None:
         fn()
 
 
+def fmt_ms(ms: int | None) -> str:
+    """Duración ``m:ss`` a partir de milisegundos (``0:00`` si es 0)."""
+    sec = max(0, int(ms or 0) // 1000)
+    minutes, seconds = divmod(sec, 60)
+    return f"{minutes}:{seconds:02d}"
+
+
 def limit_label(shown: int, total: int) -> str:
     """Texto de ayuda canónico para listas de diálogo truncadas."""
     return (

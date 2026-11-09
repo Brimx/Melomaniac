@@ -306,6 +306,9 @@ class AppState:
         self.download_done:      list[dict]    = []
         self.download_skipped:   list[dict]    = []
         self.download_failed:    list[dict]    = []
+        # Pistas de la última cola que quedaron sin archivo y sin intento
+        # (canceladas o nunca alcanzadas). Fallidas y pausadas van aparte.
+        self.download_missing:   list[dict]    = []
         self.download_dir:       str           = ""
         # Estado por pista: {id,title,status(queued|running|done|skipped|failed),percent,error}
         self.download_items:     list[dict]    = []
@@ -1041,7 +1044,7 @@ class AppState:
 
     async def _run_downloads(
         self, selected: list[Track], *, audio_format: str = "", destination_dir: str = "",
-        playlist_name: str = "", platform: str = "",
+        playlist_name: str = "", platform: str = "", pinned_video_id: str = "",
     ) -> None:
         """Ejecuta la cola de descargas con concurrencia acotada.
 
@@ -1085,6 +1088,7 @@ class AppState:
         self.download_done     = []
         self.download_skipped  = []
         self.download_failed   = []
+        self.download_missing  = []
         items = {
             id(t): {"id": t.id, "title": f"{t.artist} — {t.name}", "status": "queued",
                     "percent": 0.0, "error": ""}
@@ -1113,7 +1117,17 @@ class AppState:
             for item in self.download_items:
                 item["status"] = "failed"
                 item["error"] = message
-            self.download_failed   = [item["title"] for item in self.download_items]
+            # Misma forma que una falla real para que el panel de resultados
+            # pueda renderizarlas y reintentarlas sin un caso especial.
+            self.download_failed = [
+                {
+                    "id": t.id, "name": t.name, "artist": t.artist,
+                    "album": t.album, "platform": t.platform,
+                    "duration_ms": t.duration_ms, "isrc": t.isrc,
+                    "error": message, "format": fmt, "_track": t,
+                }
+                for t in selected
+            ]
             self.download_progress = self.download_total
             self.download_state    = TransferState.DONE
             self._log(f"[ERROR] Descargas canceladas · {message}")
@@ -1194,6 +1208,7 @@ class AppState:
                         artwork_fetcher=artwork_fetcher,
                         skip_existing=True,
                         pause_event=pause,
+                        video_id=pinned_video_id,
                     )
                 except Exception as exc:  # noqa: BLE001 - nunca debe tumbar la cola
                     result = None
@@ -1239,9 +1254,19 @@ class AppState:
                         item["status"], item["error"] = "failed", error or "Error desconocido"
                         self.download_failed.append(
                             {
+                                "id": track.id,
                                 "name": track.name,
                                 "artist": track.artist,
+                                "album": track.album,
+                                "platform": track.platform,
+                                "duration_ms": track.duration_ms,
+                                "isrc": track.isrc,
                                 "error": error or "Error desconocido",
+                                "format": fmt,
+                                # Vídeo que falló: el panel lo marca para no
+                                # ofrecer otra vez el mismo candidato.
+                                "video_id": str(getattr(result, "video_id", "") or ""),
+                                "_track": track,
                             }
                         )
                         self._log(
@@ -1270,11 +1295,14 @@ class AppState:
                     f"[INFO] Descargas pausadas · {len(self._download_pending_tracks)} pendientes"
                 )
             self.download_state = TransferState.DONE
+            self._collect_download_missing(selected)
             skipped = len(self.download_skipped)
+            missing = len(self.download_missing)
             summary = (
                 f"Descargas {'canceladas' if cancelled else 'completas'} · "
                 f"OK: {len(self.download_done)} · Fallidas: {len(self.download_failed)}"
                 + (f" · Omitidas: {skipped}" if skipped else "")
+                + (f" · Faltantes: {missing}" if missing else "")
             )
             self._log(f"[INFO] {summary}")
             if playlist_name:
@@ -1291,6 +1319,153 @@ class AppState:
             # siguiente ejecución arranca con un evento nuevo.
             self._download_pause = None
             self.notify()
+
+    def _collect_download_missing(self, selected: list[Track]) -> None:
+        """Pistas de la cola que quedaron sin archivo y sin error propio.
+
+        Canciones canceladas o que nunca llegaron a arrancar no son fallos de
+        descarga: nadie intentó resolverlas. Se listan aparte para que el
+        usuario pueda reintentarlas o rebuscarlas sin confundirlas con un
+        error del extractor.
+        """
+        finished = {
+            str(e.get("id")) for e in (*self.download_done, *self.download_skipped)
+            if isinstance(e, dict)
+        }
+        pending = {id(t) for t in self._download_pending_tracks}
+        self.download_missing = [
+            {
+                "id": t.id,
+                "name": t.name,
+                "artist": t.artist,
+                "album": t.album,
+                "platform": t.platform,
+                "duration_ms": t.duration_ms,
+                "isrc": t.isrc,
+                "src_url": t.source_url,
+                "error": "Pausada" if id(t) in pending else "No se intentó",
+                "format": self.audio_format,
+                "_track": t,
+            }
+            for t in selected
+            if t.id not in finished
+        ]
+
+    def retry_downloads(self, entries: list[dict], *, audio_format: str = "") -> asyncio.Task | None:
+        """Relanza la descarga de pistas fallidas o faltantes.
+
+        Reutiliza la cola normal: conserva carpeta, playlist y plataforma del
+        último intento. ``audio_format`` permite probar otro contenedor sin
+        tocar la preferencia persistida.
+
+        Args:
+            entries: Entradas de ``download_failed``/``download_missing``; se
+                acepta cualquier dict con ``_track`` o con los metadatos
+                mínimos para reconstruir la pista.
+            audio_format: Formato para este reintento; vacío usa el último.
+
+        Returns:
+            La tarea creada, o ``None`` si no hay nada que reintentar.
+        """
+        tracks: list[Track] = []
+        for entry in entries or []:
+            track = entry.get("_track") if isinstance(entry, dict) else None
+            if track is None and isinstance(entry, dict):
+                track = Track(
+                    id=str(entry.get("id") or ""),
+                    name=str(entry.get("name") or ""),
+                    artist=str(entry.get("artist") or ""),
+                    album=str(entry.get("album") or ""),
+                    duration="",
+                    img_url="",
+                    platform=str(entry.get("platform") or ""),
+                    duration_ms=int(entry.get("duration_ms") or 0),
+                    isrc=entry.get("isrc") or None,
+                    source_url=str(entry.get("src_url") or ""),
+                )
+            if track is not None:
+                tracks.append(track)
+        if not tracks:
+            return None
+        ctx = dict(self._download_resume_ctx)
+        fmt = (audio_format or ctx.get("format") or self.audio_format or "").lower().lstrip(".")
+        self.download_paused = False
+        self._log(f"[INFO] Reintentando descargas · {len(tracks)} pistas en {fmt.upper()}")
+        return self.download_tracks(
+            tracks,
+            audio_format=fmt,
+            destination_dir=ctx.get("destination_dir", ""),
+            playlist_name=ctx.get("playlist_name", ""),
+            platform=ctx.get("platform", ""),
+        )
+
+    async def research_download(self, entry: dict, *, audio_format: str = "") -> dict:
+        """Rebusca una pista en YouTube y devuelve los mejores candidatos.
+
+        Sin descargar nada: el usuario ve qué encontró el extractor, con su
+        video y duración, antes de decidir. Corrige el caso típico de una
+        búsqueda que eligió mal el resultado.
+
+        Args:
+            entry: Entrada de ``download_failed``/``download_missing``.
+            audio_format: Formato de destino para el candidato elegido.
+
+        Returns:
+            ``{"query": str, "candidates": [...]}``; ``candidates`` puede ir
+            vacío y entonces ``error`` explica por qué.
+        """
+        from engine.downloader import search_candidates
+
+        track = entry.get("_track") if isinstance(entry, dict) else None
+        if track is None:
+            track = Track(
+                id=str((entry or {}).get("id") or ""),
+                name=str((entry or {}).get("name") or ""),
+                artist=str((entry or {}).get("artist") or ""),
+                album=str((entry or {}).get("album") or ""),
+                duration="", img_url="",
+                platform=str((entry or {}).get("platform") or ""),
+                duration_ms=int((entry or {}).get("duration_ms") or 0),
+                isrc=(entry or {}).get("isrc") or None,
+                source_url=str((entry or {}).get("src_url") or ""),
+            )
+        found = await asyncio.to_thread(search_candidates, track)
+        found["format"] = (audio_format or self.audio_format or "").lower().lstrip(".")
+        found["track"] = track
+        return found
+
+    def download_candidate(
+        self, track: Track, video_id: str, *, audio_format: str = "",
+    ) -> asyncio.Task | None:
+        """Descarga un candidato concreto elegido por el usuario.
+
+        Comparte carpeta, playlist y plataforma del último intento; solo
+        cambia el video y, opcionalmente, el contenedor.
+        """
+        if not video_id:
+            return None
+        ctx = dict(self._download_resume_ctx)
+        fmt = (audio_format or ctx.get("format") or self.audio_format or "").lower().lstrip(".")
+        self._log(f"[INFO] Descargando candidato {video_id} · {track.name[:42]} en {fmt.upper()}")
+        return self._download_video_task(track, video_id, fmt, ctx)
+
+    def _download_video_task(
+        self, track: Track, video_id: str, fmt: str, ctx: dict,
+    ) -> asyncio.Task | None:
+        """Cola de una sola pista con ``video_id`` ya resuelto."""
+        if self._download_task is not None and not self._download_task.done():
+            return self._download_task
+        self._download_task = asyncio.create_task(
+            self._run_downloads(
+                [track],
+                audio_format=fmt,
+                destination_dir=ctx.get("destination_dir", ""),
+                playlist_name=ctx.get("playlist_name", ""),
+                platform=ctx.get("platform", ""),
+                pinned_video_id=video_id,
+            )
+        )
+        return self._download_task
 
     def _write_download_manifest(
         self, target_dir, playlist_name: str, platform: str,

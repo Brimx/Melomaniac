@@ -537,27 +537,15 @@ def _score_entry(track: Any, entry: dict[str, Any]) -> float:
     return score
 
 
-def search_video_id(track: Any, timeout_s: int = 30) -> DownloadResult:
-    """Resuelve el video de YouTube para una pista, sin descargar.
+def _search_entries(track: Any, timeout_s: int) -> tuple[list[dict[str, Any]], str]:
+    """Consulta ``ytsearchN:`` y devuelve ``(entradas, error)``.
 
-    Si la pista viene de YouTube Music y trae ``source_url``, se reutiliza
-    ese ID *solo si su duración encaja*: es la misma grabación y no hace
-    falta buscar. En cualquier otro caso se consulta ``ytsearch5:`` con
-    ``extract_flat`` y se elige el mejor resultado, no el primero.
-
-    Elegir el primero era el fallo de origen: el primer hit de YouTube suele
-    ser el vídeo oficial, el lyric video o un live, y cualquiera de los tres
-    es peor que la pista del álbum.
+    Compartida por la resolución automática y por la búsqueda manual del
+    panel de resultados: ambas deben ver exactamente los mismos candidatos.
     """
-    direct_id = _youtube_video_id(track)
-    if direct_id:
-        return DownloadResult(
-            ok=True, video_id=direct_id, title=str(getattr(track, "name", "") or "")
-        )
-
     query = _search_query(track)
     if not query:
-        return DownloadResult(ok=False, error="Metadatos vacíos")
+        return [], "Metadatos vacíos"
 
     opts: dict[str, Any] = {
         "quiet": True,
@@ -577,16 +565,36 @@ def search_video_id(track: Any, timeout_s: int = 30) -> DownloadResult:
                 f"ytsearch{SEARCH_RESULT_COUNT}:{query}", download=False
             )
     except Exception as exc:  # yt-dlp lanza DownloadError y variantes
-        return DownloadResult(ok=False, error=f"Búsqueda fallida: {exc}")
+        return [], f"Búsqueda fallida: {exc}"
 
     entries = [e for e in (info.get("entries") or []) if isinstance(e, dict)]
     if not entries:
-        return DownloadResult(ok=False, error="Sin resultados en YouTube")
+        return [], "Sin resultados en YouTube"
+    return entries, ""
 
-    ranked: list[tuple[float, dict[str, Any]]] = []
+
+def search_candidates(track: Any, timeout_s: int = 30) -> dict[str, Any]:
+    """Lista los mejores resultados de YouTube para una pista, sin descargar.
+
+    Devuelve todos los candidatos que pasan el filtro con su puntuación, en
+    orden de mejor a peor. Es la vista que el panel de resultados usa para
+    corregir una elección equivocada: muestra qué encontró el extractor y
+    permite descargar otro resultado.
+
+    Returns:
+        ``{"query", "candidates": [{video_id,title,channel,duration_s,score,
+        url}], "error"}``.
+    """
+    query = _search_query(track)
+    entries, error = _search_entries(track, timeout_s)
+    if error:
+        return {"query": query, "candidates": [], "error": error}
+
+    candidates: list[dict[str, Any]] = []
     rejected_live = 0
     for entry in entries:
-        if not entry.get("id"):
+        video_id = str(entry.get("id") or "")
+        if not video_id:
             continue
         if _reject_live(entry):
             rejected_live += 1
@@ -595,19 +603,53 @@ def search_video_id(track: Any, timeout_s: int = 30) -> DownloadResult:
         duration_s = int(entry.get("duration") or 0)
         if not _accept_result(track, title, duration_s):
             continue
-        ranked.append((_score_entry(track, entry), entry))
+        candidates.append({
+            "video_id": video_id,
+            "title": title,
+            "channel": str(entry.get("channel") or entry.get("uploader") or ""),
+            "duration_s": duration_s,
+            "score": round(_score_entry(track, entry), 1),
+            "url": f"https://www.youtube.com/watch?v={video_id}",
+        })
 
-    if not ranked:
+    if not candidates:
         hint = " (se descartaron directos o vídeos demasiado largos)" if rejected_live else ""
-        return DownloadResult(ok=False, error=f"Ningún resultado coincide con la pista{hint}")
+        return {
+            "query": query, "candidates": [],
+            "error": f"Ningún resultado coincide con la pista{hint}",
+        }
+    candidates.sort(key=lambda c: c["score"], reverse=True)
+    return {"query": query, "candidates": candidates, "error": ""}
 
-    ranked.sort(key=lambda pair: pair[0], reverse=True)
-    best = ranked[0][1]
+
+def search_video_id(track: Any, timeout_s: int = 30) -> DownloadResult:
+    """Resuelve el video de YouTube para una pista, sin descargar.
+
+    Si la pista viene de YouTube Music y trae ``source_url``, se reutiliza
+    ese ID *solo si su duración encaja*: es la misma grabación y no hace
+    falta buscar. En cualquier otro caso se consulta ``ytsearch5:`` con
+    ``extract_flat`` y se elige el mejor resultado, no el primero.
+
+    Elegir el primero era el fallo de origen: el primer hit de YouTube suele
+    ser el vídeo oficial, el lyric video o un live, y cualquiera de los tres
+    es peor que la pista del álbum.
+    """
+    direct_id = _youtube_video_id(track)
+    if direct_id:
+        return DownloadResult(
+            ok=True, video_id=direct_id, title=str(getattr(track, "name", "") or "")
+        )
+
+    found = search_candidates(track, timeout_s)
+    if found["error"]:
+        return DownloadResult(ok=False, error=found["error"])
+
+    best = found["candidates"][0]
     return DownloadResult(
         ok=True,
-        video_id=str(best.get("id") or ""),
+        video_id=str(best.get("video_id") or ""),
         title=str(best.get("title") or ""),
-        duration_s=int(best.get("duration") or 0),
+        duration_s=int(best.get("duration_s") or 0),
     )
 
 

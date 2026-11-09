@@ -24,15 +24,18 @@ from core.models import TransferState
 from engine.downloader import ffmpeg_available, open_in_file_manager, resolve_download_dir
 from engine.parsers import list_audio_files
 from services import settings_store
-from ui.fonts import FONT_HEADLINE, FONT_HEADLINE_BOLD, FONT_TEXT, mono_family
+from ui.fonts import (
+    FONT_HEADLINE, FONT_HEADLINE_BOLD, FONT_PHOSPHOR, FONT_PHOSPHOR_FILL, FONT_TEXT,
+    mono_family,
+)
 from ui.icons import PIcons, app_icon, app_icon_button
 from ui.tokens import (
     ACCENT, BG_LIST, BG_SURFACE, BORDER_MUTED, ERROR_COL, RADIUS_INPUT,
     SUCCESS, TEXT_DIM, TEXT_MUTED, TEXT_PRIMARY,
 )
 from ui.widgets import (
-    _ghost_btn, _primary_btn, app_text, notify, organize_dropdown, section_label,
-    status_banner,
+    _ghost_btn, _primary_btn, app_dialog, app_text, dialog_action, fmt_ms, notify,
+    organize_dropdown, section_label, status_banner,
 )
 
 _HISTORY_LIMIT = 500
@@ -40,6 +43,32 @@ _HISTORY_LIMIT = 500
 
 def _fmt_size(num: int) -> str:
     return f"{num / (1024 * 1024):.1f} MB"
+
+
+def _fmt_dur(ms: int | None) -> str:
+    """Duración de una fila; «—» cuando la fuente no la trae."""
+    return fmt_ms(ms) if ms else "—"
+
+
+def _entry_title(entry: dict) -> str:
+    """``Artista — Título`` de una entrada del panel; nunca vacío."""
+    artist = str(entry.get("artist") or "").strip()
+    name = str(entry.get("name") or "").strip() or "Pista sin título"
+    return f"{artist} — {name}" if artist else name
+
+
+def _entry_meta(entry: dict) -> str:
+    """Formato y duración de una entrada: ``MP3 · 3:42``."""
+    fmt = str(entry.get("format") or "").upper() or "—"
+    return f"{fmt} · {_fmt_dur(entry.get('duration_ms'))}"
+
+
+def _fmt_path(path: str) -> str:
+    """Ruta acortada al nombre de archivo y su carpeta inmediata."""
+    if not path:
+        return ""
+    p = Path(path)
+    return f"{p.parent.name}/{p.name}" if p.parent.name else p.name
 
 
 class DownloadsView(ft.Container):
@@ -63,9 +92,7 @@ class DownloadsView(ft.Container):
         self._item_widgets: list[tuple[dict, ft.ProgressBar, ft.Text, ft.Icon]] = []
         self._history_dir = ""
         self._history_paths: list[str] = []
-        self._done_sig = -1
-        self._skipped_sig = -1
-        self._failed_sig = -1
+        self._results_sig: tuple[int, int, int, int] = (-1, -1, -1, -1)
         try:
             self._default_dir = str(resolve_download_dir(create=False))
         except Exception:
@@ -178,6 +205,18 @@ class DownloadsView(ft.Container):
         )
         self._done_col = ft.Column(spacing=6)
         self._failed_col = ft.Column(spacing=6)
+        self._missing_col = ft.Column(spacing=6)
+        self._result_counts = app_text("", size=11, color=TEXT_MUTED, font_family=FONT_TEXT)
+        self._results_panel = ft.Column(controls=[
+            ft.Row(controls=[
+                section_label("RESULTADO DE LA ÚLTIMA TANDA"),
+                ft.Container(expand=True),
+                self._result_counts,
+            ], spacing=8, vertical_alignment=ft.CrossAxisAlignment.CENTER),
+            self._done_col,
+            self._failed_col,
+            self._missing_col,
+        ], spacing=6, visible=False)
         self._history_stack = ft.Stack(
             controls=[self._history_list, self._history_empty], expand=True,
             fit=ft.StackFit.EXPAND,
@@ -189,8 +228,7 @@ class DownloadsView(ft.Container):
                 self._play_all_btn,
                 self._index_btn,
             ], spacing=8, vertical_alignment=ft.CrossAxisAlignment.CENTER),
-            self._done_col,
-            self._failed_col,
+            self._results_panel,
             self._history_stack,
         ], spacing=8, expand=True)
 
@@ -532,48 +570,14 @@ class DownloadsView(ft.Container):
                 self._rebuild_queue(items)
             self._sync_queue()
 
-        # terminadas, omitidas y fallidas de la última tanda sobre el historial
+        # Panel de resultados de la última tanda: exitosas, omitidas, fallidas
+        # y faltantes, cada una con formato, duración, ruta y motivo.
         skipped = list(getattr(st, "download_skipped", []) or [])
-        if not running and (len(done) != self._done_sig or len(skipped) != self._skipped_sig):
-            self._done_sig, self._skipped_sig = len(done), len(skipped)
-            self._done_col.controls = [
-                self._result_row(
-                    title=f"{d.get('artist', '')} — {d.get('name', '')}",
-                    detail="Ya existía · sin cambios",
-                    kind="skipped",
-                    on_play=(
-                        (lambda _e, p=str(d.get("path", "")): self._play_path(p))
-                        if d.get("path")
-                        else None
-                    ),
-                )
-                for d in skipped
-                if d.get("path")
-            ] + [
-                self._result_row(
-                    title=f"{d.get('artist', '')} — {d.get('name', '')}",
-                    detail=str(d.get("path", "") or ""),
-                    ok=True,
-                    on_play=(
-                        (lambda _e, p=str(d.get("path", "")): self._play_path(p))
-                        if d.get("path")
-                        else None
-                    ),
-                )
-                for d in done
-                if d.get("path")
-            ]
-
-        if not running and len(failed) != self._failed_sig:
-            self._failed_sig = len(failed)
-            self._failed_col.controls = [
-                self._result_row(
-                    title=f"{f.get('artist', '')} — {f.get('name', '')}",
-                    detail=f.get("error", "") or "Error desconocido",
-                    ok=False,
-                )
-                for f in failed
-            ]
+        missing = list(getattr(st, "download_missing", []) or [])
+        signature = (len(done), len(skipped), len(failed), len(missing))
+        if not running and signature != self._results_sig:
+            self._results_sig = signature
+            self._rebuild_results(done, skipped, failed, missing)
 
         # recarga el historial al terminar una cola o al cambiar de carpeta
         if (self._was_running and not running) or (not running and self._history_dir != self._dir):
@@ -588,21 +592,102 @@ class DownloadsView(ft.Container):
         except Exception:
             pass
 
+    # ── panel de resultados ────────────────────────────────────────────
+
+    def _rebuild_results(
+        self,
+        done: list[dict],
+        skipped: list[dict],
+        failed: list[dict],
+        missing: list[dict],
+    ) -> None:
+        """Repinta el panel de la última tanda con sus cuatro grupos.
+
+        Cada grupo lleva su encabezado solo si tiene entradas: una cola de 40
+        pistas correctas no debe pagar el ruido de tres títulos vacíos.
+        """
+        self._results_panel.visible = bool(done or skipped or failed or missing)
+        if not self._results_panel.visible:
+            return
+
+        counts = [f"{len(done)} descargadas"]
+        if skipped:
+            counts.append(f"{len(skipped)} omitidas")
+        if failed:
+            counts.append(f"{len(failed)} fallidas")
+        if missing:
+            counts.append(f"{len(missing)} faltantes")
+        self._result_counts.value = " · ".join(counts)
+
+        # Omitidas primero: son las que el usuario ya tenía y no se tocaron.
+        finished = [(d, "skipped") for d in skipped] + [(d, "done") for d in done]
+        self._done_col.controls = (
+            [self._group_label("DESCARGADAS", len(finished))] if finished else []
+        ) + [
+            self._result_row(
+                title=_entry_title(d),
+                meta=_entry_meta(d),
+                detail=_fmt_path(str(d.get("path", "") or "")),
+                kind=kind,
+                on_play=(
+                    (lambda _e, p=str(d.get("path", "")): self._play_path(p))
+                    if d.get("path") else None
+                ),
+            )
+            for d, kind in finished
+        ]
+
+        self._failed_col.controls = (
+            [self._group_label("FALLIDAS", len(failed))] if failed else []
+        ) + [
+            self._result_row(
+                title=_entry_title(f),
+                meta=_entry_meta(f),
+                detail=str(f.get("error") or "Error desconocido"),
+                kind="failed",
+                entry=f,
+            )
+            for f in failed
+        ]
+
+        self._missing_col.controls = (
+            [self._group_label("FALTANTES", len(missing))] if missing else []
+        ) + [
+            self._result_row(
+                title=_entry_title(m),
+                meta=_entry_meta(m),
+                detail=str(m.get("error") or "No se intentó"),
+                kind="missing",
+                entry=m,
+            )
+            for m in missing
+        ]
+
     @staticmethod
+    def _group_label(text: str, count: int) -> ft.Control:
+        return ft.Row(controls=[
+            section_label(text),
+            app_text(str(count), size=9, color=TEXT_MUTED, font_family=mono_family("light")),
+        ], spacing=6, vertical_alignment=ft.CrossAxisAlignment.CENTER)
+
     def _result_row(
+        self,
         *,
         title: str,
+        meta: str,
         detail: str,
-        ok: bool = False,
-        kind: str = "",
+        kind: str = "done",
         on_play=None,
+        entry: dict | None = None,
     ) -> ft.Container:
-        """Fila de resultado de la última tanda.
+        """Fila del panel de resultados.
 
-        ``kind`` distingue el éxito real (``""``/``done``) de una pista omitida
-        porque ya existía: ambas son ``ok`` pero no significan lo mismo.
+        ``kind`` es ``done``, ``skipped``, ``failed`` o ``missing``. Las dos
+        últimas muestran acciones para rebuscar la pista o reintentar la
+        descarga con otro formato.
         """
         skipped = kind == "skipped"
+        ok = kind in ("done", "skipped")
         glyph = (
             PIcons.SKIP_FORWARD if skipped
             else PIcons.CHECK_CIRCLE if ok
@@ -623,6 +708,33 @@ class DownloadsView(ft.Container):
             if ok and on_play is not None
             else app_icon(glyph, size=18, color=lead_color, fill=ok)
         )
+        actions: list[ft.Control] = []
+        if entry is not None:
+            actions.append(app_icon_button(
+                PIcons.MAGNIFYING_GLASS, icon_color=TEXT_MUTED,
+                hover_color_icon=ACCENT, size=16, tooltip="Rebuscar en YouTube",
+                on_click=lambda _e, e=entry: self._page_ref.run_task(self._research, e),
+                width=28, height=28,
+            ))
+            # Un solo botón: reintenta igual o prueba otro contenedor.
+            actions.append(ft.PopupMenuButton(
+                content=app_icon(PIcons.ARROWS_CLOCKWISE, size=16, color=TEXT_MUTED),
+                tooltip="Reintentar · probar otro formato",
+                items=[
+                    ft.PopupMenuItem(
+                        content=ft.Text("Reintentar igual", font_family=FONT_TEXT, size=12),
+                        on_click=lambda _e, e=entry: self._retry([e]),
+                    ),
+                    *[
+                        ft.PopupMenuItem(
+                            content=ft.Text(f"Como {f.upper()}", font_family=FONT_TEXT,
+                                            size=12),
+                            on_click=lambda _e, e=entry, fmt=f: self._retry([e], audio_format=fmt),
+                        )
+                        for f in self._alt_formats(entry)
+                    ],
+                ],
+            ))
         return ft.Container(
             bgcolor=BG_SURFACE,
             border=ft.Border.all(0.8, BORDER_MUTED),
@@ -636,5 +748,150 @@ class DownloadsView(ft.Container):
                     app_text(detail, size=10, color=TEXT_MUTED, font_family=FONT_TEXT,
                              max_lines=1, overflow=ft.TextOverflow.ELLIPSIS),
                 ], spacing=1, expand=True),
+                ft.Container(width=118, content=app_text(
+                    meta, size=10, color=TEXT_DIM, font_family=mono_family("light"),
+                    max_lines=1, overflow=ft.TextOverflow.ELLIPSIS)),
+                *actions,
             ], spacing=10, vertical_alignment=ft.CrossAxisAlignment.CENTER),
         )
+
+    @staticmethod
+    def _alt_formats(entry: dict) -> list[str]:
+        """Formatos alternativos al de la entrada, sin repetirlo."""
+        current = str(entry.get("format") or "").lower()
+        return [f for f in AUDIO_FORMATS if f != current]
+
+    def _retry(self, entries: list[dict], audio_format: str = "") -> None:
+        """Reintenta las entradas con el formato actual o uno alternativo."""
+        try:
+            task = self.app_state.retry_downloads(entries, audio_format=audio_format)
+        except Exception as exc:  # noqa: BLE001 - la UI no debe caerse
+            notify(self._page_ref, f"No se pudo reintentar: {exc}", kind="error")
+            return
+        if task is None:
+            notify(self._page_ref, "No hay pistas para reintentar", kind="error")
+            return
+        self._refresh()
+
+    async def _research(self, entry: dict) -> None:
+        """Rebusca la pista y muestra los candidatos con su duración."""
+        try:
+            found = await self.app_state.research_download(entry)
+        except Exception as exc:  # noqa: BLE001
+            notify(self._page_ref, f"No se pudo rebuscar: {exc}", kind="error")
+            return
+        await self._show_candidates(entry, found)
+
+    async def _show_candidates(self, entry: dict, found: dict) -> None:
+        """Diálogo con los candidatos encontrados y descarga del elegido."""
+        import asyncio
+
+        candidates = found.get("candidates") or []
+        fmt = found.get("format") or ""
+        title = _entry_title(entry)
+
+        if not candidates:
+            await self._ask(
+                "Sin coincidencias",
+                f"{title}\n\n{found.get('error') or 'YouTube no devolvió resultados'}",
+                detail=f"Consulta: {found.get('query') or '—'}",
+            )
+            return
+
+        dlg = app_dialog(
+            "Rebuscar en YouTube",
+            ft.Column(controls=[], spacing=10, tight=True),
+            [],
+            width=560, icon=PIcons.MAGNIFYING_GLASS,
+        )
+        body = dlg.content.content
+
+        def _close() -> None:
+            dlg.open = False
+            try:
+                self._page_ref.update()
+            except Exception:
+                pass
+
+        def _pick(video_id: str, chosen_fmt: str) -> None:
+            track = found.get("track")
+            try:
+                self.app_state.download_candidate(track, video_id, audio_format=chosen_fmt)
+            except Exception as exc:  # noqa: BLE001
+                notify(self._page_ref, f"No se pudo descargar: {exc}", kind="error")
+            _close()
+            self._refresh()
+
+        rows = ft.Column(spacing=6)
+        for cand in candidates[:5]:
+            used = str(cand.get("video_id") or "") == str(entry.get("video_id") or "")
+            rows.controls.append(ft.Container(
+                bgcolor=BG_SURFACE,
+                border=ft.Border.all(0.8, BORDER_MUTED),
+                border_radius=RADIUS_INPUT,
+                padding=ft.Padding.symmetric(horizontal=10, vertical=8),
+                content=ft.Row(controls=[
+                    ft.Column(controls=[
+                        app_text(cand.get("title", ""), size=12, color=TEXT_PRIMARY,
+                                 font_family=FONT_TEXT, max_lines=1,
+                                 overflow=ft.TextOverflow.ELLIPSIS),
+                        app_text(
+                            f"{cand.get('channel') or '—'} · "
+                            f"{_fmt_dur(int(cand.get('duration_s') or 0) * 1000)} · "
+                            f"{cand.get('score')} pts"
+                            + (" · ya se intentó" if used else ""),
+                            size=10,
+                            color=ERROR_COL if used else TEXT_MUTED,
+                            font_family=mono_family("light"),
+                            max_lines=1, overflow=ft.TextOverflow.ELLIPSIS,
+                        ),
+                    ], spacing=1, expand=True),
+                    _ghost_btn(
+                        "Usar", PIcons.DOWNLOAD_SIMPLE,
+                        lambda _e, v=str(cand.get("video_id") or ""), f=fmt: _pick(v, f),
+                        width=88, height=30,
+                    ),
+                ], spacing=8, vertical_alignment=ft.CrossAxisAlignment.CENTER),
+            ))
+
+        body.controls = [
+            app_text(title, size=12, color=TEXT_PRIMARY, font_family=FONT_TEXT),
+            app_text(
+                f"Consulta: {found.get('query') or '—'} · formato {fmt.upper() or 'actual'}",
+                size=10, color=TEXT_MUTED, font_family=mono_family("light"),
+            ),
+            rows,
+        ]
+        dlg.actions = [dialog_action("Cerrar", lambda _e: _close(), kind="muted")]
+        self._page_ref.show_dialog(dlg)
+        await asyncio.sleep(0)
+
+    async def _ask(self, title: str, message: str, *, detail: str = "") -> None:
+        """Diálogo informativo de una sola acción."""
+        import asyncio
+
+        loop = asyncio.get_running_loop()
+        future: asyncio.Future[bool] = loop.create_future()
+
+        def _close(_e=None) -> None:
+            if not future.done():
+                future.set_result(True)
+            dlg.open = False
+            try:
+                self._page_ref.update()
+            except Exception:
+                pass
+
+        controls: list[ft.Control] = [
+            app_text(message, size=12, color=TEXT_PRIMARY, font_family=FONT_TEXT),
+        ]
+        if detail:
+            controls.append(app_text(detail, size=10, color=TEXT_MUTED,
+                                     font_family=mono_family("light")))
+        dlg = app_dialog(
+            title, ft.Column(controls=controls, spacing=6, tight=True),
+            [dialog_action("Aceptar", _close, kind="primary")],
+            width=420, icon=PIcons.INFO,
+        )
+        self._page_ref.show_dialog(dlg)
+        await future
