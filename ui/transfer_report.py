@@ -411,7 +411,7 @@ class TransferReportDialog(DialogMixin):
         self._status.color = TEXT_MUTED
         self._refresh()
         try:
-            tracks = await self.state.service.search_candidates(
+            tracks = await self.state.search_candidates(
                 self.report.destination, query, 5
             )
             self._render_results(tracks, query)
@@ -475,7 +475,7 @@ class TransferReportDialog(DialogMixin):
             self._search_btn.disabled = True
         self._refresh()
         try:
-            ok, message = await self.state.service.add_track(
+            ok, message = await self.state.add_track_to_remote(
                 self.report.destination, self.report.playlist_id, track.id
             )
         except Exception as exc:  # pylint: disable=broad-exception-caught
@@ -494,7 +494,7 @@ class TransferReportDialog(DialogMixin):
             self.report.confirmed + 1, self.report.detected
         )
         try:
-            self.state.service.remember_resolution(
+            self.state.remember_resolution(
                 issue.track.name, issue.track.artist,
                 self.report.destination, track.id, isrc=track.isrc,
             )

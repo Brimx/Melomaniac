@@ -365,7 +365,7 @@ class ActionsMixin:
                 if dest == "Mantener" or not dest:
                     dest = self.state.destination
                 try:
-                    ok, msg, confirmed, rejected = await self.state.service.create_playlist(
+                    ok, msg, confirmed, rejected = await self.state.create_remote_playlist(
                         dest, f"{meta.title.strip()} — {div}", [t.id for t in div_selected if t.id], meta.description
                     )
                     if ok:
@@ -387,7 +387,7 @@ class ActionsMixin:
         # Reemplazar/eliminar original si marcado (§11)
         if meta.delete_original and self.state.playlist_id and self.state.source not in AppState.LOCAL_SOURCES:
             try:
-                ok, msg = await self.state.service.delete_playlist(self.state.source, self.state.playlist_id)
+                ok, msg = await self.state.delete_remote_playlist(self.state.source, self.state.playlist_id)
                 if ok:
                     self._snack(f"Original eliminada ({self.state.source})")
                     self.state.log(f"[INFO] Original {self.state.playlist_id} eliminada tras reemplazo")

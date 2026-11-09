@@ -156,6 +156,7 @@ class AppState(TransferMixin, DownloadMixin):
             la construcción para recibir notificaciones de cambios.
         """
         self.service = service
+        self.on_auth_failure: Optional[Callable[[str, BaseException], bool]] = None
 
         # ──────────────────────────────────────────────────────────────
         # CONFIGURACIÓN DE FUENTE Y DESTINO

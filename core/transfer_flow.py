@@ -491,10 +491,38 @@ class TransferMixin:
             self._log(f"[WARN] No se pudo escribir el historial de transferencia: {exc}")
 
     def _record_auth_operation_failure(self, platform: str, error: BaseException) -> bool:
+        if getattr(self, "on_auth_failure", None) is not None:
+            return self.on_auth_failure(platform, error)
         auth_manager = getattr(self.service, "auth_manager", None)
         if auth_manager is not None:
             return auth_manager.record_operation_failure(platform, error)
         return False
+
+    async def search_candidates(self, platform: str, query: str, limit: int = 5) -> list[Track]:
+        """Busca pistas candidatas en la plataforma de destino."""
+        return await self.service.search_candidates(platform, query, limit)
+
+    async def add_track_to_remote(
+        self, platform: str, playlist_id: str, track_id: str
+    ) -> tuple[bool, str]:
+        """Inserta una pista en una playlist remota ya existente."""
+        return await self.service.add_track(platform, playlist_id, track_id)
+
+    def remember_resolution(
+        self, name: str, artist: str, platform: str, track_id: str, *, isrc: str = ""
+    ) -> None:
+        """Persiste en caché una resolución manual de alternativa."""
+        self.service.remember_resolution(name, artist, platform, track_id, isrc=isrc)
+
+    async def create_remote_playlist(
+        self, platform: str, title: str, track_ids: list[str], description: str = ""
+    ) -> tuple[bool, str, int, list[str]]:
+        """Crea una playlist remota en la plataforma indicada."""
+        return await self.service.create_playlist(platform, title, track_ids, description)
+
+    async def delete_remote_playlist(self, platform: str, playlist_id: str) -> tuple[bool, str]:
+        """Elimina una playlist remota en la plataforma indicada."""
+        return await self.service.delete_playlist(platform, playlist_id)
 
     # Despacho por plataforma: un dict evita repetir la cadena de comparaciones.
     _INIT_METHODS = {

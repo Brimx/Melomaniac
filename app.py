@@ -167,8 +167,9 @@ async def main(page: ft.Page) -> None:
         # Conecta auth_manager con service y ui para permitir comunicación
         # bidireccional durante flujos de autenticación y actualización de UI.
         
-        ui.auth_manager      = auth_manager
-        service.auth_manager = auth_manager
+        ui.auth_manager       = auth_manager
+        service.auth_manager  = auth_manager
+        state.on_auth_failure = auth_manager.record_operation_failure
 
         # Pila raíz: la app y, encima, la bienvenida (primera ejecución o
         # reabierta desde Config). Al cerrar se retira el overlay.
