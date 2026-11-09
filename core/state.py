@@ -999,6 +999,13 @@ class AppState:
         if self._download_pause is not None:
             self._download_pause.set()
         self.download_paused = True
+        # La pista activa se marca como pausada en el acto. yt-dlp tarda un
+        # momento en abortar, y hasta ahora la fila pasaba por «Error» antes
+        # de llegar al estado correcto, que se lee como un fallo real.
+        for item in self.download_items:
+            if item.get("status") == "running":
+                item["status"] = "paused"
+                item["error"] = "Pausada"
         self._log("[INFO] Descargas en pausa")
         self.notify()
 
@@ -1189,7 +1196,7 @@ class AppState:
                 # turno: nunca debe arrancar una descarga nueva, pero tampoco
                 # perderse de la lista de pendientes.
                 if pause.is_set():
-                    item["status"] = "failed"
+                    item["status"] = "paused"
                     item["error"] = "Pausada"
                     if track not in self._download_pending_tracks:
                         self._download_pending_tracks.append(track)
@@ -1222,7 +1229,7 @@ class AppState:
                     # La pista quedó a medias: se conserva para reanudarla y
                     # el ``.part`` se queda en disco.
                     async with lock:
-                        item["status"] = "failed"
+                        item["status"] = "paused"
                         item["error"] = "Pausada"
                         if track not in self._download_pending_tracks:
                             self._download_pending_tracks.append(track)

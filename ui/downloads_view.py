@@ -453,6 +453,14 @@ class DownloadsView(ft.Container):
                 pct.value = "100%"
                 icon.value, icon.color = PIcons.CHECK_CIRCLE, SUCCESS
                 icon.font_family = FONT_PHOSPHOR_FILL
+            elif status == "paused":
+                # El usuario pausó: no es un fallo. Se conserva el progreso
+                # alcanzado porque la reanudación continúa desde el ``.part``.
+                bar.color = TEXT_MUTED
+                bar.value = (item["percent"] / 100) if item["percent"] > 0 else None
+                pct.value = "Pausa"
+                icon.value, icon.color = PIcons.PAUSE, TEXT_MUTED
+                icon.font_family = FONT_PHOSPHOR
             elif status == "failed":
                 bar.value, bar.color = 0, ERROR_COL
                 pct.value = item["error"][:12] if item["error"] == "Cancelada" else "Error"
@@ -534,7 +542,12 @@ class DownloadsView(ft.Container):
         self._progress.value = (progress / total) if total else 0
         self._progress_text.value = f"{progress} / {total}" if total else ""
 
-        if paused and not running:
+        if paused and running:
+            # yt-dlp tarda un instante en abortar la pista activa; sin esto el
+            # encabezado seguiría diciendo «Descargando» y parecería que la
+            # pausa no se aplicó.
+            self._current_text.value = "Pausando…"
+        elif paused:
             pending = len(getattr(st, "_download_pending_tracks", []) or [])
             self._current_text.value = (
                 f"En pausa · {pending} pendientes" if pending else "En pausa"
@@ -560,11 +573,14 @@ class DownloadsView(ft.Container):
         if not running:
             self._cancel_requested = False
 
-        # estado A (cola) vs estado B (historial)
-        self._queue_section.visible = running
-        self._history_section.visible = not running
+        # estado A (cola) vs estado B (historial). Una cola pausada sigue
+        # siendo la tarea en curso: ocultarla al pausar hacía parecer que el
+        # trabajo había terminado y saltaba al inventario de la carpeta.
+        show_queue = running or paused
+        self._queue_section.visible = show_queue
+        self._history_section.visible = not show_queue
         items = st.download_items
-        if running:
+        if show_queue:
             if id(items) != self._items_key:
                 self._items_key = id(items)
                 self._rebuild_queue(items)
@@ -575,7 +591,7 @@ class DownloadsView(ft.Container):
         skipped = list(getattr(st, "download_skipped", []) or [])
         missing = list(getattr(st, "download_missing", []) or [])
         signature = (len(done), len(skipped), len(failed), len(missing))
-        if not running and signature != self._results_sig:
+        if not show_queue and signature != self._results_sig:
             self._results_sig = signature
             self._rebuild_results(done, skipped, failed, missing)
 
