@@ -115,6 +115,27 @@ def app_text(
     return ft.Text(text, size=size, color=color, font_family=font_family, **kwargs)
 
 
+def _as_icon(value, height: float | None = None) -> ft.Control:
+    """Convierte un glifo suelto en un icono de prefijo/sufijo alineado.
+
+    Los glifos de Phosphor son caracteres sueltos en el rango privado, así que
+    se distinguen por ``str`` y longitud. Un ``ft.Control`` ya construido se
+    devuelve tal cual.
+
+    Material alinea el ``prefixIcon``/``suffixIcon`` al techo del hueco, así que
+    el glifo queda desviado hacia arriba aunque su caja de línea esté bien
+    centrada. Envolverlo en un ``Container`` con ``alignment=CENTER`` y la
+    altura del campo lo devuelve al centro vertical.
+    """
+    if isinstance(value, str) and len(value) == 1 and ord(value) >= 0xE000:
+        return ft.Container(
+            content=app_icon(value, size=16, color=TEXT_DIM),
+            alignment=ft.Alignment.CENTER,
+            width=20, height=height,
+        )
+    return value
+
+
 def input_border(
     border_color: str = BORDER_LIGHT,
     focused_color: str = ACCENT,
@@ -167,17 +188,16 @@ def app_text_field(
     _br = kwargs.pop("border", None)
     border = _br if _br is not None else input_border(_bc, _fbc, border_radius)
 
+    # La altura del campo es la referencia para centrar sus iconos.
+    _icon_h = kwargs.get("height")
+
     prefix_icon = kwargs.pop("prefix_icon", None)
-    if prefix_icon and len(prefix_icon) == 1 and ord(prefix_icon) >= 0xE000:
-        kwargs["prefix_icon"] = app_icon(prefix_icon, size=16, color=TEXT_DIM)
-    elif prefix_icon:
-        kwargs["prefix_icon"] = prefix_icon
+    if prefix_icon:
+        kwargs["prefix_icon"] = _as_icon(prefix_icon, _icon_h)
 
     suffix_icon = kwargs.pop("suffix_icon", None)
-    if suffix_icon and len(suffix_icon) == 1 and ord(suffix_icon) >= 0xE000:
-        kwargs["suffix_icon"] = app_icon(suffix_icon, size=16, color=TEXT_DIM)
-    elif suffix_icon:
-        kwargs["suffix_icon"] = suffix_icon
+    if suffix_icon:
+        kwargs["suffix_icon"] = _as_icon(suffix_icon, _icon_h)
     return ft.TextField(
         label=label,
         hint_text=hint_text,
