@@ -180,7 +180,8 @@ class LibraryView(ft.Container):
             # pistas ya conocidas vuelven con sus tags y su portada.
             from services.local_index import scan_folder_async
 
-            return await scan_folder_async(summary.id)
+            tracks = await scan_folder_async(summary.id)
+            return None, tracks
 
         def _remove_local() -> None:
             self.library_state.remove_local_folder(summary.id)

@@ -240,10 +240,15 @@ class PlaylistDetailView(ft.Container):
             pass
         try:
             if self._loader is not None:
-                _meta, tracks = await self._loader()
+                res = await self._loader()
+                if isinstance(res, tuple) and len(res) == 2:
+                    _meta, tracks = res
+                else:
+                    _meta, tracks = None, res
             else:
                 _meta, tracks = await self.service.fetch_playlist(self.summary.platform, self.summary.id, None)
             self._tracks = self._apply_manifest_order(tracks)
+            tracks = self._tracks
 
             # Mapear pistas que ya existen en descargas o carpetas locales
             self._match_local_files()

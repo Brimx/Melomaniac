@@ -158,5 +158,20 @@ class CoverCacheTest(unittest.TestCase):
         )
 
 
+class ScanFolderAsyncTest(unittest.IsolatedAsyncioTestCase):
+    async def test_scan_folder_async_returns_track_list(self) -> None:
+        from services.local_index import scan_folder_async
+
+        with tempfile.TemporaryDirectory() as tmp:
+            d = Path(tmp)
+            audio = d / "Artist - Song.mp3"
+            audio.write_bytes(b"x" * 64)
+            with mock.patch.object(parsers, "read_audio_metadata", return_value={"title": "Song", "artist": "Artist"}):
+                tracks = await scan_folder_async(str(d))
+            self.assertIsInstance(tracks, list)
+            self.assertEqual(len(tracks), 1)
+            self.assertEqual(tracks[0].name, "Song")
+
+
 if __name__ == "__main__":
     unittest.main()

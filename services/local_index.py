@@ -48,12 +48,12 @@ def quick_count(folder: str, *, limit: int = SYNC_SCAN_LIMIT) -> int:
     return len(list_audio_files(folder, limit=limit))
 
 
-async def scan_folder_async(folder: str, *, limit: int = 5000):
+async def scan_folder_async(folder: str, *, limit: int = 5000) -> list:
     """Escanea ``folder`` fuera del evento y deja el índice listo para guardar.
 
     Returns:
-        ``(tracks, index)`` donde ``tracks`` es la lista de ``Track``.
+        ``list[Track]`` con las canciones encontradas.
     """
     index = shared_index()
     tracks = await asyncio.to_thread(scan_audio_folder, folder, limit=limit, index=index)
-    return tracks, index
+    return tracks
