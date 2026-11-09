@@ -10,7 +10,6 @@ de carpetas grandes en un hilo aparte.
 from __future__ import annotations
 
 import asyncio
-import os
 from typing import Optional
 
 from engine.local_index import LocalIndex
@@ -58,9 +57,3 @@ async def scan_folder_async(folder: str, *, limit: int = 5000):
     index = shared_index()
     tracks = await asyncio.to_thread(scan_audio_folder, folder, limit=limit, index=index)
     return tracks, index
-
-
-def remember_now(folder: str, *, limit: int = 5000) -> list:
-    """Escaneo síncrono usado cuando el árbol es pequeño (no vale un hilo)."""
-    index = shared_index()
-    return scan_audio_folder(folder, limit=limit, index=index)
