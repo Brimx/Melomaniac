@@ -53,19 +53,25 @@ Melomaniac/
 │   ├── library_store.py           # Persistencia atómica de metadatos locales
 │   ├── models.py                  # Track, PlaylistMeta, SearchResult, enums
 │   ├── playback.py                # Cola PlayQueue, audio y modos repeat/shuffle
+│   ├── download_flow.py           # DownloadMixin: cola yt-dlp, pausa y reintentos
 │   ├── state.py                   # AppState y flujo BLoC/Observer
-│   └── transfer.py                # Búsqueda con rate limit y errores breves
+│   ├── transfer.py                # Reporte de transferencia y búsqueda con rate limit
+│   └── transfer_flow.py           # TransferMixin: búsqueda, creación y verificación
 ├── engine/
 │   ├── audio_metadata.py          # Tags de audio con Mutagen
 │   ├── covers.py                  # Normalización de carátulas a 800 px cuadrados
+│   ├── download_cookies.py        # Cookie jar en memoria para yt-dlp
+│   ├── download_search.py         # Búsqueda y ranking de coincidencias en YouTube
+│   ├── downloader.py              # Descarga de audio, metadatos y manifiesto (yt-dlp)
+│   ├── exporters.py               # Exportación local en varios formatos
+│   ├── local_index.py             # Índice local persistente de carpetas de audio
 │   ├── match.py                   # Validación, scoring y Hunter Recovery
 │   ├── normalizer.py              # Limpieza, ruido, ISRC y cirílico
 │   ├── organizer.py               # sort_tracks y split_tracks en memoria
-│   ├── exporters.py               # Exportación local en varios formatos
-│   ├── downloader.py              # Resolución y descarga de audio con yt-dlp
 │   └── parsers.py                 # Formatos locales y Track local
 ├── services/
-│   ├── api_service.py             # Fachada YouTube/Apple/Spotify
+│   ├── api_service.py             # Fachada YouTube/Apple/Spotify (estado, caché y despacho)
+│   ├── platforms/                 # Mixins por plataforma (youtube.py, apple.py, spotify.py)
 │   ├── authentication.py          # Archivos runtime y resultado de pre-flight
 │   ├── browser_session.py         # Detección de navegador y sesión en memoria
 │   ├── circuit_breaker.py         # RateLimitError y cooldowns
@@ -82,12 +88,16 @@ Melomaniac/
 │   ├── config_wizard.py           # Edición gráfica de credenciales
 │   ├── downloads_view.py          # Cola, progreso y resultados de descargas
 │   ├── fonts.py                   # Clasificación Unicode y registro de fuentes
+│   ├── division_dialogs.py        # DivisionMixin: diálogos de Organizar y Dividir
 │   ├── library_view.py            # Biblioteca y acceso al módulo Descargas
-│   ├── main_ui.py                 # Ventana principal y rail de navegación
+│   ├── main_actions.py            # ActionsMixin: carga, ingesta, transferencia y export
+│   ├── main_layout.py             # LayoutMixin: sidebar, rail flotante y contenido
+│   ├── main_ui.py                 # Ventana principal y sincronización reactiva
 │   ├── onboarding.py              # Bienvenida de primera ejecución (ONBOARDING_STEPS)
 │   ├── onboarding_bg.py           # Fondo animado de la bienvenida
 │   ├── organize_panel.py          # Diálogos Organizar/Dividir/Reorganizar
 │   ├── player_bar.py              # Barra de reproducción persistente con scrubbing
+│   ├── player_mpris.py            # MprisBridgeMixin: puente entre PlayerBar y MPRIS
 │   ├── player_queue.py            # Panel de cola de reproducción
 │   ├── playlist_card.py           # Tarjetas de playlist
 │   ├── playlist_detail_view.py    # Detalle y carga de pistas bajo demanda
