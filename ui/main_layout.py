@@ -1,0 +1,643 @@
+"""ui/main_layout.py — Construcción de controles: selectores, barra lateral y contenido principal.
+
+Mixin de `PlaylistManagerUI` (ui/main_ui.py): los métodos se mezclan en la clase
+y comparten su `self`.
+"""
+
+from __future__ import annotations
+
+import asyncio
+import flet as ft
+
+from ui.tokens import (
+    ACCENT,
+    ACCENT_HALO,
+    BG_INPUT,
+    BG_LIST,
+    BG_PANEL,
+    BG_SURFACE,
+    BORDER_LIGHT,
+    BORDER_MUTED,
+    CHIP_BG,
+    ERROR_COL,
+    MOTION_PANEL_MS,
+    SIDEBAR_BG,
+    SUCCESS,
+    TEXT_DIM,
+    TEXT_MUTED,
+    TEXT_PRIMARY,
+    WARNING,
+)
+from ui.song_row import ITEM_H, PreviewSkeletonRow, SkeletonRow
+from ui.widgets import (
+    _ghost_btn,
+    _primary_btn,
+    _section_label,
+    app_text,
+    app_text_field,
+    input_border,
+)
+from ui.icons import PIcons, app_icon, app_icon_button
+from ui.fonts import (
+    FONT_HEADLINE,
+    FONT_HEADLINE_BOLD,
+    FONT_TEXT,
+    brand_family,
+    mono_family,
+)
+from ui.telemetry import TelemetryDrawer
+from core.config import APP_VERSION, EXPORT_DEST_LABEL
+from core.state import AppState
+
+
+class LayoutMixin:
+    """Construcción de controles: selectores, barra lateral y contenido principal."""
+
+    def _make_order_segmented(self, current: str, on_change=None) -> ft.Control:
+        """SegmentedButton para elegir Artista-Título vs Título-Artista (reusa tokens)."""
+        # Fallback a Dropdown si SegmentedButton no está disponible en runtime
+        try:
+            return ft.SegmentedButton(
+                selected=[current],
+                allow_empty_selection=False,
+                allow_multiple_selection=False,
+                show_selected_icon=False,
+                style=ft.ButtonStyle(
+                    bgcolor={ft.ControlState.SELECTED: ACCENT, ft.ControlState.DEFAULT: BG_SURFACE},
+                    color={ft.ControlState.SELECTED: TEXT_PRIMARY, ft.ControlState.DEFAULT: TEXT_MUTED},
+                ),
+                segments=[
+                    ft.Segment(value="artist-title", label=ft.Text("Artista - Título", size=11, font_family=FONT_HEADLINE)),
+                    ft.Segment(value="title-artist", label=ft.Text("Título - Artista", size=11, font_family=FONT_HEADLINE)),
+                ],
+                on_change=on_change,
+            )
+        except Exception:
+            # fallback Dropdown compacto
+            dd = ft.Dropdown(
+                value=current,
+                width=200, height=38,
+                bgcolor=BG_INPUT, border=input_border(),
+                text_style=ft.TextStyle(color=TEXT_PRIMARY, size=11, font_family=FONT_TEXT),
+                content_padding=ft.Padding.symmetric(horizontal=10, vertical=0),
+                options=[
+                    ft.dropdown.Option("artist-title", "Artista - Título"),
+                    ft.dropdown.Option("title-artist", "Título - Artista"),
+                ],
+                on_select=on_change,  # compat
+            )
+            return dd
+
+    def _make_mode_segmented(self, current: str, on_change=None) -> ft.Control:
+        """SegmentedButton Lista|Doble|Preview — modo doble solo al Organizar/Dividir."""
+        try:
+            return ft.SegmentedButton(
+                selected=[current],
+                allow_empty_selection=False,
+                allow_multiple_selection=False,
+                show_selected_icon=False,
+                style=ft.ButtonStyle(
+                    bgcolor={ft.ControlState.SELECTED: ACCENT, ft.ControlState.DEFAULT: BG_SURFACE},
+                    color={ft.ControlState.SELECTED: TEXT_PRIMARY, ft.ControlState.DEFAULT: TEXT_MUTED},
+                ),
+                segments=[
+                    ft.Segment(value="lista", label=ft.Text("Lista", size=11, font_family=FONT_HEADLINE)),
+                    ft.Segment(value="doble", label=ft.Text("Doble", size=11, font_family=FONT_HEADLINE)),
+                    ft.Segment(value="preview", label=ft.Text("Preview", size=11, font_family=FONT_HEADLINE)),
+                ],
+                on_change=on_change,
+            )
+        except Exception:
+            return ft.Dropdown(
+                value=current,
+                width=180, height=38,
+                bgcolor=BG_INPUT, border=input_border(),
+                text_style=ft.TextStyle(color=TEXT_PRIMARY, size=11, font_family=FONT_TEXT),
+                content_padding=ft.Padding.symmetric(horizontal=10, vertical=0),
+                options=[
+                    ft.dropdown.Option("lista", "Lista"),
+                    ft.dropdown.Option("doble", "Doble"),
+                    ft.dropdown.Option("preview", "Preview"),
+                ],
+                on_select=on_change,
+            )
+
+    def _make_cono_empty(self, title: str, subtitle: str, visible: bool = True) -> ft.Container:
+        """Empty con icono cono para Biblioteca/Descargas/Preview — reusa tokens."""
+        return ft.Container(
+            bgcolor=BG_LIST,
+            content=ft.Column(controls=[
+                ft.Container(content=app_icon(PIcons.WRENCH, size=52, color=TEXT_DIM),
+                             bgcolor=CHIP_BG, border=ft.Border.all(0.8, BORDER_LIGHT),
+                             border_radius=20, padding=ft.Padding.all(20)),
+                ft.Text(title, size=18, color=TEXT_PRIMARY, font_family=FONT_HEADLINE_BOLD, opacity=1.0),
+                ft.Text(subtitle, size=12, color=TEXT_MUTED, font_family=FONT_TEXT, opacity=1.0, text_align=ft.TextAlign.CENTER),
+                ft.Text("Función en desarrollo", size=11, color=TEXT_DIM, font_family=FONT_TEXT, opacity=0.8),
+            ], horizontal_alignment=ft.CrossAxisAlignment.CENTER, spacing=8),
+            alignment=ft.Alignment.CENTER, visible=visible,
+            expand=True,
+        )
+
+    def _build_sidebar(self) -> None:
+        s = self.state
+
+        self.btn_wizard = app_icon_button(
+            PIcons.GEAR, icon_color=TEXT_DIM, hover_color_icon=TEXT_PRIMARY, size=16,
+            tooltip="Configurar credenciales", on_click=self._on_open_wizard,
+            width=28, height=28,
+        )
+        logo = ft.Column([
+            ft.Row([
+                ft.Container(
+                    content=app_icon(PIcons.MUSIC_NOTES, color=ACCENT, size=20, fill=True),
+                    bgcolor=ACCENT_HALO, border_radius=8, padding=ft.Padding.all(6),
+                ),
+                ft.Column([
+                    ft.Text(spans=[
+                        ft.TextSpan("Melomaniac", ft.TextStyle(size=20,
+                                                               color=TEXT_PRIMARY, font_family=brand_family("bold"))),
+                    ], opacity=1.0),
+                    ft.Text(f"v{APP_VERSION}", size=9, color=TEXT_DIM, font_family=FONT_TEXT,
+                            style=ft.TextStyle(letter_spacing=0.8), opacity=1.0),
+                ], spacing=0, tight=True, expand=True),
+                self.btn_wizard,
+            ], spacing=10, vertical_alignment=ft.CrossAxisAlignment.CENTER),
+        ], spacing=0)
+
+        _dd_style = dict(
+            bgcolor=BG_INPUT, border=input_border(),
+            label_style=ft.TextStyle(color=TEXT_MUTED, size=10, font_family=FONT_HEADLINE),
+            text_style=ft.TextStyle(color=TEXT_PRIMARY, size=11, font_family=FONT_TEXT),
+            content_padding=ft.Padding.symmetric(horizontal=8, vertical=0),
+            expand=True,
+        )
+
+        def _on_src_select(e) -> None:
+            val = e.control.value
+            s.set_source(val)
+            if val == "Archivo Local":
+                asyncio.create_task(self._do_local_pick())
+            elif val == "Pegar Texto":
+                self._open_paste_dialog()
+            elif val in AppState.PLATFORMS:
+                asyncio.create_task(self._refresh_auth_live(val))
+                self._refresh_playlist_picker(val)
+
+        def _on_dst_select(e) -> None:
+            val = e.control.value
+            s.set_destination(val)
+            if val == EXPORT_DEST_LABEL:
+                # Export local no requiere sesión
+                if isinstance(self._transfer_btn.content, ft.Row) and len(self._transfer_btn.content.controls) >= 2:
+                    self._transfer_btn.content.controls[0].value = PIcons.EXPORT
+                    self._transfer_btn.content.controls[1].value = "Exportar"
+                elif hasattr(self._transfer_btn.content, "value"):
+                    self._transfer_btn.content.value = "Exportar"
+                self._transfer_btn.update()
+                return
+            else:
+                # restaura icono transfer si venía de export
+                try:
+                    if isinstance(self._transfer_btn.content, ft.Row) and len(self._transfer_btn.content.controls) >= 2:
+                        self._transfer_btn.content.controls[0].value = PIcons.ARROWS_LEFT_RIGHT
+                        self._transfer_btn.content.controls[1].value = "Transferir"
+                    elif hasattr(self._transfer_btn.content, "value"):
+                        self._transfer_btn.content.value = "Transferir"
+                except Exception:
+                    pass
+            if val in AppState.PLATFORMS:
+                asyncio.create_task(self._refresh_auth_live(val))
+
+        self._src_dd = ft.Dropdown(
+            label="Origen", value=s.source,
+            options=[ft.dropdown.Option(key=p, text=p) for p in AppState.SOURCE_OPTIONS],
+            on_select=_on_src_select, **_dd_style,
+        )
+        _dst_opts = [*AppState.PLATFORMS, EXPORT_DEST_LABEL]
+        self._dst_dd = ft.Dropdown(
+            label="Destino", value=s.destination,
+            options=[ft.dropdown.Option(key=p, text=p) for p in _dst_opts],
+            on_select=_on_dst_select, **_dd_style,
+        )
+        self._status_badge      = ft.Text("", size=10, color=SUCCESS, font_family=mono_family(), opacity=1.0)
+        self._dest_session_warn = ft.Text("", size=9, color=ERROR_COL, font_family=FONT_TEXT, visible=False)
+
+        platform_section = ft.Column([
+            _section_label("PLATAFORMAS"),
+            ft.Row([self._src_dd, self._dst_dd], spacing=8),
+            self._status_badge,
+            self._dest_session_warn,
+        ], spacing=8)
+
+        self._id_clear_btn = app_icon_button(
+            PIcons.X, icon_color=TEXT_DIM, hover_color_icon=TEXT_PRIMARY, size=12,
+            width=24, height=24,
+            tooltip="Limpiar ID", visible=False,
+            on_click=self._on_clear_id,
+        )
+
+        def _on_id_change(_):
+            self._id_clear_btn.visible = bool(self._id_field.value)
+            self._id_clear_btn.update()
+
+        self._id_field = app_text_field(
+            label="ID o URL de la Playlist",
+            hint_text="pl.xxxx  /  PLxxxx  /  URL",
+            suffix=self._id_clear_btn,
+            on_change=_on_id_change,
+            on_submit=lambda e: asyncio.create_task(self._do_cloud_load(e)),
+        )
+
+        # Selector de playlists ya sincronizadas. Es la vía principal: elegir
+        # una playlist de la biblioteca no exige pegar un ID. El campo de
+        # ID/URL queda detrás de «Usar URL o ID» como alternativa avanzada, y
+        # se rellena en cada cambio de origen con lo que haya en caché (sin
+        # disparar sincronización: eso haría tres llamadas al abrir Gestión).
+        # Mismo estilo que los dropdowns de plataforma/destino del sidebar,
+        # sin ``expand``: aquí vive en una Column, donde expandiría en alto.
+        _dd_col_style = {k: v for k, v in _dd_style.items() if k != "expand"}
+        self._playlist_pick = ft.Dropdown(
+            label="Playlist de la biblioteca", value="", options=[],
+            on_select=self._on_playlist_pick, **_dd_col_style,
+        )
+        self._playlist_pick.visible = False
+        self._playlist_help = app_text(
+            "", size=9, color=TEXT_DIM, font_family=FONT_TEXT, visible=False,
+        )
+        self._url_toggle_label = ft.Text(
+            "Usar URL o ID", size=10, color=TEXT_MUTED, font_family=FONT_HEADLINE,
+        )
+        self._use_url_btn = ft.TextButton(
+            content=ft.Row([
+                app_icon(PIcons.LINK, size=13, color=TEXT_MUTED),
+                self._url_toggle_label,
+            ], spacing=6, tight=True),
+            on_click=self._on_toggle_url_field,
+        )
+        self._url_mode = False
+
+        self._playlist_section = ft.Column([
+            _section_label("PLAYLIST"),
+            self._playlist_pick,
+            self._playlist_help,
+            self._id_field,
+            self._use_url_btn,
+        ], spacing=8, visible=(s.source not in AppState.LOCAL_SOURCES))
+        # Estado inicial sin tocar la página: aún no existe durante el build.
+        self._id_field.visible = False
+        self._playlist_help.value = (
+            "Sin playlists sincronizadas: usa «Usar URL o ID» o sincroniza "
+            "la plataforma en Biblioteca."
+        )
+        self._playlist_help.visible = True
+        self._playlist_divider = ft.Divider(
+            height=1, color=BORDER_MUTED, thickness=0.5,
+            visible=(s.source not in AppState.LOCAL_SOURCES),
+        )
+
+        _BTN_W, _BTN_H = 129, 44
+        self._load_btn     = _primary_btn("Cargar",      PIcons.DOWNLOAD_SIMPLE,   self._on_load,     width=_BTN_W, height=_BTN_H)
+        self._transfer_btn = _ghost_btn(  "Transferir",  PIcons.ARROWS_LEFT_RIGHT, self._on_transfer, width=_BTN_W, height=_BTN_H)
+        self._organize_btn = _ghost_btn(  "Organizar",   PIcons.SLIDERS_HORIZONTAL,       self._on_organize, width=_BTN_W, height=_BTN_H, disabled=True)
+        self._split_btn    = _ghost_btn(  "Dividir",     PIcons.GIT_BRANCH, self._on_split,    width=_BTN_W, height=_BTN_H, disabled=True)
+        self._reorganize_btn = _ghost_btn("Reorganizar", PIcons.ARROWS_CLOCKWISE, self._on_reorganize, width=_BTN_W*2+6, height=_BTN_H, disabled=True)
+
+        actions = ft.Column([
+            ft.Row([self._load_btn,  self._transfer_btn], spacing=6),
+            ft.Row([self._organize_btn, self._split_btn], spacing=6),
+            ft.Row([self._reorganize_btn], spacing=6),
+        ], spacing=6)
+
+        self._rl_banner = ft.Container(
+            content=ft.Row([
+                app_icon(PIcons.CLOCK, color=WARNING, size=14),
+                ft.Text("", size=10, color=WARNING, font_family=mono_family("light"), opacity=1.0),
+            ], spacing=6),
+            bgcolor=BG_PANEL, border=ft.Border.all(0.8, WARNING),
+            border_radius=8, padding=ft.Padding.symmetric(horizontal=10, vertical=6),
+            visible=False,
+        )
+
+        self._progress_bar = ft.ProgressBar(value=0, bgcolor=BG_SURFACE, color=ACCENT, border_radius=4)
+        self._progress_row = ft.Container(
+            content=ft.Column([
+                self._progress_bar,
+                ft.Row([ft.Text("", size=10, color=TEXT_MUTED, font_family=mono_family("light"), opacity=1.0)],
+                       alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
+            ], spacing=4),
+            visible=False,
+            border=ft.Border.all(0.8, BORDER_LIGHT), border_radius=8,
+            padding=ft.Padding.symmetric(horizontal=8, vertical=6),
+        )
+
+        self._telemetry = TelemetryDrawer(self.page, sidebar_width=300)
+
+        fixed_top = ft.Column(controls=[
+            logo,
+            ft.Divider(height=1, color=BORDER_MUTED, thickness=0.5),
+            platform_section,
+            ft.Divider(height=1, color=BORDER_MUTED, thickness=0.5),
+            self._playlist_section,
+            self._playlist_divider,
+            _section_label("ACCIONES"),
+            actions,
+        ], spacing=12)
+
+        scrollable_bottom = ft.Column(controls=[
+            self._rl_banner,
+            self._telemetry.container,
+        ], spacing=12, scroll=ft.ScrollMode.ADAPTIVE, expand=True)
+
+        sidebar_col   = ft.Column(controls=[fixed_top, scrollable_bottom], spacing=12, expand=True)
+        sidebar_stack = ft.Stack(controls=[sidebar_col, self._telemetry.handle], expand=True)
+
+        self._sidebar = ft.Container(
+            width=300, padding=ft.Padding.all(18),
+            bgcolor=SIDEBAR_BG, clip_behavior=ft.ClipBehavior.ANTI_ALIAS,
+            border_radius=ft.BorderRadius.only(top_right=14, bottom_right=14),
+            border=ft.Border.only(right=ft.BorderSide(1, BORDER_LIGHT)),
+            content=sidebar_stack,
+        )
+
+    def _build_content(self) -> None:
+        self._playlist_title = ft.Text(
+            "Cargar una playlist", size=22,
+            color=TEXT_PRIMARY, font_family=FONT_HEADLINE_BOLD, opacity=1.0,
+        )
+        self._track_count = ft.Text("", size=12, color=TEXT_MUTED, font_family=mono_family("light"), opacity=1.0)
+        self._search_field = app_text_field(
+            hint_text="Buscar título, artista…",
+            prefix_icon=PIcons.MAGNIFYING_GLASS,
+            width=240, height=36,
+            content_padding=ft.Padding.symmetric(horizontal=10, vertical=0),
+            on_change=self._on_search_change,
+        )
+        self._segment_dd = ft.Dropdown(
+            width=160, height=38,
+            bgcolor=BG_INPUT, border=input_border(),
+            text_style=ft.TextStyle(color=TEXT_PRIMARY, size=12, font_family=FONT_TEXT),
+            content_padding=ft.Padding.symmetric(horizontal=10, vertical=0),
+            on_select=lambda e: self.state.set_active_segment(e.control.value),
+            visible=False,
+            hint_text="Segmento..."
+        )
+
+        self._auth_yt = app_icon_button(
+            glyph=PIcons.YOUTUBE_LOGO,
+            icon_color=TEXT_DIM,
+            size=17,
+            tooltip="YouTube Music · clic = validar sesión ahora",
+            on_click=lambda _: asyncio.create_task(self._on_auth_probe("YouTube Music")),
+            width=28, height=28,
+        )
+        self._auth_am = app_icon_button(
+            glyph=PIcons.APPLE_LOGO,
+            icon_color=TEXT_DIM,
+            size=17,
+            tooltip="Apple Music · clic = validar sesión ahora",
+            on_click=lambda _: asyncio.create_task(self._on_auth_probe("Apple Music")),
+            width=28, height=28,
+        )
+        self._auth_sp = app_icon_button(
+            glyph=PIcons.SPOTIFY_LOGO,
+            icon_color=TEXT_DIM,
+            size=17,
+            tooltip="Spotify · clic = validar sesión ahora",
+            on_click=lambda _: asyncio.create_task(self._on_auth_probe("Spotify")),
+            width=28, height=28,
+        )
+        self._auth_strip = ft.Row(controls=[self._auth_yt, self._auth_am, self._auth_sp],
+                                  spacing=2, vertical_alignment=ft.CrossAxisAlignment.CENTER)
+
+        self._select_all_chk = ft.Checkbox(
+            label="Todo",
+            label_style=ft.TextStyle(color=TEXT_MUTED, size=11, font_family=FONT_HEADLINE),
+            fill_color={ft.ControlState.SELECTED: ACCENT},
+            check_color=TEXT_PRIMARY,
+            border_side=ft.BorderSide(1.5, TEXT_DIM),
+            on_change=lambda _: self.state.toggle_select_all(),
+        )
+
+        self._content_progress_bar = ft.ProgressBar(value=0, bgcolor=BG_SURFACE, color=ACCENT, border_radius=4)
+        self._content_prog_label   = ft.Text("", size=10, color=TEXT_MUTED, font_family=mono_family("light"), opacity=0.6)
+        self._content_eta_label    = ft.Text("", size=10, color=TEXT_DIM,   font_family=mono_family("light"), opacity=0.45)
+        self._content_progress = ft.Container(
+            content=ft.Column([
+                self._content_progress_bar,
+                ft.Row([self._content_prog_label, ft.Container(expand=True), self._content_eta_label], spacing=0),
+            ], spacing=4),
+            visible=False,
+            border=ft.Border.all(0.8, BORDER_LIGHT), border_radius=8,
+            padding=ft.Padding.symmetric(horizontal=8, vertical=6),
+        )
+
+        self._clear_session_btn = app_icon_button(
+            glyph=PIcons.TRASH,
+            icon_color=TEXT_DIM,
+            size=16,
+            tooltip="Limpiar playlist cargada",
+            on_click=self._on_clear_session,
+            width=28, height=28,
+        )
+
+        # header sin selector de partición (movido junto a Vista §)
+        header_bar = ft.Row(controls=[
+            ft.Column([self._playlist_title, self._track_count], spacing=2),
+            ft.Container(expand=True),
+            self._auth_strip, self._search_field, self._select_all_chk,
+            self._clear_session_btn,
+        ], vertical_alignment=ft.CrossAxisAlignment.CENTER)
+
+        def _col_header(text, width=None, expand=False, center=False):
+            align = ft.Alignment.CENTER if center else ft.Alignment.CENTER_LEFT
+            ctrl  = ft.Text(text, size=9, color=TEXT_DIM, font_family=FONT_HEADLINE_BOLD,
+                            style=ft.TextStyle(letter_spacing=0.8),
+                            text_align=ft.TextAlign.CENTER if center else ft.TextAlign.LEFT, opacity=1.0)
+            return ft.Container(content=ctrl, width=width, expand=expand, alignment=align)
+
+        col_headers = ft.Container(
+            content=ft.Row(controls=[
+                _col_header("#",               width=32, center=True),
+                _col_header("PORTADA",         width=55, center=True),
+                _col_header("TÍTULO / ARTISTA", expand=3),
+                _col_header("ÁLBUM",           expand=2),
+                _col_header("DUR.",            width=48, center=True),
+                _col_header("",                width=26, center=True),
+                _col_header("SEL.",            width=32, center=True),
+            ], spacing=16, vertical_alignment=ft.CrossAxisAlignment.CENTER),
+            padding=ft.Padding.symmetric(horizontal=16, vertical=8),
+            bgcolor=CHIP_BG, border_radius=12,
+            border=ft.Border.all(0.8, BORDER_LIGHT),
+            clip_behavior=ft.ClipBehavior.ANTI_ALIAS,
+        )
+
+        self._list_view = ft.ListView(item_extent=ITEM_H, spacing=0, expand=True,
+                                      padding=ft.Padding.only(bottom=20))
+        _sf = dict(left=0, top=0, right=0, bottom=0)
+        self._list_view_wrap     = ft.Container(content=self._list_view, bgcolor=BG_LIST, visible=False, **_sf)
+        # skeleton count responsive (se recalcula en _calc_skeleton_count; inicial 14)
+        self._skeletons          = [SkeletonRow(i) for i in range(self._calc_skeleton_count() if hasattr(self, '_calc_skeleton_count') else self.SKELETON_COUNT)]
+        self._skeleton_view      = ft.ListView(item_extent=ITEM_H, spacing=0, expand=True,
+                                               controls=self._skeletons, visible=True)
+        self._skeleton_view_wrap = ft.Container(content=self._skeleton_view, bgcolor=BG_LIST, visible=False, **_sf)
+
+        self._empty_hint_text = ft.Text(
+            "Introduce el ID o la URL en el panel izquierdo y pulsa «Cargar».",
+            size=12, color=TEXT_DIM, font_family=FONT_TEXT, opacity=1.0, text_align=ft.TextAlign.CENTER,
+        )
+        self._empty_state = ft.Container(
+            bgcolor=BG_LIST,
+            content=ft.Column(controls=[
+                ft.Container(content=app_icon(PIcons.PLAYLIST, size=52, color=TEXT_DIM),
+                             bgcolor=CHIP_BG, border=ft.Border.all(0.8, BORDER_LIGHT),
+                             border_radius=20, padding=ft.Padding.all(20)),
+                ft.Text("Carga una playlist", size=20, color=TEXT_PRIMARY, font_family=FONT_HEADLINE_BOLD,
+                        opacity=1.0),
+                ft.Text("Sin playlist cargada", size=14, color=TEXT_MUTED, font_family=FONT_HEADLINE,
+                        opacity=1.0),
+                self._empty_hint_text,
+            ], horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+               alignment=ft.CrossAxisAlignment.CENTER, spacing=8),
+            alignment=ft.Alignment.CENTER, visible=True, **_sf,
+        )
+
+        self._error_text  = ft.Text("", size=13, color=ERROR_COL, font_family=FONT_TEXT, opacity=1.0)
+        self._error_state = ft.Container(
+            bgcolor=BG_LIST,
+            content=ft.Column([app_icon(PIcons.WARNING_CIRCLE, size=48, color=ERROR_COL, fill=True), self._error_text],
+                              horizontal_alignment=ft.CrossAxisAlignment.CENTER, spacing=8),
+            alignment=ft.Alignment.CENTER, visible=False, **_sf,
+        )
+
+        # Preview readonly (derecha del doble)
+        self._preview_list_view = ft.ListView(item_extent=ITEM_H, spacing=0, expand=True,
+                                              padding=ft.Padding.only(bottom=20))
+        self._preview_count = ft.Text("", size=10, color=TEXT_MUTED, font_family=mono_family("light"), opacity=1.0)
+        self._preview_empty = self._make_cono_empty("Preview vacío", "Marca canciones y organiza para ver cómo se va a pasar.", visible=False)
+        self._preview_empty_wrap = ft.Container(content=self._preview_empty, bgcolor=BG_LIST, visible=False, **_sf)
+        self._preview_view_wrap = ft.Container(content=self._preview_list_view, bgcolor=BG_LIST, visible=False, **_sf)
+        # skeleton preview espejo (mismo cnt, sin Estado/Sel)
+        _init_cnt = len(self._skeletons) if hasattr(self, '_skeletons') and self._skeletons else self._calc_skeleton_count()
+        self._preview_skeletons = [PreviewSkeletonRow(i) for i in range(_init_cnt)]
+        self._preview_skeleton_view = ft.ListView(item_extent=ITEM_H, spacing=0, expand=True, controls=self._preview_skeletons, visible=True)
+        self._preview_skeleton_wrap = ft.Container(content=self._preview_skeleton_view, bgcolor=BG_LIST, visible=False, **_sf)
+        self._preview_stack = ft.Stack(controls=[self._preview_view_wrap, self._preview_skeleton_wrap, self._preview_empty_wrap], expand=True)
+        self._preview_header_text = ft.Text("Preview — cómo se va a pasar", size=11, color=TEXT_MUTED, font_family=FONT_HEADLINE_BOLD)
+        self._preview_header_icon = app_icon(PIcons.EYE, size=14, color=TEXT_MUTED)
+        self._preview_panel = ft.Container(
+            expand=True, bgcolor=BG_LIST, border=ft.Border.all(0.5, BORDER_LIGHT), border_radius=10,
+            clip_behavior=ft.ClipBehavior.ANTI_ALIAS,
+            content=ft.Column([
+                ft.Row([
+                    self._preview_header_icon,
+                    self._preview_header_text,
+                    ft.Container(expand=True),
+                    self._preview_count,
+                ], spacing=6, vertical_alignment=ft.CrossAxisAlignment.CENTER),
+                ft.Divider(height=1, color=BORDER_MUTED, thickness=0.5),
+                self._preview_stack,
+            ], spacing=8, expand=True),
+            padding=ft.Padding.all(10), visible=True,
+        )
+
+        # Lista panel (izq) — SOURCE (base) cuando dual, RESULT cuando single
+        list_stack = ft.Stack(controls=[
+            self._list_view_wrap, self._skeleton_view_wrap, self._empty_state, self._error_state,
+        ], expand=True)
+        self._lista_header_text = ft.Text("Lista editable", size=11, color=TEXT_MUTED, font_family=FONT_HEADLINE_BOLD)
+        self._lista_header_icon = app_icon(PIcons.LIST_BULLETS, size=14, color=TEXT_MUTED)
+        self._lista_panel = ft.Container(
+            expand=True, bgcolor=BG_LIST, border=ft.Border.all(0.5, BORDER_LIGHT), border_radius=10,
+            clip_behavior=ft.ClipBehavior.ANTI_ALIAS,
+            content=ft.Column([
+                ft.Row([
+                    self._lista_header_icon,
+                    self._lista_header_text,
+                ], spacing=6),
+                ft.Divider(height=1, color=BORDER_MUTED, thickness=0.5),
+                list_stack,
+            ], spacing=8, expand=True),
+            padding=ft.Padding.all(10), visible=True,
+        )
+
+        # Modo Lista|Doble|Preview (SegmentedButton principal, solo visible cuando hay dual)
+        def _on_mode_change(e):
+            try:
+                v = list(e.control.selected)[0] if hasattr(e.control, "selected") and e.control.selected else e.control.value
+            except Exception:
+                v = getattr(e.control, "value", "lista")
+            self.state.set_dual_mode(v)
+
+        self._mode_seg = self._make_mode_segmented(getattr(self.state, "dual_mode", "lista"), on_change=_on_mode_change)
+        # División activa — Outlined + PopupMenu dinámico 2..5 junto a Vista (reemplaza Dropdown)
+        self._division_btn_text = ft.Text("División 1", size=11, color=TEXT_MUTED, font_family=FONT_HEADLINE)
+        self._division_label = ft.Text("División", size=9, color=TEXT_DIM, font_family=FONT_HEADLINE_BOLD)
+        self._division_popup = ft.PopupMenuButton(
+            content=ft.Row([
+                app_icon(PIcons.FUNNEL, size=14, color=TEXT_DIM),
+                self._division_btn_text,
+                app_icon(PIcons.CARET_DOWN, size=14, color=TEXT_DIM),
+            ], spacing=4, tight=True, vertical_alignment=ft.CrossAxisAlignment.CENTER),
+            items=[],
+            style=ft.ButtonStyle(
+                padding=ft.Padding.symmetric(horizontal=10, vertical=6),
+                side={ft.ControlState.DEFAULT: ft.BorderSide(0.7, BORDER_LIGHT)},
+                shape=ft.RoundedRectangleBorder(radius=8),
+                bgcolor={ft.ControlState.DEFAULT: ft.Colors.TRANSPARENT},
+            ),
+            tooltip="División activa — cambia preview",
+            visible=False,
+        )
+        self._division_col = ft.Column([self._division_label, self._division_popup], spacing=0, tight=True)
+        # Compat: dropdown antiguo eliminado, botón Todos oculto (dropdown cumple papel)
+        self._partition_dd = None
+        self._partition_btn = _ghost_btn(
+            "Todos",
+            PIcons.FUNNEL,
+            lambda _: self._open_partition_picker(),
+        )
+        self._partition_btn.visible = False
+        self._partition_btn.tooltip = "Seleccionar divisiones para transferir — multi §7"
+        self._edit_division_btn = _ghost_btn(
+            "Editar",
+            PIcons.PENCIL_SIMPLE,
+            lambda _: self._open_edit_division_dialog(),
+        )
+        self._edit_division_btn.visible = False
+        self._edit_division_btn.tooltip = "Editar división — quitar/agregar entre ORIGINAL y División activa §4 (animación nativa)"
+        self._mode_bar = ft.Row([
+            ft.Text("Vista:", size=10, color=TEXT_MUTED, font_family=FONT_HEADLINE),
+            self._mode_seg,
+            ft.VerticalDivider(width=1, color=BORDER_MUTED),
+            app_icon(PIcons.GIT_BRANCH, size=14, color=TEXT_DIM),
+            self._division_col,
+            self._edit_division_btn,
+            ft.Container(expand=True),
+            app_icon_button(glyph=PIcons.X, size=14, icon_color=TEXT_DIM, tooltip="Cerrar doble vista",
+                            on_click=lambda _: self.state.set_show_dual(False),
+                            width=24, height=24),
+        ], spacing=8, vertical_alignment=ft.CrossAxisAlignment.CENTER, visible=False)
+
+        # Doble fila — Row persistente con ambos paneles (cookbook: evita reparent, preserva virtualización ListView)
+        # _lista_panel y _preview_panel viven siempre dentro de _dual_row; se controla via visible, no moviendo hijos.
+        self._dual_row = ft.Row(
+            controls=[self._lista_panel, self._preview_panel],
+            spacing=10, expand=True, visible=True,
+        )
+        # estado inicial: solo lista visible (show_dual=False)
+        self._preview_panel.visible = False
+        self._lista_panel.visible = True
+        # list_area siempre contiene _dual_row (estable, animación cookbook)
+        self._list_area = ft.Container(
+            content=self._dual_row, expand=True,
+            animate_opacity=ft.Animation(MOTION_PANEL_MS, ft.AnimationCurve.EASE_IN_OUT),
+            animate_scale=ft.Animation(MOTION_PANEL_MS, ft.AnimationCurve.EASE_IN_OUT),
+            opacity=1.0, scale=1.0,
+        )
+        list_area = self._list_area
+
+        self._content = ft.Container(
+            expand=True, bgcolor=BG_LIST, padding=ft.Padding.all(24),
+            content=ft.Column(controls=[self._content_progress, header_bar, col_headers, self._mode_bar, list_area],
+                              spacing=10, expand=True),
+        )
