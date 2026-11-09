@@ -100,6 +100,10 @@ class DownloadsView(ft.Container):
             "Descargar seleccionadas", PIcons.DOWNLOAD_SIMPLE, self._on_start, width=220
         )
         self._start_btn.disabled = True
+        self._pause_btn = _ghost_btn(
+            "Pausar", PIcons.PAUSE, self._on_pause,
+            width=110, disabled=True,
+        )
         self._cancel_btn = _ghost_btn(
             "Cancelar", PIcons.X, self._on_cancel,
             width=120, disabled=True,
@@ -208,6 +212,7 @@ class DownloadsView(ft.Container):
         controls = ft.Row(controls=[
             self._format_dd,
             ft.Container(content=self._count_text, expand=True, padding=ft.Padding.only(left=6)),
+            self._pause_btn,
             self._cancel_btn,
             self._start_btn,
         ], spacing=10, vertical_alignment=ft.CrossAxisAlignment.CENTER)
@@ -241,6 +246,20 @@ class DownloadsView(ft.Container):
             self.app_state.download_selected(audio_format=fmt, destination_dir=self._custom_dir)
         except Exception as exc:  # noqa: BLE001 - la UI no debe caerse
             self.app_state.log(f"[ERROR] No se pudo iniciar la descarga: {exc}")
+        self._refresh()
+
+    def _on_pause(self, e=None) -> None:
+        """Pausa la cola; si ya estaba pausada, la reanuda."""
+        if getattr(self.app_state, "download_paused", False):
+            try:
+                self.app_state.resume_downloads()
+            except Exception as exc:  # noqa: BLE001 - la UI no debe caerse
+                self.app_state.log(f"[ERROR] No se pudo reanudar: {exc}")
+        else:
+            try:
+                self.app_state.pause_downloads()
+            except Exception as exc:  # noqa: BLE001
+                self.app_state.log(f"[ERROR] No se pudo pausar: {exc}")
         self._refresh()
 
     def _on_cancel(self, e=None) -> None:
@@ -442,6 +461,15 @@ class DownloadsView(ft.Container):
         self._start_btn.tooltip = (
             None if ffmpeg_ok else "Instala FFmpeg y añádelo al PATH para descargar"
         )
+        paused = bool(getattr(st, "download_paused", False))
+        self._pause_btn.disabled = not running and not paused
+        self._pause_btn.tooltip = (
+            "Reanudar las pistas pendientes" if paused else "Pausar la cola y la pista en curso"
+        )
+        try:
+            self._pause_btn.content.controls[1].value = "Reanudar" if paused else "Pausar"
+        except Exception:
+            pass
         self._cancel_btn.disabled = not running or self._cancel_requested
         self._pick_dir_btn.disabled = running
         self._reset_dir_btn.disabled = running
@@ -468,7 +496,12 @@ class DownloadsView(ft.Container):
         self._progress.value = (progress / total) if total else 0
         self._progress_text.value = f"{progress} / {total}" if total else ""
 
-        if running and self._cancel_requested:
+        if paused and not running:
+            pending = len(getattr(st, "_download_pending_tracks", []) or [])
+            self._current_text.value = (
+                f"En pausa · {pending} pendientes" if pending else "En pausa"
+            )
+        elif running and self._cancel_requested:
             self._current_text.value = "Cancelando…"
         elif running:
             self._current_text.value = (

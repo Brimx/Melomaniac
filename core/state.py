@@ -312,6 +312,11 @@ class AppState:
         self.audio_format:       str           = ""
         self._download_task: Optional[asyncio.Task] = None
         self._download_cancel: Optional[asyncio.Event] = None
+        self._download_pause:  Optional[asyncio.Event] = None
+        # Pistas de la cola activa, para reanudar exactamente lo que faltaba.
+        self._download_pending_tracks: list[Track] = []
+        self._download_resume_ctx: dict[str, str] = {}
+        self.download_paused: bool = False
 
         # ──────────────────────────────────────────────────────────────
         # PATRÓN OBSERVER
@@ -980,6 +985,60 @@ class AppState:
         if self._download_cancel is not None:
             self._download_cancel.set()
 
+    def pause_downloads(self) -> None:
+        """Pausa la cola, incluida la pista que se está descargando.
+
+        No se limita a esperar a que termine la pista: la aborta desde el
+        progress hook y deja el ``.part`` en disco para reanudar desde ahí.
+        """
+        if self.download_state != TransferState.RUNNING:
+            return
+        if self._download_pause is not None:
+            self._download_pause.set()
+        self.download_paused = True
+        self._log("[INFO] Descargas en pausa")
+        self.notify()
+
+    def resume_downloads(self) -> asyncio.Task | None:
+        """Reanuda la cola pausada desde donde se quedó.
+
+        Relanza las pistas que no terminaron conservando formato, carpeta y
+        nombre de playlist. Los archivos ya completos se omiten por
+        ``skip_existing`` y la pista interrumpida se reanuda desde su
+        ``.part``.
+        """
+        if not self.download_paused:
+            return None
+        pending = list(self._download_pending_tracks)
+        ctx = dict(self._download_resume_ctx)
+        self.download_paused = False
+        if not pending:
+            self._log("[WARN] No hay pistas pendientes para reanudar")
+            self.notify()
+            return None
+        self._log(f"[INFO] Reanudando descargas · {len(pending)} pistas pendientes")
+
+        async def _resume_after_pause() -> None:
+            # El task pausado puede seguir vivo unos instantes mientras las
+            # tareas en espera ven el evento. ``download_tracks`` devolvería
+            # ese task sin arrancar nada, así que primero se deja terminar.
+            previous = self._download_task
+            if previous is not None and not previous.done():
+                try:
+                    await previous
+                except Exception:
+                    pass
+            self._download_task = None
+            self.download_tracks(
+                pending,
+                audio_format=ctx.get("format", ""),
+                destination_dir=ctx.get("destination_dir", ""),
+                playlist_name=ctx.get("playlist_name", ""),
+                platform=ctx.get("platform", ""),
+            )
+
+        return asyncio.create_task(_resume_after_pause())
+
     async def _run_downloads(
         self, selected: list[Track], *, audio_format: str = "", destination_dir: str = "",
         playlist_name: str = "", platform: str = "",
@@ -1033,7 +1092,19 @@ class AppState:
         }
         self.download_items    = list(items.values())
         self._download_cancel  = asyncio.Event()
+        self._download_pause   = asyncio.Event()
         cancel = self._download_cancel
+        pause = self._download_pause
+        # Contexto para reanudar exactamente esta cola, no otra.
+        self.download_paused = False
+        self._download_pending_tracks = []
+        self._download_resume_ctx = {
+            "format": fmt,
+            "destination_dir": str(destination_dir or ""),
+            "playlist_name": playlist_name,
+            "platform": platform,
+        }
+        queued = list(selected)
 
         # Sin FFmpeg toda la cola fallaría igual pista por pista. Se marca de
         # una vez para que la UI muestre un solo diagnóstico accionable.
@@ -1100,6 +1171,15 @@ class AppState:
                     item["status"] = "failed"
                     item["error"] = "Cancelada"
                     return
+                # La pausa puede haberse pedido mientras la pista esperaba
+                # turno: nunca debe arrancar una descarga nueva, pero tampoco
+                # perderse de la lista de pendientes.
+                if pause.is_set():
+                    item["status"] = "failed"
+                    item["error"] = "Pausada"
+                    if track not in self._download_pending_tracks:
+                        self._download_pending_tracks.append(track)
+                    return
                 async with lock:
                     item["status"] = "running"
                     self.download_current = f"{track.artist} — {track.name}"[:80]
@@ -1113,12 +1193,27 @@ class AppState:
                         progress_hook=_hook,
                         artwork_fetcher=artwork_fetcher,
                         skip_existing=True,
+                        pause_event=pause,
                     )
                 except Exception as exc:  # noqa: BLE001 - nunca debe tumbar la cola
                     result = None
                     error = str(exc)
                 else:
                     error = getattr(result, "error", "") or ""
+
+                from engine.downloader import DOWNLOAD_PAUSED as _PAUSED_CODE
+
+                if result is not None and result.code == _PAUSED_CODE:
+                    # La pista quedó a medias: se conserva para reanudarla y
+                    # el ``.part`` se queda en disco.
+                    async with lock:
+                        item["status"] = "failed"
+                        item["error"] = "Pausada"
+                        if track not in self._download_pending_tracks:
+                            self._download_pending_tracks.append(track)
+                        self.download_progress += 1
+                        self.notify()
+                    return
 
                 async with lock:
                     if result is not None and result.ok:
@@ -1158,6 +1253,22 @@ class AppState:
         try:
             await asyncio.gather(*(_one(t) for t in selected))
             cancelled = cancel.is_set()
+            if pause.is_set():
+                # Las pistas que el semáforo nunca dejó arrancar también
+                # cuentan como pendientes: no se descargaron. Las que sí
+                # terminaron (o ya existían) no se repiten al reanudar.
+                finished = {
+                    str(e.get("id")) for e in (*self.download_done, *self.download_skipped)
+                    if isinstance(e, dict)
+                }
+                for t in queued:
+                    if t.id in finished:
+                        continue
+                    if t not in self._download_pending_tracks:
+                        self._download_pending_tracks.append(t)
+                self._log(
+                    f"[INFO] Descargas pausadas · {len(self._download_pending_tracks)} pendientes"
+                )
             self.download_state = TransferState.DONE
             skipped = len(self.download_skipped)
             summary = (
@@ -1176,6 +1287,9 @@ class AppState:
         finally:
             self.download_current = ""
             self._download_cancel = None
+            # ``_download_pause`` se conserva si la cola quedó pausada: la
+            # siguiente ejecución arranca con un evento nuevo.
+            self._download_pause = None
             self.notify()
 
     def _write_download_manifest(

@@ -86,6 +86,17 @@ __all__ = [
 # Código de error reutilizable por la UI para distinguir la falta de FFmpeg
 # de un fallo de red. ``DownloadResult.error`` lleva el texto legible.
 DOWNLOAD_ERROR_NO_FFMPEG = "NO_FFMPEG"
+# Pausa solicitada por el usuario. El ``.part`` se conserva para reanudar.
+DOWNLOAD_PAUSED = "PAUSED"
+
+
+class DownloadPaused(Exception):
+    """Se lanza desde el progress hook para abortar sin borrar el ``.part``.
+
+    ``yt-dlp`` no expone una pausa: la única forma de detener la pista en
+    curso es abortar. Al no limpiar los temporales, la siguiente llamada con
+    ``continuedl`` reanuda desde el byte donde se quedó.
+    """
 # Código de éxito con matiz: el archivo ya existía y se conservó tal cual.
 DOWNLOAD_SKIPPED = "SKIPPED"
 
@@ -112,6 +123,11 @@ DURATION_MARGIN_S: int = 20
 # Puntaje mínimo del título frente a la pista original para aceptar el
 # primer resultado de búsqueda. Por debajo se marca como no encontrado.
 MIN_TITLE_SCORE: int = 55
+# Resultados que se piden por búsqueda. Con uno solo se aceptaba el primer
+# hit de YouTube, que suele ser el vídeo oficial o un live.
+SEARCH_RESULT_COUNT: int = 5
+# Tope de duración: por encima de esto ya no es una canción.
+MAX_VIDEO_DURATION_S: int = 20 * 60
 
 _ILLEGAL_CHARS = re.compile(r'[\\/:*?"<>|]')
 
@@ -410,7 +426,10 @@ def build_audio_opts(
             },
         ],
         "overwrites": True,
-        "continuedl": False,
+        # Reanudar desde el ``.part`` es lo que hace útil la pausa. El nombre
+        # temporal es estable por pista (incluye el PID), así que una pista
+        # pausada y reanudada sigue escribiendo el mismo archivo.
+        "continuedl": True,
     }
     if progress_hook is not None:
         opts["progress_hooks"] = [progress_hook]
@@ -476,13 +495,59 @@ def _accept_result(track: Any, title: str, duration_s: int) -> bool:
     return True
 
 
+# Marcadores de video en directo o de duración anómala. Un live no tiene
+# duración fija y descargar sus horas de metraje es peor que no descargar.
+_LIVE_MARKERS = ("is_live", "isLive", "live_status")
+
+
+def _reject_live(entry: dict[str, Any]) -> bool:
+    """``True`` si el resultado es un directo o un video demasiado largo."""
+    if entry.get("is_live") or entry.get("was_live"):
+        return True
+    if str(entry.get("live_status") or "").lower() in ("is_live", "is_upcoming"):
+        return True
+    duration = int(entry.get("duration") or 0)
+    return bool(duration and duration > MAX_VIDEO_DURATION_S)
+
+
+def _score_entry(track: Any, entry: dict[str, Any]) -> float:
+    """Puntúa un resultado de búsqueda contra la pista original.
+
+    Combina similitud de título/artista con cercanía de duración: dos vídeos
+    del mismo tema con títulos parecidos se distinguen por durar lo que la
+    pista. Un resultado sin duración pierde frente a uno que coincide.
+    """
+    title = str(entry.get("title") or "")
+    channel = str(entry.get("channel") or entry.get("uploader") or "")
+    combined, title_score, _ = _fuzzy_scores_triple(
+        str(getattr(track, "name", "") or ""),
+        str(getattr(track, "artist", "") or ""),
+        title,
+        channel,
+    )
+    score = max(float(combined), float(title_score))
+
+    duration_ms = int(getattr(track, "duration_ms", 0) or 0)
+    original_s = duration_ms // 1000
+    duration_s = int(entry.get("duration") or 0)
+    if original_s and duration_s:
+        delta = abs(original_s - duration_s)
+        # Hasta 5 s es lo mismo; más allá, penalización proporcional.
+        score += 15.0 if delta <= 5 else max(-30.0, 15.0 - delta)
+    return score
+
+
 def search_video_id(track: Any, timeout_s: int = 30) -> DownloadResult:
     """Resuelve el video de YouTube para una pista, sin descargar.
 
     Si la pista viene de YouTube Music y trae ``source_url``, se reutiliza
-    ese ID: es la misma grabación y no hace falta buscar. En cualquier otro
-    caso se consulta ``ytsearch1:`` con ``extract_flat`` para obtener el
-    primer resultado con metadatos ligeros.
+    ese ID *solo si su duración encaja*: es la misma grabación y no hace
+    falta buscar. En cualquier otro caso se consulta ``ytsearch5:`` con
+    ``extract_flat`` y se elige el mejor resultado, no el primero.
+
+    Elegir el primero era el fallo de origen: el primer hit de YouTube suele
+    ser el vídeo oficial, el lyric video o un live, y cualquiera de los tres
+    es peor que la pista del álbum.
     """
     direct_id = _youtube_video_id(track)
     if direct_id:
@@ -501,38 +566,48 @@ def search_video_id(track: Any, timeout_s: int = 30) -> DownloadResult:
         "extract_flat": "in_playlist",
         "socket_timeout": timeout_s,
         "extractor_args": {"youtube": {"player_client": [YOUTUBE_PLAYER_CLIENT]}},
-        "default_search": "ytsearch1",
+        "default_search": f"ytsearch{SEARCH_RESULT_COUNT}",
     }
     jar = _load_cookie_jar()
     try:
         with yt_dlp.YoutubeDL(opts) as ydl:
             if jar is not None:
                 ydl.cookiejar = jar
-            info = ydl.extract_info(f"ytsearch1:{query}", download=False)
+            info = ydl.extract_info(
+                f"ytsearch{SEARCH_RESULT_COUNT}:{query}", download=False
+            )
     except Exception as exc:  # yt-dlp lanza DownloadError y variantes
         return DownloadResult(ok=False, error=f"Búsqueda fallida: {exc}")
 
-    entries = info.get("entries") or []
+    entries = [e for e in (info.get("entries") or []) if isinstance(e, dict)]
     if not entries:
         return DownloadResult(ok=False, error="Sin resultados en YouTube")
 
-    entry = entries[0]
-    title = str(entry.get("title") or "")
-    duration_s = int(entry.get("duration") or 0)
-    video_id = str(entry.get("id") or "")
-    if not video_id:
-        return DownloadResult(ok=False, error="Resultado sin ID de video")
+    ranked: list[tuple[float, dict[str, Any]]] = []
+    rejected_live = 0
+    for entry in entries:
+        if not entry.get("id"):
+            continue
+        if _reject_live(entry):
+            rejected_live += 1
+            continue
+        title = str(entry.get("title") or "")
+        duration_s = int(entry.get("duration") or 0)
+        if not _accept_result(track, title, duration_s):
+            continue
+        ranked.append((_score_entry(track, entry), entry))
 
-    if not _accept_result(track, title, duration_s):
-        return DownloadResult(
-            ok=False,
-            video_id=video_id,
-            title=title,
-            duration_s=duration_s,
-            error="La coincidencia no corresponde a la pista",
-        )
+    if not ranked:
+        hint = " (se descartaron directos o vídeos demasiado largos)" if rejected_live else ""
+        return DownloadResult(ok=False, error=f"Ningún resultado coincide con la pista{hint}")
+
+    ranked.sort(key=lambda pair: pair[0], reverse=True)
+    best = ranked[0][1]
     return DownloadResult(
-        ok=True, video_id=video_id, title=title, duration_s=duration_s
+        ok=True,
+        video_id=str(best.get("id") or ""),
+        title=str(best.get("title") or ""),
+        duration_s=int(best.get("duration") or 0),
     )
 
 
@@ -573,6 +648,7 @@ def _attempt_download(
     embed_thumbnail: bool,
     timeout_s: int,
     artwork_fetcher: Optional[Callable[[Any], bytes | None]] = None,
+    pause_event: Optional[Any] = None,
 ) -> DownloadResult:
     """Ejecuta un intento de descarga con o sin sesión autenticada.
 
@@ -580,6 +656,9 @@ def _attempt_download(
     los formatos de audio puro. Por eso el intento sin cookies es el que
     entrega el contenedor 18 con audio; el intento con cookies sirve como
     respaldo cuando el anónimo es rechazado por límite de peticiones.
+
+    Si ``pause_event`` está activo al llegar un progreso, se lanza
+    ``DownloadPaused`` y los temporales se conservan para reanudar.
     """
     opts = build_audio_opts(
         str(temp_stem), fmt, progress_hook=progress_hook, cookies=use_cookies
@@ -590,11 +669,28 @@ def _attempt_download(
     if embed_thumbnail:
         opts["writethumbnail"] = True
 
+    def _pause_hook(info: dict) -> None:
+        # Corre dentro del hilo de yt-dlp. Abortar desde aquí es lo único que
+        # detiene la pista en curso sin esperar a que termine.
+        if pause_event is not None and pause_event.is_set():
+            raise DownloadPaused()
+        if progress_hook is not None:
+            progress_hook(info)
+
+    if pause_event is not None:
+        opts["progress_hooks"] = [_pause_hook]
+
     try:
         with yt_dlp.YoutubeDL(opts) as ydl:
             _apply_cookie_jar(ydl, opts)
             info = ydl.extract_info(url, download=True)
+    except DownloadPaused:
+        # No se limpian los temporales: el ``.part`` es el progreso guardado.
+        return DownloadResult(ok=False, error="Pausada por el usuario", code=DOWNLOAD_PAUSED)
     except Exception as exc:  # yt-dlp lanza DownloadError y variantes
+        if pause_event is not None and pause_event.is_set():
+            # yt-dlp envuelve la excepción del hook; el evento manda.
+            return DownloadResult(ok=False, error="Pausada por el usuario", code=DOWNLOAD_PAUSED)
         _cleanup_temp_files(temp_stem)
         return DownloadResult(ok=False, error=f"Descarga fallida: {exc}")
 
@@ -640,6 +736,7 @@ def download_audio(
     timeout_s: int = 60,
     artwork_fetcher: Optional[Callable[[Any], bytes | None]] = None,
     skip_existing: bool = True,
+    pause_event: Optional[Any] = None,
 ) -> DownloadResult:
     """Descarga el audio de una pista y devuelve la ruta final.
 
@@ -720,7 +817,12 @@ def download_audio(
         embed_thumbnail=embed_thumbnail,
         timeout_s=timeout_s,
         artwork_fetcher=artwork_fetcher,
+        pause_event=pause_event,
     )
+    if not result.ok and result.code == DOWNLOAD_PAUSED:
+        # Reintentar con cookies reiniciaría la descarga: la pausa manda.
+        result.video_id = resolved_id
+        return result
     if not result.ok and _load_cookie_jar() is not None:
         # El primer error puede ser un límite anónimo; con sesión cambia el
         # conjunto de formatos disponibles y a veces resuelve.
@@ -731,6 +833,7 @@ def download_audio(
             embed_thumbnail=embed_thumbnail,
             timeout_s=timeout_s,
             artwork_fetcher=artwork_fetcher,
+            pause_event=pause_event,
         )
         if retry.ok:
             result = retry
