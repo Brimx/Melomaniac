@@ -1290,15 +1290,20 @@ class MusicApiService:
             ))
         return out
 
+    # Despacho por plataforma: un dict evita repetir la cadena de comparaciones
+    # y deja en un solo lugar qué plataformas saben listar su biblioteca.
+    _SYNC_LIST = {
+        "YouTube Music": "_sync_list_ytm",
+        "Apple Music": "_sync_list_apple",
+        "Spotify": "_sync_list_spotify",
+    }
+
     async def list_library_playlists(self, platform: str) -> list[PlaylistSummary]:
         self._cb[platform].check_or_raise()
-        if platform == "YouTube Music":
-            return await asyncio.to_thread(self._sync_list_ytm)
-        if platform == "Apple Music":
-            return await asyncio.to_thread(self._sync_list_apple)
-        if platform == "Spotify":
-            return await asyncio.to_thread(self._sync_list_spotify)
-        raise ValueError(f"Unknown platform: {platform}")
+        method = self._SYNC_LIST.get(platform)
+        if method is None:
+            raise ValueError(f"Unknown platform: {platform}")
+        return await asyncio.to_thread(getattr(self, method))
 
     # ── Search ─────────────────────────────────────────────────────────
 

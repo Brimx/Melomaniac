@@ -1619,14 +1619,18 @@ class AppState:
             return auth_manager.record_operation_failure(platform, error)
         return False
 
+    # Despacho por plataforma: un dict evita repetir la cadena de comparaciones.
+    _INIT_METHODS = {
+        "YouTube Music": "init_youtube",
+        "Apple Music": "init_apple",
+        "Spotify": "init_spotify",
+    }
+
     async def _ensure_auth(self, platform: str) -> bool:
-        if platform == "YouTube Music":
-            return await self.service.init_youtube()
-        elif platform == "Apple Music":
-            return await self.service.init_apple()
-        elif platform == "Spotify":
-            return await self.service.init_spotify()
-        return False
+        method = self._INIT_METHODS.get(platform)
+        if method is None:
+            return False
+        return await getattr(self.service, method)()
 
     def toggle_select_all(self) -> None:
         new_val = not self.select_all
