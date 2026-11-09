@@ -81,7 +81,7 @@ from core.transfer import (
 )
 from services.authentication import TRANSFER_HISTORY_JSONL
 from engine.normalizer import clean_metadata
-from engine.match import _duration_to_seconds, FUZZY_REVISION_THRESHOLD, FUZZY_IDEAL
+from engine.match import duration_to_seconds, FUZZY_REVISION_THRESHOLD, FUZZY_IDEAL
 from engine.organizer import sort_tracks, split_tracks
 from services.circuit_breaker import CircuitBreaker, RateLimitError
 
@@ -660,7 +660,7 @@ class AppState:
             self.count_candidates += 1
             cache_key = make_cache_key(track.name, track.artist, self.destination)
             # Preferir duration_ms (ms exacto) si existe, fallback a parsing string
-            local_dur_s = (track.duration_ms // 1000) if getattr(track, "duration_ms", 0) else _duration_to_seconds(track.duration)
+            local_dur_s = (track.duration_ms // 1000) if getattr(track, "duration_ms", 0) else duration_to_seconds(track.duration)
 
             if cache_key in self.service.search_cache:
                 cached = unwrap_search_result(self.service.search_cache[cache_key])

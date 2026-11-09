@@ -279,7 +279,7 @@ def _joji_trikeyword_query(title: str, artist: str) -> str:
     return f"{' '.join(words)} {ca}".strip()
 
 
-def _duration_to_seconds(dur: str) -> Optional[int]:
+def duration_to_seconds(dur: str) -> Optional[int]:
     """'4:19' → 259 | '1:04:19' → 3859 | '' → None"""
     try:
         parts = [int(p) for p in str(dur).split(':')]
@@ -375,7 +375,7 @@ def _yt_select_best(
         def _delta(c: dict) -> float:
             remote_s = (
                 c.get('duration_seconds')
-                or _duration_to_seconds(c.get('duration', ''))
+                or duration_to_seconds(c.get('duration', ''))
             )
             return abs(remote_s - local_duration_s) if remote_s is not None else float('inf')
 

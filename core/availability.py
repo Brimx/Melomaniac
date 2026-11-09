@@ -12,7 +12,7 @@ from collections.abc import Callable, Iterable
 from core.cache import make_cache_key, unwrap_search_result
 from core.models import SearchResult, Track
 from core.transfer import search_with_rate_limit_backoff
-from engine.match import _duration_to_seconds
+from engine.match import duration_to_seconds
 
 
 async def preload_apple_isrc_matches(service, tracks: Iterable[Track], destination: str) -> None:
@@ -46,7 +46,7 @@ async def scan_track_availability(
     local_duration_s = (
         track.duration_ms // 1000
         if getattr(track, "duration_ms", 0)
-        else _duration_to_seconds(track.duration)
+        else duration_to_seconds(track.duration)
     )
 
     if cache_key in service.search_cache:

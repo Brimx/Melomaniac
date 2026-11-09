@@ -101,7 +101,7 @@ from engine.normalizer import (
 )
 from engine.match import (
     _fuzzy_scores_triple, _fuzzy_flags_elastic, _ideal_pass_hunter,
-    _joji_trikeyword_query, _duration_to_seconds,
+    _joji_trikeyword_query, duration_to_seconds,
     _yt_select_best, score_spotify_match,
 )
 
@@ -1495,7 +1495,7 @@ class MusicApiService:
             album = item.get("album") or {}
             dur_s = item.get("duration_seconds")
             if dur_s is None:
-                dur_s = _duration_to_seconds(item.get("duration", "0:00"))
+                dur_s = duration_to_seconds(item.get("duration", "0:00"))
             out.append(Track(
                 id=vid,
                 name=item.get("title", "Unknown"),
