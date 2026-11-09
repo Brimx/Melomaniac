@@ -17,9 +17,9 @@ app.py
     └── LibraryState         # sincronización/caché de metadatos de Biblioteca
 
 ui ───────> core / engine / services
-core ─────> engine / services.circuit_breaker
+core ─────> engine / services (authentication, circuit_breaker; covers y settings_store en import perezoso)
 services ─> core / engine
-engine ───> core.models
+engine ───> core (models, config); services.browser_session solo en import perezoso
 ```
 
 La composición real en `app.py` es:

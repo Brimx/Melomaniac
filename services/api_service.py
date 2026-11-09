@@ -262,7 +262,7 @@ class MusicApiService:
     Fachada unificada asíncrona sobre APIs de plataformas de streaming.
     
     Proporciona una interfaz consistente para interactuar con YouTube
-    Music y Apple Music, ocultando las diferencias de sus APIs y
+    Music, Apple Music y Spotify, ocultando las diferencias de sus APIs y
     manejando autenticación, rate limiting y errores de forma unificada.
     
     Attributes:
@@ -277,8 +277,9 @@ class MusicApiService:
         init_youtube: Inicializa cliente de YouTube Music con headers.
         init_apple: Inicializa headers de Apple Music.
         search_with_fallback: Búsqueda con fallback a queries alternativos.
-        load_playlist: Carga playlist desde una plataforma.
-        add_to_playlist: Agrega canción a playlist destino.
+        init_spotify: Inicializa la sesión de Spotify.
+        fetch_playlist: Carga una playlist desde una plataforma.
+        add_track: Agrega una canción a una playlist de destino.
         cleanup_sessions: Limpia sesiones HTTP al cerrar.
     
     Example:

@@ -232,6 +232,17 @@ Regla: los elementos con radio grande son interactivos y redondeados; las filas 
 - **Icono de placeholder** — `surface` + `text-dim`, para carátulas y estados vacíos.
 - **Indicador de estado** — `success` / `warning` / `error` sobre `background` en iconos pequeños.
 
+## Motion
+
+La duración sale de `ui/tokens.py`, una por propósito; nunca se escribe un número en `ui/`.
+
+| Token | Duración | Uso |
+|---|---|---|
+| `MOTION_HOVER_MS` | 120 ms | Hover, press, cambios de color o borde |
+| `MOTION_ENTER_MS` | 200 ms | Aparición de elementos, progreso, cambios de estado cortos |
+| `MOTION_PANEL_MS` | 300 ms | Paneles, rail y transiciones de vista |
+| `MOTION_SKELETON_MS` | 600 ms | Pulso de carga |
+
 ## Do's and Don'ts
 
 - **Do:** token único para cada valor; si el color no está en `ui/tokens.py`, se añade ahí.
