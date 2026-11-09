@@ -1,10 +1,10 @@
-# Melomaniac v4.8.2 — Arquitectura
+# Melomaniac v4.9.0 — Arquitectura
 
 [← README](README.md) · [English](ARCHITECTURE.en.md) · [Diseño](DESIGN.md) · [Cambios](CHANGELOG.md)
 
 Melomaniac separa la interfaz Flet, el estado de la aplicación, los servicios de plataforma y el motor de normalización/matching. La versión actual soporta YouTube Music, Apple Music, Spotify y dos entradas locales: archivo y texto pegado.
 
-La versión de trabajo documentada es `4.8.2` (fuente única: `APP_VERSION` en `core/config.py:12`). Esta versión consolida el reproductor integrado, sesiones desde el navegador, descarga de audio con `yt-dlp`, la integración MPRIS para escritorios Linux, la bienvenida guiada, el bundle ZIP portátil, los binarios standalone con CI y la integración con el sistema (lanzadores de escritorio y comprobación de actualizaciones). El detalle por versión está en `CHANGELOG.md`.
+La versión de trabajo documentada es `4.9.0` (fuente única: `APP_VERSION` en `core/config.py:12`). Esta versión cierra el Bloque 1 de fiabilidad —validación de sesión, metadatos y portadas correctas, descargas pausables por playlist y con panel de resultados, índice local persistente— y migra la interfaz a Phosphor Icons. El detalle por versión está en `CHANGELOG.md`.
 
 ## Capas y dependencias
 

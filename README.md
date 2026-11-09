@@ -1,4 +1,4 @@
-# 🎵 Melomaniac v4.8.2
+# 🎵 Melomaniac v4.9.0
 
 **Español** · [English](README.en.md)
 
@@ -24,7 +24,8 @@ Aplicación de escritorio para **transferir playlists entre YouTube Music, Apple
 - 🎯 **Motor de coincidencia** — Matching multi-fase con RapidFuzz, ISRC exacto (Apple Music), duración y flag explícito. Incluye transliteración cirílica, deduplicación de consultas y reporte Post-Mortem para resolver pistas dudosas.
 - 📚 **Biblioteca unificada** — Tus playlists en streaming y tus carpetas locales en una sola vista; desde cualquier carpeta local puedes crear una playlist en streaming.
 - 🎵 **Reproductor integrado** — Barra inferior para archivos locales (MP3, FLAC, M4A, Opus, WAV) con cola reordenable, shuffle/repeat, volumen persistente e integración MPRIS en Linux (teclas multimedia y widgets como Waybar o GNOME).
-- ⬇️ **Descargas (uso personal)** — Guarda audio con `yt-dlp` en MP3, M4A, Opus, FLAC o WAV, con metadatos, carátula a 800 px y omisión de archivos ya descargados. Requiere `ffmpeg`.
+- ⬇️ **Descargas (uso personal)** — Guarda audio con `yt-dlp` en MP3, M4A, Opus, FLAC o WAV, con metadatos, carátula a 800 px, pausa y reanudación de la pista en curso, y una subcarpeta por playlist con su orden original. Requiere `ffmpeg`.
+- 🔎 **Panel de resultados** — Al terminar una descarga ves qué se descargó, qué ya existía, qué falló y qué faltó; puedes rebuscar la pista en YouTube, elegir otro candidato o reintentar en otro formato.
 - 🛠️ **Organización y exportación** — Vistas Lista/Doble/Preview, ordenación y agrupación por artista, álbum o fecha, división manual en 2–5 bloques y exportación a `M3U8`, `CSV`, `TXT` o `XSPF`.
 - 🌐 **Sesión desde el navegador** — En la mayoría de los casos no hay nada que configurar: detecta tu sesión activa de Firefox/Chromium en memoria. Credenciales manuales disponibles vía asistente integrado.
 - 🖥️ **Integración con el sistema** — En binarios (AppImage/instalador), crea el acceso directo en el menú de aplicaciones o el Escritorio, lo auto-actualiza al cambiar de versión y comprueba nuevas releases desde Config.

@@ -1,5 +1,5 @@
 """
-ui/tokens.py — Melomaniac v4.8.2 — Design Tokens
+ui/tokens.py — Melomaniac v4.9.0 — Design Tokens
 ═══════════════════════════════════════════════════
 Fuente única de verdad para colores y tokens OLED.
 Antes duplicados en app.py, ui/auth_manager.py, ui/main_ui.py,

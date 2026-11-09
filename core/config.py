@@ -9,7 +9,7 @@ sin depender de la capa de autenticación ni de la UI.
 from __future__ import annotations
 
 # ── Identidad de versión y repositorio (single source) ───────────────
-APP_VERSION: str = "4.8.2"
+APP_VERSION: str = "4.9.0"
 REPO_URL: str = "https://github.com/Brimx/Melomaniac"
 RELEASES_API_URL: str = "https://api.github.com/repos/Brimx/Melomaniac/releases/latest"
 

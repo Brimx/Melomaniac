@@ -1,8 +1,27 @@
 # Changelog
 
-## 4.9.0 — en curso
+## 4.9.0 — 2026-11-08 · Phosphor Icons y Bloque 1 de fiabilidad
 
-- **Rendimiento de animaciones de paneles:** el panel de cola de reproducción pasa a ser un overlay deslizante por transformación (`offset`/opacidad) en vez de animar su ancho dentro del `Row`, así que abrirlo ya no redimensiona las listas ni la grilla de Biblioteca. El colapso del rail recorta las etiquetas por ancho/opacidad con clip, sin invertir propiedades no animadas (`visible`, `alignment`, `padding`) en el mismo parche, que era el origen de los saltos bruscos. Las tarjetas de Biblioteca conservan su tamaño fijo dentro de la celda de grilla, así que al redimensionar la vista solo cambia el ritmo de celdas.
+> Cierra el **Bloque 1 — Fiabilidad** del roadmap (1.1–1.11) y la migración de la interfaz a Phosphor Icons que ya estaba en `main`. Los pendientes de los bloques 2 a 5 quedan fuera a propósito.
+
+### Identidad visual
+
+- **Migración a Phosphor Icons:** `ui/icons.py` centraliza los glifos de Phosphor 2.1.2 en `PIcons` y `ui/fonts.py` registra `Phosphor` y `Phosphor Fill`. Se migraron bienvenida, rail de navegación, reproductor, paneles de Config/reportes, listas, Biblioteca y Descargas, y se desactivó el splash nativo de Material. `app_icon` y `app_icon_button` normalizan la geometría de los glifos y el padding de los botones.
+- **Animaciones de paneles:** el panel de cola de reproducción pasa a ser un overlay deslizante por transformación (`offset`/opacidad) en vez de animar su ancho dentro del `Row`, así que abrirlo ya no redimensiona las listas ni la grilla de Biblioteca. El colapso del rail recorta las etiquetas por ancho/opacidad con clip. Las tarjetas de Biblioteca conservan su tamaño fijo dentro de la celda de grilla.
+
+### Fiabilidad
+
+- **1.1 Validación de sesión antes de transferir:** `auth_session_ok` nace en `None` (sin validar) en lugar de `True`, y los iconos de sesión distinguen «sin validar» de «expirada». `_on_transfer` hace un preflight real del destino (`check_sessions`) después de comprobar selección y divisiones, y bloquea con un mensaje accionable si la sesión no responde.
+- **1.2 Metadatos con Mutagen:** cuando la pista no trae artista, se deriva de `album_artist` o del nombre `Artista - Título` del archivo en vez de escribirse vacío. Se verificó MP3, M4A, Opus, FLAC y WAV; Opus y WAV conservan su `cover.jpg` lateral.
+- **1.3 Portadas con prioridad 1:1:** las miniaturas de vídeo de YouTube (`i.ytimg.com`, `img.youtube.com`) se identifican por host y ruta y ya no entran como respaldo cuando existe cualquier artwork de álbum. `_resolve_artwork` exige además que la portada pase la validación de tamaño.
+- **1.4 Recorte de barras:** `normalize_cover` detecta letterbox y pillarbox y recorta solo el borde uniforme, con topes por eje (12 px de tolerancia, 30 % máximo) y una guarda que impide recortar una imagen completamente uniforme. Se aplica antes de la rama cuadrada, así que un 1:1 con barras internas también se corrige.
+- **1.5 Recalcular portadas existentes:** Config añade «Recalcular portadas», que informa cuántas cambiarían, agrupa por origen y pide confirmación antes de sobrescribir. `write_cover` escribe solo la portada, sin depender de que haya otros metadatos.
+- **1.6 Mejor selección de yt-dlp:** la búsqueda pide `ytsearch5`, filtra directos y vídeos de más de 20 minutos y ordena por similitud de título/artista más cercanía de duración, en lugar de quedarse con el primer resultado. La resolución automática y la búsqueda manual comparten el mismo ranking.
+- **1.7 Conservar playlist, orden y portada:** cada playlist descargada va a su subcarpeta con `playlist.json` (nombre, plataforma, orden original y ruta de cada pista). La Biblioteca lista esas subcarpetas como playlists descargadas dentro de Local y respeta el orden del manifiesto al abrirlas.
+- **1.8 Pausa real de descargas:** pausar detiene también la pista en curso. yt-dlp no tiene pausa nativa, así que se aborta desde el progress hook, se conserva el `.part` y se reanuda con `continuedl` desde donde estaba. La UI muestra «En pausa · N pendientes» y alterna entre Pausar y Reanudar.
+- **1.9 Rendimiento de bibliotecas locales:** índice persistente en `config/local_index.json` con validez por `path + mtime + size`, caché de portadas por carpeta y escaneo del detalle en un worker. El recuento de las tarjetas se detiene a 150 archivos. Medido con 300 archivos: 0,571 s la primera lectura y 0,014 s la segunda.
+- **1.10 Animación de selección en Biblioteca:** la fila de una playlist restaura `scale` y `opacity` en `finally` y libera el task al terminar, así que un cambio de vista durante la animación ya no deja la fila encogida.
+- **1.11 Panel de resultados de descarga:** el cierre de la cola agrupa descargadas, omitidas, fallidas y faltantes con formato, duración, ruta y motivo por pista. Las fallidas y las que nunca se intentaron permiten rebuscar en YouTube, ver los cinco candidatos con su duración y descargar otro, o reintentar la pista en otro contenedor.
 
 ## 4.8.2 — 2026-11-06 · Bienvenida guiada, bundle ZIP y empaquetado standalone
 

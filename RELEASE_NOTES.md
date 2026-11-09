@@ -1,6 +1,28 @@
 # Release Notes — Melomaniac
 
-Notas enfocadas en **qué cambió para el usuario**, no en detalles internos. La versión de trabajo documentada es `4.8.2`. El detalle técnico está en [`CHANGELOG.md`](CHANGELOG.md). La descarga de la versión estable (ZIP portátil, binarios de Linux y Windows) está en los assets del release de GitHub.
+Notas enfocadas en **qué cambió para el usuario**, no en detalles internos. La versión de trabajo documentada es `4.9.0`. El detalle técnico está en [`CHANGELOG.md`](CHANGELOG.md). La descarga de la versión estable (ZIP portátil, binarios de Linux y Windows) está en los assets del release de GitHub.
+
+---
+
+## v4.9.0 — Fiabilidad de descargas y portadas (2026-11-08)
+
+**Novedades:**
+- **Panel de resultados de descarga:** al terminar una tanda ves qué se descargó, qué ya existía, qué falló y qué quedó sin intentar, con formato, duración, ruta y motivo. Desde ahí puedes rebuscar una pista en YouTube, ver los cinco candidatos con su duración y elegir otro, o reintentarla en otro formato.
+- **Descargas por playlist:** cada playlist va a su propia carpeta con un manifiesto que conserva el orden original. En Biblioteca aparecen como playlists descargadas dentro de Local.
+- **Pausa real:** pausar detiene también la pista en curso y deja el archivo a medio bajar; al reanudar continúa desde ese punto, no desde cero.
+- **Recalcular portadas:** Config permite revisar y reemplazar las portadas de archivos ya descargados, mostrando cuántas cambiarían y desde qué fuente antes de escribir nada.
+
+**Correcciones:**
+- **Sesión validada antes de transferir:** el botón ya no confía en una sesión sin comprobar y avisa con un mensaje claro cuando el destino no responde.
+- **Portadas de álbum primero:** las miniaturas de vídeo de YouTube dejan de colarse como carátula; se descartan siempre que exista artwork de álbum.
+- **Recorte de bordes:** una portada 16:9 o con barras laterales se recorta en el borde en vez de quedar con márgenes, sin tocar imágenes ya correctas.
+- **Mejor coincidencia en YouTube:** se consultan los cinco mejores resultados y se elige el que coincide en título, artista y duración, descartando directos y vídeos de más de 20 minutos.
+- **Metadatos completos:** el artista se deriva del álbum o del nombre del archivo cuando la pista no lo trae, en lugar de escribirse vacío.
+- **Biblioteca local más rápida:** reabrir una carpeta ya no relee las etiquetas de todos los archivos; con 300 pistas, el segundo acceso baja de 0,57 s a 0,014 s.
+
+**Interfaz:**
+- **Phosphor Icons** en toda la app, con geometría y padding normalizados.
+- El panel de cola de reproducción se desliza sin redimensionar las listas, y el rail se colapsa sin saltos.
 
 ---
 

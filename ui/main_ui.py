@@ -1,6 +1,6 @@
 """
 ╔══════════════════════════════════════════════════════════════════════╗
-║                    Melomaniac v4.8.2                             ║
+║                    Melomaniac v4.9.0                             ║
 ║              Interfaz Principal de Usuario                           ║
 ╚══════════════════════════════════════════════════════════════════════╝
 
@@ -46,7 +46,7 @@ Componentes Principales:
     - Dialogs: Modales para errores y confirmaciones
 
 Autor: Melomaniac Team
-Versión: 4.8.2
+Versión: 4.9.0
 Fecha: 2026
 """
 
