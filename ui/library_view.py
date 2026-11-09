@@ -10,7 +10,6 @@ import flet as ft
 
 from core.config import LOCAL_LIBRARY_LABEL, PLATFORM_ORDER
 from core.library_models import LibraryLoadState
-from engine.parsers import scan_audio_folder
 from services.library_state import LibraryState
 from ui.fonts import FONT_HEADLINE, FONT_HEADLINE_BOLD, FONT_TEXT
 from ui.playlist_card import PlaylistCard
@@ -177,7 +176,11 @@ class LibraryView(ft.Container):
         local = summary.platform == LOCAL_LIBRARY_LABEL
 
         async def _load_local():
-            return None, await asyncio.to_thread(scan_audio_folder, summary.id)
+            # Con índice, solo se lee Mutagen de lo nuevo o modificado; las
+            # pistas ya conocidas vuelven con sus tags y su portada.
+            from services.local_index import scan_folder_async
+
+            return await scan_folder_async(summary.id)
 
         def _remove_local() -> None:
             self.library_state.remove_local_folder(summary.id)
@@ -261,7 +264,13 @@ class LibraryView(ft.Container):
             pass
 
     def _refresh_local(self) -> None:
-        """Fuente Local: una tarjeta por carpeta agregada (sin sincronización)."""
+        """Fuente Local: una tarjeta por carpeta agregada (sin sincronización).
+
+        ``local_summaries`` solo recorre hasta ``SYNC_SCAN_LIMIT`` archivos y
+        reutiliza portadas del índice, así que cabe en el hilo de la UI; el
+        escaneo completo de una carpeta grande ocurre al abrir el detalle, en
+        un worker.
+        """
         folders = self.library_state.local_summaries()
         self._add_folder_btn.visible = True
         self._loading_bar.visible = False

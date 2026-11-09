@@ -450,11 +450,6 @@ def _coerce_local_entry(item: str | os.PathLike | tuple[str, str] | tuple[str, s
 _SIDECAR_COVER_NAMES = ("cover.jpg", "folder.jpg", "front.jpg")
 
 
-def _folder_cover_data_uri(folder: str, *, target_px: int = 320) -> str:
-    """Portada sidecar de una carpeta como data URI, para la tarjeta de Biblioteca."""
-    return _sidecar_data_uri(_folder_cover(folder), target_px=target_px)
-
-
 def _sidecar_data_uri(path: str, *, target_px: int = 300) -> str:
     """Lee un sidecar ``cover.jpg`` y lo devuelve como data URI (o ``""``)."""
     if not path:
@@ -515,6 +510,8 @@ def _folder_cover(folder: str) -> str:
 
 def build_local_tracks(
     pairs: list[str | os.PathLike | tuple[str, str] | tuple[str, str, str]],
+    *,
+    index=None,
 ) -> list[Track]:
     """Convierte pares locales en Track y lee metadatos si hay ruta de audio.
 
@@ -522,6 +519,12 @@ def build_local_tracks(
     ``folder.jpg``/``front.jpg``) antes de recorrer las pistas y, si no hay,
     con una lectura por archivo de la portada incrustada. Se cachea por
     carpeta para no releer cientos de archivos del mismo álbum.
+
+    Args:
+        pairs: Pares ``(artista, título[, ruta])`` o rutas sueltas.
+        index: ``LocalIndex`` opcional. Si se pasa, los tags y la portada de
+            carpeta se reutilizan mientras ``mtime`` y tamaño no cambien, y
+            los recién leídos se recuerdan para la próxima apertura.
     """
     tracks = []
     sidecars: dict[str, str] = {}
@@ -530,7 +533,11 @@ def build_local_tracks(
         artist, title, source_path = _coerce_local_entry(item)
         if not title.strip():
             continue
-        metadata = read_audio_metadata(source_path) if source_path else {}
+        metadata = index.metadata_for(source_path) if index is not None and source_path else None
+        if metadata is None:
+            metadata = read_audio_metadata(source_path) if source_path else {}
+            if index is not None and source_path and metadata:
+                index.remember(source_path, metadata)
         name = metadata.get("title") or title.strip()
         track_artist = metadata.get("artist") or artist.strip()
         album = metadata.get("album", "")
@@ -544,12 +551,21 @@ def build_local_tracks(
         if source_path:
             folder = os.path.dirname(os.path.abspath(source_path))
             if folder not in sidecars:
-                sidecars[folder] = _sidecar_data_uri(_folder_cover(folder))
+                sidecar_path = _folder_cover(folder)
+                if index is not None:
+                    sidecars[folder] = index.folder_cover(
+                        folder, sidecar_path, _sidecar_data_uri
+                    )
+                else:
+                    sidecars[folder] = _sidecar_data_uri(sidecar_path)
             img_url = sidecars[folder]
             if not img_url:
                 img_url = embedded.get(source_path, "")
                 if not img_url:
-                    img_url = _extract_embedded_cover(source_path)
+                    if index is not None:
+                        img_url = index.embedded_cover(source_path, _extract_embedded_cover)
+                    else:
+                        img_url = _extract_embedded_cover(source_path)
                     embedded[source_path] = img_url
 
         tracks.append(Track(
@@ -603,16 +619,26 @@ def list_audio_files(folder: str | os.PathLike, *, recursive: bool = True,
     return [path for _, path in found]
 
 
-def scan_audio_folder(folder: str | os.PathLike, *, limit: int = 5000) -> list[Track]:
+def scan_audio_folder(
+    folder: str | os.PathLike, *, limit: int = 5000, index=None,
+) -> list[Track]:
     """Convierte los audios de una carpeta en ``Track`` (tags con Mutagen).
 
     Si faltan tags, artista y título salen del nombre ``Artista - Título``.
     Es bloqueante: despacharla con ``asyncio.to_thread``.
+
+    Args:
+        index: ``LocalIndex`` opcional; con él solo se lee Mutagen de los
+            archivos nuevos o modificados, y se podan los que ya no existen.
     """
+    paths = list_audio_files(folder, limit=limit)
     triples: list[tuple[str, str, str]] = []
-    for path in list_audio_files(folder, limit=limit):
+    for path in paths:
         stem = os.path.splitext(os.path.basename(path))[0]
         pair = _parse_local_line(stem)
         artist, title = pair if pair else ("", stem)
         triples.append((artist, title, path))
-    return build_local_tracks(triples)
+    tracks = build_local_tracks(triples, index=index)
+    if index is not None:
+        index.prune_folder(str(folder), {os.path.abspath(p) for p in paths})
+    return tracks

@@ -328,6 +328,15 @@ async def main(page: ft.Page) -> None:
             import gc
             gc.collect()
             
+            # Índice de audio local: solo se escriben los archivos que se
+            # leyeron en esta sesión, así que el guardado es barato.
+            try:
+                library_state = getattr(app_inst, "library_state", None)
+                if library_state is not None:
+                    library_state.forget_local_index()
+            except Exception:  # pylint: disable=broad-exception-caught
+                pass
+
             # Limpiar sesiones HTTP si el servicio lo soporta
             if hasattr(service_inst, "cleanup_sessions"):
                 await asyncio.to_thread(service_inst.cleanup_sessions)

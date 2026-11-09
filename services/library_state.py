@@ -12,7 +12,7 @@ from typing import Callable, Dict, Optional
 from core.config import LOCAL_LIBRARY_LABEL, PLATFORM_ORDER
 from core.library_models import LibraryLoadState, LibrarySnapshot, PlaylistSummary
 from core.library_store import load_library, save_library
-from engine.parsers import _folder_cover_data_uri, list_audio_files
+from engine.parsers import _folder_cover, _sidecar_data_uri
 from services import settings_store
 from services.circuit_breaker import RateLimitError
 
@@ -63,6 +63,10 @@ class LibraryState:
         ``playlist.json``: son playlists descargadas, no carpetas sueltas. La
         carpeta raíz sigue apareciendo para no perder las descargas antiguas,
         que se hicieron en plano.
+
+        El recuento sale del manifiesto cuando existe; si no, de un recorrido
+        que se detiene en ``SYNC_SCAN_LIMIT``. Antes se listaba la carpeta
+        entera en cada refresco, con varios ``stat`` por archivo.
         """
         out: list[PlaylistSummary] = []
         for folder in self.local_folders:
@@ -70,6 +74,12 @@ class LibraryState:
             for child in self._playlist_subfolders(folder):
                 out.append(self._summary_for(child, playlist_folder=True))
         return out
+
+    def forget_local_index(self) -> None:
+        """Persiste el índice local; se llama al cerrar la app."""
+        from services.local_index import save_shared_index
+
+        save_shared_index()
 
     @staticmethod
     def _playlist_subfolders(folder: str) -> list[str]:
@@ -88,19 +98,24 @@ class LibraryState:
     def _summary_for(folder: str, *, playlist_folder: bool = False) -> PlaylistSummary:
         """Tarjeta de una carpeta; con manifiesto usa su nombre y su orden."""
         from engine.downloader import read_playlist_manifest
+        from services.local_index import quick_count, shared_index
 
         manifest = read_playlist_manifest(folder) if playlist_folder else {}
         name = str(manifest.get("name") or "") or Path(folder).name or folder
         if manifest.get("platform"):
             name = f"{name} · {manifest['platform']}"
-        cover = _folder_cover_data_uri(folder)
+        sidecar = _folder_cover(folder)
+        index = shared_index()
+        # El builder recibe la ruta del sidecar, no la carpeta.
+        cover = (
+            index.folder_cover(folder, sidecar, _sidecar_data_uri) if sidecar else ""
+        )
         count = manifest.get("count") if manifest else None
         return PlaylistSummary(
             platform=LOCAL_LIBRARY_LABEL, id=folder,
             name=name, description=folder,
-            track_count=int(count) if isinstance(count, int) and count else len(
-                list_audio_files(folder)
-            ),
+            track_count=int(count) if isinstance(count, int) and count
+            else quick_count(folder),
             cover_urls=[cover] if cover else [],
         )
 
