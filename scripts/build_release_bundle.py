@@ -5,7 +5,7 @@ Uso:
     python scripts/build_release_bundle.py --version 4.9.0 [--out-dir /tmp/opencode]
 
 Incluye solo archivos trackeados necesarios en runtime:
-app.py, run.*, requirements.txt, LICENSE, README*, CHANGELOG.md,
+app.py, scripts/launchers/, requirements.txt, LICENSE, README*, CHANGELOG.md,
 config/.gitkeep, core/, engine/, services/, ui/, resources/.
 Excluye tests/, docs internas, .venv, config/ real y cachés.
 Imprime el SHA-256 del ZIP por consola (GitHub lo muestra por asset).
@@ -23,8 +23,7 @@ import zipfile
 
 BUNDLE_PATHS = [
     "app.py",
-    "run.sh",
-    "run.bat",
+    "scripts/launchers",
     "requirements.txt",
     "LICENSE",
     "README.md",

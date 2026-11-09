@@ -43,8 +43,7 @@ service.auth_manager = auth_manager
 ```text
 Melomaniac/
 ├── app.py                         # Entrada, composición y ciclo de vida
-├── run.bat                        # Lanzador automático para Windows
-├── run.sh                         # Lanzador automático para Linux/macOS
+├── scripts/launchers/             # run.sh / run.bat: respaldo para desarrollo y último recurso
 ├── config/                        # Runtime ignorado por Git (credenciales, ajustes, cachés)
 ├── core/
 │   ├── availability.py            # Escaneo lazy y precarga ISRC de Apple
@@ -243,7 +242,7 @@ Cada tag `v*` (o `workflow_dispatch` manual) dispara `.github/workflows/build-bi
 
 | Paquete | Script | Salida |
 |---|---|---|
-| ZIP portátil del fuente | `scripts/build_release_bundle.py` | `Melomaniac-vX.Y.Z.zip` (incluye `run.sh`/`run.bat`) |
+| ZIP portátil del fuente | `scripts/build_release_bundle.py` | `Melomaniac-vX.Y.Z.zip` (incluye `scripts/launchers/`) |
 | Linux | `scripts/build_linux.py` (PyInstaller + appimagetool) | `Melomaniac-vX.Y.Z-x86_64.AppImage`, `Melomaniac-vX.Y.Z-linux-x64.tar.gz` |
 | Windows | `python -m flet_cli.cli pack` + Inno Setup (`scripts/windows/installer.iss`) | `Melomaniac-vX.Y.Z-windows-x64-Setup.exe`, `Melomaniac-vX.Y.Z-windows-x64.zip` |
 

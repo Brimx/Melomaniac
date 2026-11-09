@@ -65,8 +65,8 @@ En los binarios, la configuración se guarda fuera de la carpeta de instalación
 
 Los lanzadores automáticos crean el entorno `.venv`, instalan dependencias en el primer arranque y ejecutan la app:
 
-- **Windows:** doble clic en `run.bat` (o `.\run.bat` en la terminal).
-- **Linux / macOS:** `./run.sh`
+- **Windows:** doble clic en `scripts\launchers\run.bat`.
+- **Linux / macOS:** `./scripts/launchers/run.sh`
 
 <details>
 <summary><b>Instalación manual paso a paso</b></summary>
@@ -80,7 +80,7 @@ pip install -r requirements.txt
 python app.py
 ```
 
-En Windows/PowerShell, si la activación está bloqueada (`running scripts is disabled`), usa `run.bat` o la ruta directa: `.\.venv\Scripts\python app.py`. En Ubuntu/Debian, si aparece `ensurepip is not available`, instala `sudo apt install python3-venv`.
+En Windows/PowerShell, si la activación está bloqueada (`running scripts is disabled`), usa `scripts\launchers\run.bat` o la ruta directa: `.\.venv\Scripts\python app.py`. En Ubuntu/Debian, si aparece `ensurepip is not available`, instala `sudo apt install python3-venv`.
 
 </details>
 
@@ -90,7 +90,7 @@ En Windows/PowerShell, si la activación está bloqueada (`running scripts is di
 git pull
 ```
 
-Vuelve a arrancar con `run.bat`/`run.sh` (detectan cambios en `requirements.txt` e instalan dependencias automáticamente). `config/`, descargas y cachés están ignorados por Git y no se tocan. Si `ffmpeg` no se detecta en Descargas, reinicia la terminal para que cargue el nuevo `PATH`.
+Vuelve a arrancar con `scripts/launchers/run.bat`/`run.sh` (detectan cambios en `requirements.txt` e instalan dependencias automáticamente). `config/`, descargas y cachés están ignorados por Git y no se tocan. Si `ffmpeg` no se detecta en Descargas, reinicia la terminal para que cargue el nuevo `PATH`.
 
 ---
 

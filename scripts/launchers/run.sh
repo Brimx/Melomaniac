@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 set -e
 
-# Cambiar al directorio del script
-cd "$(dirname "$0")"
+# Ir a la raíz del repo (este script vive en scripts/launchers/)
+cd "$(dirname "$0")/../.."
 
 # Detectar el comando de Python 3
 PYTHON_BIN=""

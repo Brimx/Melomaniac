@@ -65,8 +65,8 @@ In the binaries, configuration is stored outside the install folder (`$XDG_CONFI
 
 The launchers create the `.venv` environment, install dependencies on first run, and start the app:
 
-- **Windows:** double-click `run.bat` (or `.\run.bat` in the terminal).
-- **Linux / macOS:** `./run.sh`
+- **Windows:** double-click `scripts\launchers\run.bat`.
+- **Linux / macOS:** `./scripts/launchers/run.sh`
 
 <details>
 <summary><b>Manual step-by-step installation</b></summary>
@@ -80,7 +80,7 @@ pip install -r requirements.txt
 python app.py
 ```
 
-On Windows/PowerShell, if activation is blocked (`running scripts is disabled`), use `run.bat` or the direct path: `.\.venv\Scripts\python app.py`. On Ubuntu/Debian, if you see `ensurepip is not available`, install `sudo apt install python3-venv`.
+On Windows/PowerShell, if activation is blocked (`running scripts is disabled`), use `scripts\launchers\run.bat` or the direct path: `.\.venv\Scripts\python app.py`. On Ubuntu/Debian, if you see `ensurepip is not available`, install `sudo apt install python3-venv`.
 
 </details>
 
@@ -90,7 +90,7 @@ On Windows/PowerShell, if activation is blocked (`running scripts is disabled`),
 git pull
 ```
 
-Start the app again with `run.bat`/`run.sh` (they detect `requirements.txt` changes and install dependencies automatically). `config/`, downloads, and caches are git-ignored and untouched. If `ffmpeg` is not detected in Downloads, restart your terminal so the new `PATH` is loaded.
+Start the app again with `scripts/launchers/run.bat`/`run.sh` (they detect `requirements.txt` changes and install dependencies automatically). `config/`, downloads, and caches are git-ignored and untouched. If `ffmpeg` is not detected in Downloads, restart your terminal so the new `PATH` is loaded.
 
 ---
 
