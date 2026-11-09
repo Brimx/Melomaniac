@@ -2,7 +2,7 @@
 """Construye el ZIP portátil de un release de Melomaniac.
 
 Uso:
-    python scripts/build_release_bundle.py --version 4.8.2 [--out-dir /tmp/opencode]
+    python scripts/build_release_bundle.py --version 4.9.0 [--out-dir /tmp/opencode]
 
 Incluye solo archivos trackeados necesarios en runtime:
 app.py, run.*, requirements.txt, LICENSE, README*, CHANGELOG.md,
@@ -84,7 +84,7 @@ def build(version: str, out_dir: str) -> str:
 
 if __name__ == "__main__":
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--version", required=True, help="Versión sin 'v', ej. 4.8.2")
+    ap.add_argument("--version", required=True, help="Versión sin 'v', ej. 4.9.0")
     ap.add_argument("--out-dir", default="/tmp/opencode", help="Carpeta de salida")
     args = ap.parse_args()
     os.makedirs(args.out_dir, exist_ok=True)

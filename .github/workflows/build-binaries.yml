@@ -7,9 +7,8 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'Versión a compilar (ej. 4.8.2)'
+        description: 'Versión a compilar (sin prefijo v)'
         required: true
-        default: '4.8.2'
 
 permissions:
   contents: write

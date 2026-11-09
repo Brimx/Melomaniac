@@ -23,7 +23,7 @@ logger = logging.getLogger(__name__)
 
 
 def parse_semver(version_str: str) -> Tuple[int, ...]:
-    """Convierte una cadena tipo 'v4.8.0' o '4.9.1-rc1' en tupla numérica (4, 8, 0)."""
+    """Convierte una cadena tipo 'v4.9.0' o '4.10.0-rc1' en tupla numérica (4, 9, 0)."""
     cleaned = version_str.strip().lstrip("vV")
     match = re.match(r"^(\d+)(?:\.(\d+))?(?:\.(\d+))?", cleaned)
     if not match:

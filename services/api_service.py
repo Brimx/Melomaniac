@@ -1,6 +1,6 @@
 """
 ╔══════════════════════════════════════════════════════════════════════╗
-║                    Melomaniac v4.6.0                               ║
+║                    Melomaniac v4.9.0                               ║
 ║              Servicio Unificado de APIs Musicales                    ║
 ╚══════════════════════════════════════════════════════════════════════╝
 
@@ -48,7 +48,7 @@ Estrategia de Diseño - Patrón Facade:
        - _is_ytm_unauthorized: Detecta HTTP 401 de YouTube Music
 
 Autor: Melomaniac Team
-Versión: 4.6.0
+Versión: 4.9.0
 Fecha: 2026
 """
 

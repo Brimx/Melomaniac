@@ -1,5 +1,5 @@
 """
-ui/organize_panel.py — Melomaniac v4.2 — Paneles separados Organizar / Agrupar
+ui/organize_panel.py — Melomaniac v4.9.0 — Paneles separados Organizar / Agrupar
 
 Dos diálogos iguales en estética (tokens OLED) pero separados para UX clara:
 - Organizar: Mantener orden (agrupar sin reordenar) o A→Z/Z→A + agrupar estable;

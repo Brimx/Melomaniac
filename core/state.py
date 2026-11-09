@@ -1,6 +1,6 @@
 """
 ╔══════════════════════════════════════════════════════════════════════╗
-║                    Melomaniac v4.6.0                               ║
+║                    Melomaniac v4.9.0                               ║
 ║                    Estado Global de la Aplicación                    ║
 ╚══════════════════════════════════════════════════════════════════════╝
 
@@ -44,7 +44,7 @@ Funciones Auxiliares:
     - core.availability: resolución de disponibilidad por pista
 
 Autor: Melomaniac Team
-Versión: 4.6.0
+Versión: 4.9.0
 Fecha: 2026
 """
 

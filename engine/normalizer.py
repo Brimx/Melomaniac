@@ -1,6 +1,6 @@
 """
 ╔══════════════════════════════════════════════════════════════════════╗
-║                    Melomaniac v4.6.0                               ║
+║                    Melomaniac v4.9.0                               ║
 ║              Motor de Normalización de Metadatos                     ║
 ╚══════════════════════════════════════════════════════════════════════╝
 
@@ -35,7 +35,7 @@ Umbrales de Confianza:
     - ARTIST_EXACT_MIN (99%): Umbral para considerar artista exacto
 
 Autor: Melomaniac Team
-Versión: 4.6.0
+Versión: 4.9.0
 Fecha: 2026
 """
 

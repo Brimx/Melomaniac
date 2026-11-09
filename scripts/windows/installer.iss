@@ -1,8 +1,8 @@
 ; Inno Setup Script para Melomaniac
-; Compilar con: iscc /DMyAppVersion=4.8.2 scripts/windows/installer.iss
+; Compilar con: iscc /DMyAppVersion=4.9.0 scripts/windows/installer.iss
 
 #ifndef MyAppVersion
-#define MyAppVersion "4.8.2"
+#define MyAppVersion "4.9.0"
 #endif
 
 #define MyAppName "Melomaniac"
