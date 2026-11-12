@@ -80,6 +80,8 @@ pip install -r requirements.txt
 python app.py
 ```
 
+Con [`uv`](https://docs.astral.sh/uv/) (más rápido, mismo resultado): `uv venv` y `uv pip install -r requirements.txt`; `requirements.txt` sigue siendo la fuente única, así que `uv pip sync` **no** se usa (el archivo no es un volcado completo: `flet-cli` arrastra `pyinstaller`, `flet-web` u otros que no están listados).
+
 En Windows/PowerShell, si la activación está bloqueada (`running scripts is disabled`), usa `scripts\launchers\run.bat` o la ruta directa: `.\.venv\Scripts\python app.py`. En Ubuntu/Debian, si aparece `ensurepip is not available`, instala `sudo apt install python3-venv`.
 
 </details>
