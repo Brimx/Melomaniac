@@ -117,6 +117,29 @@ class PlayQueue:
             self.set_shuffle(True)
         return self.current
 
+    def shuffle_from_context(
+        self,
+        tracks: Iterable[PlayableTrack | Track],
+    ) -> PlayableTrack | None:
+        """Encola pistas de un contexto (playlist/carpeta), activa shuffle y elige inicio aleatorio."""
+        playables: list[PlayableTrack] = []
+        for item in tracks:
+            if isinstance(item, PlayableTrack):
+                playables.append(item)
+            elif isinstance(item, Track):
+                if item.source_path:
+                    built = build_playable_track(item.source_path, item)
+                    if built is not None:
+                        playables.append(built)
+
+        self.shuffle = True
+        if not playables:
+            self.clear()
+            return None
+
+        start_index = self._rng.randrange(len(playables))
+        return self.set_tracks(playables, start_index=start_index)
+
     def enqueue(
         self,
         item: PlayableTrack,

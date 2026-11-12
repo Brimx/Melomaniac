@@ -72,7 +72,7 @@ from core.models import (
     PlaylistMeta,
 )
 from core.transfer import TransferReport, normalize_playlist_id
-from engine.organizer import sort_tracks, split_tracks
+from engine.organizer import merge_playlists, sort_tracks, split_tracks
 from services.circuit_breaker import CircuitBreaker, RateLimitError
 from core.transfer_flow import TransferMixin
 from core.download_flow import DownloadMixin
@@ -515,6 +515,48 @@ class AppState(TransferMixin, DownloadMixin):
         self.destination_confirmed = False
         self._log(f"[INFO] Ingesta local · {len(tracks)} pistas cargadas")
         self.notify()
+
+    def merge_sources(
+        self,
+        sources: Iterable[Iterable[Track]],
+        name: str = "Playlist Fusionada",
+        description: str = "",
+    ) -> list[Track]:
+        """Funde listas de pistas (locales o remotas), deduplica en cascada y carga el resultado."""
+        self.cancel_lazy_scan()
+        materialized = [list(src) for src in sources if src]
+        raw_total = sum(len(src) for src in materialized)
+        merged = merge_playlists(materialized)
+
+        self.playlist_id = f"merged_{uuid.uuid4().hex[:8]}"
+        self.playlist_name = (name or "").strip() or "Playlist Fusionada"
+        self.playlist_description = description or ""
+        self.tracks = list(merged)
+        self.source_tracks = list(merged)
+        self.filtered = []
+        self.segments = {}
+        self.active_segment_keys = None
+        self.active_segment_key = None
+        self.show_dual = False
+        self.dual_mode = "lista"
+        self.search_query = ""
+        self.load_state = LoadState.READY
+        self.load_error = ""
+        self.lazy_scan_running = False
+        self.lazy_scan_done = False
+        self.transfer_state = TransferState.IDLE
+        self.transfer_progress = 0
+        self.transfer_total = 0
+        self.last_report = None
+        self.last_created_playlist_id = ""
+        self.transfer_started_at = 0.0
+        self.transfer_finished_at = 0.0
+        self.transfer_started_iso = ""
+        self._log(
+            f"[INFO] Fusión de playlists · {len(merged)} pistas únicas (de {raw_total})"
+        )
+        self.notify()
+        return list(merged)
 
     def reset_session(self) -> None:
         self.cancel_lazy_scan()
