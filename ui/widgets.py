@@ -142,7 +142,7 @@ def input_border(
     radius: float = RADIUS_INPUT,
     width: float = 1.0,
 ) -> dict:
-    """Borde canónico OLED para TextField/Dropdown (Flet 1.0+: border=OutlineInputBorder).
+    """Borde canónico OLED para TextField/Dropdown y Theme.input_decoration_theme.
 
     Reemplaza las props deprecadas border_color/focused_border_color/border_radius.
     """
@@ -155,7 +155,29 @@ def input_border(
             side=ft.BorderSide(color=focused_color, width=width),
             border_radius=radius,
         ),
+        ft.ControlState.DISABLED: ft.OutlineInputBorder(
+            side=ft.BorderSide(color=BORDER_MUTED, width=width),
+            border_radius=radius,
+        ),
+        ft.ControlState.ERROR: ft.OutlineInputBorder(
+            side=ft.BorderSide(color=ERROR_COL, width=width),
+            border_radius=radius,
+        ),
     }
+
+
+def build_input_decoration_theme() -> ft.InputDecorationTheme:
+    """Tema centralizado OLED para TextField/Dropdown (usado en app.py)."""
+    return ft.InputDecorationTheme(
+        border=input_border(BORDER_LIGHT, ACCENT, RADIUS_INPUT),
+        filled=True,
+        fill_color=BG_INPUT,
+        dense=True,
+        content_padding=ft.Padding.symmetric(horizontal=12, vertical=8),
+        hint_style=ft.TextStyle(color=TEXT_DIM, size=11),
+        label_style=ft.TextStyle(color=TEXT_MUTED, size=10, font_family=FONT_HEADLINE),
+        floating_label_style=ft.TextStyle(color=ACCENT, size=10, font_family=FONT_HEADLINE),
+    )
 
 
 def app_text_field(
@@ -180,12 +202,13 @@ def app_text_field(
     """TextField canónico OLED. Base: playlist_meta (radius 10, dense).
 
     Unifica playlist_meta._field_style + wizard._field_style/_make_field
-    + main_ui paste/id/name fields.
+    + main_ui paste/id/name fields y se alinea con InputDecorationTheme.
     """
     # Traduce props deprecadas si algún caller aún las pasa
     _bc = kwargs.pop("border_color", BORDER_LIGHT)
     _fbc = kwargs.pop("focused_border_color", ACCENT)
     _br = kwargs.pop("border", None)
+    _bg = kwargs.pop("bgcolor", BG_INPUT)
     border = _br if _br is not None else input_border(_bc, _fbc, border_radius)
 
     # La altura del campo es la referencia para centrar sus iconos.
@@ -211,13 +234,18 @@ def app_text_field(
         expand=expand,
         autofocus=autofocus,
         on_submit=on_submit,
-        bgcolor=BG_INPUT,
+        bgcolor=_bg,
+        filled=kwargs.pop("filled", True),
+        fill_color=kwargs.pop("fill_color", _bg),
         border=border,
-        hint_style=ft.TextStyle(color=TEXT_DIM, size=11),
-        label_style=ft.TextStyle(color=TEXT_MUTED, size=10, font_family=FONT_HEADLINE),
+        hint_style=kwargs.pop("hint_style", ft.TextStyle(color=TEXT_DIM, size=11)),
+        label_style=kwargs.pop(
+            "label_style",
+            ft.TextStyle(color=TEXT_MUTED, size=10, font_family=FONT_HEADLINE),
+        ),
         text_style=text_style or ft.TextStyle(color=TEXT_PRIMARY, size=12, font_family=FONT_TEXT),
-        text_size=12,
-        dense=True,
+        text_size=kwargs.pop("text_size", 12),
+        dense=kwargs.pop("dense", True),
         content_padding=content_padding or ft.Padding.symmetric(horizontal=12, vertical=8),
         **kwargs,
     )
@@ -293,16 +321,36 @@ def organize_dropdown(
     value: str,
     label: str,
     width: float = 200,
+    **kwargs,
 ) -> ft.Dropdown:
-    """Dropdown canónico para Organizar/Dividir. Unifica main_ui x2."""
-    from ui.tokens import BG_INPUT as _IN, BORDER_LIGHT as _BL, ACCENT as _AC
-    from ui.tokens import TEXT_PRIMARY as _TP, TEXT_MUTED as _TM
+    """Dropdown canónico para Organizar/Dividir. Alineado con InputDecorationTheme y SHRINK_WRAP."""
+    _bc = kwargs.pop("border_color", BORDER_LIGHT)
+    _fbc = kwargs.pop("focused_border_color", ACCENT)
+    _br = kwargs.pop("border", None)
+    _bg = kwargs.pop("bgcolor", BG_INPUT)
     return ft.Dropdown(
         options=[ft.dropdown.Option(key=k, text=t) for k, t in options],
-        value=value, label=label, width=width,
-        bgcolor=_IN, border=input_border(_BL, _AC, RADIUS_INPUT),
-        label_style=ft.TextStyle(color=_TM, size=11, font_family=FONT_HEADLINE),
-        text_style=ft.TextStyle(color=_TP, size=12, font_family=FONT_TEXT),
+        value=value,
+        label=label,
+        width=width,
+        bgcolor=_bg,
+        filled=kwargs.pop("filled", True),
+        fill_color=kwargs.pop("fill_color", _bg),
+        dense=kwargs.pop("dense", True),
+        content_padding=kwargs.pop(
+            "content_padding", ft.Padding.symmetric(horizontal=12, vertical=8)
+        ),
+        border=_br if _br is not None else input_border(_bc, _fbc, RADIUS_INPUT),
+        label_style=kwargs.pop(
+            "label_style",
+            ft.TextStyle(color=TEXT_MUTED, size=10, font_family=FONT_HEADLINE),
+        ),
+        text_style=kwargs.pop(
+            "text_style",
+            ft.TextStyle(color=TEXT_PRIMARY, size=12, font_family=FONT_TEXT),
+        ),
+        text_size=kwargs.pop("text_size", 12),
+        **kwargs,
     )
 
 

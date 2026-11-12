@@ -41,10 +41,29 @@ from ui.auth_manager import AuthManager
 from ui.fonts import FONT_TEXT, build_font_registry
 from ui.main_ui import PlaylistManagerUI
 from ui.tokens import BG_LIST, ACCENT, BG_SURFACE, TEXT_PRIMARY
+from ui.widgets import build_input_decoration_theme
 
 # Fuentes locales (IBM Plex Sans variable)
 ASSETS_DIR = Path(__file__).resolve().parent / "resources"
 FONTS_DIR  = ASSETS_DIR / "fonts"
+
+
+def build_oled_theme() -> ft.Theme:
+    """Construye el tema OLED compartido por ``page.theme`` y ``page.dark_theme``."""
+    return ft.Theme(
+        font_family=FONT_TEXT,
+        hover_color=ft.Colors.TRANSPARENT,
+        splash_color=ft.Colors.TRANSPARENT,
+        highlight_color=ft.Colors.TRANSPARENT,
+        material_tap_target_size=ft.MaterialTapTargetSize.SHRINK_WRAP,
+        input_decoration_theme=build_input_decoration_theme(),
+        color_scheme=ft.ColorScheme(
+            primary=ACCENT,
+            surface=BG_SURFACE,
+            on_primary=TEXT_PRIMARY,
+            on_surface=TEXT_PRIMARY,
+        ),
+    )
 
 
 async def main(page: ft.Page) -> None:
@@ -119,16 +138,9 @@ async def main(page: ft.Page) -> None:
         # si existe una fuente Noto compatible empaquetada o instalada.
         
         page.fonts = build_font_registry(FONTS_DIR)
-        page.theme = ft.Theme(
-            font_family=FONT_TEXT,
-            hover_color=ft.Colors.TRANSPARENT,
-            splash_color=ft.Colors.TRANSPARENT,
-            highlight_color=ft.Colors.TRANSPARENT,
-            color_scheme=ft.ColorScheme(
-                primary=ACCENT, surface=BG_SURFACE,
-                on_primary=TEXT_PRIMARY, on_surface=TEXT_PRIMARY,
-            ),
-        )
+        oled_theme = build_oled_theme()
+        page.theme = oled_theme
+        page.dark_theme = oled_theme
 
         # ──────────────────────────────────────────────────────────────
         # INICIALIZACIÓN DE COMPONENTES DEL SISTEMA

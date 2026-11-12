@@ -46,7 +46,7 @@ WARN_BORDER  = "#30FFA500"
 
 # Texto
 TEXT_PRIMARY = "#FFF2F6FF"
-TEXT_MUTED   = "#FF7A8499"
+TEXT_MUTED   = "#FF848DA1"
 TEXT_DIM     = "#FF3D4455"
 
 # Radios canónicos (reutilizados por botones, inputs, diálogos y rail)
@@ -63,6 +63,7 @@ RADIUS_RAIL_ITEM   = RADIUS_BUTTON
 MOTION_HOVER_MS    = 120  # hover, press, cambios de color/borde
 MOTION_ENTER_MS    = 200  # aparición de elemento, progreso, cambio de estado corto
 MOTION_PANEL_MS    = 300  # paneles, rail, transiciones de vista
+MOTION_REVEAL_MS   = 400  # barrido ASCII acotado al activar skeletons
 MOTION_SKELETON_MS = 600  # pulso de carga
 
 # Medidas del rail de navegación
