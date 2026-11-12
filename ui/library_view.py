@@ -74,7 +74,14 @@ class LibraryView(ft.Container):
                                           lambda e: self._page_ref.run_task(self._pick_folder), height=36)
         self._add_folder_btn.visible = self._platform == LOCAL_LIBRARY_LABEL
 
-        self._grid = ft.GridView(expand=True, max_extent=180, child_aspect_ratio=0.72, spacing=12, run_spacing=12, visible=True)
+        self._grid_row = ft.Row(wrap=True, spacing=12, run_spacing=12)
+        self._grid = ft.Column(
+            controls=[self._grid_row],
+            scroll=ft.ScrollMode.AUTO,
+            expand=True,
+            horizontal_alignment=ft.CrossAxisAlignment.STRETCH,
+            visible=True,
+        )
         self._empty_title = app_text("Sin playlists cacheadas", size=13, color=TEXT_PRIMARY, font_family=FONT_HEADLINE_BOLD)
         self._empty_sub = app_text("Elige una fuente para sincronizar", size=11, color=TEXT_MUTED, font_family=FONT_TEXT)
         self._empty = ft.Container(expand=True, visible=False, alignment=ft.Alignment.CENTER, content=ft.Column(controls=[
@@ -84,7 +91,7 @@ class LibraryView(ft.Container):
         ], horizontal_alignment=ft.CrossAxisAlignment.CENTER, spacing=8))
         self._loading_bar = ft.ProgressBar(visible=False, color=ACCENT, bgcolor=BG_SURFACE)
 
-        self._list_stack = ft.Stack(controls=[self._grid, self._empty], expand=True)
+        self._list_stack = ft.Stack(controls=[self._grid, self._empty], expand=True, fit=ft.StackFit.EXPAND)
 
         body = ft.Column(controls=[
             section_label("FUENTE"),
@@ -211,6 +218,14 @@ class LibraryView(ft.Container):
         except Exception:
             pass
 
+    def _wrap_card(self, summary, state: LibraryLoadState) -> ft.Container:
+        """Envuelve la tarjeta con ancho fijo (160 px) para reflow sin resize."""
+        return ft.Container(
+            width=160,
+            alignment=ft.Alignment.TOP_LEFT,
+            content=PlaylistCard(summary, state=state, on_tap=self._on_open_playlist),
+        )
+
     def _refresh(self) -> None:
         # called via library_state notify
         if self._detail is not None:
@@ -243,22 +258,12 @@ class LibraryView(ft.Container):
         else:
             self._loading_bar.visible = False
             self._status_text.value = ""
-        # grid: la tarjeta va en un envoltorio que llena la celda pero
-        # alinea arriba-izquierda con constraints sueltos, así conserva
-        # su ancho fijo (160) y lo que cambia al redimensionar la vista
-        # es el ritmo de celdas, no el tamaño de la tarjeta.
-        self._grid.controls.clear()
-        for summ in snap.items:
-            card = PlaylistCard(summ, state=state, on_tap=self._on_open_playlist)
-            self._grid.controls.append(
-                ft.Container(alignment=ft.Alignment.TOP_LEFT, content=card)
-            )
-        self._grid.visible = True
-        self._empty.visible = not snap.items and state != LibraryLoadState.LOADING
-        # if empty
-        if not snap.items and state not in (LibraryLoadState.LOADING,):
-            self._empty.visible = True
-            self._grid.visible = False
+        # wrap de ancho fijo (160 px): al empujar la cola lateral las tarjetas
+        # se reacomodan por línea sin recalcular su ancho cuadro a cuadro.
+        self._grid_row.controls = [self._wrap_card(summ, state) for summ in snap.items]
+        show_empty = not snap.items and state != LibraryLoadState.LOADING
+        self._grid.visible = not show_empty
+        self._empty.visible = show_empty
         try:
             self.update()
         except Exception:
@@ -278,12 +283,8 @@ class LibraryView(ft.Container):
         self._status_text.value = f"{len(folders)} carpetas locales"
         self._empty_title.value = "Sin carpetas locales"
         self._empty_sub.value = "Añade una carpeta con audio o indexa tu carpeta de Descargas"
-        self._grid.controls = [
-            ft.Container(
-                alignment=ft.Alignment.TOP_LEFT,
-                content=PlaylistCard(summ, state=LibraryLoadState.READY, on_tap=self._on_open_playlist),
-            )
-            for summ in folders
+        self._grid_row.controls = [
+            self._wrap_card(summ, LibraryLoadState.READY) for summ in folders
         ]
         self._grid.visible = bool(folders)
         self._empty.visible = not folders

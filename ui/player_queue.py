@@ -1,14 +1,11 @@
 """
-ui/player_queue.py — Panel lateral derecho de cola reordenable
-══════════════════════════════════════════════════════════════
-Usa ``ft.ReorderableListView`` con ``item_extent=ITEM_H``,
-``build_controls_on_demand=True`` y ``ft.ReorderableDragHandle`` por fila.
-Vive como overlay posicionado en el ``Stack`` raíz (anclado a la derecha),
-no como hermano en el ``Row``: abrirlo no cambia el ancho de la vista
-activa, así que las listas y la grilla no se redimensionan durante la
-animación. El deslizamiento es por ``offset``/opacidad (transform), no
-por ancho, y comparte duración de propósito con el rail
-(``PLAYER_QUEUE_ANIM_MS`` = ``MOTION_PANEL_MS``).
+ui/player_queue.py — Panel lateral derecho de cola reordenable y letra
+══════════════════════════════════════════════════════════════════════
+Vive como 3er hijo del ``Row`` raíz (modo empuje, ``0 ↔ PLAYER_QUEUE_W``)
+con animación de ancho ``MOTION_PANEL_MS`` y borde izquierdo sutil.
+La pestaña ``Cola`` usa ``ft.ReorderableListView`` con ``item_extent=ITEM_H``
+y ``build_controls_on_demand=True``; la pestaña ``Letra`` muestra un
+placeholder limpio hasta el Bloque 4.6.
 """
 
 from __future__ import annotations
@@ -19,43 +16,106 @@ import os
 import flet as ft
 
 from core.playback import PlayableTrack
-from ui.fonts import FONT_HEADLINE_BOLD, FONT_TEXT, font_family_for, mono_family
+from services import settings_store
+from ui.fonts import (
+    FONT_HEADLINE, FONT_HEADLINE_BOLD, FONT_PHOSPHOR, FONT_PHOSPHOR_FILL,
+    FONT_TEXT, font_family_for, mono_family,
+)
 from ui.icons import PIcons, app_icon, app_icon_button
 from ui.song_row import ITEM_H
 from ui.tokens import (
-    ACCENT, ACCENT_HALO, BG_DEEP, BG_HOVER, BG_PANEL, BG_SURFACE, BORDER_MUTED,
-    CHIP_BG, PLAYER_QUEUE_ANIM_MS, PLAYER_QUEUE_W, RADIUS_BUTTON, RADIUS_INPUT,
-    TEXT_DIM, TEXT_MUTED, TEXT_PRIMARY,
+    ACCENT, ACCENT_HALO, BG_PANEL, BG_SURFACE, BORDER_MUTED,
+    CHIP_BG, MOTION_HOVER_MS, MOTION_PANEL_MS, PLAYER_QUEUE_W,
+    RADIUS_BUTTON, RADIUS_INPUT, TEXT_DIM, TEXT_MUTED, TEXT_PRIMARY,
 )
 from ui.widgets import _ghost_btn, app_text, section_label
 
+_KEY_QUEUE_OPEN = "queue_panel_open"
+_KEY_QUEUE_TAB = "queue_panel_tab"
+_TAB_COLA = "cola"
+_TAB_LETRA = "letra"
+_VALID_TABS = (_TAB_COLA, _TAB_LETRA)
+_TAB_SPECS = (
+    (_TAB_COLA, "Cola", PIcons.QUEUE),
+    (_TAB_LETRA, "Letra", PIcons.MUSIC_NOTES),
+)
+
+
+def _load_queue_prefs() -> tuple[bool, str]:
+    """Lee estado abierto y pestaña activa del panel desde ``settings_store``."""
+    getter_open = getattr(settings_store, "get_queue_open", None)
+    getter_tab = getattr(settings_store, "get_queue_tab", None)
+    if callable(getter_open) and callable(getter_tab):
+        try:
+            tab = str(getter_tab() or _TAB_COLA).lower()
+            return bool(getter_open()), tab if tab in _VALID_TABS else _TAB_COLA
+        except Exception:
+            return False, _TAB_COLA
+    try:
+        data = settings_store.load_settings()
+    except Exception:
+        return False, _TAB_COLA
+    is_open = bool(data.get(_KEY_QUEUE_OPEN, False))
+    tab = str(data.get(_KEY_QUEUE_TAB, _TAB_COLA) or _TAB_COLA).lower()
+    return is_open, tab if tab in _VALID_TABS else _TAB_COLA
+
+
+def _save_queue_prefs(*, is_open: bool | None = None, tab: str | None = None) -> None:
+    """Persiste estado abierto y pestaña activa del panel en ``settings_store``."""
+    remaining_open = is_open
+    remaining_tab = tab if tab in _VALID_TABS else None
+
+    if remaining_open is not None:
+        setter_open = getattr(settings_store, "set_queue_open", None)
+        if callable(setter_open):
+            try:
+                setter_open(bool(remaining_open))
+                remaining_open = None
+            except Exception:
+                pass
+    if remaining_tab is not None:
+        setter_tab = getattr(settings_store, "set_queue_tab", None)
+        if callable(setter_tab):
+            try:
+                setter_tab(remaining_tab)
+                remaining_tab = None
+            except Exception:
+                pass
+
+    if remaining_open is None and remaining_tab is None:
+        return
+    try:
+        data = settings_store.load_settings()
+        changed = False
+        if remaining_open is not None and data.get(_KEY_QUEUE_OPEN) != bool(remaining_open):
+            data[_KEY_QUEUE_OPEN] = bool(remaining_open)
+            changed = True
+        if remaining_tab is not None and data.get(_KEY_QUEUE_TAB) != remaining_tab:
+            data[_KEY_QUEUE_TAB] = remaining_tab
+            changed = True
+        if changed:
+            settings_store.save_settings(data)
+    except Exception:
+        pass
+
 
 class PlayerQueuePanel(ft.Container):
-    """Panel lateral derecho de cola de reproducción (overlay deslizante)."""
+    """Panel lateral derecho de cola y letra (modo empuje ``0 ↔ PLAYER_QUEUE_W``)."""
 
     def __init__(self, page: ft.Page, player_bar) -> None:
+        init_open, init_tab = _load_queue_prefs()
         super().__init__(
-            width=PLAYER_QUEUE_W,
-            right=0,
-            top=0,
-            bottom=0,
+            width=PLAYER_QUEUE_W if init_open else 0,
             bgcolor=BG_PANEL,
             border=ft.Border.only(left=ft.BorderSide(0.8, BORDER_MUTED)),
             clip_behavior=ft.ClipBehavior.HARD_EDGE,
-            shadow=ft.BoxShadow(
-                blur_radius=18,
-                color=ft.Colors.with_opacity(0.45, BG_DEEP),
-                offset=ft.Offset(-4, 0),
-            ),
-            offset=ft.Offset(1, 0),
-            opacity=0.0,
-            animate_offset=ft.Animation(PLAYER_QUEUE_ANIM_MS, ft.AnimationCurve.EASE_IN_OUT),
-            animate_opacity=ft.Animation(PLAYER_QUEUE_ANIM_MS, ft.AnimationCurve.EASE_IN_OUT),
-            visible=False,
+            animate=ft.Animation(MOTION_PANEL_MS, ft.AnimationCurve.EASE_IN_OUT),
+            visible=init_open,
         )
         self._page_ref = page
         self.player_bar = player_bar
-        self._is_open: bool = False
+        self._is_open: bool = init_open
+        self._active_tab: str = init_tab
         self._open_gen: int = 0
 
         self._count_txt = app_text(
@@ -71,10 +131,48 @@ class PlayerQueuePanel(ft.Container):
             PIcons.X,
             size=16,
             icon_color=TEXT_MUTED,
-            tooltip="Cerrar cola",
+            tooltip="Cerrar panel",
             on_click=lambda _e: self.set_open(False),
             width=30,
             height=30,
+        )
+
+        self._tab_refs: dict[str, tuple[ft.Container, ft.Text, ft.Text]] = {}
+        tab_controls: list[ft.Control] = []
+        for tab_key, label_text, glyph in _TAB_SPECS:
+            ico = app_icon(glyph, size=14, color=TEXT_DIM, fill=False)
+            lbl = app_text(label_text, size=12, color=TEXT_MUTED, font_family=FONT_HEADLINE)
+            btn = ft.Container(
+                expand=True,
+                height=30,
+                border_radius=RADIUS_BUTTON - 2,
+                padding=ft.Padding.symmetric(horizontal=8, vertical=4),
+                alignment=ft.Alignment.CENTER,
+                ink=True,
+                animate=ft.Animation(MOTION_HOVER_MS, ft.AnimationCurve.EASE_OUT),
+                on_click=lambda _e, key=tab_key: self.set_tab(key),
+                content=ft.Row(
+                    controls=[ico, lbl],
+                    spacing=6,
+                    alignment=ft.MainAxisAlignment.CENTER,
+                    vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                    tight=True,
+                ),
+            )
+            self._tab_refs[tab_key] = (btn, ico, lbl)
+            tab_controls.append(btn)
+
+        self._tab_bar = ft.Container(
+            expand=True,
+            bgcolor=BG_SURFACE,
+            border=ft.Border.all(0.8, BORDER_MUTED),
+            border_radius=RADIUS_BUTTON,
+            padding=ft.Padding.all(2),
+            content=ft.Row(
+                controls=tab_controls,
+                spacing=4,
+                vertical_alignment=ft.CrossAxisAlignment.CENTER,
+            ),
         )
 
         self._list_view = ft.ReorderableListView(
@@ -111,32 +209,75 @@ class PlayerQueuePanel(ft.Container):
             ),
         )
 
+        self._cola_view = ft.Column(
+            controls=[
+                ft.Row(
+                    controls=[
+                        ft.Column(
+                            controls=[
+                                section_label("COLA DE REPRODUCCIÓN"),
+                                self._count_txt,
+                            ],
+                            spacing=2,
+                            expand=True,
+                        ),
+                        self._clear_btn,
+                    ],
+                    vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                ),
+                ft.Stack(
+                    controls=[self._list_view, self._empty_box],
+                    expand=True,
+                    fit=ft.StackFit.EXPAND,
+                ),
+            ],
+            spacing=8,
+            expand=True,
+            visible=(self._active_tab == _TAB_COLA),
+        )
+
+        self._letra_view = ft.Container(
+            expand=True,
+            alignment=ft.Alignment.CENTER,
+            visible=(self._active_tab == _TAB_LETRA),
+            content=ft.Column(
+                controls=[
+                    app_icon(PIcons.MUSIC_NOTES, size=40, color=TEXT_DIM, fill=True),
+                    app_text(
+                        "Letra",
+                        size=13,
+                        color=TEXT_PRIMARY,
+                        font_family=FONT_HEADLINE_BOLD,
+                    ),
+                    app_text(
+                        "Las letras de la pista actual aparecerán aquí próximamente.",
+                        size=11,
+                        color=TEXT_MUTED,
+                        font_family=FONT_TEXT,
+                        text_align=ft.TextAlign.CENTER,
+                    ),
+                ],
+                horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+                spacing=6,
+            ),
+        )
+
         self._body_box = ft.Container(
             width=PLAYER_QUEUE_W,
-            opacity=0.0,
-            animate_opacity=ft.Animation(PLAYER_QUEUE_ANIM_MS, ft.AnimationCurve.EASE_IN_OUT),
+            opacity=1.0 if init_open else 0.0,
+            animate_opacity=ft.Animation(MOTION_PANEL_MS, ft.AnimationCurve.EASE_IN_OUT),
             padding=ft.Padding.all(12),
             expand=True,
             content=ft.Column(
                 controls=[
                     ft.Row(
-                        controls=[
-                            ft.Column(
-                                controls=[
-                                    section_label("COLA DE REPRODUCCIÓN"),
-                                    self._count_txt,
-                                ],
-                                spacing=2,
-                                expand=True,
-                            ),
-                            self._clear_btn,
-                            self._close_btn,
-                        ],
+                        controls=[self._tab_bar, self._close_btn],
+                        spacing=8,
                         vertical_alignment=ft.CrossAxisAlignment.CENTER,
                     ),
                     ft.Divider(height=1, color=BORDER_MUTED),
                     ft.Stack(
-                        controls=[self._list_view, self._empty_box],
+                        controls=[self._cola_view, self._letra_view],
                         expand=True,
                         fit=ft.StackFit.EXPAND,
                     ),
@@ -146,6 +287,7 @@ class PlayerQueuePanel(ft.Container):
             ),
         )
         self.content = self._body_box
+        self._apply_tab_styles()
         self.player_bar.subscribe(self.refresh)
         self.refresh()
 
@@ -153,17 +295,50 @@ class PlayerQueuePanel(ft.Container):
     def is_open(self) -> bool:
         return self._is_open
 
+    @property
+    def active_tab(self) -> str:
+        return self._active_tab
+
+    def _apply_tab_styles(self) -> None:
+        for tab_key, (btn, ico, lbl) in self._tab_refs.items():
+            active = tab_key == self._active_tab
+            btn.bgcolor = ACCENT_HALO if active else ft.Colors.TRANSPARENT
+            btn.border = ft.Border.all(0.8, ACCENT if active else ft.Colors.TRANSPARENT)
+            ico.color = ACCENT if active else TEXT_DIM
+            ico.font_family = FONT_PHOSPHOR_FILL if active else FONT_PHOSPHOR
+            lbl.color = TEXT_PRIMARY if active else TEXT_MUTED
+            lbl.font_family = FONT_HEADLINE_BOLD if active else FONT_HEADLINE
+        self._cola_view.visible = self._active_tab == _TAB_COLA
+        self._letra_view.visible = self._active_tab == _TAB_LETRA
+
+    def set_tab(self, tab: str) -> None:
+        normalized = str(tab or _TAB_COLA).lower()
+        if normalized not in _VALID_TABS:
+            normalized = _TAB_COLA
+        self._active_tab = normalized
+        _save_queue_prefs(tab=normalized)
+        self._apply_tab_styles()
+        try:
+            self.update()
+        except Exception:
+            pass
+
     def toggle(self) -> None:
         self.set_open(not self._is_open)
 
     def set_open(self, open_state: bool) -> None:
-        self._is_open = bool(open_state)
+        target = bool(open_state)
+        self._is_open = target
+        _save_queue_prefs(is_open=target)
         self._open_gen += 1
         gen = self._open_gen
-        if self._is_open:
-            # Primero se monta en el árbol; la animación de entrada parte del
-            # frame siguiente para que el cliente interpolar offset/opacidad
-            # desde el estado cerrado en vez de saltar al final.
+        if target:
+            if self.visible and self.width == PLAYER_QUEUE_W and self._body_box.opacity == 1.0:
+                return
+            # Primero se monta en el árbol con ancho 0; la animación de entrada
+            # parte del frame siguiente para interpolar ancho 0 -> PLAYER_QUEUE_W.
+            self.width = 0
+            self._body_box.opacity = 0.0
             self.visible = True
             try:
                 self.update()
@@ -174,8 +349,7 @@ class PlayerQueuePanel(ft.Container):
             except Exception:
                 self._apply_open_state()
         else:
-            self.offset = ft.Offset(1, 0)
-            self.opacity = 0.0
+            self.width = 0
             self._body_box.opacity = 0.0
             try:
                 self.update()
@@ -191,8 +365,7 @@ class PlayerQueuePanel(ft.Container):
                     pass
 
     def _apply_open_state(self) -> None:
-        self.offset = ft.Offset(0, 0)
-        self.opacity = 1.0
+        self.width = PLAYER_QUEUE_W
         self._body_box.opacity = 1.0
         try:
             self.update()
@@ -206,7 +379,7 @@ class PlayerQueuePanel(ft.Container):
         self._apply_open_state()
 
     async def _hide_after_close(self, gen: int) -> None:
-        await asyncio.sleep(PLAYER_QUEUE_ANIM_MS / 1000)
+        await asyncio.sleep(MOTION_PANEL_MS / 1000)
         if gen != self._open_gen or self._is_open:
             return
         self.visible = False
