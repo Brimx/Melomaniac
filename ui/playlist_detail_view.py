@@ -30,6 +30,9 @@ from ui.tokens import (
 )
 from ui.widgets import _ghost_btn, _primary_btn, app_text, notify, open_external
 
+_INITIAL_ROW_BATCH = 40
+_ROW_CHUNK_SIZE = 40
+
 
 class PlaylistDetailView(ft.Container):
     def __init__(self, page: ft.Page, summary: PlaylistSummary, service, on_back: Callable[[], None],
@@ -52,6 +55,11 @@ class PlaylistDetailView(ft.Container):
         self._tracks: list[Track] = []
         self._loading = True
         self._error = ""
+        self._load_gen: int = 0
+        self._unmounted: bool = False
+        self._batch_task: Optional[asyncio.Task] = None
+        self._init_reload_task: Optional[asyncio.Task] = None
+        self._has_file_by_id: dict[int, bool] = {}
 
         # header
         cover_url = summary.cover_urls[0] if summary.cover_urls else ""
@@ -123,7 +131,7 @@ class PlaylistDetailView(ft.Container):
         self.content = ft.Container(content=body, padding=ft.Padding.all(12), expand=True)
         # kick load
         try:
-            asyncio.create_task(self.reload())
+            self._init_reload_task = asyncio.create_task(self.reload())
         except Exception:
             pass
 
@@ -226,7 +234,52 @@ class PlaylistDetailView(ft.Container):
                 pass
         self._skeleton_tasks = []
 
+    def did_mount(self) -> None:
+        self._unmounted = False
+
+    def will_unmount(self) -> None:
+        self._unmounted = True
+        self._load_gen += 1
+        if self._init_reload_task is not None and not self._init_reload_task.done():
+            try:
+                self._init_reload_task.cancel()
+            except Exception:
+                pass
+        self._init_reload_task = None
+        self._cancel_batch_task()
+        self._stop_skeleton_pulse()
+        for task in list(self._press_tasks):
+            if not task.done():
+                try:
+                    task.cancel()
+                except Exception:
+                    pass
+
+    def _cancel_batch_task(self) -> None:
+        task = self._batch_task
+        self._batch_task = None
+        if task is not None and not task.done():
+            try:
+                task.cancel()
+            except Exception:
+                pass
+
     async def reload(self) -> None:
+        current = asyncio.current_task()
+        if (
+            self._init_reload_task is not None
+            and self._init_reload_task is not current
+            and not self._init_reload_task.done()
+        ):
+            try:
+                self._init_reload_task.cancel()
+            except Exception:
+                pass
+        if self._init_reload_task is current:
+            self._init_reload_task = None
+        self._load_gen += 1
+        gen = self._load_gen
+        self._cancel_batch_task()
         self._loading = True
         self._error = ""
         self._sync_skeleton_count()
@@ -247,15 +300,30 @@ class PlaylistDetailView(ft.Container):
                     _meta, tracks = None, res
             else:
                 _meta, tracks = await self.service.fetch_playlist(self.summary.platform, self.summary.id, None)
+            if gen != self._load_gen or self._unmounted:
+                return
             self._tracks = self._apply_manifest_order(tracks)
             tracks = self._tracks
 
             # Mapear pistas que ya existen en descargas o carpetas locales
-            self._match_local_files()
+            # (las carpetas locales ya traen source_path desde el escaneo).
+            self._has_file_by_id = {}
+            if not self._is_local:
+                await asyncio.to_thread(self._match_local_files)
+                if len(self._has_file_by_id) != len(tracks):
+                    self._has_file_by_id = await asyncio.to_thread(
+                        self._compute_has_file_map, tracks
+                    )
+            else:
+                self._has_file_by_id = await asyncio.to_thread(
+                    self._compute_has_file_map, tracks
+                )
+            if gen != self._load_gen or self._unmounted:
+                return
 
             if self._download_btn is not None:
                 self._download_btn.disabled = not tracks
-            self._update_header_play_count()
+            self._update_header_play_count(self._has_file_by_id)
             self._loading = False
             self.summary.track_count = len(tracks)
             # header count real tras cargar (fix Apple count 0 en summary)
@@ -263,14 +331,28 @@ class PlaylistDetailView(ft.Container):
                 self._count.value = f"{len(tracks)} canciones • {self.summary.platform}"
             except Exception:
                 pass
-            self._list_view.controls = []
-            for i, tr in enumerate(tracks, 1):
-                row = self._build_track_row(tr, i)
-                self._list_view.controls.append(row)
+            initial_tracks = tracks[:_INITIAL_ROW_BATCH]
+            remaining_tracks = tracks[_INITIAL_ROW_BATCH:]
+            has_file_snapshot = dict(self._has_file_by_id)
+            self._list_view.controls = [
+                self._build_track_row(tr, i, has_file=has_file_snapshot.get(id(tr), False))
+                for i, tr in enumerate(initial_tracks, 1)
+            ]
             self._stop_skeleton_pulse()
             self._skeleton_wrap.visible = False
             self._list_view.visible = True
+            if remaining_tracks and gen == self._load_gen and not self._unmounted:
+                self._batch_task = asyncio.create_task(
+                    self._append_remaining_rows(
+                        remaining_tracks,
+                        start_index=_INITIAL_ROW_BATCH + 1,
+                        gen=gen,
+                        has_file_map=has_file_snapshot,
+                    )
+                )
         except Exception as exc:
+            if gen != self._load_gen or self._unmounted:
+                return
             auth_manager = getattr(self.service, "auth_manager", None)
             if auth_manager is not None and self._loader is None:
                 auth_manager.record_operation_failure(self.summary.platform, exc)
@@ -283,10 +365,46 @@ class PlaylistDetailView(ft.Container):
                 self._error_box.content.controls[1].value = self._error  # type: ignore
             except Exception:
                 pass
+        if gen != self._load_gen or self._unmounted:
+            return
         try:
             self.update()
         except Exception:
             pass
+
+    async def _append_remaining_rows(
+        self,
+        tracks: list[Track],
+        *,
+        start_index: int,
+        gen: int,
+        has_file_map: dict[int, bool],
+    ) -> None:
+        current_task = asyncio.current_task()
+        try:
+            idx = start_index
+            for offset in range(0, len(tracks), _ROW_CHUNK_SIZE):
+                await asyncio.sleep(0)
+                if gen != self._load_gen or self._unmounted:
+                    return
+                chunk = tracks[offset:offset + _ROW_CHUNK_SIZE]
+                new_rows = [
+                    self._build_track_row(tr, i, has_file=has_file_map.get(id(tr), False))
+                    for i, tr in enumerate(chunk, idx)
+                ]
+                idx += len(chunk)
+                if gen != self._load_gen or self._unmounted:
+                    return
+                self._list_view.controls.extend(new_rows)
+                try:
+                    self._list_view.update()
+                except Exception:
+                    pass
+        except asyncio.CancelledError:
+            return
+        finally:
+            if self._batch_task is current_task:
+                self._batch_task = None
 
     def _apply_manifest_order(self, tracks: list[Track]) -> list[Track]:
         """Ordena una carpeta descargada según el ``playlist.json``.
@@ -325,6 +443,13 @@ class PlaylistDetailView(ft.Container):
         ordered.extend(t for t in tracks if id(t) not in used)
         return ordered
 
+    @staticmethod
+    def _compute_has_file_map(tracks: list[Track]) -> dict[int, bool]:
+        return {
+            id(tr): bool(tr.source_path and os.path.isfile(tr.source_path))
+            for tr in tracks
+        }
+
     def _match_local_files(self) -> int:
         """Asocia source_path a las pistas que ya existen en el directorio de descargas o carpetas locales."""
         try:
@@ -346,26 +471,36 @@ class PlaylistDetailView(ft.Container):
                     continue
 
             matched = 0
-            for tr in self._tracks:
+            has_file_map: dict[int, bool] = {}
+            for tr in list(self._tracks):
                 if tr.source_path and os.path.isfile(tr.source_path):
                     matched += 1
+                    has_file_map[id(tr)] = True
                     continue
                 stem = _target_stem(tr).lower()
+                found = False
                 for ext in _LOCAL_AUDIO_EXTENSIONS:
                     candidate_name = f"{stem}{ext}".lower()
                     if candidate_name in disk_files:
-                        tr.source_path = disk_files[candidate_name]
-                        matched += 1
-                        break
+                        candidate_path = disk_files[candidate_name]
+                        if os.path.isfile(candidate_path):
+                            tr.source_path = candidate_path
+                            matched += 1
+                            found = True
+                            break
+                has_file_map[id(tr)] = found
+            self._has_file_by_id = has_file_map
             return matched
         except Exception:
+            self._has_file_by_id = {}
             return 0
 
-    def _update_header_play_count(self) -> None:
+    def _update_header_play_count(self, has_file_map: Optional[dict[int, bool]] = None) -> None:
         """Actualiza el botón Reproducir en la cabecera según las pistas disponibles en disco."""
         if self._play_all_btn is None:
             return
-        downloaded = sum(1 for t in self._tracks if t.source_path and os.path.isfile(t.source_path))
+        file_map = has_file_map if has_file_map is not None else self._has_file_by_id
+        downloaded = sum(1 for t in self._tracks if file_map.get(id(t), False))
         total = len(self._tracks)
         if downloaded > 0:
             self._play_all_btn.visible = True
@@ -419,6 +554,7 @@ class PlaylistDetailView(ft.Container):
                 return
 
             if track.source_path and os.path.isfile(track.source_path):
+                self._has_file_by_id[id(track)] = True
                 notify(
                     self._page_ref,
                     f"Descarga lista: {track.artist} — {track.name}",
@@ -486,14 +622,15 @@ class PlaylistDetailView(ft.Container):
         else:
             self._launch(track.source_url or "")
 
-    def _build_track_row(self, track: Track, index: int) -> ft.Container:
+    def _build_track_row(self, track: Track, index: int, *, has_file: Optional[bool] = None) -> ft.Container:
         """Fila Biblioteca: [#][thumb48][título/artista expand3][álbum expand2][dur48][open/play 32].
 
         Misma geometría que SongRow Gestión (spacing 16, ITEM_H) + columna
         álbum. Hover: BG_HOVER + scale 1.01. Click: press scale 0.99 +
         opacidad 0.85 antes de abrir URL o reproducir.
         """
-        has_file = bool(track.source_path and os.path.isfile(track.source_path))
+        if has_file is None:
+            has_file = self._has_file_by_id.get(id(track), False)
 
         thumb = ft.Container(
             width=48, height=48, border_radius=6, bgcolor=SKELETON_DARK, clip_behavior=ft.ClipBehavior.ANTI_ALIAS,

@@ -450,7 +450,7 @@ def _coerce_local_entry(item: str | os.PathLike | tuple[str, str] | tuple[str, s
 _SIDECAR_COVER_NAMES = ("cover.jpg", "folder.jpg", "front.jpg")
 
 
-def _sidecar_data_uri(path: str, *, target_px: int = 300) -> str:
+def _sidecar_data_uri(path: str, *, target_px: int = 96) -> str:
     """Lee un sidecar ``cover.jpg`` y lo devuelve como data URI (o ``""``)."""
     if not path:
         return ""
@@ -470,7 +470,7 @@ def _sidecar_data_uri(path: str, *, target_px: int = 300) -> str:
     return "data:image/jpeg;base64," + base64.b64encode(normalized).decode("ascii")
 
 
-def _extract_embedded_cover(path: str, *, target_px: int = 300) -> str:
+def _extract_embedded_cover(path: str, *, target_px: int = 96) -> str:
     """Portada incrustada como data URI, lista para ``ft.Image``.
 
     ``ft.Image`` acepta URL, asset, base64 o bytes, pero **no** rutas
