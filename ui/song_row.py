@@ -34,7 +34,7 @@ from __future__ import annotations
 
 import asyncio
 import os
-from typing import Callable, Optional
+from typing import Any, Callable, Optional, Sequence
 
 import flet as ft
 
@@ -48,7 +48,14 @@ from ui.tokens import (
     BG_INPUT, BORDER_LIGHT,
     MOTION_HOVER_MS, MOTION_REVEAL_MS, MOTION_SKELETON_MS,
 )
-from ui.widgets import _status_icon, input_border
+from ui.widgets import (
+    ContextMenuAction,
+    _status_icon,
+    build_context_menu_button,
+    input_border,
+    open_external,
+    wrap_with_context_menu,
+)
 
 # Altura fija de fila para cálculos de virtualización
 ITEM_H = 64
@@ -438,6 +445,11 @@ class SongRow(ft.Container):
         *,
         download_busy: bool = False,
         download_done: bool = False,
+        on_play: Callable[[Track], Any] | None = None,
+        on_play_next: Callable[[Track], Any] | None = None,
+        on_add_to_queue: Callable[[Track], Any] | None = None,
+        on_open_external: Callable[[Track], Any] | None = None,
+        extra_actions: Sequence[ContextMenuAction] | None = None,
     ):
         """
         Inicializa una fila de canción con todos sus componentes visuales.
@@ -451,11 +463,21 @@ class SongRow(ft.Container):
             on_download: Callback opcional (track_id: str) -> None para descargar la pista.
             download_busy: True si ya hay una cola de descarga activa.
             download_done: True si la pista ya terminó de descargarse.
+            on_play: Callback opcional para reproducir la pista desde menú contextual.
+            on_play_next: Callback opcional para reproducir siguiente en cola.
+            on_add_to_queue: Callback opcional para añadir a la cola.
+            on_open_external: Callback opcional para abrir la pista en su plataforma.
+            extra_actions: Acciones adicionales para el menú contextual.
         """
         self.track      = track
         self._on_toggle = on_toggle
         self._on_move = on_move
         self._on_download = on_download
+        self._on_play = on_play
+        self._on_play_next = on_play_next
+        self._on_add_to_queue = on_add_to_queue
+        self._on_open_external = on_open_external
+        self._extra_actions = list(extra_actions or ())
         self._index = index
         self._hovered: bool = False
         self._download_busy: bool = bool(download_busy)
@@ -579,6 +601,13 @@ class SongRow(ft.Container):
             animate=ft.Animation(MOTION_HOVER_MS, ft.AnimationCurve.EASE_OUT),
         )
         self._sync_status_cell()
+        self._menu_btn = build_context_menu_button(
+            self.context_actions,
+            tooltip="Opciones de pista",
+            width=28,
+            height=28,
+            icon_size=16,
+        )
         row_content = ft.Row(
             controls=[
                 ft.Container(content=num_label, width=32, alignment=ft.Alignment.CENTER),
@@ -594,6 +623,7 @@ class SongRow(ft.Container):
                 ft.Container(content=dur_text,          width=48, alignment=ft.Alignment.CENTER),
                 self._status_cell,
                 ft.Container(content=self._chk,         width=32, alignment=ft.Alignment.CENTER),
+                self._menu_btn,
             ],
             spacing=16,
             vertical_alignment=ft.CrossAxisAlignment.CENTER,
@@ -607,8 +637,75 @@ class SongRow(ft.Container):
             bgcolor=BG_LIST,
             animate=ft.Animation(MOTION_HOVER_MS, ft.AnimationCurve.EASE_OUT),
             on_hover=self._on_hover,
-            content=row_content,
+            content=wrap_with_context_menu(
+                row_content,
+                self.context_actions,
+                title=track.name,
+                get_page=lambda: getattr(self, "page", None),
+            ),
         )
+
+    def context_actions(self) -> list[ContextMenuAction]:
+        """Construye las acciones contextuales disponibles para la canción."""
+        tr = self.track
+        actions: list[ContextMenuAction] = []
+        if self._on_play is not None:
+            actions.append(
+                ContextMenuAction(
+                    "Reproducir",
+                    icon=PIcons.PLAY,
+                    on_click=lambda: self._on_play(tr),
+                )
+            )
+        if self._on_play_next is not None:
+            actions.append(
+                ContextMenuAction(
+                    "Reproducir siguiente",
+                    icon=PIcons.SKIP_FORWARD,
+                    on_click=lambda: self._on_play_next(tr),
+                )
+            )
+        if self._on_add_to_queue is not None:
+            actions.append(
+                ContextMenuAction(
+                    "Añadir a la cola",
+                    icon=PIcons.QUEUE,
+                    on_click=lambda: self._on_add_to_queue(tr),
+                )
+            )
+        if self._on_download is not None:
+            actions.append(
+                ContextMenuAction(
+                    "Ya descargada" if self._download_done else "Descargar canción",
+                    icon=PIcons.DOWNLOAD_SIMPLE,
+                    on_click=lambda: self._on_download(tr.id),
+                    disabled=self._download_busy or self._download_done,
+                )
+            )
+        if self._on_open_external is not None or tr.source_url:
+            def _open_ext() -> None:
+                if self._on_open_external is not None:
+                    self._on_open_external(tr)
+                else:
+                    open_external(getattr(self, "page", None), tr.source_url or "")
+
+            actions.append(
+                ContextMenuAction(
+                    "Abrir en plataforma",
+                    icon=PIcons.ARROW_SQUARE_OUT,
+                    on_click=_open_ext,
+                )
+            )
+        actions.append(
+            ContextMenuAction(
+                "Deseleccionar" if tr.selected else "Seleccionar",
+                icon=PIcons.CIRCLE if tr.selected else PIcons.CHECK_CIRCLE,
+                on_click=lambda: self._on_toggle(tr.id),
+                divider_before=bool(actions),
+            )
+        )
+        actions.extend(self._extra_actions)
+        return actions
 
     def _handle_download_click(self, _e=None) -> None:
         if self._download_busy or self._on_download is None:
@@ -717,6 +814,10 @@ class SongRow(ft.Container):
         if status_changed or busy_changed or done_changed:
             self._sync_status_cell()
             dirty = True
+
+        if dirty:
+            from ui.widgets import build_popup_menu_items
+            self._menu_btn.items = build_popup_menu_items(self.context_actions())
 
         if dirty and notify:
             self.update()

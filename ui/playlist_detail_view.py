@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+import random
 from pathlib import Path
 from typing import Callable, Optional
 
@@ -25,10 +26,19 @@ from ui.icons import PIcons, app_icon, app_icon_button
 from ui.song_row import ITEM_H, LibrarySkeletonRow, _thumb_content_for
 from ui.tokens import (
     ACCENT, BG_HOVER, BG_LIST, BG_SURFACE, BORDER_LIGHT, BORDER_MUTED, BORDER_ROW,
-    SKELETON_DARK, TEXT_DIM, TEXT_MUTED, TEXT_PRIMARY,
+    RADIUS_INPUT, SKELETON_DARK, TEXT_DIM, TEXT_MUTED, TEXT_PRIMARY,
     MOTION_HOVER_MS,
 )
-from ui.widgets import _ghost_btn, _primary_btn, app_text, notify, open_external
+from ui.widgets import (
+    ContextMenuAction,
+    _ghost_btn,
+    _primary_btn,
+    app_text,
+    build_context_menu_button,
+    notify,
+    open_external,
+    wrap_with_context_menu,
+)
 
 _INITIAL_ROW_BATCH = 40
 _ROW_CHUNK_SIZE = 40
@@ -60,6 +70,9 @@ class PlaylistDetailView(ft.Container):
         self._batch_task: Optional[asyncio.Task] = None
         self._init_reload_task: Optional[asyncio.Task] = None
         self._has_file_by_id: dict[int, bool] = {}
+        self._selection_mode: bool = False
+        self._selected_ids: set[int] = set()
+        self._row_checkboxes: dict[int, ft.Checkbox] = {}
 
         # header
         cover_url = summary.cover_urls[0] if summary.cover_urls else ""
@@ -74,6 +87,15 @@ class PlaylistDetailView(ft.Container):
         self._count = app_text(f"{count_label} • {summary.platform}", size=11, color=TEXT_DIM, font_family=mono_family("light"))
 
         self._open_btn = _ghost_btn("Ver playlist en plataforma", PIcons.ARROW_SQUARE_OUT, lambda e: self._launch(summary.external_url), width=260, height=40) if summary.external_url else ft.Container()
+        self._shuffle_btn = _ghost_btn("Aleatorio", PIcons.SHUFFLE, self._on_shuffle_play, height=40)
+        self._shuffle_btn.disabled = True
+        self._select_mode_btn = _ghost_btn(
+            "Seleccionar",
+            PIcons.CHECK_CIRCLE,
+            lambda _e: self._toggle_selection_mode(),
+            height=40,
+            disabled=True,
+        )
 
         if self._is_local:
             self._play_all_btn = _primary_btn("Reproducir", PIcons.PLAY, self._on_play_all, height=40)
@@ -85,6 +107,8 @@ class PlaylistDetailView(ft.Container):
             self._create_btn.disabled = True
             actions = [
                 self._play_all_btn,
+                self._shuffle_btn,
+                self._select_mode_btn,
                 self._create_btn,
                 _ghost_btn("Abrir carpeta", PIcons.FOLDER_OPEN, lambda e: self._open_folder(), height=40),
                 _ghost_btn("Quitar de la Biblioteca", PIcons.TRASH, lambda e: on_remove() if on_remove else None, height=40),
@@ -94,9 +118,10 @@ class PlaylistDetailView(ft.Container):
             self._create_btn = None
             self._play_all_btn = _primary_btn("Reproducir", PIcons.PLAY, self._on_play_all, height=40)
             self._play_all_btn.visible = False
+            self._shuffle_btn.visible = False
             self._download_btn = _primary_btn("Descargar playlist", PIcons.DOWNLOAD_SIMPLE, self._on_download, height=40)
             self._download_btn.disabled = True
-            actions = [self._play_all_btn, self._download_btn]
+            actions = [self._play_all_btn, self._shuffle_btn, self._download_btn, self._select_mode_btn]
         if summary.external_url:
             actions.append(self._open_btn)
         actions_row = ft.Row(controls=actions, spacing=8, wrap=True)
@@ -104,6 +129,56 @@ class PlaylistDetailView(ft.Container):
         header = ft.Container(
             bgcolor=BG_SURFACE, border=ft.Border.all(0.8, BORDER_LIGHT), border_radius=12, padding=ft.Padding.all(12),
             content=ft.Row(controls=[cover, ft.Column(controls=[self._title, self._count, self._desc, actions_row], spacing=6, expand=True, alignment=ft.MainAxisAlignment.CENTER)], spacing=12),
+        )
+
+        # Barra de acciones por lote (modo selección múltiple)
+        self._select_all_chk = ft.Checkbox(
+            value=False,
+            fill_color={
+                ft.ControlState.SELECTED: ACCENT,
+                ft.ControlState.DEFAULT: BG_SURFACE,
+            },
+            check_color=TEXT_PRIMARY,
+            border_side=ft.BorderSide(1.5, TEXT_DIM),
+            on_change=self._on_select_all_change,
+        )
+        self._selected_count_label = app_text(
+            "0 seleccionadas", size=12, color=TEXT_PRIMARY, font_family=FONT_HEADLINE,
+        )
+        self._batch_play_btn = _primary_btn("Reproducir", PIcons.PLAY, self._on_batch_play, height=34)
+        self._batch_play_btn.disabled = True
+        self._batch_queue_btn = _ghost_btn("A la cola", PIcons.QUEUE, self._on_batch_enqueue, height=34, disabled=True)
+        self._batch_download_btn = _ghost_btn("Descargar", PIcons.DOWNLOAD_SIMPLE, self._on_batch_download, height=34, disabled=True)
+        self._batch_cancel_btn = app_icon_button(
+            PIcons.X,
+            size=16,
+            icon_color=TEXT_MUTED,
+            tooltip="Salir de selección",
+            width=30,
+            height=30,
+            on_click=lambda _e: self.set_selection_mode(False),
+        )
+        self._batch_bar = ft.Container(
+            visible=False,
+            bgcolor=BG_SURFACE,
+            border=ft.Border.all(0.8, ACCENT),
+            border_radius=RADIUS_INPUT,
+            padding=ft.Padding.symmetric(horizontal=12, vertical=6),
+            content=ft.Row(
+                controls=[
+                    self._select_all_chk,
+                    app_text("Todo", size=11, color=TEXT_MUTED, font_family=FONT_HEADLINE),
+                    self._selected_count_label,
+                    ft.Container(expand=True),
+                    self._batch_play_btn,
+                    self._batch_queue_btn,
+                    self._batch_download_btn,
+                    self._batch_cancel_btn,
+                ],
+                spacing=8,
+                vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                wrap=True,
+            ),
         )
 
         # list area — skeletons dinámicos según altura disponible (paridad Gestión)
@@ -124,6 +199,7 @@ class PlaylistDetailView(ft.Container):
         body = ft.Column(controls=[
             ft.Row(controls=[app_icon_button(PIcons.ARROW_LEFT, size=16, icon_color=TEXT_MUTED, on_click=lambda e: on_back(), width=28, height=28), app_text("Volver", size=12, color=TEXT_MUTED)], spacing=4),
             header,
+            self._batch_bar,
             ft.Divider(height=1, color=BORDER_MUTED),
             ft.Stack(controls=[self._skeleton_wrap, self._list_view, self._error_box], expand=True),
         ], spacing=10, expand=True)
@@ -280,6 +356,7 @@ class PlaylistDetailView(ft.Container):
         self._load_gen += 1
         gen = self._load_gen
         self._cancel_batch_task()
+        self._reset_selection_state()
         self._loading = True
         self._error = ""
         self._sync_skeleton_count()
@@ -496,7 +573,7 @@ class PlaylistDetailView(ft.Container):
             return 0
 
     def _update_header_play_count(self, has_file_map: Optional[dict[int, bool]] = None) -> None:
-        """Actualiza el botón Reproducir en la cabecera según las pistas disponibles en disco."""
+        """Actualiza el botón Reproducir y Aleatorio en la cabecera según las pistas disponibles en disco."""
         if self._play_all_btn is None:
             return
         file_map = has_file_map if has_file_map is not None else self._has_file_by_id
@@ -505,6 +582,8 @@ class PlaylistDetailView(ft.Container):
         if downloaded > 0:
             self._play_all_btn.visible = True
             self._play_all_btn.disabled = False
+            self._shuffle_btn.visible = True
+            self._shuffle_btn.disabled = False
             try:
                 txt = "Reproducir" if downloaded == total or self._is_local else f"Reproducir ({downloaded})"
                 if hasattr(self._play_all_btn.content, "value"):
@@ -516,10 +595,13 @@ class PlaylistDetailView(ft.Container):
         else:
             if not self._is_local:
                 self._play_all_btn.visible = False
+                self._shuffle_btn.visible = False
             else:
                 self._play_all_btn.disabled = True
+                self._shuffle_btn.disabled = True
         if self._create_btn is not None:
             self._create_btn.disabled = total == 0
+        self._select_mode_btn.disabled = total == 0
 
     def _download_single_track(self, track: Track, action_container: ft.Container) -> None:
         """Descarga una pista individual y al completarse habilita su reproducción inmediata."""
@@ -588,28 +670,312 @@ class PlaylistDetailView(ft.Container):
 
     def _on_play_all(self, _e=None) -> None:
         """Reproduce todas las pistas locales disponibles en el reproductor."""
-        paths = [t.source_path for t in self._tracks if t.source_path and os.path.isfile(t.source_path)]
-        if not paths:
+        items = [
+            (t.source_path, t)
+            for t in self._tracks
+            if t.source_path and os.path.isfile(t.source_path)
+        ]
+        if not items:
             notify(self._page_ref, "No hay archivos disponibles en disco", kind="error")
             return
         if self.player_bar is not None and hasattr(self.player_bar, "play_files"):
-            self.player_bar.play_files(paths, start_index=0)
-            notify(self._page_ref, f"Reproduciendo {len(paths)} canciones")
+            self.player_bar.play_files(items, start_index=0)
+            notify(self._page_ref, f"Reproduciendo {len(items)} canciones")
         elif self.player_bar is not None and hasattr(self.player_bar, "play_file"):
-            self.player_bar.play_file(paths[0])
+            self.player_bar.play_file(items[0][0])
+
+    def _on_shuffle_play(self, _e=None) -> None:
+        """Activa el modo aleatorio y reproduce desde una pista al azar."""
+        playable_tracks = [
+            t for t in self._tracks if t.source_path and os.path.isfile(t.source_path)
+        ]
+        if not playable_tracks:
+            notify(self._page_ref, "No hay archivos disponibles en disco", kind="error")
+            return
+        pb = self.player_bar
+        if pb is None:
+            return
+        q = getattr(pb, "queue", None)
+        if q is not None and hasattr(q, "shuffle_from_context") and hasattr(pb, "_load_and_play_current"):
+            q.shuffle_from_context(playable_tracks)
+            setter = getattr(settings_store, "set_shuffle", None)
+            if callable(setter):
+                try:
+                    setter(True)
+                except Exception:
+                    pass
+            pb._load_and_play_current()
+            notify(self._page_ref, f"Reproduciendo {len(playable_tracks)} canciones en aleatorio")
+            return
+        if q is not None and hasattr(q, "set_shuffle"):
+            if not getattr(q, "shuffle", False):
+                q.set_shuffle(True)
+            setter = getattr(settings_store, "set_shuffle", None)
+            if callable(setter):
+                try:
+                    setter(True)
+                except Exception:
+                    pass
+        items = [(t.source_path, t) for t in playable_tracks]
+        start_idx = random.randrange(len(items))
+        if hasattr(pb, "play_files"):
+            pb.play_files(items, start_index=start_idx)
+            notify(self._page_ref, f"Reproduciendo {len(items)} canciones en aleatorio")
+        elif hasattr(pb, "play_file"):
+            pb.play_file(items[start_idx][0], track=items[start_idx][1])
+
+    # ── Selección múltiple y acciones por lote ─────────────────────────
+
+    def _reset_selection_state(self) -> None:
+        self._selection_mode = False
+        self._selected_ids.clear()
+        self._row_checkboxes.clear()
+        if hasattr(self, "_batch_bar"):
+            self._batch_bar.visible = False
+        if hasattr(self, "_select_all_chk"):
+            self._select_all_chk.value = False
+        if hasattr(self, "_select_mode_btn"):
+            self._select_mode_btn.disabled = True
+        self._sync_selection_ui(notify_ui=False)
+
+    def selected_tracks(self) -> list[Track]:
+        """Devuelve las pistas seleccionadas preservando su orden en la lista."""
+        return [t for t in self._tracks if id(t) in self._selected_ids]
+
+    def set_selection_mode(self, enabled: bool) -> None:
+        """Activa o desactiva el modo de selección múltiple."""
+        target = bool(enabled) and bool(self._tracks)
+        self._selection_mode = target
+        if not target:
+            self._selected_ids.clear()
+        for tid, chk in self._row_checkboxes.items():
+            chk.visible = target
+            chk.value = tid in self._selected_ids if target else False
+        self._batch_bar.visible = target
+        self._sync_selection_ui(notify_ui=True)
+
+    def _toggle_selection_mode(self) -> None:
+        self.set_selection_mode(not self._selection_mode)
+
+    def toggle_track_selection(self, track: Track) -> None:
+        """Alterna la selección de una pista individual."""
+        tid = id(track)
+        if tid in self._selected_ids:
+            self._selected_ids.remove(tid)
+        else:
+            self._selected_ids.add(tid)
+        chk = self._row_checkboxes.get(tid)
+        if chk is not None:
+            chk.value = tid in self._selected_ids
+        self._sync_selection_ui(notify_ui=True)
+
+    def _start_selection_with(self, track: Track) -> None:
+        if not self._selection_mode:
+            self.set_selection_mode(True)
+        if id(track) not in self._selected_ids:
+            self.toggle_track_selection(track)
+
+    def select_all(self, selected: bool = True) -> None:
+        """Selecciona o deselecciona todas las pistas cargadas."""
+        if selected:
+            self._selected_ids = {id(t) for t in self._tracks}
+        else:
+            self._selected_ids.clear()
+        for tid, chk in self._row_checkboxes.items():
+            chk.value = tid in self._selected_ids
+        self._sync_selection_ui(notify_ui=True)
+
+    def _on_select_all_change(self, e) -> None:
+        self.select_all(bool(getattr(e, "control", None) and e.control.value))
+
+    def _sync_selection_ui(self, *, notify_ui: bool = False) -> None:
+        if not hasattr(self, "_selected_count_label"):
+            return
+        selected = self.selected_tracks()
+        count = len(selected)
+        total = len(self._tracks)
+        self._selected_count_label.value = (
+            "1 seleccionada" if count == 1 else f"{count} seleccionadas"
+        )
+        self._select_all_chk.value = total > 0 and count == total
+        has_playable = any(
+            t.source_path and os.path.isfile(t.source_path) for t in selected
+        )
+        self._batch_play_btn.disabled = not has_playable
+        self._batch_queue_btn.disabled = not has_playable
+        self._batch_download_btn.disabled = count == 0 or self.app_state is None
+        if notify_ui:
+            try:
+                self.update()
+            except Exception:
+                pass
+
+    def _on_batch_play(self, _e=None) -> None:
+        items = [
+            (t.source_path, t)
+            for t in self.selected_tracks()
+            if t.source_path and os.path.isfile(t.source_path)
+        ]
+        if not items:
+            notify(self._page_ref, "Las pistas seleccionadas no están en disco", kind="error")
+            return
+        if self.player_bar is not None and hasattr(self.player_bar, "play_files"):
+            self.player_bar.play_files(items, start_index=0)
+            notify(self._page_ref, f"Reproduciendo {len(items)} seleccionadas")
+        elif self.player_bar is not None and hasattr(self.player_bar, "play_file"):
+            self.player_bar.play_file(items[0][0], track=items[0][1])
+
+    def _on_batch_enqueue(self, _e=None) -> None:
+        items = [
+            (t.source_path, t)
+            for t in self.selected_tracks()
+            if t.source_path and os.path.isfile(t.source_path)
+        ]
+        if not items:
+            notify(self._page_ref, "Las pistas seleccionadas no están en disco", kind="error")
+            return
+        pb = self.player_bar
+        if pb is None or not hasattr(pb, "enqueue_file"):
+            return
+        added = 0
+        for path, tr in items:
+            if pb.enqueue_file(path, track=tr, play_now=False):
+                added += 1
+        if added:
+            notify(self._page_ref, f"{added} canciones añadidas a la cola")
+
+    def _on_batch_download(self, _e=None) -> None:
+        st = self.app_state
+        selected = self.selected_tracks()
+        if st is None or not selected:
+            return
+        if st.download_state == TransferState.RUNNING:
+            notify(self._page_ref, "Ya hay una descarga en curso", kind="error")
+            return
+        try:
+            st.download_tracks(selected, destination_dir=settings_store.get_download_dir())
+        except Exception as exc:  # noqa: BLE001
+            notify(self._page_ref, f"No se pudo iniciar la descarga: {exc}", kind="error")
+            return
+        cb = self._on_open_downloads
+        notify(
+            self._page_ref,
+            f"Descargando {len(selected)} pistas seleccionadas",
+            action="Ver" if cb else None,
+            on_action=(lambda _e: cb()) if cb else None,
+        )
+
+    # ── Acciones contextuales por pista ────────────────────────────────
+
+    def _enqueue_single_track(self, track: Track) -> None:
+        if not track.source_path or not os.path.isfile(track.source_path):
+            notify(self._page_ref, "Archivo no encontrado en disco", kind="error")
+            return
+        pb = self.player_bar
+        if pb is not None and hasattr(pb, "enqueue_file"):
+            if pb.enqueue_file(track.source_path, track=track, play_now=False):
+                notify(self._page_ref, f"Añadida a la cola: {track.name}")
+
+    def _play_next_track(self, track: Track) -> None:
+        if not track.source_path or not os.path.isfile(track.source_path):
+            notify(self._page_ref, "Archivo no encontrado en disco", kind="error")
+            return
+        pb = self.player_bar
+        if pb is None or not hasattr(pb, "enqueue_file"):
+            return
+        q = getattr(pb, "queue", None)
+        had_current = q is not None and getattr(q, "current", None) is not None
+        if not pb.enqueue_file(track.source_path, track=track, play_now=False):
+            return
+        if had_current and q is not None and hasattr(pb, "move_queue_item"):
+            abs_target = os.path.abspath(track.source_path)
+            ordered = q.ordered_tracks()
+            idx = next(
+                (i for i, item in enumerate(ordered) if item.path == abs_target or item.track is track),
+                -1,
+            )
+            cur_pos = getattr(q, "pos", -1)
+            if idx >= 0 and cur_pos >= 0 and idx != cur_pos and idx != cur_pos + 1:
+                dest = cur_pos + 1 if idx > cur_pos else cur_pos
+                pb.move_queue_item(idx, dest)
+        notify(self._page_ref, f"Siguiente en cola: {track.name}")
+
+    def _track_context_actions(self, track: Track, index: int, action_icon: ft.Container | None = None) -> list[ContextMenuAction]:
+        has_disk = bool(track.source_path and os.path.isfile(track.source_path))
+        actions: list[ContextMenuAction] = []
+        if has_disk:
+            actions.extend([
+                ContextMenuAction(
+                    "Reproducir",
+                    icon=PIcons.PLAY,
+                    on_click=lambda: self._play_single_track(track, index),
+                ),
+                ContextMenuAction(
+                    "Reproducir siguiente",
+                    icon=PIcons.SKIP_FORWARD,
+                    on_click=lambda: self._play_next_track(track),
+                ),
+                ContextMenuAction(
+                    "Añadir a la cola",
+                    icon=PIcons.QUEUE,
+                    on_click=lambda: self._enqueue_single_track(track),
+                ),
+                ContextMenuAction(
+                    "Mostrar en carpeta",
+                    icon=PIcons.FOLDER_OPEN,
+                    on_click=lambda: open_in_file_manager(track.source_path),
+                ),
+            ])
+        else:
+            actions.append(
+                ContextMenuAction(
+                    "Descargar canción",
+                    icon=PIcons.DOWNLOAD_SIMPLE,
+                    on_click=(lambda: self._download_single_track(track, action_icon)) if action_icon is not None else None,
+                    disabled=self.app_state is None or action_icon is None,
+                )
+            )
+        if track.source_url:
+            actions.append(
+                ContextMenuAction(
+                    "Abrir en plataforma",
+                    icon=PIcons.ARROW_SQUARE_OUT,
+                    on_click=lambda: self._launch(track.source_url or ""),
+                )
+            )
+        if self._selection_mode:
+            is_sel = id(track) in self._selected_ids
+            actions.append(
+                ContextMenuAction(
+                    "Deseleccionar" if is_sel else "Seleccionar",
+                    icon=PIcons.CIRCLE if is_sel else PIcons.CHECK_CIRCLE,
+                    on_click=lambda: self.toggle_track_selection(track),
+                    divider_before=bool(actions),
+                )
+            )
+        else:
+            actions.append(
+                ContextMenuAction(
+                    "Seleccionar varias...",
+                    icon=PIcons.CHECK_CIRCLE,
+                    on_click=lambda: self._start_selection_with(track),
+                    divider_before=bool(actions),
+                )
+            )
+        return actions
 
     def _play_single_track(self, track: Track, index: int) -> None:
         """Reproduce una sola pista local en el reproductor encolando la lista."""
         if not track.source_path or not os.path.isfile(track.source_path):
             notify(self._page_ref, "Archivo no encontrado en disco", kind="error")
             return
-        paths = [t.source_path for t in self._tracks if t.source_path and os.path.isfile(t.source_path)]
-        if self.player_bar is not None and hasattr(self.player_bar, "play_files") and paths:
+        items = [(t.source_path, t) for t in self._tracks if t.source_path and os.path.isfile(t.source_path)]
+        if self.player_bar is not None and hasattr(self.player_bar, "play_files") and items:
             try:
-                start_idx = paths.index(track.source_path)
-            except ValueError:
-                start_idx = max(0, min(len(paths) - 1, index - 1))
-            self.player_bar.play_files(paths, start_index=start_idx)
+                start_idx = next(i for i, (p, _t) in enumerate(items) if p == track.source_path)
+            except StopIteration:
+                start_idx = max(0, min(len(items) - 1, index - 1))
+            self.player_bar.play_files(items, start_index=start_idx)
         elif self.player_bar is not None and hasattr(self.player_bar, "play_file"):
             self.player_bar.play_file(track.source_path)
 
@@ -623,7 +989,7 @@ class PlaylistDetailView(ft.Container):
             self._launch(track.source_url or "")
 
     def _build_track_row(self, track: Track, index: int, *, has_file: Optional[bool] = None) -> ft.Container:
-        """Fila Biblioteca: [#][thumb48][título/artista expand3][álbum expand2][dur48][open/play 32].
+        """Fila Biblioteca: [chk?][#][thumb48][título/artista expand3][álbum expand2][dur48][open/play 32][⋮ 28].
 
         Misma geometría que SongRow Gestión (spacing 16, ITEM_H) + columna
         álbum. Hover: BG_HOVER + scale 1.01. Click: press scale 0.99 +
@@ -640,6 +1006,19 @@ class PlaylistDetailView(ft.Container):
         artist = ft.Text(track.artist, size=11, color=TEXT_MUTED, font_family=font_family_for(track.artist), max_lines=1, overflow=ft.TextOverflow.ELLIPSIS)
         album = ft.Text(track.album or "—", size=11, color=TEXT_MUTED, font_family=font_family_for(track.album or ""), max_lines=1, overflow=ft.TextOverflow.ELLIPSIS)
         dur = ft.Text(track.duration, size=11, color=TEXT_DIM, font_family=mono_family("light"))
+
+        chk = ft.Checkbox(
+            value=id(track) in self._selected_ids,
+            visible=self._selection_mode,
+            fill_color={
+                ft.ControlState.SELECTED: ACCENT,
+                ft.ControlState.DEFAULT: BG_SURFACE,
+            },
+            check_color=TEXT_PRIMARY,
+            border_side=ft.BorderSide(1.5, TEXT_DIM),
+            on_change=lambda _e, tr=track: self.toggle_track_selection(tr),
+        )
+        self._row_checkboxes[id(track)] = chk
 
         action_icon = ft.Container(
             content=app_icon(
@@ -664,20 +1043,37 @@ class PlaylistDetailView(ft.Container):
 
         action_icon.on_click = _on_action_click
 
+        menu_btn = build_context_menu_button(
+            lambda tr=track, idx=index, ic=action_icon: self._track_context_actions(tr, idx, ic),
+            tooltip="Opciones de pista",
+            width=28,
+            height=28,
+            icon_size=16,
+        )
+
+        row_inner = ft.Row(controls=[
+            chk,
+            ft.Container(content=ft.Text(str(index), size=11, color=TEXT_MUTED, font_family=mono_family("light")), width=28, alignment=ft.Alignment.CENTER),
+            thumb,
+            ft.Column(controls=[title, artist], spacing=1, expand=3, tight=True, alignment=ft.MainAxisAlignment.CENTER),
+            ft.Container(content=album, expand=2, alignment=ft.Alignment.CENTER_LEFT),
+            ft.Container(content=dur, width=48, alignment=ft.Alignment.CENTER),
+            action_icon,
+            menu_btn,
+        ], spacing=16, vertical_alignment=ft.CrossAxisAlignment.CENTER)
+
         row = ft.Container(
             height=ITEM_H, bgcolor=BG_LIST, border=ft.Border.only(bottom=ft.BorderSide(0.5, BORDER_ROW)), padding=ft.Padding.symmetric(horizontal=12, vertical=8),
             ink=True,
             animate=ft.Animation(MOTION_HOVER_MS, ft.AnimationCurve.EASE_OUT),
             animate_scale=ft.Animation(MOTION_HOVER_MS, ft.AnimationCurve.EASE_OUT),
             animate_opacity=ft.Animation(MOTION_HOVER_MS, ft.AnimationCurve.EASE_OUT),
-            content=ft.Row(controls=[
-                ft.Container(content=ft.Text(str(index), size=11, color=TEXT_MUTED, font_family=mono_family("light")), width=28, alignment=ft.Alignment.CENTER),
-                thumb,
-                ft.Column(controls=[title, artist], spacing=1, expand=3, tight=True, alignment=ft.MainAxisAlignment.CENTER),
-                ft.Container(content=album, expand=2, alignment=ft.Alignment.CENTER_LEFT),
-                ft.Container(content=dur, width=48, alignment=ft.Alignment.CENTER),
-                action_icon,
-            ], spacing=16, vertical_alignment=ft.CrossAxisAlignment.CENTER),
+            content=wrap_with_context_menu(
+                row_inner,
+                lambda tr=track, idx=index, ic=action_icon: self._track_context_actions(tr, idx, ic),
+                title=track.name,
+                get_page=lambda: self._page_ref,
+            ),
         )
 
         def _on_hover(e: ft.HoverEvent) -> None:
@@ -690,6 +1086,10 @@ class PlaylistDetailView(ft.Container):
                 pass
 
         def _on_click(_e) -> None:
+            if self._selection_mode:
+                self.toggle_track_selection(track)
+                return
+
             async def _press_and_act() -> None:
                 try:
                     row.scale = 0.99

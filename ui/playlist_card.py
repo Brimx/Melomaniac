@@ -5,15 +5,24 @@ Reusa tokens OLED, Shimmer opcional, sin controles raros.
 
 from __future__ import annotations
 
+from typing import Any, Callable, Optional, Sequence
+
 import flet as ft
 
 from core.library_models import LibraryLoadState, PlaylistSummary
 from ui.fonts import FONT_HEADLINE, FONT_HEADLINE_BOLD, FONT_TEXT, font_family_for
+from ui.icons import PIcons
 from ui.song_row import _thumb_content_for
 from ui.tokens import (
     ACCENT, BG_HOVER, BG_LIST, BG_SURFACE, BORDER_LIGHT, BORDER_MUTED,
-    SKELETON_DARK, TEXT_DIM, TEXT_MUTED, TEXT_PRIMARY,
+    ERROR_COL, SKELETON_DARK, TEXT_DIM, TEXT_MUTED, TEXT_PRIMARY, WARNING,
     MOTION_HOVER_MS,
+)
+from ui.widgets import (
+    ContextMenuAction,
+    build_context_menu_button,
+    open_external,
+    wrap_with_context_menu,
 )
 
 
@@ -36,7 +45,30 @@ def _cover_grid(urls: list[str], size: int = 140) -> ft.Control:
 
 
 class PlaylistCard(ft.Container):
-    def __init__(self, summary: PlaylistSummary, state: LibraryLoadState = LibraryLoadState.READY, on_tap=None):
+    def __init__(
+        self,
+        summary: PlaylistSummary,
+        state: LibraryLoadState = LibraryLoadState.READY,
+        on_tap=None,
+        *,
+        on_play: Optional[Callable[[PlaylistSummary], Any]] = None,
+        on_shuffle_play: Optional[Callable[[PlaylistSummary], Any]] = None,
+        on_add_to_queue: Optional[Callable[[PlaylistSummary], Any]] = None,
+        on_download: Optional[Callable[[PlaylistSummary], Any]] = None,
+        on_open_external: Optional[Callable[[PlaylistSummary], Any]] = None,
+        on_remove: Optional[Callable[[PlaylistSummary], Any]] = None,
+        extra_actions: Optional[Sequence[ContextMenuAction]] = None,
+    ):
+        self.summary = summary
+        self._on_tap = on_tap
+        self._on_play = on_play
+        self._on_shuffle_play = on_shuffle_play
+        self._on_add_to_queue = on_add_to_queue
+        self._on_download = on_download
+        self._on_open_external = on_open_external
+        self._on_remove = on_remove
+        self._extra_actions = list(extra_actions or ())
+
         cover: ft.Control
         if len(summary.cover_urls) >= 2:
             cover = _cover_grid(summary.cover_urls[:4])
@@ -45,9 +77,9 @@ class PlaylistCard(ft.Container):
 
         badge = None
         if state == LibraryLoadState.STALE:
-            badge = ft.Container(content=ft.Text("CACHÉ", size=8, color=TEXT_PRIMARY, font_family=FONT_HEADLINE_BOLD), bgcolor=ft.Colors.with_opacity(0.85, "#FF8A3B"), padding=ft.Padding.symmetric(horizontal=6, vertical=2), border_radius=6)
+            badge = ft.Container(content=ft.Text("CACHÉ", size=8, color=TEXT_PRIMARY, font_family=FONT_HEADLINE_BOLD), bgcolor=ft.Colors.with_opacity(0.85, WARNING), padding=ft.Padding.symmetric(horizontal=6, vertical=2), border_radius=6)
         elif state == LibraryLoadState.ERROR:
-            badge = ft.Container(content=ft.Text("ERROR", size=8, color=TEXT_PRIMARY, font_family=FONT_HEADLINE_BOLD), bgcolor=ft.Colors.with_opacity(0.85, "#FF3D4D"), padding=ft.Padding.symmetric(horizontal=6, vertical=2), border_radius=6)
+            badge = ft.Container(content=ft.Text("ERROR", size=8, color=TEXT_PRIMARY, font_family=FONT_HEADLINE_BOLD), bgcolor=ft.Colors.with_opacity(0.85, ERROR_COL), padding=ft.Padding.symmetric(horizontal=6, vertical=2), border_radius=6)
 
         name = ft.Text(summary.name, size=13, color=TEXT_PRIMARY, font_family=font_family_for(summary.name, "semibold"), max_lines=2, overflow=ft.TextOverflow.ELLIPSIS)
         count = f"{summary.track_count} canciones" if summary.track_count is not None else "Conteo al abrir"
@@ -56,7 +88,28 @@ class PlaylistCard(ft.Container):
         # stack cover + badge top-right
         cover_stack = ft.Stack(controls=[cover] + ([ft.Container(content=badge, alignment=ft.Alignment.TOP_RIGHT, padding=ft.Padding.all(6))] if badge else []))
 
-        content = ft.Column(controls=[cover_stack, name, meta], spacing=6, tight=True)
+        actions = self.context_actions()
+        self._menu_btn = build_context_menu_button(
+            self.context_actions,
+            tooltip="Opciones de playlist",
+            width=24,
+            height=24,
+            icon_size=15,
+            visible=bool(actions),
+        )
+        footer = ft.Row(
+            controls=[ft.Container(content=meta, expand=True), self._menu_btn],
+            spacing=4,
+            vertical_alignment=ft.CrossAxisAlignment.CENTER,
+        )
+
+        col = ft.Column(controls=[cover_stack, name, footer], spacing=6, tight=True)
+        content = wrap_with_context_menu(
+            col,
+            self.context_actions,
+            title=summary.name,
+            get_page=lambda: getattr(self, "page", None),
+        )
         super().__init__(
             content=content,
             width=160,
@@ -69,6 +122,77 @@ class PlaylistCard(ft.Container):
             animate=ft.Animation(MOTION_HOVER_MS, ft.AnimationCurve.EASE_OUT),
             on_hover=self._on_hover,
         )
+
+    def context_actions(self) -> list[ContextMenuAction]:
+        """Construye las acciones contextuales disponibles para esta tarjeta."""
+        summary = self.summary
+        actions: list[ContextMenuAction] = []
+        if self._on_tap is not None:
+            actions.append(
+                ContextMenuAction(
+                    "Abrir playlist",
+                    icon=PIcons.FOLDER_OPEN,
+                    on_click=lambda: self._on_tap(summary),
+                )
+            )
+        if self._on_play is not None:
+            actions.append(
+                ContextMenuAction(
+                    "Reproducir",
+                    icon=PIcons.PLAY,
+                    on_click=lambda: self._on_play(summary),
+                )
+            )
+        if self._on_shuffle_play is not None:
+            actions.append(
+                ContextMenuAction(
+                    "Aleatorio",
+                    icon=PIcons.SHUFFLE,
+                    on_click=lambda: self._on_shuffle_play(summary),
+                )
+            )
+        if self._on_add_to_queue is not None:
+            actions.append(
+                ContextMenuAction(
+                    "Añadir a la cola",
+                    icon=PIcons.QUEUE,
+                    on_click=lambda: self._on_add_to_queue(summary),
+                )
+            )
+        if self._on_download is not None:
+            actions.append(
+                ContextMenuAction(
+                    "Descargar playlist",
+                    icon=PIcons.DOWNLOAD_SIMPLE,
+                    on_click=lambda: self._on_download(summary),
+                )
+            )
+        if self._on_open_external is not None or summary.external_url:
+            def _open_ext() -> None:
+                if self._on_open_external is not None:
+                    self._on_open_external(summary)
+                else:
+                    open_external(getattr(self, "page", None), summary.external_url or "")
+
+            actions.append(
+                ContextMenuAction(
+                    "Ver en plataforma",
+                    icon=PIcons.ARROW_SQUARE_OUT,
+                    on_click=_open_ext,
+                )
+            )
+        if self._on_remove is not None:
+            actions.append(
+                ContextMenuAction(
+                    "Quitar de la Biblioteca",
+                    icon=PIcons.TRASH,
+                    on_click=lambda: self._on_remove(summary),
+                    danger=True,
+                    divider_before=bool(actions),
+                )
+            )
+        actions.extend(self._extra_actions)
+        return actions
 
     def _on_hover(self, e: ft.HoverEvent) -> None:
         self.bgcolor = BG_HOVER if e.data == "true" else BG_SURFACE
