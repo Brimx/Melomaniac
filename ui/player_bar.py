@@ -5,10 +5,9 @@ Control visual propio sobre una única instancia de ``flet_audio.Audio``
 registrada en ``page.services``. Toda la lógica de cola vive en
 ``core/playback.py``.
 
-El servicio se crea **bajo demanda**: ``flet_audio`` lanza
-``Audio must have "src" specified`` en su ``update()`` de Dart cuando el
-servicio nace sin fuente y lo deja inservible para toda la sesión. Por eso
-``self.audio`` es ``None`` hasta la primera reproducción.
+Desde ``flet-audio`` 1.1.2 (#6133) el servicio ``Audio`` se crea una sola
+vez sin ``src`` al inicializar la barra y cada reproducción actualiza
+``src`` + ``update()`` + ``play(0)``.
 """
 
 from __future__ import annotations
@@ -140,33 +139,21 @@ class PlayerBar(ft.Container, MprisBridgeMixin):
         self._pos_event_count: int = 0
         self._last_pos_event_mono: float | None = None
 
-        # El servicio ``Audio`` nace bajo demanda: ver ``_ensure_audio``.
+        # Instancia única de ``Audio`` registrada en ``page.services``.
         self.audio: fta.Audio | None = None
+        self._ensure_audio()
         self._build_ui()
         self._sync_ui()
 
-    def _ensure_audio(self, src: str) -> tuple[fta.Audio, bool]:
-        """Devuelve ``(servicio Audio listo para sonar src, recién creado)``.
+    def _ensure_audio(self, src: str | None = None) -> fta.Audio:
+        """Devuelve la instancia única de ``fta.Audio`` y actualiza ``src`` si se indica.
 
-        ``flet_audio`` exige que la primera actualización del servicio ya
-        traiga ``src``: su ``AudioService.update()`` en Dart lanza
-        ``Audio must have src specified`` y el servicio queda inservible para
-        el resto de la sesión (todos los ``invoke_method`` expiran). Por eso
-        nunca se construye vacío y solo se crea al reproducir la primera pista.
-        Cuando se crea, arranca con ``autoplay`` y el llamador no debe volver a
-        llamar a ``play``.
+        Desde ``flet-audio`` 1.1.2 (#6133) ``Audio`` puede crearse sin ``src``
+        y recibir la fuente más tarde mediante ``update()`` + ``play(0)``.
         """
         audio = self.audio
         if audio is None:
-            existing = [s for s in self._page_ref.services if isinstance(s, fta.Audio)]
-            for extra in existing:
-                try:
-                    self._page_ref.services.remove(extra)
-                except ValueError:
-                    pass
             audio = fta.Audio(
-                src=src,
-                autoplay=True,
                 volume=0.0 if self._muted else self._volume,
                 release_mode=fta.ReleaseMode.STOP,
                 on_loaded=self._on_audio_loaded,
@@ -175,18 +162,32 @@ class PlayerBar(ft.Container, MprisBridgeMixin):
                 on_position_change=self._on_position_change,
                 on_seek_complete=self._on_seek_complete,
             )
-            self._page_ref.services.append(audio)
+            services = getattr(self._page_ref, "services", None)
+            if isinstance(services, list) and audio not in services:
+                services.append(audio)
+            registry = getattr(self._page_ref, "_services", None)
+            reg_list = getattr(registry, "_services", None)
+            if (
+                registry is not None
+                and isinstance(reg_list, list)
+                and audio not in reg_list
+                and hasattr(registry, "register_service")
+            ):
+                try:
+                    registry.register_service(audio)
+                except Exception:
+                    pass
             self.audio = audio
-            return audio, True
 
-        audio.src = src
-        audio.volume = 0.0 if self._muted else self._volume
-        audio.release_mode = fta.ReleaseMode.STOP
-        try:
-            audio.update()
-        except Exception as exc:  # noqa: BLE001
-            self._log(f"[AUDIO] No se pudo actualizar el servicio: {exc}")
-        return audio, False
+        if src is not None:
+            audio.src = src
+            audio.volume = 0.0 if self._muted else self._volume
+            audio.release_mode = fta.ReleaseMode.STOP
+            try:
+                audio.update()
+            except Exception as exc:  # noqa: BLE001
+                self._log(f"[AUDIO] No se pudo actualizar el servicio: {exc}")
+        return audio
 
     def _log(self, msg: str) -> None:
         """Traza del reproductor hacia el log de la app (diagnóstico)."""
@@ -594,12 +595,9 @@ class PlayerBar(ft.Container, MprisBridgeMixin):
             return
         self._position_ms = 0
         self._duration_ms = max(0, int(cur.duration_ms or 0))
-        audio, created = self._ensure_audio(abs_path)
+        audio = self._ensure_audio(abs_path)
         self._audio_state = fta.AudioState.PLAYING
-        if not created:
-            # El servicio ya existía: cambiar ``src`` carga la pista pero no la
-            # arranca, hay que pedir ``play`` explícitamente.
-            self._schedule_audio(audio.play, 0)
+        self._schedule_audio(audio.play, 0)
         self._ensure_ticker()
         self._sync_ui()
         self._notify_listeners()

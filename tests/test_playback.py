@@ -185,5 +185,106 @@ class TestPlayQueue(unittest.TestCase):
         self.assertIs(back_two, played_first)
 
 
+class TestPlayerBarEnsureAudio(unittest.TestCase):
+    """Valida el ciclo de vida simplificado de ``PlayerBar._ensure_audio`` (Flet 1.1.2)."""
+
+    def test_init_creates_single_audio_service_without_src(self) -> None:
+        from types import SimpleNamespace
+        import flet_audio as fta
+        from ui.player_bar import PlayerBar
+
+        page = SimpleNamespace(services=[])
+        bar = PlayerBar(page)
+
+        self.assertIsNotNone(bar.audio)
+        self.assertIsInstance(bar.audio, fta.Audio)
+        self.assertIsNone(bar.audio.src)
+        self.assertFalse(bar.audio.autoplay)
+        self.assertEqual(len(page.services), 1)
+        self.assertIs(page.services[0], bar.audio)
+
+        # Llamar de nuevo sin src reutiliza la misma instancia sin duplicados
+        same = bar._ensure_audio()
+        self.assertIs(same, bar.audio)
+        self.assertEqual(len(page.services), 1)
+
+    def test_ensure_audio_updates_src_and_volume_in_place(self) -> None:
+        from types import SimpleNamespace
+        from ui.player_bar import PlayerBar
+
+        page = SimpleNamespace(services=[])
+        bar = PlayerBar(page)
+        initial_audio = bar.audio
+        bar._volume = 0.65
+        bar._muted = False
+
+        first = bar._ensure_audio("/tmp/track_a.flac")
+        self.assertIs(first, initial_audio)
+        self.assertEqual(first.src, "/tmp/track_a.flac")
+        self.assertAlmostEqual(float(first.volume), 0.65)
+        self.assertEqual(len(page.services), 1)
+
+        bar._muted = True
+        second = bar._ensure_audio("/tmp/track_b.flac")
+        self.assertIs(second, initial_audio)
+        self.assertEqual(second.src, "/tmp/track_b.flac")
+        self.assertAlmostEqual(float(second.volume), 0.0)
+        self.assertEqual(len(page.services), 1)
+
+    def test_load_and_play_current_uses_same_service_and_plays_from_zero(self) -> None:
+        import tempfile
+        from types import SimpleNamespace
+        from ui.player_bar import PlayerBar
+
+        page = SimpleNamespace(services=[])
+        bar = PlayerBar(page)
+        play_calls: list[tuple[object, tuple]] = []
+
+        def _capture_schedule(fn, *args, **kwargs) -> None:
+            play_calls.append((fn, args))
+
+        bar._schedule_audio = _capture_schedule  # type: ignore[method-assign]
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            p1 = Path(tmpdir) / "one.flac"
+            p2 = Path(tmpdir) / "two.flac"
+            p1.write_bytes(b"RIFF")
+            p2.write_bytes(b"RIFF")
+
+            t1 = _make_item(1)
+            t2 = _make_item(2)
+            t1 = PlayableTrack(
+                track=t1.track,
+                path=str(p1),
+                container="flac",
+                codec="flac",
+                duration_ms=180_000,
+                bitrate_kbps=900,
+                sample_rate=44100,
+            )
+            t2 = PlayableTrack(
+                track=t2.track,
+                path=str(p2),
+                container="flac",
+                codec="flac",
+                duration_ms=180_000,
+                bitrate_kbps=900,
+                sample_rate=44100,
+            )
+
+            bar.queue.set_tracks([t1, t2], start_index=0)
+            bar._load_and_play_current()
+            self.assertEqual(bar.audio.src, str(p1.resolve()))
+            self.assertEqual(len(play_calls), 1)
+            self.assertEqual(play_calls[0], (bar.audio.play, (0,)))
+
+            bar.queue.next()
+            bar._load_and_play_current()
+            self.assertEqual(bar.audio.src, str(p2.resolve()))
+            self.assertEqual(len(play_calls), 2)
+            self.assertEqual(play_calls[1], (bar.audio.play, (0,)))
+            self.assertEqual(len(page.services), 1)
+
+
 if __name__ == "__main__":
     unittest.main()

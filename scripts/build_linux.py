@@ -99,8 +99,10 @@ def run_flet_pack(root: Path) -> None:
         "--collect-data",
         "ytmusicapi",
     ]
-    print(f"[*] Ejecutando: {' '.join(cmd)}")
-    res = subprocess.run(cmd, cwd=root)
+    env = os.environ.copy()
+    env["FLET_DESKTOP_FLAVOR"] = "full"
+    print(f"[*] Ejecutando (FLET_DESKTOP_FLAVOR=full): {' '.join(cmd)}")
+    res = subprocess.run(cmd, env=env, cwd=root)
     if res.returncode != 0:
         print(f"[ERROR] flet pack falló con código {res.returncode}", file=sys.stderr)
         sys.exit(res.returncode)
