@@ -12,10 +12,13 @@ from ui.tokens import (
     MOTION_PANEL_MS,
 )
 
-_TELE_HANDLE_H   = 35
-_TELE_PANEL_H    = 300
-_TELE_DOCKED_MIN = 700
-_TELE_ANIM       = ft.Animation(MOTION_PANEL_MS, ft.AnimationCurve.DECELERATE)
+_TELE_HANDLE_H      = 35
+_TELE_PANEL_H       = 300
+_TELE_OVERLAY_MIN_W = 400
+_TELE_OVERLAY_MAX_W = 560
+_TELE_OVERLAY_DEF_W = 480
+_TELE_DOCKED_MIN    = 700
+_TELE_ANIM          = ft.Animation(MOTION_PANEL_MS, ft.AnimationCurve.DECELERATE)
 
 
 class TelemetryDrawer:
@@ -61,6 +64,8 @@ class TelemetryDrawer:
             border_radius=8,
             clip_behavior=ft.ClipBehavior.ANTI_ALIAS,
             height=_TELE_PANEL_H,
+            min_height=220,
+            max_height=_TELE_PANEL_H,
             visible=True,
         )
 
@@ -68,6 +73,10 @@ class TelemetryDrawer:
             content=o_body,
             left=sidebar_width, bottom=0,
             width=0, height=_TELE_PANEL_H,
+            min_width=0,
+            max_width=_TELE_OVERLAY_MAX_W,
+            min_height=_TELE_PANEL_H,
+            max_height=_TELE_PANEL_H,
             bgcolor=BG_PANEL,
             border=ft.Border(
                 top=ft.BorderSide(0.8, BORDER_LIGHT),
@@ -307,17 +316,18 @@ class TelemetryDrawer:
 
     def _open_overlay(self) -> None:
         self._open = True
-        target_w   = max(400, int((self.page.width or 1200) * 0.4))
         if self._overlay_panel not in self.page.overlay:
             self.page.overlay.append(self._overlay_panel)
-        self._overlay_panel.width = target_w
+        self._overlay_panel.min_width = _TELE_OVERLAY_MIN_W
+        self._overlay_panel.width = _TELE_OVERLAY_DEF_W
         self._arrow.value = PIcons.ARROW_LEFT
         self.page.update()
 
     def _close_overlay(self) -> None:
-        self._open                = False
-        self._overlay_panel.width = 0
-        self._arrow.value         = PIcons.ARROW_RIGHT
+        self._open                    = False
+        self._overlay_panel.min_width = 0
+        self._overlay_panel.width     = 0
+        self._arrow.value             = PIcons.ARROW_RIGHT
         self.page.update()
 
     def update_counters(self, detected: int, candidates: int, processed: int,

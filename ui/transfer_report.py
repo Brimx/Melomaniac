@@ -119,10 +119,13 @@ class TransferReportDialog(DialogMixin):
             "Reporte de transferencia",
             ft.Container(
                 content=self._body,
-                height=self._content_height(),
+                min_width=360,
+                max_width=680,
+                min_height=300,
+                max_height=540,
             ),
             actions,
-            width=680,
+            width=None,
             icon=PIcons.CHECK_CIRCLE,
         )
         self.page.show_dialog(self._dlg)
@@ -544,9 +547,6 @@ class TransferReportDialog(DialogMixin):
         self.close_dialog(self.page, self._dlg)
 
     # ── Utilidades ─────────────────────────────────────────────────
-
-    def _content_height(self) -> int:
-        return min(540, max(300, int((self.page.height or 720) - 260)))
 
     def _refresh(self) -> None:
         try:

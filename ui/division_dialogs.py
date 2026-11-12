@@ -84,8 +84,19 @@ class DivisionMixin:
                 if _has:
                     _acts.append(dialog_action("Limpiar", _cl, kind="danger"))
                 _acts += [dialog_action("Cancelar", lambda _:self._close_dlg(dlg), kind="muted"), dialog_action("Aplicar", _ap, kind="primary")]
-                dlg=app_dialog("Organizar", ft.Column([_dd, _seg], tight=True, spacing=12), _acts, width=420, bgcolor=BG_SURFACE, radius=10,
-                               actions_alignment=ft.MainAxisAlignment.SPACE_BETWEEN if len(_acts)==3 else ft.MainAxisAlignment.END)
+                dlg = app_dialog(
+                    "Organizar",
+                    ft.Container(
+                        content=ft.Column([_dd, _seg], tight=True, spacing=12),
+                        min_width=280,
+                        max_width=420,
+                    ),
+                    _acts,
+                    width=None,
+                    bgcolor=BG_SURFACE,
+                    radius=10,
+                    actions_alignment=ft.MainAxisAlignment.SPACE_BETWEEN if len(_acts) == 3 else ft.MainAxisAlignment.END,
+                )
                 self.page.show_dialog(dlg)
             except Exception:
                 self.state.log(f"[ERROR] Organizar fallback falló: {exc}")
@@ -111,7 +122,18 @@ class DivisionMixin:
                 acts=[]
                 if bool(self.state.segments): acts.append(dialog_action("Limpiar División",_cl,kind="danger"))
                 acts+=[dialog_action("Cancelar",lambda _:self._close_dlg(dlg),kind="muted"),dialog_action("Dividir",_ap,kind="primary")]
-                dlg=app_dialog("Dividir", ft.Column([_dd], tight=True, spacing=12), acts, width=400, bgcolor=BG_SURFACE, radius=10)
+                dlg = app_dialog(
+                    "Dividir",
+                    ft.Container(
+                        content=ft.Column([_dd], tight=True, spacing=12),
+                        min_width=280,
+                        max_width=400,
+                    ),
+                    acts,
+                    width=None,
+                    bgcolor=BG_SURFACE,
+                    radius=10,
+                )
                 self.page.show_dialog(dlg)
             except Exception:
                 self.state.log(f"[ERROR] Dividir fallback falló: {exc}")
@@ -169,8 +191,8 @@ class DivisionMixin:
         # estado local mutable — §7 División activa vs seleccionadas para transferir
         selected: set[str] = set(s.active_segment_keys) if s.active_segment_keys is not None else set(s.segments.keys())
 
-        search_field = app_text_field(hint_text="Buscar división…", prefix_icon=PIcons.MAGNIFYING_GLASS, width=360, height=36, content_padding=ft.Padding.symmetric(horizontal=10, vertical=6))
-        list_view = ft.ListView(height=260, spacing=4, padding=ft.Padding.all(4), expand=False)
+        search_field = app_text_field(hint_text="Buscar división…", prefix_icon=PIcons.MAGNIFYING_GLASS, expand=True, height=36, content_padding=ft.Padding.symmetric(horizontal=10, vertical=6))
+        list_view = ft.ListView(spacing=4, padding=ft.Padding.all(4), expand=True)
 
         def _rebuild(filter_q: str = ""):
             q = (filter_q or "").strip().lower()
@@ -231,18 +253,22 @@ class DivisionMixin:
 
         dlg = app_dialog(
             "Filtrar divisiones",
-            ft.Column([
-                search_field,
-                ft.Divider(height=1, color=BORDER_MUTED, thickness=0.5),
-                list_view,
-            ], tight=True, spacing=8),
+            ft.Container(
+                content=ft.Column([
+                    search_field,
+                    ft.Divider(height=1, color=BORDER_MUTED, thickness=0.5),
+                    ft.Container(content=list_view, min_height=180, max_height=260),
+                ], tight=True, spacing=8),
+                min_width=300,
+                max_width=420,
+            ),
             [
                 dialog_action("Seleccionar todos", _select_all, kind="muted"),
                 dialog_action("Limpiar", _clear, kind="muted"),
                 dialog_action("Cancelar", lambda _: self._close_dlg(dlg_ref.get("dlg")), kind="muted"),
                 dialog_action("Aplicar", _apply, kind="primary"),
             ],
-            width=420, bgcolor=BG_SURFACE, radius=10,
+            width=None, bgcolor=BG_SURFACE, radius=10,
         )
         dlg_ref["dlg"] = dlg
         self.page.show_dialog(dlg)
@@ -256,14 +282,8 @@ class DivisionMixin:
         active = s.active_segment_key or next(iter(s.segments.keys()))
         src_tracks = getattr(s, "source_tracks", s.tracks) or s.tracks
         div_tracks = s.segments.get(active, [])
-        # nombre editable de la división (playlist derivada) — sin expand vertical: ancho fijo
-        name_field = app_text_field(value=active, label="Nombre división", hint_text=active, width=780, height=36, content_padding=ft.Padding.symmetric(horizontal=8, vertical=4))
-        # alto de listas adaptado a la ventana (sin flex vertical: alturas explícitas, sin huecos)
-        try:
-            _win_h = self.page.height or self.page.window.height or 700  # type: ignore
-        except Exception:
-            _win_h = 700
-        lv_h = max(200, min(320, int(_win_h - 420)))
+        # nombre editable de la división (playlist derivada)
+        name_field = app_text_field(value=active, label="Nombre división", hint_text=active, expand=True, height=36, content_padding=ft.Padding.symmetric(horizontal=8, vertical=4))
         def _on_name(e):
             nonlocal active
             new = (e.control.value or "").strip()
@@ -289,8 +309,8 @@ class DivisionMixin:
         right_sel: set[str] = set()
         left_search = app_text_field(hint_text="Buscar en ORIGINAL…", prefix_icon=PIcons.MAGNIFYING_GLASS, expand=True, height=32, content_padding=ft.Padding.symmetric(horizontal=8, vertical=4))
         right_search = app_text_field(hint_text="Buscar en División…", prefix_icon=PIcons.MAGNIFYING_GLASS, expand=True, height=32, content_padding=ft.Padding.symmetric(horizontal=8, vertical=4))
-        left_lv = ft.ListView(spacing=4, padding=ft.Padding.all(6), height=lv_h)
-        right_lv = ft.ListView(spacing=4, padding=ft.Padding.all(6), height=lv_h)
+        left_lv = ft.ListView(spacing=4, padding=ft.Padding.all(6), expand=True)
+        right_lv = ft.ListView(spacing=4, padding=ft.Padding.all(6), expand=True)
         left_limit = ft.Text("", size=9, color=TEXT_DIM, font_family=FONT_TEXT)
         right_limit = ft.Text("", size=9, color=TEXT_DIM, font_family=FONT_TEXT)
 
@@ -482,18 +502,19 @@ class DivisionMixin:
                 content=ft.Column([
                     name_field,
                     ft.Row([
-                        ft.Column([ft.Row([add_popup, left_search], spacing=4, vertical_alignment=ft.CrossAxisAlignment.CENTER), left_limit, ft.Container(content=left_lv, bgcolor=CHIP_BG, border=ft.Border.all(0.5, BORDER_LIGHT), border_radius=8, height=lv_h + 12, width=390), dialog_action("Agregar →", _add_to_division, kind="primary", icon=PIcons.ARROW_RIGHT)], spacing=6, width=390),
-                        ft.Column([ft.Row([remove_popup, right_search], spacing=4, vertical_alignment=ft.CrossAxisAlignment.CENTER), right_limit, ft.Container(content=right_lv, bgcolor=CHIP_BG, border=ft.Border.all(0.5, BORDER_LIGHT), border_radius=8, height=lv_h + 12, width=390), dialog_action("← Quitar", _remove_from_division, kind="danger", icon=PIcons.ARROW_LEFT)], spacing=6, width=390),
+                        ft.Column([ft.Row([add_popup, left_search], spacing=4, vertical_alignment=ft.CrossAxisAlignment.CENTER), left_limit, ft.Container(content=left_lv, bgcolor=CHIP_BG, border=ft.Border.all(0.5, BORDER_LIGHT), border_radius=8, min_height=200, max_height=320, min_width=240), dialog_action("Agregar →", _add_to_division, kind="primary", icon=PIcons.ARROW_RIGHT)], spacing=6, expand=True),
+                        ft.Column([ft.Row([remove_popup, right_search], spacing=4, vertical_alignment=ft.CrossAxisAlignment.CENTER), right_limit, ft.Container(content=right_lv, bgcolor=CHIP_BG, border=ft.Border.all(0.5, BORDER_LIGHT), border_radius=8, min_height=200, max_height=320, min_width=240), dialog_action("← Quitar", _remove_from_division, kind="danger", icon=PIcons.ARROW_LEFT)], spacing=6, expand=True),
                     ], spacing=10, vertical_alignment=ft.CrossAxisAlignment.START),
                 ], tight=True, spacing=8),
-                width=820,
+                min_width=520,
+                max_width=820,
             ),
             [
                 dialog_action("Cerrar", _close_edit, kind="muted"),
                 dialog_action("Revertir", _revert_edit, kind="muted"),
                 dialog_action("Aplicar", _apply_edit, kind="primary"),
             ],
-            width=820, bgcolor=BG_SURFACE, radius=10,
+            width=None, bgcolor=BG_SURFACE, radius=10,
         )
         dlg_ref["dlg"] = dlg
         self.page.show_dialog(dlg)
