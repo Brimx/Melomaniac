@@ -10,16 +10,22 @@ import flet as ft
 
 from core.config import LOCAL_LIBRARY_LABEL, PLATFORM_ORDER
 from core.library_models import LibraryLoadState
+from core.models import PlaylistMeta
+from engine.local_manifests import detect_platform_from_url
 from services.library_state import LibraryState
 from ui.fonts import FONT_HEADLINE, FONT_HEADLINE_BOLD, FONT_TEXT
 from ui.playlist_card import PlaylistCard
 from ui.playlist_detail_view import PlaylistDetailView
 from ui.tokens import (
-    ACCENT, ACCENT_HALO, BG_HOVER, BG_LIST, BG_SURFACE, BORDER_LIGHT,
-    RADIUS_BUTTON, TEXT_DIM, TEXT_MUTED, TEXT_PRIMARY,
+    ACCENT, ACCENT_HALO, BG_HOVER, BG_LIST, BG_PANEL, BG_SURFACE,
+    BORDER_LIGHT, BORDER_MUTED, ERROR_COL, RADIUS_BUTTON, SUCCESS,
+    TEXT_DIM, TEXT_MUTED, TEXT_PRIMARY,
 )
 from ui.icons import PIcons, app_icon, app_icon_button
-from ui.widgets import _ghost_btn, app_text, notify, section_label
+from ui.widgets import (
+    DialogMixin, _ghost_btn, app_dialog, app_text, app_text_field,
+    dialog_action, notify, organize_dropdown, section_label,
+)
 
 
 PLATFORM_ICONS = {
@@ -39,7 +45,7 @@ _SHORT_LABELS = {
 }
 
 
-class LibraryView(ft.Container):
+class LibraryView(ft.Container, DialogMixin):
     def __init__(self, page: ft.Page, library_state: LibraryState, service,
                  app_state=None, on_open_downloads=None, on_open_gestion=None,
                  player_bar=None):
@@ -70,10 +76,18 @@ class LibraryView(ft.Container):
 
         self._status_text = app_text("", size=11, color=TEXT_MUTED, font_family=FONT_TEXT)
         self._refresh_btn = _ghost_btn("Actualizar", PIcons.ARROWS_CLOCKWISE, lambda e: self._on_refresh(), width=140, height=36)
+        self._import_manifest_btn = _ghost_btn(
+            "Importar playlist",
+            PIcons.PLAYLIST,
+            lambda e: self._open_import_dialog(),
+            height=36,
+        )
+        self._import_manifest_btn.visible = self._platform == LOCAL_LIBRARY_LABEL
         self._add_folder_btn = _ghost_btn("Añadir carpeta", PIcons.FOLDER_PLUS,
                                           lambda e: self._page_ref.run_task(self._pick_folder), height=36)
         self._add_folder_btn.visible = self._platform == LOCAL_LIBRARY_LABEL
 
+        self._playlists_row = ft.Row(wrap=True, spacing=12, run_spacing=12)
         self._grid_row = ft.Row(wrap=True, spacing=12, run_spacing=12)
         self._grid = ft.Column(
             controls=[self._grid_row],
@@ -96,7 +110,16 @@ class LibraryView(ft.Container):
         body = ft.Column(controls=[
             section_label("FUENTE"),
             self._platform_row,
-            ft.Row(controls=[self._status_text, ft.Container(expand=True), self._add_folder_btn, self._refresh_btn], spacing=8),
+            ft.Row(
+                controls=[
+                    self._status_text,
+                    ft.Container(expand=True),
+                    self._import_manifest_btn,
+                    self._add_folder_btn,
+                    self._refresh_btn,
+                ],
+                spacing=8,
+            ),
             self._loading_bar,
             ft.Container(expand=True, content=self._list_stack),
         ], spacing=10, expand=True)
@@ -180,7 +203,22 @@ class LibraryView(ft.Container):
 
     def _on_open_playlist(self, summary) -> None:
         # push detail
+        is_manifest = bool(
+            hasattr(self.library_state, "is_imported_manifest")
+            and self.library_state.is_imported_manifest(summary)
+        )
         local = summary.platform == LOCAL_LIBRARY_LABEL
+
+        async def _load_manifest():
+            manifest = await asyncio.to_thread(self.library_state.load_local_manifest, summary.id)
+            if manifest is None:
+                raise FileNotFoundError("El manifiesto local ya no existe")
+            meta = PlaylistMeta(name=manifest.name, description=manifest.description)
+            return meta, list(manifest.tracks)
+
+        def _remove_manifest() -> None:
+            self.library_state.remove_local_manifest(summary.id)
+            self._on_back_from_detail()
 
         async def _load_local():
             # Con índice, solo se lee Mutagen de lo nuevo o modificado; las
@@ -194,11 +232,14 @@ class LibraryView(ft.Container):
             self.library_state.remove_local_folder(summary.id)
             self._on_back_from_detail()
 
+        loader = _load_manifest if is_manifest else (_load_local if local else None)
+        on_remove = _remove_manifest if is_manifest else (_remove_local if local else None)
+
         self._detail = PlaylistDetailView(
             self._page_ref, summary, self.service, on_back=self._on_back_from_detail,
             app_state=self.app_state,
-            loader=_load_local if local else None,
-            on_remove=_remove_local if local else None,
+            loader=loader,
+            on_remove=on_remove,
             on_open_downloads=self._on_open_downloads,
             on_open_gestion=self._on_open_gestion,
             player_bar=getattr(self, "player_bar", None),
@@ -218,13 +259,285 @@ class LibraryView(ft.Container):
         except Exception:
             pass
 
-    def _wrap_card(self, summary, state: LibraryLoadState) -> ft.Container:
+    def _wrap_card(
+        self,
+        summary,
+        state: LibraryLoadState,
+        *,
+        badge_text: str = "",
+        badge_bgcolor: str = ACCENT_HALO,
+        badge_border: str = ACCENT,
+        on_save_manifest=None,
+        on_remove_manifest=None,
+    ) -> ft.Container:
         """Envuelve la tarjeta con ancho fijo (160 px) para reflow sin resize."""
+        card = PlaylistCard(summary, state=state, on_tap=self._on_open_playlist)
+        overlays: list[ft.Control] = []
+
+        if badge_text:
+            overlays.append(
+                ft.Container(
+                    content=ft.Text(
+                        badge_text,
+                        size=8,
+                        color=TEXT_PRIMARY,
+                        font_family=FONT_HEADLINE_BOLD,
+                    ),
+                    bgcolor=badge_bgcolor,
+                    border=ft.Border.all(0.8, badge_border),
+                    padding=ft.Padding.symmetric(horizontal=6, vertical=2),
+                    border_radius=6,
+                    left=14,
+                    top=14,
+                )
+            )
+
+        if on_save_manifest is not None:
+            overlays.append(
+                ft.Container(
+                    content=app_icon_button(
+                        PIcons.FLOPPY_DISK,
+                        size=14,
+                        width=26,
+                        height=26,
+                        bgcolor=BG_PANEL,
+                        hover_bgcolor=BG_HOVER,
+                        border=ft.Border.all(0.8, BORDER_MUTED),
+                        hover_border=ft.Border.all(0.8, ACCENT),
+                        border_radius=13,
+                        icon_color=TEXT_MUTED,
+                        hover_color_icon=ACCENT,
+                        tooltip="Importar a Local sin descargar",
+                        on_click=on_save_manifest,
+                    ),
+                    left=14,
+                    top=14,
+                )
+            )
+
+        if on_remove_manifest is not None:
+            overlays.append(
+                ft.Container(
+                    content=app_icon_button(
+                        PIcons.TRASH,
+                        size=14,
+                        width=26,
+                        height=26,
+                        bgcolor=BG_PANEL,
+                        hover_bgcolor=BG_HOVER,
+                        border=ft.Border.all(0.8, BORDER_MUTED),
+                        hover_border=ft.Border.all(0.8, ERROR_COL),
+                        border_radius=13,
+                        icon_color=TEXT_MUTED,
+                        hover_color_icon=ERROR_COL,
+                        tooltip="Quitar playlist importada",
+                        on_click=on_remove_manifest,
+                    ),
+                    right=14,
+                    top=14,
+                )
+            )
+
+        content: ft.Control = ft.Stack(controls=[card, *overlays]) if overlays else card
         return ft.Container(
             width=160,
             alignment=ft.Alignment.TOP_LEFT,
-            content=PlaylistCard(summary, state=state, on_tap=self._on_open_playlist),
+            content=content,
         )
+
+    def _remove_manifest(self, summary) -> None:
+        """Elimina un manifiesto local importado desde la vista Local."""
+        if not hasattr(self.library_state, "remove_local_manifest"):
+            return
+        removed = self.library_state.remove_local_manifest(summary.id)
+        if removed:
+            try:
+                notify(self._page_ref, f"Manifiesto «{summary.name}» quitado")
+            except Exception:
+                pass
+        else:
+            try:
+                notify(self._page_ref, "No se pudo quitar el manifiesto", kind="error")
+            except Exception:
+                pass
+
+    def _save_remote_as_manifest(self, summary) -> None:
+        """Guarda una playlist remota como manifiesto local sin descargar audio."""
+        if not hasattr(self.library_state, "import_summary_as_manifest"):
+            return
+        if self.service is None:
+            notify(self._page_ref, "Servicio no disponible para importar la playlist", kind="error")
+            return
+
+        async def _do_save() -> None:
+            try:
+                manifest = await self.library_state.import_summary_as_manifest(summary)
+            except Exception as exc:  # noqa: BLE001
+                notify(self._page_ref, f"No se pudo importar: {exc}", kind="error")
+                return
+            notify(
+                self._page_ref,
+                f"Guardada en Local: «{manifest.name}» ({len(manifest.tracks)} pistas, sin audio)",
+            )
+
+        try:
+            self._page_ref.run_task(_do_save)
+        except Exception:
+            try:
+                asyncio.create_task(_do_save())
+            except Exception:
+                pass
+
+    def _open_import_dialog(self) -> None:
+        """Abre diálogo para importar una playlist remota como manifiesto local."""
+        cached_entries: list[tuple[str, object]] = []
+        for plat in PLATFORM_ORDER:
+            snap = self.library_state.get_snapshot(plat)
+            for summ in snap.items:
+                key = f"{plat}::{summ.id}"
+                cached_entries.append((key, summ))
+
+        default_plat = PLATFORM_ORDER[0] if PLATFORM_ORDER else "Spotify"
+        url_input = app_text_field(
+            label="URL o ID de playlist",
+            hint_text="https://open.spotify.com/playlist/... o ID",
+            autofocus=True,
+        )
+        platform_dd = organize_dropdown(
+            [(p, p) for p in PLATFORM_ORDER],
+            value=default_plat,
+            label="Plataforma",
+            width=380,
+        )
+        owner_input = app_text_field(
+            label="Propietario / autor (opcional)",
+            hint_text="Ej. Curador, artista o usuario",
+        )
+        status_txt = app_text("", size=11, color=TEXT_MUTED, font_family=FONT_TEXT)
+
+        def _on_url_change(_e) -> None:
+            detected = detect_platform_from_url(url_input.value or "")
+            if detected and detected in PLATFORM_ORDER and platform_dd.value != detected:
+                platform_dd.value = detected
+                try:
+                    platform_dd.update()
+                except Exception:
+                    pass
+
+        url_input.on_change = _on_url_change
+
+        controls: list[ft.Control] = []
+        if cached_entries:
+            cached_options = [("", "— Escribir URL o ID manualmente —")] + [
+                (key, f"{s.name} ({s.platform})") for key, s in cached_entries
+            ]
+            cached_by_key = dict(cached_entries)
+            cached_dd = organize_dropdown(
+                cached_options,
+                value="",
+                label="O elegir de playlists sincronizadas",
+                width=380,
+            )
+
+            def _on_pick_cached(e) -> None:
+                chosen = cached_by_key.get(str(e.control.value or ""))
+                if chosen is None:
+                    return
+                url_input.value = chosen.external_url or chosen.id
+                if chosen.platform in PLATFORM_ORDER:
+                    platform_dd.value = chosen.platform
+                try:
+                    url_input.update()
+                    platform_dd.update()
+                except Exception:
+                    pass
+
+            cached_dd.on_select = _on_pick_cached
+            controls.append(cached_dd)
+
+        controls.extend([url_input, platform_dd, owner_input, status_txt])
+        dlg_body = ft.Column(controls=controls, spacing=10, tight=True)
+
+        dlg: ft.AlertDialog | None = None
+        busy = False
+
+        def _close(_e=None) -> None:
+            self.close_dialog(self._page_ref, dlg)
+
+        def _on_submit(_e=None) -> None:
+            nonlocal busy
+            if busy:
+                return
+            raw_id = (url_input.value or "").strip()
+            plat = str(platform_dd.value or default_plat)
+            owner = (owner_input.value or "").strip()
+            if not raw_id:
+                status_txt.value = "Introduce una URL o ID de playlist."
+                status_txt.color = ERROR_COL
+                try:
+                    status_txt.update()
+                except Exception:
+                    pass
+                return
+            if self.service is None:
+                status_txt.value = "Servicio no disponible; inicia sesión en una plataforma."
+                status_txt.color = ERROR_COL
+                try:
+                    status_txt.update()
+                except Exception:
+                    pass
+                return
+
+            busy = True
+            import_btn.disabled = True
+            status_txt.value = "Importando metadatos sin descargar audio..."
+            status_txt.color = TEXT_MUTED
+            try:
+                import_btn.update()
+                status_txt.update()
+            except Exception:
+                pass
+
+            async def _run_import() -> None:
+                nonlocal busy
+                try:
+                    manifest = await self.library_state.import_playlist_manifest(
+                        plat,
+                        raw_id,
+                        owner=owner,
+                    )
+                except Exception as exc:  # noqa: BLE001
+                    busy = False
+                    import_btn.disabled = False
+                    status_txt.value = f"Error al importar: {exc}"
+                    status_txt.color = ERROR_COL
+                    try:
+                        import_btn.update()
+                        status_txt.update()
+                    except Exception:
+                        pass
+                    return
+                self.close_dialog(self._page_ref, dlg)
+                notify(
+                    self._page_ref,
+                    f"Importada «{manifest.name}» ({len(manifest.tracks)} pistas) sin descargar audio",
+                )
+
+            try:
+                self._page_ref.run_task(_run_import)
+            except Exception:
+                asyncio.create_task(_run_import())
+
+        cancel_btn = dialog_action("Cancelar", _close, kind="muted", icon=PIcons.X)
+        import_btn = dialog_action("Importar sin descargar", _on_submit, kind="primary", icon=PIcons.FLOPPY_DISK)
+        dlg = app_dialog(
+            "Importar playlist sin descargar",
+            dlg_body,
+            [cancel_btn, import_btn],
+            width=400,
+            icon=PIcons.PLAYLIST,
+        )
+        self.show_dialog(self._page_ref, dlg)
 
     def _refresh(self) -> None:
         # called via library_state notify
@@ -238,6 +551,8 @@ class LibraryView(ft.Container):
             self._refresh_local()
             return
         self._add_folder_btn.visible = False
+        self._import_manifest_btn.visible = False
+        self._grid.controls = [self._grid_row]
         self._empty_title.value = "Sin playlists cacheadas"
         self._empty_sub.value = "Elige una fuente para sincronizar"
         snap = self.library_state.get_snapshot(plat)
@@ -260,7 +575,15 @@ class LibraryView(ft.Container):
             self._status_text.value = ""
         # wrap de ancho fijo (160 px): al empujar la cola lateral las tarjetas
         # se reacomodan por línea sin recalcular su ancho cuadro a cuadro.
-        self._grid_row.controls = [self._wrap_card(summ, state) for summ in snap.items]
+        can_save = hasattr(self.library_state, "import_summary_as_manifest")
+        self._grid_row.controls = [
+            self._wrap_card(
+                summ,
+                state,
+                on_save_manifest=(lambda _e, s=summ: self._save_remote_as_manifest(s)) if can_save else None,
+            )
+            for summ in snap.items
+        ]
         show_empty = not snap.items and state != LibraryLoadState.LOADING
         self._grid.visible = not show_empty
         self._empty.visible = show_empty
@@ -270,24 +593,76 @@ class LibraryView(ft.Container):
             pass
 
     def _refresh_local(self) -> None:
-        """Fuente Local: una tarjeta por carpeta agregada (sin sincronización).
+        """Fuente Local: distingue carpetas locales y playlists importadas/descargadas."""
+        if hasattr(self.library_state, "local_folder_summaries"):
+            folders = self.library_state.local_folder_summaries()
+            downloaded = self.library_state.downloaded_playlist_summaries()
+            imported = self.library_state.imported_manifest_summaries()
+        else:
+            folders = self.library_state.local_summaries()
+            downloaded = []
+            imported = []
 
-        ``local_summaries`` solo recorre hasta ``SYNC_SCAN_LIMIT`` archivos y
-        reutiliza portadas del índice, así que cabe en el hilo de la UI; el
-        escaneo completo de una carpeta grande ocurre al abrir el detalle, en
-        un worker.
-        """
-        folders = self.library_state.local_summaries()
         self._add_folder_btn.visible = True
+        self._import_manifest_btn.visible = True
         self._loading_bar.visible = False
-        self._status_text.value = f"{len(folders)} carpetas locales"
-        self._empty_title.value = "Sin carpetas locales"
-        self._empty_sub.value = "Añade una carpeta con audio o indexa tu carpeta de Descargas"
-        self._grid_row.controls = [
-            self._wrap_card(summ, LibraryLoadState.READY) for summ in folders
+
+        status_parts: list[str] = []
+        if imported:
+            status_parts.append(f"{len(imported)} importadas (sin audio)")
+        if downloaded:
+            status_parts.append(f"{len(downloaded)} descargadas")
+        if folders:
+            status_parts.append(f"{len(folders)} carpetas locales")
+        self._status_text.value = " · ".join(status_parts) if status_parts else "0 elementos locales"
+
+        self._empty_title.value = "Sin carpetas ni playlists locales"
+        self._empty_sub.value = "Añade una carpeta con audio o importa una playlist sin descargar"
+
+        sections: list[ft.Control] = []
+        playlist_cards: list[ft.Control] = [
+            self._wrap_card(
+                summ,
+                LibraryLoadState.READY,
+                badge_text="SIN AUDIO",
+                badge_bgcolor=ACCENT_HALO,
+                badge_border=ACCENT,
+                on_remove_manifest=lambda _e, s=summ: self._remove_manifest(s),
+            )
+            for summ in imported
+        ] + [
+            self._wrap_card(
+                summ,
+                LibraryLoadState.READY,
+                badge_text="DESCARGADA",
+                badge_bgcolor=BG_PANEL,
+                badge_border=SUCCESS,
+            )
+            for summ in downloaded
         ]
-        self._grid.visible = bool(folders)
-        self._empty.visible = not folders
+        self._playlists_row.controls = playlist_cards
+        if playlist_cards:
+            sections.append(section_label("PLAYLISTS IMPORTADAS Y DESCARGADAS"))
+            sections.append(self._playlists_row)
+
+        self._grid_row.controls = [
+            self._wrap_card(
+                summ,
+                LibraryLoadState.READY,
+                badge_text="CARPETA",
+                badge_bgcolor=BG_PANEL,
+                badge_border=BORDER_LIGHT,
+            )
+            for summ in folders
+        ]
+        if folders:
+            sections.append(section_label("CARPETAS LOCALES"))
+            sections.append(self._grid_row)
+
+        self._grid.controls = sections if sections else [self._grid_row]
+        has_any = bool(folders or downloaded or imported)
+        self._grid.visible = has_any
+        self._empty.visible = not has_any
         try:
             self.update()
         except Exception:

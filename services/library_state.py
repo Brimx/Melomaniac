@@ -56,8 +56,52 @@ class LibraryState:
     def local_folders(self) -> list[str]:
         return settings_store.get_local_folders()
 
+    def local_folder_summaries(self) -> list[PlaylistSummary]:
+        """Tarjetas de las carpetas locales configuradas por el usuario."""
+        return [self._summary_for(folder) for folder in self.local_folders]
+
+    def downloaded_playlist_summaries(self) -> list[PlaylistSummary]:
+        """Tarjetas de subcarpetas descargadas con ``playlist.json``."""
+        out: list[PlaylistSummary] = []
+        for folder in self.local_folders:
+            for child in self._playlist_subfolders(folder):
+                out.append(self._summary_for(child, playlist_folder=True))
+        return out
+
+    def imported_manifest_summaries(self) -> list[PlaylistSummary]:
+        """Tarjetas de playlists importadas como manifiesto local (sin audio)."""
+        from engine.local_manifests import list_local_manifests
+
+        out: list[PlaylistSummary] = []
+        for manifest in list_local_manifests():
+            out.append(self._summary_for_manifest(manifest))
+        return out
+
+    @staticmethod
+    def _summary_for_manifest(manifest) -> PlaylistSummary:
+        """Construye la tarjeta de Biblioteca para un manifiesto local importado."""
+        display_name = manifest.name or "Playlist importada"
+        if manifest.platform:
+            display_name = f"{display_name} · {manifest.platform}"
+        desc_parts = ["Sin audio descargado"]
+        if manifest.owner:
+            desc_parts.append(f"Por {manifest.owner}")
+        if manifest.description:
+            desc_parts.append(manifest.description)
+        covers = list(manifest.cover_urls or ([manifest.img_url] if manifest.img_url else []))
+        return PlaylistSummary(
+            platform=LOCAL_LIBRARY_LABEL,
+            id=manifest.path or manifest.manifest_id,
+            name=display_name,
+            description=" · ".join(desc_parts),
+            track_count=len(manifest.tracks),
+            cover_urls=covers,
+            external_url=manifest.external_url or "",
+            synced_at=manifest.created_at or "",
+        )
+
     def local_summaries(self) -> list[PlaylistSummary]:
-        """Una ``PlaylistSummary`` por carpeta local (id = ruta absoluta).
+        """Carpetas locales, playlists descargadas y manifiestos importados.
 
         Incluye las subcarpetas creadas por Descargas que llevan
         ``playlist.json``: son playlists descargadas, no carpetas sueltas. La
@@ -68,12 +112,96 @@ class LibraryState:
         que se detiene en ``SYNC_SCAN_LIMIT``. Antes se listaba la carpeta
         entera en cada refresco, con varios ``stat`` por archivo.
         """
-        out: list[PlaylistSummary] = []
-        for folder in self.local_folders:
-            out.append(self._summary_for(folder))
-            for child in self._playlist_subfolders(folder):
-                out.append(self._summary_for(child, playlist_folder=True))
-        return out
+        return [
+            *self.local_folder_summaries(),
+            *self.downloaded_playlist_summaries(),
+            *self.imported_manifest_summaries(),
+        ]
+
+    def list_local_manifests(self):
+        """Lista los manifiestos locales guardados en ``local_playlists``."""
+        from engine.local_manifests import list_local_manifests
+
+        return list_local_manifests()
+
+    def load_local_manifest(self, identifier: str):
+        """Carga un manifiesto local por ``manifest_id`` o ruta JSON."""
+        from engine.local_manifests import load_local_manifest
+
+        return load_local_manifest(identifier)
+
+    def is_imported_manifest(self, summary_or_id: PlaylistSummary | str) -> bool:
+        """Indica si ``summary_or_id`` corresponde a un manifiesto importado sin audio."""
+        ident = summary_or_id.id if isinstance(summary_or_id, PlaylistSummary) else str(summary_or_id or "")
+        if not ident:
+            return False
+        return self.load_local_manifest(ident) is not None
+
+    def save_local_manifest(self, **kwargs):
+        """Guarda un manifiesto local y notifica a los suscriptores."""
+        from engine.local_manifests import save_local_manifest
+
+        manifest = save_local_manifest(**kwargs)
+        self.notify()
+        return manifest
+
+    def remove_local_manifest(self, identifier: str) -> bool:
+        """Elimina un manifiesto local y notifica si existía."""
+        from engine.local_manifests import remove_local_manifest
+
+        removed = remove_local_manifest(identifier)
+        if removed:
+            self.notify()
+        return removed
+
+    async def import_playlist_manifest(
+        self,
+        platform: str,
+        playlist_id_or_url: str,
+        *,
+        owner: str = "",
+        name: str = "",
+        img_url: str = "",
+        cover_urls: Optional[list[str]] = None,
+        external_url: str = "",
+    ):
+        """Importa una playlist remota como manifiesto local sin descargar audio."""
+        from core.transfer import normalize_playlist_id
+        from engine.local_manifests import save_local_manifest
+
+        if self.service is None:
+            raise RuntimeError("service no disponible")
+        pid = normalize_playlist_id(platform, playlist_id_or_url)
+        if not pid:
+            raise ValueError("Playlist sin identificador válido")
+
+        meta, tracks = await self.service.fetch_playlist(platform, pid, None)
+        meta_name = str(getattr(meta, "name", "") or "") if meta is not None else ""
+        meta_desc = str(getattr(meta, "description", "") or "") if meta is not None else ""
+        resolved_name = name or meta_name or f"Playlist {pid}"
+        manifest = save_local_manifest(
+            platform=platform,
+            playlist_id=pid,
+            name=resolved_name,
+            owner=owner,
+            description=meta_desc,
+            img_url=img_url,
+            cover_urls=cover_urls,
+            external_url=external_url,
+            tracks=tracks,
+        )
+        self.notify()
+        return manifest
+
+    async def import_summary_as_manifest(self, summary: PlaylistSummary):
+        """Importa una playlist ya sincronizada en Biblioteca como manifiesto local."""
+        return await self.import_playlist_manifest(
+            summary.platform,
+            summary.id,
+            name=summary.name,
+            cover_urls=list(summary.cover_urls or []),
+            external_url=summary.external_url or "",
+        )
 
     def forget_local_index(self) -> None:
         """Persiste el índice local; se llama al cerrar la app."""
