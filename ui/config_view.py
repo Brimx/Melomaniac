@@ -17,6 +17,7 @@ el usuario cambia sin autenticarse:
 
 from __future__ import annotations
 
+import asyncio
 import os
 
 import flet as ft
@@ -51,6 +52,7 @@ class ConfigView(ft.Container):
         self._on_welcome = on_welcome
         self._picker = ft.FilePicker()
         page.services.append(self._picker)
+        self._refresh_gen = 0
         self.content = self._build()
 
     # ── construcción ───────────────────────────────────────────────────
@@ -100,8 +102,7 @@ class ConfigView(ft.Container):
         )
         self._dir_reset_btn.visible = bool(settings_store.get_download_dir())
 
-        cache_size = self._cache_size_text()
-        self._cache_text = app_text(cache_size, size=11, color=TEXT_MUTED,
+        self._cache_text = app_text("Calculando…", size=11, color=TEXT_MUTED,
                                     font_family=mono_family("light"))
         self._cache_btn = _ghost_btn(
             "Limpiar caché", PIcons.TRASH, self._on_clear_cache,
@@ -120,17 +121,16 @@ class ConfigView(ft.Container):
 
         # ── Sistema y accesos directos ──
         self._shortcut_status_text = app_text(
-            "", size=11, color=TEXT_PRIMARY, font_family=FONT_TEXT,
+            "Comprobando estado…", size=11, color=TEXT_PRIMARY, font_family=FONT_TEXT,
         )
         self._shortcut_location_text = app_text(
             "", size=10, color=TEXT_MUTED, font_family=mono_family("light"),
-            max_lines=1, overflow=ft.TextOverflow.ELLIPSIS,
+            max_lines=1, overflow=ft.TextOverflow.ELLIPSIS, visible=False,
         )
         self._shortcut_warning_text = app_text(
             "", size=11, color=WARNING, font_family=FONT_TEXT, visible=False,
         )
         self._shortcut_actions_row = ft.Row(spacing=8, vertical_alignment=ft.CrossAxisAlignment.CENTER)
-        self._refresh_shortcut_ui()
 
         # ── Actualizaciones ──
         self._version_text = app_text(
@@ -255,14 +255,51 @@ class ConfigView(ft.Container):
             return "Sin caché de portadas"
         return f"{total / (1024 * 1024):.1f} MB en caché de portadas"
 
-    def refresh(self) -> None:
-        """Recarga los valores desde ``settings_store``."""
+    def _is_mounted(self) -> bool:
+        try:
+            return self.page is not None
+        except RuntimeError:
+            return False
+
+    def refresh(self, *, update: bool = True) -> None:
+        """Recarga los valores desde ``settings_store`` y consulta I/O en segundo plano."""
         self._format_dd.value = settings_store.get_download_format()
         self._covers_sw.value = settings_store.get_covers_online()
         self._dir_text.value = self._download_dir
         self._dir_reset_btn.visible = bool(settings_store.get_download_dir())
-        self._cache_text.value = self._cache_size_text()
-        self._refresh_shortcut_ui()
+        if update:
+            try:
+                self.update()
+            except Exception:
+                pass
+        self._refresh_gen += 1
+        gen = self._refresh_gen
+        try:
+            self._page_ref.run_task(self._refresh_async, gen)
+        except Exception:
+            try:
+                asyncio.get_running_loop().create_task(self._refresh_async(gen))
+            except Exception:
+                pass
+
+    async def _refresh_async(self, gen: int) -> None:
+        """Calcula el tamaño del caché y el estado del acceso directo fuera del hilo UI."""
+        def _probe() -> tuple[
+            str,
+            desktop_integration.RuntimeEnvironment,
+            desktop_integration.ShortcutStatus,
+        ]:
+            return (
+                self._cache_size_text(),
+                desktop_integration.get_runtime_environment(),
+                desktop_integration.get_shortcut_status(),
+            )
+
+        cache_text, env, st = await asyncio.to_thread(_probe)
+        if gen != self._refresh_gen or not self._is_mounted():
+            return
+        self._cache_text.value = cache_text
+        self._apply_shortcut_ui(env, st)
         try:
             self.update()
         except Exception:
@@ -271,6 +308,13 @@ class ConfigView(ft.Container):
     def _refresh_shortcut_ui(self) -> None:
         env = desktop_integration.get_runtime_environment()
         st = desktop_integration.get_shortcut_status()
+        self._apply_shortcut_ui(env, st)
+
+    def _apply_shortcut_ui(
+        self,
+        env: desktop_integration.RuntimeEnvironment,
+        st: desktop_integration.ShortcutStatus,
+    ) -> None:
 
         self._shortcut_status_text.value = st.summary
         if st.installed and st.is_current:

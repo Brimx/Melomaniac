@@ -699,14 +699,20 @@ class LayoutMixin:
         def _select_module(idx: int) -> None:
             if idx == self._current_module:
                 return
+            prev_idx = self._current_module
             self._current_module = idx
             try:
+                refreshed_self = False
                 for i, panel in enumerate(self._module_panels):
                     panel.visible = (i == idx)
                     # Config lee preferencias al mostrarse: otra vista pudo
                     # cambiarlas mientras estaba oculto.
                     if i == idx and hasattr(panel, "refresh"):
-                        panel.refresh()
+                        try:
+                            panel.refresh(update=False)
+                        except TypeError:
+                            panel.refresh()
+                            refreshed_self = True
                 self._refresh_rail_selection()
                 if idx == 0:
                     self._sync_skeleton_count()
@@ -714,7 +720,11 @@ class LayoutMixin:
                     self.player_bar.log_audio_services_count(
                         f"vista={self._rail_dests[idx][0]}"
                     )
-                self.page.update()
+                if refreshed_self and 0 <= prev_idx < len(self._module_panels):
+                    self._module_panels[prev_idx].update()
+                else:
+                    self._module_stack.update()
+                self._nav_rail.update()
             except Exception:
                 pass
 

@@ -173,18 +173,12 @@ def build_font_registry(fonts_dir: Path) -> dict[str, str]:
     if phosphor_dir.is_dir():
         reg_ttf = phosphor_dir / "Phosphor.ttf"
         fill_ttf = phosphor_dir / "Phosphor-Fill.ttf"
-        duo_ttf = phosphor_dir / "Phosphor-Duotone.ttf"
         if reg_ttf.is_file():
             registry[FONT_PHOSPHOR] = str(reg_ttf)
         if fill_ttf.is_file():
             registry[FONT_PHOSPHOR_FILL] = str(fill_ttf)
-        if duo_ttf.is_file():
-            registry[FONT_PHOSPHOR_DUOTONE] = str(duo_ttf)
 
-    cjk_path = _find_cjk_font(fonts_dir)
-    if cjk_path is None:
-        _CJK_REGISTERED = False
-    else:
-        registry[FONT_CJK] = str(cjk_path)
-        _CJK_REGISTERED = True
+    # No registrar NotoSansCJK (~19 MB) ni Phosphor-Duotone (555 KB, mapeado a Fill
+    # en ui/icons.py) en el arranque; font_family_for() cae a Stack Sans Text.
+    _CJK_REGISTERED = False
     return registry
