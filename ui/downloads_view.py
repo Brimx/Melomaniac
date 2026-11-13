@@ -555,9 +555,13 @@ class DownloadsView(ft.Container):
         self._history_empty.visible = not rows
         self._history_list.visible = bool(rows)
         try:
-            self.update()
+            self._play_all_btn.update()
+            self._history_section.update()
         except Exception:
-            pass
+            try:
+                self.update()
+            except Exception:
+                pass
 
     def _history_row(self, path: str, name: str, ext: str, size: int, mtime: float) -> ft.Container:
         return ft.Container(
@@ -653,13 +657,13 @@ class DownloadsView(ft.Container):
 
     # ── refresco ───────────────────────────────────────────────────────
 
-    def refresh(self) -> None:
+    def refresh(self, *, update: bool = True) -> None:
         """Recarga preferencias externas (formato por defecto desde Config)."""
         self._downloads_dirty = False
         self._format_dd.value = settings_store.get_download_format()
-        self._refresh()
+        self._refresh(update=update)
 
-    def _refresh(self) -> None:
+    def _refresh(self, *, update: bool = True) -> None:
         if not getattr(self, "visible", True):
             self._downloads_dirty = True
             return
@@ -699,15 +703,17 @@ class DownloadsView(ft.Container):
             self.library_state is not None
             and str(Path(self._dir).expanduser()) in self.library_state.local_folders
         )
-        indexed_text = "Indexada en Biblioteca" if indexed else "Indexar a Biblioteca"
-        indexed_glyph = PIcons.CHECK if indexed else PIcons.PLUS
-        self._index_btn.content = ft.Row(
-            [app_icon(indexed_glyph, size=18, color=TEXT_MUTED if not indexed else SUCCESS),
-             ft.Text(indexed_text, opacity=1.0, font_family=FONT_HEADLINE)],
-            alignment=ft.MainAxisAlignment.CENTER,
-            tight=True,
-            spacing=8,
-        )
+        if getattr(self, "_indexed_btn_state", None) != indexed:
+            self._indexed_btn_state = indexed
+            indexed_text = "Indexada en Biblioteca" if indexed else "Indexar a Biblioteca"
+            indexed_glyph = PIcons.CHECK if indexed else PIcons.PLUS
+            self._index_btn.content = ft.Row(
+                [app_icon(indexed_glyph, size=18, color=TEXT_MUTED if not indexed else SUCCESS),
+                 ft.Text(indexed_text, opacity=1.0, font_family=FONT_HEADLINE)],
+                alignment=ft.MainAxisAlignment.CENTER,
+                tight=True,
+                spacing=8,
+            )
         self._index_btn.disabled = indexed or running
 
         self._progress_area.visible = running or (state != TransferState.IDLE and total > 0)
@@ -769,16 +775,18 @@ class DownloadsView(ft.Container):
 
         # recarga el historial al terminar una cola o al cambiar de carpeta
         if (self._was_running and not running) or (not running and self._history_dir != self._dir):
+            self._history_dir = self._dir
             try:
                 self._page_ref.run_task(self._load_history)
             except Exception:
                 pass
         self._was_running = running
 
-        try:
-            self.update()
-        except Exception:
-            pass
+        if update:
+            try:
+                self.update()
+            except Exception:
+                pass
 
     # ── panel de resultados ────────────────────────────────────────────
 

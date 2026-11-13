@@ -1025,26 +1025,6 @@ class LayoutMixin:
             self._current_module = idx
             try:
                 refreshed_self = False
-                for i, panel in enumerate(self._module_panels):
-                    panel.visible = (i == idx)
-                    # Config lee preferencias al mostrarse: otra vista pudo
-                    # cambiarlas mientras estaba oculto.
-                    if i == idx and hasattr(panel, "refresh"):
-                        try:
-                            panel.refresh(update=False)
-                        except TypeError:
-                            panel.refresh()
-                            refreshed_self = True
-                self._refresh_rail_selection()
-                if idx == 0:
-                    self._sync_skeleton_count()
-                    if getattr(self, "_gestion_dirty", False):
-                        self._on_state_changed()
-                        refreshed_self = True
-                if hasattr(self, "player_bar") and self.player_bar is not None:
-                    self.player_bar.log_audio_services_count(
-                        f"vista={self._rail_dests[idx][0]}"
-                    )
                 prev_panel = (
                     self._module_panels[prev_idx]
                     if 0 <= prev_idx < len(self._module_panels)
@@ -1055,11 +1035,27 @@ class LayoutMixin:
                     if 0 <= idx < len(self._module_panels)
                     else None
                 )
+                with ft.context.disable_auto_update():
+                    for i, panel in enumerate(self._module_panels):
+                        panel.visible = (i == idx)
+                    self._refresh_rail_selection()
+                # Publica el cambio visual de pestaña antes de refrescar contenido diferido.
                 safe_update(prev_panel)
+                safe_update(self._nav_rail)
+                if curr_panel is not None and hasattr(curr_panel, "refresh"):
+                    try:
+                        curr_panel.refresh(update=False)
+                    except TypeError:
+                        curr_panel.refresh()
+                        refreshed_self = True
+                if idx == 0:
+                    self._sync_skeleton_count()
+                    if getattr(self, "_gestion_dirty", False):
+                        self._on_state_changed()
+                        refreshed_self = True
                 if not refreshed_self:
                     if not safe_update(curr_panel):
                         safe_update(self._module_stack)
-                safe_update(self._nav_rail)
             except Exception:
                 pass
 
