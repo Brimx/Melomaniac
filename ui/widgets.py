@@ -856,13 +856,18 @@ def show_context_menu(
         prev = getattr(page, "_active_context_menu", None)
         if prev is not None and hasattr(prev, "dismiss"):
             try:
-                prev.dismiss()
+                prev.dismiss(update_page=False)
+            except TypeError:
+                try:
+                    prev.dismiss()
+                except Exception:
+                    pass
             except Exception:
                 pass
 
     overlay_holder: dict[str, ft.Control | None] = {"control": None}
 
-    def _dismiss(_e=None) -> None:
+    def _dismiss(_e=None, *, update_page: bool = True) -> None:
         ctrl = overlay_holder["control"]
         if page is not None:
             if getattr(page, "_active_context_menu", None) is ctrl:
@@ -876,10 +881,11 @@ def show_context_menu(
                     overlay.remove(ctrl)
                 except ValueError:
                     pass
-            try:
-                page.update()
-            except Exception:
-                pass
+            if update_page:
+                try:
+                    page.update()
+                except Exception:
+                    pass
 
     card_controls: list[ft.Control] = []
     if title:

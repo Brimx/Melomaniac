@@ -238,20 +238,24 @@ def app_icon_button(
     )
 
     def _handle_hover(e: ft.HoverEvent) -> None:
-        if btn.disabled:
+        if btn.disabled or not getattr(btn, "page", None):
             return
         is_h = e.data == "true" or e.data is True
-        if hover_scale != 1.0:
-            btn.scale = hover_scale if is_h else 1.0
-        text_ctrl.color = target_hover_color if is_h else base_color
-        if hover_bgcolor is not None:
-            btn.bgcolor = target_hover_bg if is_h else base_bg
-        if hover_border is not None:
-            btn.border = target_hover_border if is_h else base_border
-        if on_hover:
-            on_hover(e)
-        if btn.page:
-            btn.update()
+        try:
+            if hover_scale != 1.0:
+                btn.scale = hover_scale if is_h else 1.0
+            text_ctrl.color = target_hover_color if is_h else base_color
+            if hover_bgcolor is not None:
+                btn.bgcolor = target_hover_bg if is_h else base_bg
+            if hover_border is not None:
+                btn.border = target_hover_border if is_h else base_border
+            if on_hover:
+                on_hover(e)
+            if btn.page:
+                btn.update()
+        except RuntimeError:
+            # En Flet 1.1.2 un control recién reemplazado/desmontado puede quedar frozen.
+            return
 
     btn = ft.Container(
         content=text_ctrl,
