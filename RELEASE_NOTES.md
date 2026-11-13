@@ -1,6 +1,24 @@
 # Release Notes — Melomaniac
 
-Notas enfocadas en **qué cambió para el usuario**, no en detalles internos. La versión de trabajo documentada es `4.9.0`. El detalle técnico está en [`CHANGELOG.md`](CHANGELOG.md). La descarga de la versión estable (ZIP portátil, binarios de Linux y Windows) está en los assets del release de GitHub.
+Notas enfocadas en **qué cambió para el usuario**, no en detalles internos. La versión de trabajo documentada es `5.0.0`. El detalle técnico está en [`CHANGELOG.md`](CHANGELOG.md). La descarga de la versión estable (ZIP portátil, binarios de Linux y Windows) está en los assets del release de GitHub.
+
+---
+
+## v5.0.0 — Gestión completa, catálogo y reconocimiento cruzado (2026-11-13)
+
+**Novedades:**
+- **Gestión renovada y barra contextual:** elige directamente entre tus playlists sincronizadas en Biblioteca (con URL/ID plegado bajo «Avanzado»), selecciona el destino y valida la sesión en vivo dentro del diálogo **Transferir**, y usa la barra contextual sobre la tabla (**Transferir**, **Organizar**, **Dividir**, **Reorganizar**, **Descargar**, **Exportar**) que aparece solo cuando hay una playlist cargada.
+- **Fusionar playlists sin duplicados:** combina varias playlists de plataforma, carpetas locales o manifiestos desde el botón **Fusionar** de la cabecera, con deduplicación opcional y vista previa.
+- **Explorar catálogo desde Gestión:** busca **Canciones**, **Álbumes** y **Artistas** en YouTube Music, Apple Music y Spotify desde el botón **Catálogo** y añade pistas directamente a tu lista o a otra playlist.
+- **Exportar y añadir a plataformas:** lleva pistas o carpetas locales directamente a una playlist existente o nueva en tu plataforma favorita.
+- **Importar playlists sin descargar:** guarda playlists de plataformas como manifiestos locales ligeros en Biblioteca para consultarlas, reproducir coincidencias existentes o recuperar pistas faltantes más adelante.
+- **Panel lateral de cola de reproducción:** abre la cola con empuje animado a la derecha (`Cola` / `Letra`) sin tapar la lista ni perder fluidez.
+- **Atajos y menús contextuales:** menú «⋮» y clic derecho unificados, selección múltiple en detalle de Biblioteca, reproducción aleatoria por contexto y atajos de teclado.
+
+**Correcciones y rendimiento:**
+- **Reconocimiento cruzado sin descargas duplicadas:** si una canción de una playlist ya está descargada en otra playlist o carpeta local, Melomaniac la reconoce, permite reproducirla y la omite al descargar sin duplicar archivos ni ensuciar el manifiesto de la playlist.
+- **Botones de plataforma en Biblioteca:** corregido el fallo por el cual las pestañas de fuente desaparecían al volver desde el detalle de una playlist o carpeta.
+- **Actualización a Flet 1.1.2 y fluidez general:** listas virtualizadas más ágiles al desplazarse o pasar el ratón, cambios instantáneos entre Gestión, Biblioteca, Descargas y Config, recuperación de alternativas sin mostrar URLs ni orígenes internos, e indicador de sesión guardada en el asistente de Spotify.
 
 ---
 

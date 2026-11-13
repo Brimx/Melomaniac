@@ -1,4 +1,4 @@
-# 🎵 Melomaniac v4.9.0
+# 🎵 Melomaniac v5.0.0
 
 [Español](README.md) · **English**
 
@@ -96,11 +96,11 @@ Start the app again with `scripts/launchers/run.bat`/`run.sh` (they detect `requ
 
 ## Usage
 
-1. On the home screen, choose a source (platform, local file, or pasted text) and a destination (a streaming platform, or *Local File (Export)*).
-2. Load the playlist (ID or URL, file, or pasted list) and review the tracks; uncheck any you do not want.
-3. Optionally: **Organize** (sort/group) or **Split** (manual blocks) and switch between List, Dual, and Preview views.
-4. Click **Transfer**, confirm name and description, and follow the progress. When finished, the Post-Mortem report lets you search for alternatives to ambiguous tracks.
-5. Play any local or downloaded file from the bottom bar or from Library/Downloads.
+1. On the home screen, choose a source (a synced playlist from your library, local file, pasted text, or URL/ID under «Avanzado»).
+2. Load the playlist (or search songs, albums, and artists from **Catalog**, or combine sources with **Merge**) and review the tracks; uncheck any you do not want.
+3. Optionally: **Organize** (sort/group) or **Split** (manual blocks) from the contextual bar and switch between List, Dual, and Preview views.
+4. Click **Transfer** (pick the destination and validate the session live in the dialog), **Download**, or **Export** to a file or target playlist. When finished, the Post-Mortem report lets you search for alternatives to ambiguous tracks.
+5. Play any local or downloaded file from the bottom bar (with expandable side queue) or from Library/Downloads.
 
 The first run shows a guided welcome tour (reopenable from Config).
 
@@ -125,9 +125,10 @@ Files in `config/` are equivalent to your session: never share or commit them.
 
 ```bash
 python -m compileall -q app.py core engine services ui scripts
+python -m unittest discover -s tests -t .
 ```
 
-The Flet UI is validated manually (view modes, Organize/Split dialogs, responsive navigation, export). The `tests/` folder is reserved for future regressions.
+The Flet UI is also validated manually on desktop (view modes, Organize/Split dialogs, responsive navigation, Library, and export). The `tests/` folder contains the unit and regression suites for engine, services, and UI controllers.
 
 ## Thanks
 

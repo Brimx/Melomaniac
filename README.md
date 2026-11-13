@@ -1,4 +1,4 @@
-# 🎵 Melomaniac v4.9.0
+# 🎵 Melomaniac v5.0.0
 
 **Español** · [English](README.en.md)
 
@@ -98,11 +98,11 @@ Vuelve a arrancar con `scripts/launchers/run.bat`/`run.sh` (detectan cambios en 
 
 ## Uso
 
-1. En la pantalla inicial elige origen (plataforma, archivo local o texto pegado) y destino (una plataforma de streaming, o *Archivo Local (Exportar)*).
-2. Carga la playlist (ID o URL, archivo o lista pegada) y revisa las pistas; desmarca las que no quieras.
-3. Opcional: **Organizar** (ordenar/agrupar) o **Dividir** (bloques manuales) y alterna entre vistas Lista, Doble y Preview.
-4. Pulsa **Transferir**, confirma nombre y descripción, y sigue el progreso. Al terminar, el reporte Post-Mortem permite buscar alternativas para las pistas dudosas.
-5. Reproduce cualquier archivo local o descargado desde la barra inferior o desde Biblioteca/Descargas.
+1. En la pantalla inicial elige el origen (plataforma sincronizada de tu biblioteca, archivo local, texto pegado o URL/ID bajo «Avanzado»).
+2. Carga la playlist (o busca canciones, álbumes y artistas desde **Catálogo**, o combina fuentes con **Fusionar**) y revisa las pistas; desmarca las que no quieras.
+3. Opcional: **Organizar** (ordenar/agrupar) o **Dividir** (bloques manuales) desde la barra contextual y alterna entre vistas Lista, Doble y Preview.
+4. Pulsa **Transferir** (elige el destino y valida la sesión en vivo en el mismo diálogo), **Descargar** o **Exportar** a archivo o a una playlist destino. Al terminar, el reporte Post-Mortem permite buscar alternativas para las pistas dudosas.
+5. Reproduce cualquier archivo local o descargado desde la barra inferior (con cola lateral desplegable) o desde Biblioteca/Descargas.
 
 La primera ejecución muestra una bienvenida guiada (reabrible desde Config).
 
@@ -127,9 +127,10 @@ Los archivos de `config/` equivalen a tu sesión: no los compartas ni los subas 
 
 ```bash
 python -m compileall -q app.py core engine services ui scripts
+python -m unittest discover -s tests -t .
 ```
 
-La UI de Flet se valida manualmente (modos de vista, diálogos Organizar/Dividir, navegación responsive, exportación). La carpeta `tests/` está reservada para regresiones futuras.
+La UI de Flet se valida también manualmente en escritorio (modos de vista, diálogos Organizar/Dividir, navegación responsive, Biblioteca y exportación). La carpeta `tests/` reúne las pruebas unitarias y de regresión del motor, servicios y controladores UI.
 
 ## Agradecimientos
 

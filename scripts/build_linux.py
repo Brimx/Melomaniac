@@ -2,7 +2,7 @@
 """Construye los paquetes standalone de Melomaniac para Linux (.tar.gz y .AppImage).
 
 Uso:
-    python scripts/build_linux.py --version 4.9.0 [--out-dir dist-release] [--skip-pack]
+    python scripts/build_linux.py --version 5.0.0 [--out-dir dist-release] [--skip-pack]
 
 Requisitos:
     - Entorno virtual con dependencias de requirements.txt y pyinstaller.
@@ -213,7 +213,7 @@ def compute_sha256(file_path: Path) -> str:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--version", default="4.9.0", help="Versión de release (ej. 4.9.0)")
+    parser.add_argument("--version", default="5.0.0", help="Versión de release (ej. 5.0.0)")
     parser.add_argument("--out-dir", default="dist-release", help="Directorio de salida para los paquetes")
     parser.add_argument("--skip-pack", action="store_true", help="Omitir flet pack y usar dist/ existente")
     args = parser.parse_args()

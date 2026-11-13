@@ -1,5 +1,32 @@
 # Changelog
 
+## 5.0.0 — 2026-11-13 · Bloque 2 de gestión, Flet 1.1.2, arquitectura modular y reconocimiento cruzado
+
+> Consolida el **Bloque 2 — Flujos de gestión** (`2.1`–`2.11`), el pulido UX de Gestión (`3.5`), la actualización a **Flet `1.1.2`**, la modularización de la capa UI/core/services por composición, el panel de cola lateral `D26`, optimizaciones de rendimiento y el reconocimiento cruzado sin descargas duplicadas.
+
+### Flujos de gestión y workspace (Bloque 2 + 3.5)
+
+- **Selector de biblioteca, barra contextual y destino en diálogo:** Gestión reemplaza el pegado permanente de ID/URL y el bloqueo de destino en el sidebar por el selector de playlists sincronizadas por plataforma (`_playlist_pick`, con entrada manual plegada bajo «Avanzado»), un diálogo de transferencia con selección de destino y preflight de sesión en vivo (`ui/dialogs/transfer_dialog.py`), y una barra de acciones contextuales sobre la tabla (`Transferir`, `Organizar`, `Dividir`, `Reorganizar`, `Descargar`, `Exportar`) oculta automáticamente cuando no hay playlist cargada.
+- **Fusión y exportación a plataformas:** `merge_playlists` y `AppState.merge_sources` permiten unir playlists de plataforma, carpetas locales o manifiestos con deduplicación en cascada (`ISRC → ID → título/artista/duración`) desde `ui/dialogs/merge_dialog.py` (botón `Fusionar` en la cabecera). `add_tracks_to_playlist` y `ui/dialogs/export_dialog.py` permiten añadir canciones o exportar carpetas/listas locales directamente a una playlist de YouTube Music, Apple Music o Spotify.
+- **Búsqueda de catálogo en Gestión:** `search_catalog`, `fetch_album_tracks` y `fetch_artist_overview` por plataforma alimentan `ui/shell/catalog_panel.py` con pestañas `Canciones`, `Álbumes` y `Artistas` para explorar e incorporar pistas directamente.
+
+### Biblioteca, descargas y reconocimiento cruzado
+
+- **Manifiestos sin descarga y acciones en detalle:** `engine/local_manifests.py` permite importar playlists de plataformas en Local sin descargar audio, manteniendo orden y portadas. `PlaylistDetailView` incorpora menús contextuales bajo demanda (`ui/components/context_menu.py`), selección múltiple, reproducción aleatoria contextual (`PlayQueue.shuffle_from_context`) y recuperación de faltantes (`ui/views/download_recovery.py`).
+- **Reconocimiento cruzado y contrato de manifiestos:** `match_tracks_against_library` (`services/local_index.py`) resuelve pistas contra su carpeta, playlists hermanas descargadas y carpetas locales indexadas; el guard en `core/download_flow.py` evita redescargar pistas ya existentes en disco y `_write_download_manifest` conserva las entradas externas con `path` vacío para no contaminar `playlist.json` con rutas ajenas.
+- **Cierre de descargas y portadas:** corregido el falso error al pausar descargas, preservada la portada exacta al quitar manifiestos y ocultos los campos de URL/origen interno en los candidatos de alternativas.
+
+### UI, Flet 1.1.2 y rendimiento
+
+- **Migración a Flet `1.1.2` y teclado:** actualizados `flet`, `flet-desktop`, `flet-cli` y `flet-audio` a `1.1.2` (con `FLET_DESKTOP_FLAVOR="full"` en Linux), `Theme.input_decoration_theme`, constraints nativos en diálogos, `Dropdown.on_select`, `ui/shell/keymap.py` y onboarding con `NO_AT_BRIDGE=1` en Linux para evitar bloqueos AT-SPI en arranque.
+- **Panel de cola por empuje (`D26`) y Biblioteca en wrap fijo:** `PlayerQueuePanel` (`ui/player/player_queue.py`) anima el ancho del tercer hijo del `Row` raíz (`0 ↔ PLAYER_QUEUE_W`) con pestañas `Cola`/`Letra` y oculta la columna `ÁLBUM` en Gestión al abrirse; Biblioteca usa tarjetas fijas de `160 px` con selector de fuente persistente al volver del detalle.
+- **Fluidez y estabilidad de loop:** marshaling de `_schedule_state_render` al loop principal (`call_soon_threadsafe`), menús contextuales alojados en un único overlay bajo demanda, eliminación de repintados ocultos y `page.update()` globales, caché del fallback TOTP de Spotify, virtualización de listas con `item_extent=ITEM_H` y retirada de hover/scale/tooltips pesados en filas repetidas.
+- **Pulido de formularios:** etiquetas «Criterio secundario/terciario» en `organize_panel.py` e indicador «Sesión guardada» en `sp_dc`/`sp_key` dentro del asistente de credenciales.
+
+### Arquitectura modular
+
+- **Composición y desacoplamiento por capas:** `engine/` y `services/` desacoplados de `core.transfer`; `MusicApiService` y `AppState` migrados de mixins a composición (`services/platforms/`, `TransferRunner`, `DownloadRunner`); capa `ui/` reorganizada en `theme/`, `components/`, `player/`, `setup/`, `dialogs/`, `views/` y `shell/` (`ARCHITECTURE.md` / `ARCHITECTURE.en.md` actualizados y suite `unittest` de 133 pruebas).
+
 ## 4.9.0 — 2026-11-08 · Phosphor Icons y Bloque 1 de fiabilidad
 
 > Cierra el **Bloque 1 — Fiabilidad** del roadmap (1.1–1.11) y la migración de la interfaz a Phosphor Icons que ya estaba en `main`. Los pendientes de los bloques 2 a 5 quedan fuera a propósito.
