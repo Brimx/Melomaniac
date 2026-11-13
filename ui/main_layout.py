@@ -769,12 +769,13 @@ class LayoutMixin:
                             text_align=ft.TextAlign.CENTER if center else ft.TextAlign.LEFT, opacity=1.0)
             return ft.Container(content=ctrl, width=width, expand=expand, alignment=align)
 
+        self._album_col_header = _col_header("ÁLBUM", expand=2)
         col_headers = ft.Container(
             content=ft.Row(controls=[
                 _col_header("#",               width=32, center=True),
                 _col_header("PORTADA",         width=55, center=True),
                 _col_header("TÍTULO / ARTISTA", expand=3),
-                _col_header("ÁLBUM",           expand=2),
+                self._album_col_header,
                 _col_header("DUR.",            width=48, center=True),
                 _col_header("",                width=26, center=True),
                 _col_header("SEL.",            width=32, center=True),
@@ -786,6 +787,25 @@ class LayoutMixin:
         )
 
         return col_headers
+
+    def _sync_queue_album_column(self, queue_open: bool, *, update: bool = True) -> None:
+        """Oculta la columna Álbum en Gestión cuando el panel de cola está abierto (D26)."""
+        show_album = not bool(queue_open)
+        album_hdr = getattr(self, "_album_col_header", None)
+        if album_hdr is not None and album_hdr.visible != show_album:
+            album_hdr.visible = show_album
+            if update:
+                try:
+                    album_hdr.update()
+                except Exception:
+                    pass
+        lv = getattr(self, "_list_view", None)
+        if lv is None:
+            return
+        for row in getattr(lv, "controls", ()):
+            setter = getattr(row, "set_album_visible", None)
+            if callable(setter):
+                setter(show_album, update=update)
 
     def _build_list_and_preview_panels(self) -> None:
         self._list_view = ft.ListView(item_extent=ITEM_H, spacing=0, expand=True,
@@ -1314,7 +1334,12 @@ class LayoutMixin:
             on_toggle_queue=lambda: self.player_queue.toggle(),
         )
         self.player_bar.attach_mpris(MPRISService())
-        self.player_queue = PlayerQueuePanel(self.page, self.player_bar)
+        self.player_queue = PlayerQueuePanel(
+            self.page,
+            self.player_bar,
+            on_open_change=self._sync_queue_album_column,
+        )
+        self._sync_queue_album_column(self.player_queue.is_open, update=False)
         self.player_bar.log_audio_services_count("init")
         if hasattr(self, "_panel_biblioteca") and self._panel_biblioteca is not None:
             self._panel_biblioteca.player_bar = self.player_bar

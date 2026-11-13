@@ -102,7 +102,13 @@ def _save_queue_prefs(*, is_open: bool | None = None, tab: str | None = None) ->
 class PlayerQueuePanel(ft.Container):
     """Panel lateral derecho de cola y letra (modo empuje ``0 ↔ PLAYER_QUEUE_W``)."""
 
-    def __init__(self, page: ft.Page, player_bar) -> None:
+    def __init__(
+        self,
+        page: ft.Page,
+        player_bar,
+        *,
+        on_open_change: Callable[[bool], None] | None = None,
+    ) -> None:
         init_open, init_tab = _load_queue_prefs()
         super().__init__(
             width=PLAYER_QUEUE_W if init_open else 0,
@@ -114,6 +120,7 @@ class PlayerQueuePanel(ft.Container):
         )
         self._page_ref = page
         self.player_bar = player_bar
+        self._on_open_change = on_open_change
         self._is_open: bool = init_open
         self._active_tab: str = init_tab
         self._open_gen: int = 0
@@ -330,6 +337,11 @@ class PlayerQueuePanel(ft.Container):
         target = bool(open_state)
         self._is_open = target
         _save_queue_prefs(is_open=target)
+        if callable(self._on_open_change):
+            try:
+                self._on_open_change(target)
+            except Exception:
+                pass
         self._open_gen += 1
         gen = self._open_gen
         if target:

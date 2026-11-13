@@ -450,6 +450,7 @@ class SongRow(ft.Container):
         on_add_to_queue: Callable[[Track], Any] | None = None,
         on_open_external: Callable[[Track], Any] | None = None,
         extra_actions: Sequence[ContextMenuAction] | None = None,
+        show_album: bool = True,
     ):
         """
         Inicializa una fila de canción con todos sus componentes visuales.
@@ -608,6 +609,12 @@ class SongRow(ft.Container):
             height=28,
             icon_size=16,
         )
+        self._album_cell = ft.Container(
+            content=album_text,
+            expand=2,
+            alignment=ft.Alignment.CENTER_LEFT,
+            visible=bool(show_album),
+        )
         row_content = ft.Row(
             controls=[
                 ft.Container(content=num_label, width=32, alignment=ft.Alignment.CENTER),
@@ -619,7 +626,7 @@ class SongRow(ft.Container):
                     expand=3,
                     alignment=ft.MainAxisAlignment.CENTER,
                 ),
-                ft.Container(content=album_text,         expand=2, alignment=ft.Alignment.CENTER_LEFT),
+                self._album_cell,
                 ft.Container(content=dur_text,          width=48, alignment=ft.Alignment.CENTER),
                 self._status_cell,
                 ft.Container(content=self._chk,         width=32, alignment=ft.Alignment.CENTER),
@@ -644,6 +651,18 @@ class SongRow(ft.Container):
                 get_page=lambda: getattr(self, "page", None),
             ),
         )
+
+    def set_album_visible(self, visible: bool, *, update: bool = True) -> None:
+        """Muestra u oculta la columna de álbum (D26 cuando el panel de cola empuja Gestión)."""
+        target = bool(visible)
+        if self._album_cell.visible == target:
+            return
+        self._album_cell.visible = target
+        if update:
+            try:
+                self._album_cell.update()
+            except Exception:
+                pass
 
     def context_actions(self) -> list[ContextMenuAction]:
         """Construye las acciones contextuales disponibles para la canción."""

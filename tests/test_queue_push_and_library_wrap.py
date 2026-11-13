@@ -184,6 +184,37 @@ class TestQueuePushAndLibraryWrap(unittest.TestCase):
                                             found_row = True
         self.assertTrue(found_row)
 
+    def test_album_column_sync_on_queue_open(self) -> None:
+        from unittest.mock import MagicMock, patch
+
+        from core.models import Track
+        from ui.player_queue import PlayerQueuePanel
+        from ui.song_row import SongRow
+
+        tr = Track(id="t1", name="Song", artist="Artist", album="Album", duration="3:00", img_url="", platform="Spotify")
+        row = SongRow(tr, 1, lambda _tid: None, show_album=False)
+        self.assertFalse(row._album_cell.visible)
+        row.set_album_visible(True, update=False)
+        self.assertTrue(row._album_cell.visible)
+
+        events: list[bool] = []
+        dummy_bar = MagicMock()
+        dummy_bar.queue = MagicMock()
+        dummy_bar.queue.ordered_tracks.return_value = []
+        dummy_bar.queue.current_index = -1
+        dummy_bar.subscribe = MagicMock()
+        page = MagicMock()
+        with patch("ui.player_queue._load_queue_prefs", return_value=(False, "cola")), \
+             patch("ui.player_queue._save_queue_prefs"):
+            panel = PlayerQueuePanel(page, dummy_bar, on_open_change=events.append)
+            panel.set_open(True)
+            panel.set_open(False)
+        self.assertEqual(events, [True, False])
+
+        layout_src = (Path(__file__).resolve().parent.parent / "ui/main_layout.py").read_text(encoding="utf-8")
+        self.assertIn("def _sync_queue_album_column(", layout_src)
+        self.assertIn("on_open_change=self._sync_queue_album_column", layout_src)
+
 
 if __name__ == "__main__":
     unittest.main()

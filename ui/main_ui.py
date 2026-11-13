@@ -877,6 +877,7 @@ class PlaylistManagerUI(DialogMixin, DivisionMixin, ActionsMixin, LayoutMixin):
             except Exception:
                 pass
             lv.controls.clear()
+            show_album = not getattr(getattr(self, "player_queue", None), "is_open", False)
             for i, track in enumerate(tracks, 1):
                 lv.controls.append(
                     SongRow(
@@ -885,6 +886,7 @@ class PlaylistManagerUI(DialogMixin, DivisionMixin, ActionsMixin, LayoutMixin):
                         on_download=self._on_row_download,
                         download_busy=download_busy,
                         download_done=(track.id in done_by_id),
+                        show_album=show_album,
                     )
                 )
             try:
