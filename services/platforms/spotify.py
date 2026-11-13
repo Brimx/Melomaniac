@@ -41,7 +41,7 @@ SPOTIFY_ADD_CHUNK = CFG_SPOTIFY_ADD_CHUNK
 
 
 try:
-    from spotapi import Song, Login, PublicPlaylist, PrivatePlaylist, Config
+    from spotapi import AlbumError, Artist, ArtistError, Config, Login, PrivatePlaylist, PublicAlbum, PublicPlaylist, Song
     from spotapi.utils.logger import NoopLogger
     HAS_SPOTIFY = True
 except ImportError:
@@ -341,6 +341,76 @@ class SpotifyMixin:
             ))
         return out
 
+    def _sp_warm_base(self, base_obj) -> None:
+        """Comparte hashes JS y tokens ya resueltos en ``_sp_song`` para evitar 5-8 requests extra."""
+        song_base = getattr(self._sp_song, "base", None)
+        if song_base is None or base_obj is None:
+            return
+        raw_hashes = getattr(song_base, "raw_hashes", None)
+        if raw_hashes is None or type(raw_hashes).__name__ == "_Undefined":
+            return
+        target_hashes = getattr(base_obj, "raw_hashes", None)
+        if target_hashes is None or type(target_hashes).__name__ == "_Undefined":
+            for attr in (
+                "js_pack",
+                "raw_hashes",
+                "access_token",
+                "access_token_expires_at_ms",
+                "client_token",
+                "client_id",
+                "client_version",
+                "device_id",
+            ):
+                if hasattr(song_base, attr):
+                    setattr(base_obj, attr, getattr(song_base, attr))
+
+    def _sp_ensure_song(self):
+        if self._sp_song is not None:
+            return self._sp_song
+        if not HAS_SPOTIFY:
+            return None
+        if not self._sp_cfg:
+            self._sync_init_spotify()
+        if not self._sp_cfg:
+            self._sp_cfg = Config(logger=NoopLogger())
+        self._sp_song = Song(client=self._sp_cfg.client)
+        return self._sp_song
+
+    @staticmethod
+    def _sp_extract_id(data: dict) -> str:
+        raw_id = str(data.get("id") or "").strip()
+        if raw_id:
+            return raw_id
+        uri = str(data.get("uri") or "").strip()
+        if ":" in uri:
+            return uri.split(":")[-1].strip()
+        return ""
+
+    @staticmethod
+    def _sp_artists_str(data: dict) -> str:
+        items = (data.get("artists") or {}).get("items") or []
+        names: list[str] = []
+        for a in items:
+            if not isinstance(a, dict):
+                continue
+            name = (a.get("profile") or {}).get("name") or a.get("name") or ""
+            if name:
+                names.append(str(name).strip())
+        return ", ".join(names)
+
+    @staticmethod
+    def _sp_unwrap_node(item: dict) -> dict:
+        if not isinstance(item, dict):
+            return {}
+        if isinstance(item.get("data"), dict):
+            return item["data"]
+        inner = item.get("item")
+        if isinstance(inner, dict) and isinstance(inner.get("data"), dict):
+            return inner["data"]
+        if isinstance(item.get("track"), dict):
+            return item["track"]
+        return item
+
     def _sp_search_items(self, q: str, limit: int = 5) -> list:
         if not HAS_SPOTIFY or not self._sp_cfg:
             return []
@@ -353,35 +423,50 @@ class SpotifyMixin:
         except (KeyError, TypeError):
             return []
 
-    def _sp_track_from_item(self, data: dict) -> Optional[Track]:
-        """Convierte un item de búsqueda de Spotify en Track para la UI."""
-        tid = str(data.get("id") or "")
+    def _sp_track_from_item(
+        self,
+        data: dict,
+        *,
+        fallback_album: str = "",
+        fallback_img: str = "",
+        fallback_release_date: str = "",
+        fallback_album_artist: str = "",
+        track_number: int = 0,
+    ) -> Optional[Track]:
+        """Convierte un item de búsqueda/álbum/artista de Spotify en Track para la UI."""
+        tid = self._sp_extract_id(data)
         if not tid:
             return None
-        artists = ", ".join(
-            a["profile"]["name"] for a in (data.get("artists") or {}).get("items", [])
-            if a.get("profile", {}).get("name")
-        )
+        artists = self._sp_artists_str(data)
         album = data.get("albumOfTrack") or {}
-        ms = int((data.get("duration") or {}).get("totalMilliseconds", 0) or 0)
+        dur_obj = data.get("duration") or data.get("trackDuration") or {}
+        ms = int(dur_obj.get("totalMilliseconds", 0) or 0)
         covers = ((album.get("coverArt") or {}).get("sources") or [])
+        img_url = self._spotify_cover_best(covers) or fallback_img
         rel = ""
         date_obj = album.get("date") or {}
         if isinstance(date_obj, dict):
             rel = str(date_obj.get("isoString") or date_obj.get("year") or "").strip()
+        if not rel:
+            rel = fallback_release_date
+        explicit = bool(data.get("explicit")) or (
+            str((data.get("contentRating") or {}).get("label") or "").upper() == "EXPLICIT"
+        )
         return Track(
             id=tid,
             name=data.get("name", "Unknown"),
-            artist=artists or "Unknown",
-            album=album.get("name", "Unknown"),
+            artist=artists or fallback_album_artist or "Unknown",
+            album=album.get("name") or fallback_album or "Unknown",
             duration=f"{ms // 60000}:{(ms // 1000) % 60:02d}" if ms else "0:00",
-            img_url=self._spotify_cover_best(covers),
+            img_url=img_url,
             platform="Spotify",
             duration_ms=ms,
-            is_explicit=bool(data.get("explicit")),
+            is_explicit=explicit,
             isrc=self._extract_spotify_isrc(data),
             release_date=rel,
             source_url=f"https://open.spotify.com/track/{tid}",
+            album_artist=fallback_album_artist,
+            track_number=int(data.get("trackNumber") or track_number or 0),
         )
 
     def _sp_search_candidates_sync(self, query: str, limit: int = 5) -> list[Track]:
@@ -392,6 +477,216 @@ class SpotifyMixin:
             if track is not None:
                 out.append(track)
         return out
+
+    def _sp_album_item_from_raw(self, data: dict, *, fallback_artist: str = "") -> Optional[dict]:
+        album_id = self._sp_extract_id(data)
+        if not album_id:
+            return None
+        artist = self._sp_artists_str(data) or fallback_artist or "Unknown"
+        date_obj = data.get("date") or {}
+        year = ""
+        if isinstance(date_obj, dict):
+            raw_y = date_obj.get("year") or date_obj.get("isoString") or ""
+            year = str(raw_y)[:4] if raw_y else ""
+        covers = (data.get("coverArt") or {}).get("sources") or []
+        item_type = str(data.get("type") or "").title() if data.get("type") else ""
+        return self._catalog_album_item(
+            album_id=album_id,
+            name=str(data.get("name") or "Unknown"),
+            artist=artist,
+            img_url=self._spotify_cover_best(covers),
+            external_url=f"https://open.spotify.com/album/{album_id}",
+            platform="Spotify",
+            year=year,
+            item_type=item_type,
+        )
+
+    def _sp_artist_item_from_raw(self, data: dict) -> Optional[dict]:
+        artist_id = self._sp_extract_id(data)
+        if not artist_id:
+            return None
+        profile = data.get("profile") or {}
+        name = str(profile.get("name") or data.get("name") or "Unknown").strip()
+        covers = ((data.get("visuals") or {}).get("avatarImage") or {}).get("sources") or []
+        return self._catalog_artist_item(
+            artist_id=artist_id,
+            name=name,
+            img_url=self._spotify_cover_best(covers),
+            external_url=f"https://open.spotify.com/artist/{artist_id}",
+            platform="Spotify",
+            subtitle="",
+        )
+
+    def _sp_search_catalog_sync(self, query: str, kind: str, limit: int = 20) -> list[dict]:
+        capped = max(1, min(int(limit), 50))
+        song = self._sp_ensure_song()
+        if song is None:
+            return []
+        try:
+            resp = song.query_songs(query, limit=capped)
+            search_v2 = (resp.get("data") or {}).get("searchV2") or {}
+            out: list[dict] = []
+            if kind == "songs":
+                items = (search_v2.get("tracksV2") or {}).get("items") or []
+                for item in items:
+                    track = self._sp_track_from_item(self._sp_unwrap_node(item))
+                    if track is not None:
+                        out.append(self._catalog_song_item(track))
+            elif kind == "albums":
+                items = (search_v2.get("albumsV2") or {}).get("items") or []
+                for item in items:
+                    entry = self._sp_album_item_from_raw(self._sp_unwrap_node(item))
+                    if entry is not None:
+                        out.append(entry)
+            elif kind == "artists":
+                items = (search_v2.get("artists") or {}).get("items") or []
+                if not items and HAS_SPOTIFY:
+                    artist_cli = getattr(self, "_sp_artist", None)
+                    if artist_cli is None:
+                        client = self._sp_cfg.client if self._sp_cfg else song.base.client
+                        artist_cli = Artist(login=self._sp_login, client=client)
+                        self._sp_warm_base(artist_cli.base)
+                        self._sp_artist = artist_cli
+                    art_resp = artist_cli.query_artists(query, limit=capped)
+                    items = ((art_resp.get("data") or {}).get("searchV2") or {}).get("artists", {}).get("items") or []
+                for item in items:
+                    entry = self._sp_artist_item_from_raw(self._sp_unwrap_node(item))
+                    if entry is not None:
+                        out.append(entry)
+            return out[:capped]
+        except RateLimitError:
+            raise
+        except Exception as exc:  # pylint: disable=broad-exception-caught
+            self.spotify_auth_error = str(exc)
+            if self._sp_is_rate_limited(exc):
+                raise RateLimitError("Spotify", 60) from exc
+            raise
+
+    def _sp_fetch_album_sync(self, album_id: str) -> tuple[PlaylistMeta, list[Track]]:
+        if not HAS_SPOTIFY:
+            raise RuntimeError("SpotAPI no disponible. Instala spotapi.")
+        if not self._sp_cfg:
+            self._sync_init_spotify()
+        if not self._sp_cfg:
+            self._sp_cfg = Config(logger=NoopLogger())
+        try:
+            album_cli = PublicAlbum(album_id, client=self._sp_cfg.client)
+            self._sp_warm_base(album_cli.base)
+            upper = 343
+            first = album_cli.get_album_info(limit=upper, offset=0)
+            union = (first.get("data") or {}).get("albumUnion") or {}
+            name = str(union.get("name") or "Spotify Album")
+            album_cover = self._spotify_cover_best((union.get("coverArt") or {}).get("sources") or [])
+            album_artist = self._sp_artists_str(union)
+            date_obj = union.get("date") or {}
+            rel = str(date_obj.get("isoString") or date_obj.get("year") or "").strip() if isinstance(date_obj, dict) else ""
+
+            tracks_v2 = union.get("tracksV2") or {}
+            total = int(tracks_v2.get("totalCount") or 0)
+            raw_items = list(tracks_v2.get("items") or [])
+            offset = len(raw_items)
+            while total and offset < total:
+                page = album_cli.get_album_info(limit=upper, offset=offset)
+                page_items = ((page.get("data") or {}).get("albumUnion") or {}).get("tracksV2", {}).get("items") or []
+                if not page_items:
+                    break
+                raw_items.extend(page_items)
+                offset += len(page_items)
+
+            tracks: list[Track] = []
+            for idx, item in enumerate(raw_items, 1):
+                node = self._sp_unwrap_node(item)
+                track = self._sp_track_from_item(
+                    node,
+                    fallback_album=name,
+                    fallback_img=album_cover,
+                    fallback_release_date=rel,
+                    fallback_album_artist=album_artist,
+                    track_number=idx,
+                )
+                if track is not None:
+                    tracks.append(track)
+            return PlaylistMeta(name=name, description=""), tracks
+        except RateLimitError:
+            raise
+        except Exception as exc:  # pylint: disable=broad-exception-caught
+            self.spotify_auth_error = str(exc)
+            if self._sp_is_rate_limited(exc):
+                raise RateLimitError("Spotify", 60) from exc
+            raise
+
+    def _sp_fetch_artist_sync(self, artist_id: str) -> dict:
+        if not HAS_SPOTIFY:
+            raise RuntimeError("SpotAPI no disponible. Instala spotapi.")
+        if not self._sp_cfg:
+            self._sync_init_spotify()
+        if not self._sp_cfg:
+            self._sp_cfg = Config(logger=NoopLogger())
+        try:
+            artist_cli = getattr(self, "_sp_artist", None)
+            if artist_cli is None:
+                artist_cli = Artist(login=self._sp_login, client=self._sp_cfg.client)
+                self._sp_warm_base(artist_cli.base)
+                self._sp_artist = artist_cli
+            resp = artist_cli.get_artist(artist_id)
+            union = (resp.get("data") or {}).get("artistUnion") or {}
+            profile = union.get("profile") or {}
+            name = str(profile.get("name") or "Artista").strip()
+            bio = _as_text((profile.get("biography") or {}).get("text"))
+            covers = ((union.get("visuals") or {}).get("avatarImage") or {}).get("sources") or []
+            listeners = (union.get("stats") or {}).get("monthlyListeners")
+            subtitle = f"{int(listeners):,} oyentes mensuales" if isinstance(listeners, int) and listeners > 0 else ""
+
+            discography = union.get("discography") or {}
+            top_tracks: list[Track] = []
+            for idx, item in enumerate((discography.get("topTracks") or {}).get("items") or [], 1):
+                node = self._sp_unwrap_node(item)
+                track = self._sp_track_from_item(
+                    node,
+                    fallback_album_artist=name,
+                    track_number=idx,
+                )
+                if track is not None:
+                    top_tracks.append(track)
+
+            albums: list[dict] = []
+            seen_ids: set[str] = set()
+            for sec_key in ("albums", "popularReleasesAlbums", "singles"):
+                sec_items = (discography.get(sec_key) or {}).get("items") or []
+                for item in sec_items:
+                    releases = ((item.get("releases") or {}).get("items")) if isinstance(item, dict) else None
+                    candidates = releases if isinstance(releases, list) else [item]
+                    for rel_item in candidates:
+                        if not isinstance(rel_item, dict):
+                            continue
+                        entry = self._sp_album_item_from_raw(rel_item, fallback_artist=name)
+                        if entry is not None and entry["id"] not in seen_ids:
+                            seen_ids.add(entry["id"])
+                            albums.append(entry)
+
+            artist_dict = {
+                **self._catalog_artist_item(
+                    artist_id=self._sp_extract_id(union) or artist_id,
+                    name=name,
+                    img_url=self._spotify_cover_best(covers),
+                    external_url=f"https://open.spotify.com/artist/{self._sp_extract_id(union) or artist_id}",
+                    platform="Spotify",
+                    subtitle=subtitle,
+                ),
+                "description": bio,
+            }
+            return {
+                "artist": artist_dict,
+                "top_tracks": top_tracks,
+                "albums": albums,
+            }
+        except RateLimitError:
+            raise
+        except Exception as exc:  # pylint: disable=broad-exception-caught
+            self.spotify_auth_error = str(exc)
+            if self._sp_is_rate_limited(exc):
+                raise RateLimitError("Spotify", 60) from exc
+            raise
 
     @staticmethod
     def _extract_spotify_isrc(data: dict) -> str | None:
@@ -510,6 +805,23 @@ class SpotifyMixin:
             self._sync_init_spotify()
         if not self._sp_login:
             return False, "Spotify no disponible. Comprueba config/spotify_cookies.json."
+        added = self._sp_add_tracks_to_playlist(playlist_id, [track_id])
+        if added <= 0:
+            return False, "Spotify rechazó la inserción"
+        return True, playlist_id
+
+    def _sp_add_tracks_to_playlist(self, playlist_id: str, track_ids: list[str]) -> int:
+        if not track_ids:
+            return 0
+        playlist_id = normalize_playlist_id("Spotify", playlist_id)
+        if not playlist_id:
+            raise ValueError("Playlist de Spotify sin identificador")
+        if not HAS_SPOTIFY:
+            raise RuntimeError("SpotAPI no disponible")
+        if not self._sp_login:
+            self._sync_init_spotify()
+        if not self._sp_login:
+            raise RuntimeError("Spotify no disponible. Comprueba config/spotify_cookies.json.")
         try:
             pl = PrivatePlaylist(self._sp_login, playlist_id)
             # Reutiliza el Song de búsqueda: SpotAPI vuelve a pedir sesión,
@@ -517,14 +829,13 @@ class SpotifyMixin:
             # nuevo; eso era el retraso de ~10 s al insertar una alternativa.
             song = self._sp_song
             if song is None:
-                song = Song(client=self._sp_cfg.client)
+                client = self._sp_cfg.client if self._sp_cfg is not None else getattr(self._sp_login, "client", None)
+                song = Song(client=client) if client is not None else Song(pl)
                 self._sp_song = song
             with self._sp_insert_lock:
                 song.playlist = pl
-                rejected = self._sp_add_tracks(pl, [track_id], song=song)
-            if rejected:
-                return False, "Spotify rechazó la inserción"
-            return True, playlist_id
+                rejected = self._sp_add_tracks(pl, track_ids, song=song)
+            return max(0, len(track_ids) - len(rejected))
         except RateLimitError:
             raise
         except Exception as exc:  # pylint: disable=broad-exception-caught

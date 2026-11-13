@@ -155,6 +155,7 @@ class MusicApiService(YouTubeMixin, AppleMixin, SpotifyMixin):
         # y hashes JS (~5-8 requests) cada vez que se construye un BaseClient.
         # Reutilizarla reduce cada búsqueda a 1 solo request.
         self._sp_song  = None
+        self._sp_artist = None
         # Serializa inserciones manuales sobre el Song reutilizado; el
         # BaseClient ya trae sesión/token/hashes calientes de la búsqueda.
         self._sp_insert_lock = threading.Lock()
@@ -377,6 +378,179 @@ class MusicApiService(YouTubeMixin, AppleMixin, SpotifyMixin):
             )
         return SearchResult(None, False)
 
+    CATALOG_KINDS = frozenset({"songs", "albums", "artists"})
+    _PLATFORM_SEARCH_CATALOG = {
+        "YouTube Music": "_yt_search_catalog_sync",
+        "Apple Music": "_am_search_catalog_sync",
+        "Spotify": "_sp_search_catalog_sync",
+    }
+    _PLATFORM_FETCH_ALBUM = {
+        "YouTube Music": "_yt_fetch_album_sync",
+        "Apple Music": "_am_fetch_album_sync",
+        "Spotify": "_sp_fetch_album_sync",
+    }
+    _PLATFORM_FETCH_ARTIST = {
+        "YouTube Music": "_yt_fetch_artist_sync",
+        "Apple Music": "_am_fetch_artist_sync",
+        "Spotify": "_sp_fetch_artist_sync",
+    }
+    _PLATFORM_ADD_TRACKS = {
+        "YouTube Music": "_yt_add_tracks",
+        "Apple Music": "_am_add_tracks",
+        "Spotify": "_sp_add_tracks_to_playlist",
+    }
+
+    @staticmethod
+    def _catalog_song_item(track: Track) -> dict:
+        subtitle = (
+            f"{track.artist} · {track.album}"
+            if track.album and track.album != "Unknown"
+            else track.artist
+        )
+        return {
+            "id": track.id,
+            "name": track.name,
+            "subtitle": subtitle,
+            "artist": track.artist,
+            "img_url": track.img_url,
+            "kind": "songs",
+            "external_url": track.source_url,
+            "platform": track.platform,
+            "track": track,
+        }
+
+    @staticmethod
+    def _catalog_album_item(
+        *,
+        album_id: str,
+        name: str,
+        artist: str,
+        img_url: str,
+        external_url: str,
+        platform: str,
+        year: str = "",
+        item_type: str = "",
+    ) -> dict:
+        parts = [p for p in (artist, year, item_type) if p]
+        return {
+            "id": album_id,
+            "name": name,
+            "subtitle": " · ".join(parts),
+            "artist": artist,
+            "img_url": img_url,
+            "kind": "albums",
+            "external_url": external_url,
+            "platform": platform,
+            "year": year,
+        }
+
+    @staticmethod
+    def _catalog_artist_item(
+        *,
+        artist_id: str,
+        name: str,
+        img_url: str,
+        external_url: str,
+        platform: str,
+        subtitle: str = "",
+    ) -> dict:
+        return {
+            "id": artist_id,
+            "name": name,
+            "subtitle": subtitle or "Artista",
+            "artist": name,
+            "img_url": img_url,
+            "kind": "artists",
+            "external_url": external_url,
+            "platform": platform,
+        }
+
+    @staticmethod
+    def _normalize_catalog_id(platform: str, raw_id: str, entity: str) -> str:
+        val = (raw_id or "").strip()
+        if not val:
+            return ""
+        if platform == "Spotify":
+            marker = f":{entity}:"
+            if marker in val:
+                val = val.split(marker, 1)[1]
+            slash_marker = f"/{entity}/"
+            if slash_marker in val:
+                val = val.split(slash_marker, 1)[1]
+            return val.split("?", 1)[0].split("#", 1)[0].strip().strip("/")
+        if platform == "Apple Music":
+            slash_marker = f"/{entity}/"
+            if slash_marker in val:
+                val = val.split(slash_marker, 1)[1]
+                val = val.split("?", 1)[0].split("#", 1)[0].strip("/")
+                if "/" in val:
+                    val = val.rsplit("/", 1)[-1]
+            return val
+        if platform == "YouTube Music":
+            if entity == "album" and "list=" in val:
+                return val.split("list=", 1)[1].split("&", 1)[0].split("#", 1)[0].strip()
+            for prefix in ("/browse/", "/channel/"):
+                if prefix in val:
+                    val = val.split(prefix, 1)[1]
+                    break
+            return val.split("?", 1)[0].split("#", 1)[0].strip().strip("/")
+        return val
+
+    async def search_catalog(
+        self,
+        platform: str,
+        query: str,
+        *,
+        kind: str = "songs",
+        limit: int = 20,
+    ) -> list[dict]:
+        """Busca canciones, álbumes o artistas en el catálogo de ``platform``."""
+        method = self._PLATFORM_SEARCH_CATALOG.get(platform)
+        if method is None:
+            raise ValueError(f"Unknown platform: {platform}")
+        kind_norm = (kind or "").strip().lower()
+        if kind_norm not in self.CATALOG_KINDS:
+            raise ValueError(f"Unsupported catalog kind: {kind}")
+        if not isinstance(limit, int) or isinstance(limit, bool) or limit < 1:
+            raise ValueError("limit must be a positive integer")
+        query = (query or "").strip()
+        if not query:
+            return []
+        self._cb[platform].check_or_raise()
+        capped = min(limit, 50)
+        if platform == "Spotify" and not self._sp_cfg and self._sp_song is None:
+            await asyncio.to_thread(self._sync_init_spotify)
+        async with GLOBAL_API_SEMAPHORE:
+            return await asyncio.to_thread(getattr(self, method), query, kind_norm, capped)
+
+    async def fetch_album_tracks(
+        self,
+        platform: str,
+        album_id: str,
+    ) -> tuple[PlaylistMeta, list[Track]]:
+        """Carga los metadatos y pistas de un álbum desde ``platform``."""
+        method = self._PLATFORM_FETCH_ALBUM.get(platform)
+        if method is None:
+            raise ValueError(f"Unknown platform: {platform}")
+        self._cb[platform].check_or_raise()
+        normalized = self._normalize_catalog_id(platform, album_id, "album")
+        if not normalized:
+            raise ValueError("Álbum sin identificador")
+        async with GLOBAL_API_SEMAPHORE:
+            return await asyncio.to_thread(getattr(self, method), normalized)
+
+    async def fetch_artist_overview(self, platform: str, artist_id: str) -> dict:
+        """Carga perfil, canciones destacadas y álbumes de un artista."""
+        method = self._PLATFORM_FETCH_ARTIST.get(platform)
+        if method is None:
+            raise ValueError(f"Unknown platform: {platform}")
+        self._cb[platform].check_or_raise()
+        normalized = self._normalize_catalog_id(platform, artist_id, "artist")
+        if not normalized:
+            raise ValueError("Artista sin identificador")
+        async with GLOBAL_API_SEMAPHORE:
+            return await asyncio.to_thread(getattr(self, method), normalized)
+
     async def search_candidates(self, platform: str, query: str,
                                 limit: int = 5) -> list[Track]:
         """Devuelve hasta ``limit`` resultados crudos para elegir a mano.
@@ -520,6 +694,67 @@ class MusicApiService(YouTubeMixin, AppleMixin, SpotifyMixin):
         if platform == "Spotify":
             return await asyncio.to_thread(self._sp_add_track, playlist_id, track_id)
         return False, "Platform not supported"
+
+    async def add_tracks_to_playlist(
+        self,
+        platform: str,
+        playlist_id: str,
+        tracks: list[Track],
+    ) -> int:
+        """Inserta un lote de pistas en una playlist existente de ``platform``.
+
+        Si alguna pista proviene de otra plataforma o de una fuente local
+        (``track.platform != platform`` o ``track.id`` vacío), la resuelve antes
+        vía ``search_with_fallback`` respetando la caché y el rate limit
+        secuencial de Apple Music.
+        """
+        method = self._PLATFORM_ADD_TRACKS.get(platform)
+        if method is None:
+            raise ValueError(f"Unknown platform: {platform}")
+        self._cb[platform].check_or_raise()
+        playlist_id = normalize_playlist_id(platform, playlist_id)
+        if not playlist_id:
+            raise ValueError("Playlist sin identificador")
+        if not tracks:
+            return 0
+
+        resolved_ids: list[str] = []
+        cache_dirty = False
+        for track in tracks:
+            if track is None:
+                continue
+            tid = str(getattr(track, "id", "") or "").strip()
+            if getattr(track, "platform", "") == platform and tid:
+                resolved_ids.append(tid)
+                continue
+            cache_key = make_cache_key(track.name, track.artist, platform)
+            cached = self._search_cache.get(cache_key)
+            if cached and cached.track_id and not cached.needs_review:
+                resolved_ids.append(cached.track_id)
+                continue
+            dur_ms = int(getattr(track, "duration_ms", 0) or 0)
+            dur_s = (dur_ms // 1000) if dur_ms else None
+            res = await self.search_with_fallback(
+                platform,
+                track.name,
+                track.artist,
+                local_duration_s=dur_s,
+                local_duration_ms=dur_ms,
+                local_is_explicit=bool(getattr(track, "is_explicit", False)),
+                local_isrc=getattr(track, "isrc", None),
+            )
+            if res.track_id:
+                self._search_cache[cache_key] = res
+                self.mark_search_cache_dirty()
+                cache_dirty = True
+                resolved_ids.append(res.track_id)
+
+        if cache_dirty:
+            self.save_search_cache()
+        if not resolved_ids:
+            return 0
+        async with GLOBAL_API_SEMAPHORE:
+            return await asyncio.to_thread(getattr(self, method), playlist_id, resolved_ids)
 
     # ── Playlist Deletion (reemplazar) §11 ───────────────────────────────
     async def delete_playlist(self, platform: str, playlist_id: str) -> tuple[bool, str]:

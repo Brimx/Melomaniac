@@ -461,17 +461,25 @@ class AppleMixin:
                 retry = max(retry, 120)
             raise RateLimitError("Apple Music", retry)
 
-    def _am_search_items(self, term: str, limit: int = 5) -> list[dict]:
-        """Una llamada de catálogo; devuelve los items crudos de canciones."""
+    def _am_search_items(
+        self,
+        term: str,
+        limit: int = 5,
+        *,
+        types: str = "songs",
+        max_limit: int = 10,
+    ) -> list[dict]:
+        """Una llamada de catálogo; devuelve los items crudos del tipo pedido."""
+        capped = max(1, min(int(limit), max_limit))
         r = self._am_request(
             "get",
             f"{APPLE_API_BASE}/catalog/{self._am_storefront}/search",
-            params={"term": term, "types": "songs", "limit": max(1, min(limit, 10))},
+            params={"term": term, "types": types, "limit": capped},
             timeout=10,
         )
         self._am_check_status(r)
         r.raise_for_status()
-        return r.json().get("results", {}).get("songs", {}).get("data", []) or []
+        return r.json().get("results", {}).get(types, {}).get("data", []) or []
 
     def _am_search_candidates_sync(self, term: str, limit: int = 5) -> list[Track]:
         out: list[Track] = []
@@ -481,6 +489,191 @@ class AppleMixin:
             except Exception:  # pylint: disable=broad-exception-caught
                 continue
         return out
+
+    def _am_album_item_from_raw(self, item: dict, *, fallback_artist: str = "") -> Optional[dict]:
+        album_id = str(item.get("id") or "").strip()
+        if not album_id:
+            return None
+        attrs = item.get("attributes") or {}
+        artist = str(attrs.get("artistName") or fallback_artist or "Unknown").strip()
+        rel = str(attrs.get("releaseDate") or "").strip()
+        year = rel[:4] if len(rel) >= 4 and rel[:4].isdigit() else rel
+        art_url = self._apple_cover_normalized(str((attrs.get("artwork") or {}).get("url") or ""), 400)
+        ext_url = str(attrs.get("url") or f"https://music.apple.com/{self._am_storefront}/album/{album_id}")
+        item_type = "Single" if attrs.get("isSingle") else ""
+        return self._catalog_album_item(
+            album_id=album_id,
+            name=str(attrs.get("name") or "Unknown"),
+            artist=artist,
+            img_url=art_url,
+            external_url=ext_url,
+            platform="Apple Music",
+            year=year,
+            item_type=item_type,
+        )
+
+    def _am_artist_item_from_raw(self, item: dict) -> Optional[dict]:
+        artist_id = str(item.get("id") or "").strip()
+        if not artist_id:
+            return None
+        attrs = item.get("attributes") or {}
+        genres = attrs.get("genreNames") or []
+        subtitle = str(genres[0]).strip() if isinstance(genres, list) and genres else ""
+        art_url = self._apple_cover_normalized(str((attrs.get("artwork") or {}).get("url") or ""), 400)
+        ext_url = str(attrs.get("url") or f"https://music.apple.com/{self._am_storefront}/artist/{artist_id}")
+        return self._catalog_artist_item(
+            artist_id=artist_id,
+            name=str(attrs.get("name") or "Unknown"),
+            img_url=art_url,
+            external_url=ext_url,
+            platform="Apple Music",
+            subtitle=subtitle,
+        )
+
+    def _am_search_catalog_sync(self, query: str, kind: str, limit: int = 20) -> list[dict]:
+        # Apple Music catalog search acepta hasta 25 resultados por llamada, siempre secuencial.
+        raw_items = self._am_search_items(query, limit=limit, types=kind, max_limit=25)
+        out: list[dict] = []
+        for item in raw_items:
+            if not isinstance(item, dict):
+                continue
+            if kind == "songs":
+                try:
+                    track = self._apple_track_from_item(item)
+                except Exception:  # pylint: disable=broad-exception-caught
+                    continue
+                out.append(self._catalog_song_item(track))
+            elif kind == "albums":
+                entry = self._am_album_item_from_raw(item)
+                if entry is not None:
+                    out.append(entry)
+            elif kind == "artists":
+                entry = self._am_artist_item_from_raw(item)
+                if entry is not None:
+                    out.append(entry)
+        return out
+
+    def _am_fetch_album_sync(self, album_id: str) -> tuple[PlaylistMeta, list[Track]]:
+        url = f"{APPLE_API_BASE}/catalog/{self._am_storefront}/albums/{album_id}"
+        r = self._am_request("get", url, params={"include": "tracks"}, timeout=10)
+        self._am_check_status(r)
+        r.raise_for_status()
+        data_list = r.json().get("data") or []
+        if not data_list:
+            return PlaylistMeta(name="Apple Music Album", description=""), []
+        item = data_list[0]
+        attrs = item.get("attributes") or {}
+        name = str(attrs.get("name") or "Apple Music Album")
+        editorial = attrs.get("editorialNotes") or {}
+        description = _as_text(editorial.get("standard") or editorial.get("short") or attrs.get("description"))
+        album_cover = self._apple_cover_normalized(str((attrs.get("artwork") or {}).get("url") or ""), 400)
+        album_artist = str(attrs.get("artistName") or "").strip()
+        album_rel = str(attrs.get("releaseDate") or "").strip()
+
+        tracks_rel = (item.get("relationships") or {}).get("tracks") or {}
+        raw_tracks = list(tracks_rel.get("data") or [])
+        next_url = tracks_rel.get("next")
+        while next_url:
+            full = next_url if next_url.startswith("http") else f"https://amp-api.music.apple.com{next_url}"
+            page_resp = self._am_request("get", full, timeout=10)
+            self._am_check_status(page_resp)
+            page_resp.raise_for_status()
+            page_json = page_resp.json()
+            raw_tracks.extend(page_json.get("data") or [])
+            next_url = page_json.get("next")
+
+        tracks: list[Track] = []
+        for idx, raw_track in enumerate(raw_tracks, 1):
+            if not isinstance(raw_track, dict) or not raw_track.get("id"):
+                continue
+            track = self._apple_track_from_item(raw_track)
+            if (not track.album or track.album == "Unknown") and name:
+                track.album = name
+            if not track.img_url and album_cover:
+                track.img_url = album_cover
+            if not track.release_date and album_rel:
+                track.release_date = album_rel
+            if album_artist:
+                track.album_artist = album_artist
+            if not track.track_number:
+                track.track_number = int((raw_track.get("attributes") or {}).get("trackNumber") or idx)
+            tracks.append(track)
+        return PlaylistMeta(name=name, description=description), tracks
+
+    def _am_fetch_artist_sync(self, artist_id: str) -> dict:
+        url = f"{APPLE_API_BASE}/catalog/{self._am_storefront}/artists/{artist_id}"
+        r = self._am_request(
+            "get",
+            url,
+            params={"views": "top-songs,full-albums"},
+            timeout=10,
+        )
+        self._am_check_status(r)
+        r.raise_for_status()
+        data_list = r.json().get("data") or []
+        if not data_list:
+            return {
+                "artist": self._catalog_artist_item(
+                    artist_id=artist_id,
+                    name="Artista",
+                    img_url="",
+                    external_url=f"https://music.apple.com/{self._am_storefront}/artist/{artist_id}",
+                    platform="Apple Music",
+                ),
+                "top_tracks": [],
+                "albums": [],
+            }
+        item = data_list[0]
+        attrs = item.get("attributes") or {}
+        artist_info = self._am_artist_item_from_raw(item) or self._catalog_artist_item(
+            artist_id=artist_id,
+            name=str(attrs.get("name") or "Artista"),
+            img_url="",
+            external_url=f"https://music.apple.com/{self._am_storefront}/artist/{artist_id}",
+            platform="Apple Music",
+        )
+        editorial = attrs.get("editorialNotes") or {}
+        artist_info["description"] = _as_text(
+            editorial.get("standard") or editorial.get("short") or attrs.get("description")
+        )
+
+        views = item.get("views") or {}
+        rels = item.get("relationships") or {}
+        raw_songs = (
+            ((views.get("top-songs") or {}).get("data"))
+            or ((rels.get("songs") or {}).get("data"))
+            or []
+        )
+        top_tracks: list[Track] = []
+        for raw_song in raw_songs:
+            if not isinstance(raw_song, dict) or not raw_song.get("id"):
+                continue
+            try:
+                top_tracks.append(self._apple_track_from_item(raw_song))
+            except Exception:  # pylint: disable=broad-exception-caught
+                continue
+
+        raw_albums: list[dict] = []
+        for view_key in ("full-albums", "singles"):
+            raw_albums.extend((views.get(view_key) or {}).get("data") or [])
+        if not raw_albums:
+            raw_albums.extend((rels.get("albums") or {}).get("data") or [])
+
+        albums: list[dict] = []
+        seen_ids: set[str] = set()
+        for raw_alb in raw_albums:
+            if not isinstance(raw_alb, dict):
+                continue
+            entry = self._am_album_item_from_raw(raw_alb, fallback_artist=artist_info["name"])
+            if entry is not None and entry["id"] not in seen_ids:
+                seen_ids.add(entry["id"])
+                albums.append(entry)
+
+        return {
+            "artist": artist_info,
+            "top_tracks": top_tracks,
+            "albums": albums,
+        }
 
     def _am_candidates_for_term(self, term: str) -> list[tuple[str, str, tuple[str, str, int, str]]]:
         """
@@ -643,6 +836,22 @@ class AppleMixin:
         if track_id in present:
             return True, playlist_id
         return False, "Apple Music no confirmó la inserción (canción no disponible)"
+
+    def _am_add_tracks(self, playlist_id: str, track_ids: list[str]) -> int:
+        if not track_ids:
+            return 0
+        added = 0
+        for start in range(0, len(track_ids), APPLE_TRANSFER_BATCH):
+            chunk = track_ids[start:start + APPLE_TRANSFER_BATCH]
+            response = self._am_request(
+                "post",
+                f"{APPLE_API_BASE}/me/library/playlists/{playlist_id}/tracks",
+                json={"data": [{"id": tid, "type": "songs"} for tid in chunk]},
+                timeout=15,
+            )
+            response.raise_for_status()
+            added += len(chunk)
+        return added
 
     def _am_create(self, title: str, ids: list[str], description: str = "") -> tuple[bool, str, int, list[str]]:
         if not ids:
