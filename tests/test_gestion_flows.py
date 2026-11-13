@@ -103,15 +103,19 @@ class TestGestionFlows(unittest.TestCase):
 
     def test_contextual_bar_visibility_and_no_permanent_dest_lockin(self) -> None:
         page, state, ui = self._build_ui()
-        # Sin bloqueo permanente de destino en el sidebar
+        # Sin bloqueo permanente de destino en el sidebar ni Fusionar duplicado
         self.assertFalse(ui._dst_dd.visible)
         self.assertFalse(ui._dest_session_warn.visible)
+        self.assertFalse(hasattr(ui, "_merge_sidebar_btn"))
+        self.assertTrue(ui._merge_btn.visible)
+        self.assertFalse(ui._contextual_bar.visible)
+        self.assertFalse(ui._col_headers.visible)
+        self.assertEqual(ui._url_toggle_label.value, "Avanzado")
 
-        # Idle: solo Fusionar visible
+        # Idle: barra contextual completamente oculta
         idle_states = compute_contextual_actions_state(state)
-        self.assertTrue(idle_states["merge"]["visible"])
-        self.assertFalse(idle_states["merge"]["disabled"])
-        for key in ("transfer", "organize", "split", "download", "export"):
+        self.assertNotIn("merge", idle_states)
+        for key in ("transfer", "organize", "split", "reorganize", "download", "export"):
             self.assertFalse(idle_states[key]["visible"])
 
         # Playlist remota cargada: todas las 6 acciones visibles y habilitadas
@@ -119,9 +123,12 @@ class TestGestionFlows(unittest.TestCase):
         state.source_tracks = list(state.tracks)
         state.load_state = LoadState.READY
         remote_states = compute_contextual_actions_state(state)
-        for key in ("transfer", "organize", "split", "merge", "download", "export"):
+        for key in ("transfer", "organize", "split", "reorganize", "download", "export"):
             self.assertTrue(remote_states[key]["visible"], key)
             self.assertFalse(remote_states[key]["disabled"], key)
+        ui._on_state_changed()
+        self.assertTrue(ui._contextual_bar.visible)
+        self.assertTrue(ui._col_headers.visible)
 
         # Carpeta local con audio en disco: Descargar oculto
         state.load_local_tracks(

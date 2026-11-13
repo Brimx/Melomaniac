@@ -210,7 +210,7 @@ def build_sidebar(ui) -> None:
         visible=False,
     )
     ui._url_toggle_label = ft.Text(
-        "Usar URL o ID",
+        "Avanzado",
         size=10,
         color=TEXT_MUTED,
         font_family=FONT_HEADLINE,
@@ -225,6 +225,10 @@ def build_sidebar(ui) -> None:
     )
     ui._url_mode = False
 
+    ui._load_btn = _primary_btn(
+        "Cargar", PIcons.DOWNLOAD_SIMPLE, ui._on_load, width=264, height=44
+    )
+
     ui._playlist_section = ft.Column(
         [
             _section_label("PLAYLIST"),
@@ -232,13 +236,14 @@ def build_sidebar(ui) -> None:
             ui._playlist_help,
             ui._id_field,
             ui._use_url_btn,
+            ui._load_btn,
         ],
         spacing=8,
         visible=(s.source not in AppState.LOCAL_SOURCES),
     )
     ui._id_field.visible = False
     ui._playlist_help.value = (
-        "Sin playlists sincronizadas: usa «Usar URL o ID» o sincroniza "
+        "Sin playlists sincronizadas: usa «Avanzado» o sincroniza "
         "la plataforma en Biblioteca."
     )
     ui._playlist_help.visible = True
@@ -247,22 +252,6 @@ def build_sidebar(ui) -> None:
         color=BORDER_MUTED,
         thickness=0.5,
         visible=(s.source not in AppState.LOCAL_SOURCES),
-    )
-
-    _btn_w, _btn_h = 129, 44
-    ui._load_btn = _primary_btn(
-        "Cargar", PIcons.DOWNLOAD_SIMPLE, ui._on_load, width=_btn_w, height=_btn_h
-    )
-    ui._merge_sidebar_btn = _ghost_btn(
-        "Fusionar",
-        PIcons.QUEUE,
-        lambda _: ui._open_merge_dialog(),
-        width=_btn_w,
-        height=_btn_h,
-    )
-    actions = ft.Column(
-        [ft.Row([ui._load_btn, ui._merge_sidebar_btn], spacing=6)],
-        spacing=6,
     )
 
     ui._rl_banner = ft.Container(
@@ -308,8 +297,6 @@ def build_sidebar(ui) -> None:
             ft.Divider(height=1, color=BORDER_MUTED, thickness=0.5),
             ui._playlist_section,
             ui._playlist_divider,
-            _section_label("ACCIONES"),
-            actions,
         ],
         spacing=12,
     )

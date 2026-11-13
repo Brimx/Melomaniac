@@ -47,7 +47,10 @@ from __future__ import annotations
 
 import unicodedata
 from difflib import SequenceMatcher
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
+
+if TYPE_CHECKING:
+    from core.models import SearchResult
 
 from engine.normalizer import (
     _ASIAN_RE, _LETHAL_WORDS, _normalize_title, _strip_noise,

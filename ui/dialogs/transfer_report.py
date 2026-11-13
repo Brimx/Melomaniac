@@ -19,6 +19,7 @@ from datetime import datetime
 
 import flet as ft
 
+from core.models import Track
 from core.transfer import (
     KIND_DEFAULT_REASON,
     KIND_LABELS,

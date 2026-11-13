@@ -20,6 +20,7 @@ from ui.theme.tokens import (
     OVERLAY_10,
     OVERLAY_14,
     OVERLAY_18,
+    SUCCESS,
     TEXT_DIM,
     TEXT_MUTED,
     TEXT_PRIMARY,
@@ -78,8 +79,8 @@ APPLE_FIELD_SPECS = tuple(
 
 SPOTIFY_FIELD_SPECS = (
     {"key": "identifier", "label": "Identifier (email o username)"},
-    {"key": "sp_dc", "password": True, "can_reveal_password": True},
-    {"key": "sp_key", "password": True, "can_reveal_password": True},
+    {"key": "sp_dc", "password": True, "can_reveal_password": True, "saved_badge": True},
+    {"key": "sp_key", "password": True, "can_reveal_password": True, "saved_badge": True},
 )
 
 YOUTUBE_INSTRUCTIONS = (
@@ -332,6 +333,10 @@ def build_field_controls(
                 ),
             )
             control = field
+
+        if bool(spec.get("saved_badge", False)) and value.strip():
+            field.helper = "Sesión guardada"
+            field.helper_style = ft.TextStyle(color=SUCCESS, size=10, font_family=FONT_TEXT)
 
         registry[key] = field
         controls.append(control)

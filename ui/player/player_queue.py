@@ -11,6 +11,7 @@ placeholder limpio hasta el Bloque 4.6.
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Callable
 import os
 
 import flet as ft

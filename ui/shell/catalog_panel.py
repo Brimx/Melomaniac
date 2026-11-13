@@ -6,7 +6,7 @@ import asyncio
 
 import flet as ft
 
-from core.models import Track, TransferState
+from core.models import LoadState, Track, TransferState
 from core.state import AppState
 from ui.components.song_row import _thumb_content_for
 from ui.components.widgets import (
@@ -214,10 +214,16 @@ class CatalogController:
             else bool(open_panel)
         )
         ui._catalog_open = target
+        has_ready = (
+            getattr(ui.state, "load_state", LoadState.IDLE) == LoadState.READY
+            and len(getattr(ui.state, "tracks", []) or []) > 0
+        )
         if hasattr(ui, "_catalog_panel"):
             ui._catalog_panel.visible = target
         if hasattr(ui, "_col_headers"):
-            ui._col_headers.visible = not target
+            ui._col_headers.visible = has_ready and not target
+        if hasattr(ui, "_contextual_bar"):
+            ui._contextual_bar.visible = has_ready and not target
         if hasattr(ui, "_list_area"):
             ui._list_area.visible = not target
         if hasattr(ui, "_mode_bar"):

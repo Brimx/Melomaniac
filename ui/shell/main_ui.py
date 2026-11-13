@@ -740,8 +740,11 @@ class PlaylistManagerUI:
         self._list_view_wrap.visible = is_ready and not is_error
         self._error_state.visible = is_error
         catalog_open = bool(getattr(self, "_catalog_open", False))
+        show_table_chrome = is_ready and len(s.tracks) > 0 and not catalog_open
         if hasattr(self, "_col_headers"):
-            self._col_headers.visible = not catalog_open
+            self._col_headers.visible = show_table_chrome
+        if hasattr(self, "_contextual_bar"):
+            self._contextual_bar.visible = show_table_chrome
         if hasattr(self, "_list_area"):
             self._list_area.visible = not catalog_open
         if hasattr(self, "_catalog_panel"):
@@ -762,7 +765,6 @@ class PlaylistManagerUI:
         has_tracks = len(s.tracks) > 0
         self._organize_btn.disabled = not has_tracks
         self._split_btn.disabled = not has_tracks
-        self._reorganize_btn.disabled = not has_tracks
         # compat: _segment_dd siempre oculto (movido junto a Vista)
         self._segment_dd.visible = False
         # selector División activa — Outlined + Popup dinámico junto a Vista
@@ -909,8 +911,9 @@ class PlaylistManagerUI:
             self._transfer_btn.tooltip = "Sin conexión (rate limit activo)"
         else:
             self._transfer_btn.tooltip = "Elegir destino y transferir o exportar la selección"
-        if hasattr(self, "_apply_contextual_actions_state"):
-            self._apply_contextual_actions_state(
+        layout = getattr(self, "_layout", None)
+        if layout is not None and hasattr(layout, "_apply_contextual_actions_state"):
+            layout._apply_contextual_actions_state(
                 compute_contextual_actions_state(s, net_blocked=net_blocked)
             )
 
@@ -1004,7 +1007,7 @@ class PlaylistManagerUI:
         self._url_mode = bool(enabled)
         self._id_field.visible = self._url_mode
         self._url_toggle_label.value = (
-            "Elegir de la biblioteca" if self._url_mode else "Usar URL o ID"
+            "Elegir de la biblioteca" if self._url_mode else "Avanzado"
         )
         if self._url_mode:
             self._playlist_pick.visible = False
@@ -1066,7 +1069,7 @@ class PlaylistManagerUI:
             )
         else:
             self._playlist_help.value = (
-                "Sin playlists sincronizadas: usa «Usar URL o ID» o sincroniza "
+                "Sin playlists sincronizadas: usa «Avanzado» o sincroniza "
                 "la plataforma en Biblioteca."
             )
         for ctrl in (picker, self._playlist_help):

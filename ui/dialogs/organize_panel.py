@@ -94,9 +94,9 @@ def show_organize_dialog(page: ft.Page, state) -> None:
     except Exception:
         seg_group = ft.Dropdown(value=group_by["value"], width=300, height=38, bgcolor=BG_INPUT, border=input_border(), text_style=ft.TextStyle(color=TEXT_PRIMARY, size=11, font_family="IBM Plex Sans"), options=[ft.dropdown.Option("none","Sin agrupar"), ft.dropdown.Option("artist","Artista"), ft.dropdown.Option("album","Álbum"), ft.dropdown.Option("release_date","Fecha")], on_select=lambda e: group_by.__setitem__("value", e.control.value))
 
-    # Avanzado — muestra 2ª/3ª clave para jerarquía manual
-    dd_second = organize_dropdown([("none","—"), ("artist","Artista"), ("album","Álbum"), ("name","Título"), ("release_date","Fecha")], second_key["value"], "2ª clave")
-    dd_third = organize_dropdown([("none","—"), ("artist","Artista"), ("album","Álbum"), ("name","Título"), ("release_date","Fecha")], third_key["value"], "3ª clave")
+    # Avanzado — muestra criterio secundario/terciario para jerarquía manual
+    dd_second = organize_dropdown([("none","—"), ("artist","Artista"), ("album","Álbum"), ("name","Título"), ("release_date","Fecha")], second_key["value"], "Criterio secundario")
+    dd_third = organize_dropdown([("none","—"), ("artist","Artista"), ("album","Álbum"), ("name","Título"), ("release_date","Fecha")], third_key["value"], "Criterio terciario")
     def _on_second(e): second_key["value"] = e.control.value
     def _on_third(e): third_key["value"] = e.control.value
     dd_second.on_select = _on_second  # type: ignore

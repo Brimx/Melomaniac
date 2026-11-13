@@ -43,8 +43,8 @@ def compute_contextual_actions_state(
 
     Mantiene la regla de 2.10: mostrar/habilitar solo acciones aplicables a la
     fuente cargada (por ejemplo, ocultar ``Descargar`` si todas las pistas ya
-    son archivos de audio locales en disco, y ocultar acciones de pista cuando
-    no hay playlist cargada salvo ``Fusionar``).
+    son archivos de audio locales en disco, y ocultar la barra completa cuando
+    no hay playlist cargada).
     """
     tracks = list(getattr(state, "tracks", []) or [])
     load_state = getattr(state, "load_state", LoadState.IDLE)
@@ -77,10 +77,10 @@ def compute_contextual_actions_state(
             "disabled": not is_ready,
             "tooltip": "Dividir la playlist por criterio o grupos manuales",
         },
-        "merge": {
-            "visible": True,
-            "disabled": is_transferring,
-            "tooltip": "Fusionar varias playlists o fuentes locales sin duplicados",
+        "reorganize": {
+            "visible": is_ready,
+            "disabled": not is_ready,
+            "tooltip": "Volver a aplicar los criterios de organización",
         },
         "download": {
             "visible": is_ready and not all_local_audio,
@@ -250,6 +250,7 @@ class LayoutController:
             "transfer": ui._ctx_transfer_btn,
             "organize": ui._ctx_organize_btn,
             "split": ui._ctx_split_btn,
+            "reorganize": ui._ctx_reorganize_btn,
             "download": ui._ctx_download_btn,
             "export": ui._ctx_export_btn,
         }
@@ -272,7 +273,9 @@ class LayoutController:
             border=ft.Border.all(0.8, BORDER_MUTED),
             border_radius=RADIUS_INPUT,
             padding=ft.Padding.symmetric(horizontal=12, vertical=8),
+            visible=False,
         )
+        ui._contextual_bar = bar
         self._apply_contextual_actions_state(compute_contextual_actions_state(ui.state))
         return bar
 
@@ -281,15 +284,23 @@ class LayoutController:
     ) -> None:
         """Aplica visibilidad, habilitación y tooltips a la barra contextual."""
         buttons = getattr(self._ui, "_ctx_action_buttons", {})
+        any_visible = False
         for key, btn in buttons.items():
             spec = states.get(key)
             if not spec:
                 continue
-            btn.visible = bool(spec.get("visible", True))
+            vis = bool(spec.get("visible", True))
+            btn.visible = vis
+            if vis:
+                any_visible = True
             btn.disabled = bool(spec.get("disabled", False))
             tip = str(spec.get("tooltip", "") or "")
             if tip:
                 btn.tooltip = tip
+        bar = getattr(self._ui, "_contextual_bar", None)
+        if bar is not None:
+            catalog_open = bool(getattr(self._ui, "_catalog_open", False))
+            bar.visible = any_visible and not catalog_open
 
     def _build_content_header(self) -> ft.Row:
         ui = self._ui
@@ -311,6 +322,13 @@ class LayoutController:
             content_padding=ft.Padding.symmetric(horizontal=10, vertical=0),
             on_change=ui._on_search_change,
         )
+        ui._merge_btn = _ghost_btn(
+            "Fusionar",
+            PIcons.QUEUE,
+            lambda _: ui._open_merge_dialog(),
+            height=36,
+        )
+        ui._merge_btn.tooltip = "Fusionar varias playlists o fuentes locales sin duplicados"
         ui._catalog_search_btn = _ghost_btn(
             "Catálogo",
             PIcons.GLOBE,
@@ -414,6 +432,7 @@ class LayoutController:
                 ft.Container(expand=True),
                 ui._auth_strip,
                 ui._search_field,
+                ui._merge_btn,
                 ui._catalog_search_btn,
                 ui._select_all_chk,
                 ui._clear_session_btn,
@@ -456,6 +475,7 @@ class LayoutController:
             border_radius=12,
             border=ft.Border.all(0.8, BORDER_LIGHT),
             clip_behavior=ft.ClipBehavior.ANTI_ALIAS,
+            visible=False,
         )
 
     def _sync_queue_album_column(self, queue_open: bool, *, update: bool = True) -> None:
