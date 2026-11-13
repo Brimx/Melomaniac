@@ -1,13 +1,10 @@
-"""services/platforms/spotify.py — Operaciones de Spotify de MusicApiService.
-
-Mixin: los métodos se mezclan en `MusicApiService` (services/api_service.py),
-que conserva el estado compartido (circuit breakers, caché, sesiones).
-"""
+"""services/platforms/spotify.py — Cliente de Spotify para MusicApiService."""
 
 from __future__ import annotations
 
 import asyncio
 import random
+import threading
 import time
 from typing import Optional
 
@@ -27,7 +24,13 @@ from engine.normalizer import (
     normalize_playlist_id,
 )
 from core.library_models import PlaylistSummary
-from services.platforms._common import GLOBAL_API_SEMAPHORE, _as_text
+from services.platforms._common import (
+    GLOBAL_API_SEMAPHORE,
+    _as_text,
+    catalog_album_item,
+    catalog_artist_item,
+    catalog_song_item,
+)
 from services.circuit_breaker import RateLimitError
 from core.config import (
     SPOTIFY_ADD_CHUNK as CFG_SPOTIFY_ADD_CHUNK,
@@ -87,24 +90,51 @@ if HAS_SPOTIFY:
     _install_spotapi_totp_fallback_cache()
 
 
-class SpotifyMixin:
-    """Métodos de Spotify para `MusicApiService`."""
+class SpotifyClient:
+    """Cliente de Spotify encapsulado tras ``MusicApiService``."""
+
+    def __init__(self, http_session=None) -> None:
+        self._http_session = http_session
+        self._sp_login = None
+        self._sp_cfg = None
+        # Instancia Song reutilizable: SpotAPI re-fetchea sesión, client token
+        # y hashes JS (~5-8 requests) cada vez que se construye un BaseClient.
+        # Reutilizarla reduce cada búsqueda a 1 solo request.
+        self._sp_song = None
+        self._sp_artist = None
+        # Serializa inserciones manuales sobre el Song reutilizado.
+        self._sp_insert_lock = threading.Lock()
+        self.auth_error: str = ""
+        self.session_source: str = ""
+        self.preferred_source: Optional[str] = None
+
+    def cleanup(self) -> None:
+        """Limpia credenciales y clientes SpotAPI en memoria."""
+        self._sp_login = None
+        self._sp_cfg = None
+        self._sp_song = None
+        self._sp_artist = None
+
+    def ensure_ready(self) -> None:
+        """Garantiza configuración activa antes de búsquedas de catálogo."""
+        if not self._sp_cfg and self._sp_song is None:
+            self._sync_init_spotify()
 
     async def init_spotify(self, creds: Optional[dict] = None) -> bool:
         return await asyncio.to_thread(self._sync_init_spotify, creds)
 
     def _sync_init_spotify(self, creds: Optional[dict] = None) -> bool:
         if not HAS_SPOTIFY:
-            self.spotify_auth_error = "spotapi no instalado"
+            self.auth_error = "spotapi no instalado"
             return False
         candidates = (
             [("manual", creds)]
             if creds is not None
-            else list(browser_session.spotify_candidates(self.spotify_preferred_source))
+            else list(browser_session.spotify_candidates(self.preferred_source))
         )
         if not candidates:
-            self.spotify_auth_error = "missing credentials (sin sesión en navegador ni config/spotify_cookies.json)"
-            self.spotify_session_source = ""
+            self.auth_error = "missing credentials (sin sesión en navegador ni config/spotify_cookies.json)"
+            self.session_source = ""
             self._sp_login = None
             self._sp_song = None
             return False
@@ -136,8 +166,8 @@ class SpotifyMixin:
                 # Song cacheado sobre el MISMO TLSClient del login: el setup de
                 # sesión/token/hashes se paga una sola vez, no por búsqueda.
                 self._sp_song  = Song(client=cfg.client)
-                self.spotify_auth_error = ""
-                self.spotify_session_source = source
+                self.auth_error = ""
+                self.session_source = source
                 return True
             except Exception as exc:  # pylint: disable=broad-exception-caught
                 last_err = f"401 — {exc}" if "401" not in str(exc) else str(exc)
@@ -145,8 +175,8 @@ class SpotifyMixin:
                 self._sp_login = None
                 self._sp_cfg   = None
                 self._sp_song  = None
-        self.spotify_auth_error = last_err or "401 — cookies de Spotify rechazadas"
-        self.spotify_session_source = ""
+        self.auth_error = last_err or "401 — cookies de Spotify rechazadas"
+        self.session_source = ""
         return False
 
     def _sync_fetch_spotify(self, pid: str, cb) -> tuple[PlaylistMeta, list[Track]]:
@@ -529,7 +559,7 @@ class SpotifyMixin:
             year = str(raw_y)[:4] if raw_y else ""
         covers = (data.get("coverArt") or {}).get("sources") or []
         item_type = str(data.get("type") or "").title() if data.get("type") else ""
-        return self._catalog_album_item(
+        return catalog_album_item(
             album_id=album_id,
             name=str(data.get("name") or "Unknown"),
             artist=artist,
@@ -547,7 +577,7 @@ class SpotifyMixin:
         profile = data.get("profile") or {}
         name = str(profile.get("name") or data.get("name") or "Unknown").strip()
         covers = ((data.get("visuals") or {}).get("avatarImage") or {}).get("sources") or []
-        return self._catalog_artist_item(
+        return catalog_artist_item(
             artist_id=artist_id,
             name=name,
             img_url=self._spotify_cover_best(covers),
@@ -570,7 +600,7 @@ class SpotifyMixin:
                 for item in items:
                     track = self._sp_track_from_item(self._sp_unwrap_node(item))
                     if track is not None:
-                        out.append(self._catalog_song_item(track))
+                        out.append(catalog_song_item(track))
             elif kind == "albums":
                 items = (search_v2.get("albumsV2") or {}).get("items") or []
                 for item in items:
@@ -596,7 +626,7 @@ class SpotifyMixin:
         except RateLimitError:
             raise
         except Exception as exc:  # pylint: disable=broad-exception-caught
-            self.spotify_auth_error = str(exc)
+            self.auth_error = str(exc)
             if self._sp_is_rate_limited(exc):
                 raise RateLimitError("Spotify", 60) from exc
             raise
@@ -649,7 +679,7 @@ class SpotifyMixin:
         except RateLimitError:
             raise
         except Exception as exc:  # pylint: disable=broad-exception-caught
-            self.spotify_auth_error = str(exc)
+            self.auth_error = str(exc)
             if self._sp_is_rate_limited(exc):
                 raise RateLimitError("Spotify", 60) from exc
             raise
@@ -704,7 +734,7 @@ class SpotifyMixin:
                             albums.append(entry)
 
             artist_dict = {
-                **self._catalog_artist_item(
+                **catalog_artist_item(
                     artist_id=self._sp_extract_id(union) or artist_id,
                     name=name,
                     img_url=self._spotify_cover_best(covers),
@@ -722,7 +752,7 @@ class SpotifyMixin:
         except RateLimitError:
             raise
         except Exception as exc:  # pylint: disable=broad-exception-caught
-            self.spotify_auth_error = str(exc)
+            self.auth_error = str(exc)
             if self._sp_is_rate_limited(exc):
                 raise RateLimitError("Spotify", 60) from exc
             raise
@@ -816,7 +846,7 @@ class SpotifyMixin:
                 try:
                     items = await asyncio.to_thread(self._sp_search_items, q)
                 except Exception as exc:  # pylint: disable=broad-exception-caught
-                    self.spotify_auth_error = str(exc)
+                    self.auth_error = str(exc)
                     raise
             if not items:
                 continue
@@ -878,7 +908,7 @@ class SpotifyMixin:
         except RateLimitError:
             raise
         except Exception as exc:  # pylint: disable=broad-exception-caught
-            self.spotify_auth_error = str(exc)
+            self.auth_error = str(exc)
             if self._sp_is_rate_limited(exc):
                 raise RateLimitError("Spotify", 60) from exc
             raise
@@ -908,7 +938,7 @@ class SpotifyMixin:
             # ValueError("Playlist not set") y mata la transferencia entera.
             pl.set_playlist(pl_id)
         except Exception as exc:  # pylint: disable=broad-exception-caught
-            self.spotify_auth_error = str(exc)
+            self.auth_error = str(exc)
             if self._sp_is_rate_limited(exc):
                 raise RateLimitError("Spotify", 60) from exc
             raise
@@ -986,7 +1016,7 @@ class SpotifyMixin:
                     song.add_songs_to_playlist(chunk)
                     break
                 except Exception as exc:  # pylint: disable=broad-exception-caught
-                    rl = SpotifyMixin._sp_is_rate_limited(exc)
+                    rl = SpotifyClient._sp_is_rate_limited(exc)
                     if attempt >= 3:
                         if rl:
                             raise RateLimitError("Spotify", 60) from exc
@@ -1000,3 +1030,37 @@ class SpotifyMixin:
             if index < len(starts) - 1:
                 time.sleep(random.uniform(0.4, 0.8))
         return rejected
+
+    # Interfaz uniforme para MusicApiService
+    init = init_spotify
+    sync_init = _sync_init_spotify
+    fetch_playlist = _sync_fetch_spotify
+    list_library = _sync_list_spotify
+    search_catalog = _sp_search_catalog_sync
+    fetch_album = _sp_fetch_album_sync
+    fetch_artist = _sp_fetch_artist_sync
+    search_candidates = _sp_search_candidates_sync
+    create_playlist = _sp_create
+    add_track = _sp_add_track
+    add_tracks = _sp_add_tracks_to_playlist
+    delete_playlist = _sp_delete
+
+    async def search_track(
+        self,
+        ct: str,
+        ca: str,
+        orig_name: str,
+        orig_artist: str,
+        local_duration_ms: int = 0,
+        local_is_explicit: bool = False,
+        **_kwargs,
+    ) -> SearchResult:
+        """Busca una pista en Spotify con firma uniforme entre clientes."""
+        return await self._sp_hunter_async(
+            ct,
+            ca,
+            orig_name,
+            orig_artist,
+            local_duration_ms=local_duration_ms,
+            local_is_explicit=local_is_explicit,
+        )

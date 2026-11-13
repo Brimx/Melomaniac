@@ -1,14 +1,15 @@
-"""services/platforms/youtube.py — Operaciones de YouTube Music de MusicApiService.
-
-Mixin: los métodos se mezclan en `MusicApiService` (services/api_service.py),
-que conserva el estado compartido (circuit breakers, caché, sesiones).
-"""
+"""services/platforms/youtube.py — Cliente de YouTube Music para MusicApiService."""
 
 from __future__ import annotations
 
 import asyncio
+from functools import partial
+import threading
 from typing import Optional
 
+import requests
+
+from core.config import YOUTUBE_HTTP_TIMEOUT as CFG_YOUTUBE_HTTP_TIMEOUT
 from engine.match import (
     _fuzzy_scores_triple,
     _ideal_pass_hunter,
@@ -16,7 +17,13 @@ from engine.match import (
     _yt_select_best,
     duration_to_seconds,
 )
-from services.platforms._common import GLOBAL_API_SEMAPHORE, _as_text
+from services.platforms._common import (
+    GLOBAL_API_SEMAPHORE,
+    _as_text,
+    catalog_album_item,
+    catalog_artist_item,
+    catalog_song_item,
+)
 from core.models import PlaylistMeta, SearchResult, Track
 from services import browser_session
 from services.authentication import youtube_http_status
@@ -91,8 +98,31 @@ except ImportError:
     HAS_YTMUSIC = False
 
 
-class YouTubeMixin:
-    """Métodos de YouTube Music para `MusicApiService`."""
+class YouTubeClient:
+    """Cliente de YouTube Music encapsulado tras ``MusicApiService``."""
+
+    def __init__(self, timeout: float = CFG_YOUTUBE_HTTP_TIMEOUT) -> None:
+        self._ytm = None
+        self._ytm_lock = threading.RLock()
+        self.auth_error: str = ""
+        self.session_source: str = ""
+        self.preferred_source: Optional[str] = None
+        # ytmusicapi exige isinstance(requests_session, requests.Session) (ytmusic.py:226).
+        self._yt_http_session = requests.Session()
+        self._yt_http_session.request = partial(
+            self._yt_http_session.request, timeout=timeout
+        )
+
+    def cleanup(self) -> None:
+        """Cierra la sesión HTTP y descarta el cliente autenticado."""
+        try:
+            self._yt_http_session.close()
+        except OSError:
+            pass
+        self._ytm = None
+
+    def ensure_ready(self) -> None:
+        """Inicialización perezosa homogénea (YouTube inicializa bajo demanda)."""
 
     def _ytm_library_playlists(self, limit: int | None):
         """Read playlists and reject YTMusic's successful logged-out message."""
@@ -120,16 +150,16 @@ class YouTubeMixin:
 
     def _sync_init_youtube_locked(self, creds: Optional[dict] = None) -> bool:
         if not HAS_YTMUSIC:
-            self.youtube_auth_error = "ytmusicapi no instalado"
+            self.auth_error = "ytmusicapi no instalado"
             return False
         candidates = (
             [("manual", creds)]
             if creds is not None
-            else list(browser_session.youtube_candidates(self.youtube_preferred_source))
+            else list(browser_session.youtube_candidates(self.preferred_source))
         )
         if not candidates:
-            self.youtube_auth_error = "missing credentials (sin sesión en navegador ni config/browser.json)"
-            self.youtube_session_source = ""
+            self.auth_error = "missing credentials (sin sesión en navegador ni config/browser.json)"
+            self.session_source = ""
             self._ytm = None
             return False
 
@@ -138,8 +168,8 @@ class YouTubeMixin:
             try:
                 self._ytm = YTMusic(auth=headers, requests_session=self._yt_http_session)
                 self._ytm_library_playlists(limit=1)
-                self.youtube_auth_error = ""
-                self.youtube_session_source = source
+                self.auth_error = ""
+                self.session_source = source
                 return True
             except Exception as exc:  # pylint: disable=broad-exception-caught
                 last_err = str(exc)
@@ -148,8 +178,8 @@ class YouTubeMixin:
                 else:
                     print(f"[YouTube Music] init failed ({source}): {exc}")
                 self._ytm = None
-        self.youtube_auth_error = last_err or "No se pudo validar YouTube Music"
-        self.youtube_session_source = ""
+        self.auth_error = last_err or "No se pudo validar YouTube Music"
+        self.session_source = ""
         return False
 
     def _sync_fetch_youtube(self, pid: str, cb) -> tuple[PlaylistMeta, list[Track]]:
@@ -160,7 +190,7 @@ class YouTubeMixin:
         try:
             pl = self._ytm.get_playlist(pid, limit=None)
         except Exception as exc:  # pylint: disable=broad-exception-caught
-            self.youtube_auth_error = str(exc)
+            self.auth_error = str(exc)
             if _is_ytm_unauthorized(exc):
                 raise RuntimeError("Sesion YouTube Music expirada (401). Renueva config/browser.json.") from exc
             raise
@@ -319,7 +349,7 @@ class YouTubeMixin:
         try:
             raw = self._ytm.search(query, filter="songs", limit=max(1, min(limit, 10)))
         except Exception as exc:  # pylint: disable=broad-exception-caught
-            self.youtube_auth_error = str(exc)
+            self.auth_error = str(exc)
             if _is_ytm_unauthorized(exc):
                 raise RuntimeError("Sesion YouTube Music expirada (401).") from exc
             raise
@@ -350,7 +380,7 @@ class YouTubeMixin:
             if album_id.startswith("MPRE")
             else f"https://music.youtube.com/playlist?list={album_id}"
         )
-        return self._catalog_album_item(
+        return catalog_album_item(
             album_id=album_id,
             name=str(item.get("title") or "Unknown"),
             artist=artist,
@@ -370,7 +400,7 @@ class YouTubeMixin:
         try:
             raw = self._ytm.search(query, filter=kind, limit=capped)
         except Exception as exc:  # pylint: disable=broad-exception-caught
-            self.youtube_auth_error = str(exc)
+            self.auth_error = str(exc)
             if _is_ytm_unauthorized(exc):
                 raise RuntimeError("Sesion YouTube Music expirada (401).") from exc
             raise
@@ -381,7 +411,7 @@ class YouTubeMixin:
             if kind == "songs":
                 track = self._yt_track_from_search_item(item)
                 if track is not None:
-                    out.append(self._catalog_song_item(track))
+                    out.append(catalog_song_item(track))
             elif kind == "albums":
                 entry = self._yt_album_item_from_raw(item)
                 if entry is not None:
@@ -393,7 +423,7 @@ class YouTubeMixin:
                 name = str(item.get("artist") or item.get("title") or item.get("name") or "Unknown").strip()
                 channel_id = artist_id[4:] if artist_id.startswith("MPLA") else artist_id
                 subtitle = str(item.get("subscribers") or "").strip()
-                out.append(self._catalog_artist_item(
+                out.append(catalog_artist_item(
                     artist_id=artist_id,
                     name=name,
                     img_url=self._ytm_cover_best(item.get("thumbnails") or []),
@@ -415,7 +445,7 @@ class YouTubeMixin:
                     album_id = resolved
             alb = self._ytm.get_album(album_id)
         except Exception as exc:  # pylint: disable=broad-exception-caught
-            self.youtube_auth_error = str(exc)
+            self.auth_error = str(exc)
             if _is_ytm_unauthorized(exc):
                 raise RuntimeError("Sesion YouTube Music expirada (401). Renueva config/browser.json.") from exc
             raise
@@ -451,7 +481,7 @@ class YouTubeMixin:
         try:
             art = self._ytm.get_artist(artist_id)
         except Exception as exc:  # pylint: disable=broad-exception-caught
-            self.youtube_auth_error = str(exc)
+            self.auth_error = str(exc)
             if _is_ytm_unauthorized(exc):
                 raise RuntimeError("Sesion YouTube Music expirada (401). Renueva config/browser.json.") from exc
             raise
@@ -492,7 +522,7 @@ class YouTubeMixin:
 
         return {
             "artist": {
-                **self._catalog_artist_item(
+                **catalog_artist_item(
                     artist_id=channel_id,
                     name=name,
                     img_url=img_url,
@@ -541,7 +571,7 @@ class YouTubeMixin:
                         self._yt_sync_search_round, query, orig_name, orig_artist, local_duration_s
                     )
                 except Exception as exc:  # pylint: disable=broad-exception-caught
-                    self.youtube_auth_error = str(exc)
+                    self.auth_error = str(exc)
                     if _is_ytm_unauthorized(exc):
                         raise RuntimeError("Sesion YouTube Music expirada (401).") from exc
                     raise
@@ -564,7 +594,7 @@ class YouTubeMixin:
                             self._yt_sync_search_round, query, orig_name, orig_artist, local_duration_s
                         )
                     except Exception as exc:  # pylint: disable=broad-exception-caught
-                        self.youtube_auth_error = str(exc)
+                        self.auth_error = str(exc)
                         if _is_ytm_unauthorized(exc):
                             raise RuntimeError("Sesion YouTube Music expirada (401).") from exc
                         raise
@@ -600,7 +630,7 @@ class YouTubeMixin:
                 return True, playlist_id
             return False, str(status or "YouTube Music no confirmó la inserción")
         except Exception as exc:  # pylint: disable=broad-exception-caught
-            self.youtube_auth_error = str(exc)
+            self.auth_error = str(exc)
             if _is_ytm_unauthorized(exc):
                 raise RuntimeError("Sesion YouTube Music expirada (401).") from exc
             raise
@@ -619,7 +649,7 @@ class YouTubeMixin:
             try:
                 status = self._ytm.add_playlist_items(playlist_id, chunk)
             except Exception as exc:  # pylint: disable=broad-exception-caught
-                self.youtube_auth_error = str(exc)
+                self.auth_error = str(exc)
                 if _is_ytm_unauthorized(exc):
                     raise RuntimeError("Sesion YouTube Music expirada (401).") from exc
                 raise
@@ -631,7 +661,7 @@ class YouTubeMixin:
         try:
             pl_id = self._ytm.create_playlist(title, description or "", video_ids=ids)
         except Exception as exc:  # pylint: disable=broad-exception-caught
-            self.youtube_auth_error = str(exc)
+            self.auth_error = str(exc)
             if _is_ytm_unauthorized(exc):
                 raise RuntimeError("Sesion YouTube Music expirada (401).") from exc
             raise
@@ -654,3 +684,29 @@ class YouTubeMixin:
             return True, pid
         except Exception as exc:
             return False, str(exc)
+
+    # Interfaz uniforme para MusicApiService
+    init = init_youtube
+    sync_init = _sync_init_youtube
+    fetch_playlist = _sync_fetch_youtube
+    list_library = _sync_list_ytm
+    search_catalog = _yt_search_catalog_sync
+    fetch_album = _yt_fetch_album_sync
+    fetch_artist = _yt_fetch_artist_sync
+    search_candidates = _yt_search_candidates_sync
+    create_playlist = _yt_create
+    add_track = _yt_add_track
+    add_tracks = _yt_add_tracks
+    delete_playlist = _yt_delete
+
+    async def search_track(
+        self,
+        ct: str,
+        ca: str,
+        orig_name: str,
+        orig_artist: str,
+        local_duration_s: Optional[int] = None,
+        **_kwargs,
+    ) -> SearchResult:
+        """Busca una pista en YouTube Music con firma uniforme entre clientes."""
+        return await self._yt_hunter_async(ct, ca, orig_name, orig_artist, local_duration_s)

@@ -1,8 +1,4 @@
-"""services/platforms/apple.py — Operaciones de Apple Music de MusicApiService.
-
-Mixin: los métodos se mezclan en `MusicApiService` (services/api_service.py),
-que conserva el estado compartido (circuit breakers, caché, sesiones).
-"""
+"""services/platforms/apple.py — Cliente de Apple Music para MusicApiService."""
 
 from __future__ import annotations
 
@@ -33,7 +29,13 @@ from core.config import (
     APPLE_REQUEST_PAUSE,
     APPLE_TRANSFER_BATCH,
 )
-from services.platforms._common import GLOBAL_API_SEMAPHORE, _as_text
+from services.platforms._common import (
+    GLOBAL_API_SEMAPHORE,
+    _as_text,
+    catalog_album_item,
+    catalog_artist_item,
+    catalog_song_item,
+)
 from services.circuit_breaker import RateLimitError
 
 
@@ -76,8 +78,24 @@ class AppleRequestLimiter:
             self._next_allowed = max(self._next_allowed, time.monotonic() + max(1, seconds))
 
 
-class AppleMixin:
-    """Métodos de Apple Music para `MusicApiService`."""
+class AppleClient:
+    """Cliente de Apple Music encapsulado tras ``MusicApiService``."""
+
+    def __init__(self, http_session: Optional[httpx.Client] = None) -> None:
+        self._http_session = http_session
+        self._am_headers: dict = {}
+        self._am_storefront: str = "us"
+        self._am_rate_limiter = AppleRequestLimiter()
+        self.auth_error: str = ""
+        self.session_source: str = ""
+        self.preferred_source: Optional[str] = None
+
+    def cleanup(self) -> None:
+        """Limpia credenciales HTTP en memoria de Apple Music."""
+        self._am_headers = {}
+
+    def ensure_ready(self) -> None:
+        """Inicialización perezosa homogénea (Apple inicializa bajo demanda)."""
 
     def _am_request(self, method: str, url: str, **kwargs):
         """Ejecuta una petición Apple con pausa preventiva y retry limitado."""
@@ -107,11 +125,11 @@ class AppleMixin:
         candidates = (
             [("manual", creds)]
             if creds is not None
-            else list(browser_session.apple_candidates(self.apple_preferred_source))
+            else list(browser_session.apple_candidates(self.preferred_source))
         )
         if not candidates:
-            self.apple_auth_error = "missing credentials (sin sesión en navegador ni config/.env)"
-            self.apple_session_source = ""
+            self.auth_error = "missing credentials (sin sesión en navegador ni config/.env)"
+            self.session_source = ""
             return False
 
         last_err = ""
@@ -140,8 +158,8 @@ class AppleMixin:
                     self._am_headers    = am_headers
                     self._http_session.headers.update(am_headers)
                     self._am_storefront = resp.json().get("data", [{}])[0].get("id", "us")
-                    self.apple_auth_error = ""
-                    self.apple_session_source = source
+                    self.auth_error = ""
+                    self.session_source = source
                     return True
                 last_err = f"Unexpected HTTP {resp.status_code}"
             except (AppleAuthError, RateLimitError) as exc:
@@ -161,13 +179,13 @@ class AppleMixin:
                     self._am_headers    = am_headers
                     self._http_session.headers.update(am_headers)
                     self._am_storefront = "us"
-                    self.apple_auth_error = ""
-                    self.apple_session_source = source
+                    self.auth_error = ""
+                    self.session_source = source
                     return True
                 last_err = msg
                 print(f"[Apple Music] init failed ({source}): {exc}")
-        self.apple_auth_error = last_err or "401 — Apple Music token expired"
-        self.apple_session_source = ""
+        self.auth_error = last_err or "401 — Apple Music token expired"
+        self.session_source = ""
         return False
 
     def _sync_fetch_apple(self, pid: str, cb) -> tuple[PlaylistMeta, list[Track]]:
@@ -501,7 +519,7 @@ class AppleMixin:
         art_url = self._apple_cover_normalized(str((attrs.get("artwork") or {}).get("url") or ""), 400)
         ext_url = str(attrs.get("url") or f"https://music.apple.com/{self._am_storefront}/album/{album_id}")
         item_type = "Single" if attrs.get("isSingle") else ""
-        return self._catalog_album_item(
+        return catalog_album_item(
             album_id=album_id,
             name=str(attrs.get("name") or "Unknown"),
             artist=artist,
@@ -521,7 +539,7 @@ class AppleMixin:
         subtitle = str(genres[0]).strip() if isinstance(genres, list) and genres else ""
         art_url = self._apple_cover_normalized(str((attrs.get("artwork") or {}).get("url") or ""), 400)
         ext_url = str(attrs.get("url") or f"https://music.apple.com/{self._am_storefront}/artist/{artist_id}")
-        return self._catalog_artist_item(
+        return catalog_artist_item(
             artist_id=artist_id,
             name=str(attrs.get("name") or "Unknown"),
             img_url=art_url,
@@ -542,7 +560,7 @@ class AppleMixin:
                     track = self._apple_track_from_item(item)
                 except Exception:  # pylint: disable=broad-exception-caught
                     continue
-                out.append(self._catalog_song_item(track))
+                out.append(catalog_song_item(track))
             elif kind == "albums":
                 entry = self._am_album_item_from_raw(item)
                 if entry is not None:
@@ -613,7 +631,7 @@ class AppleMixin:
         data_list = r.json().get("data") or []
         if not data_list:
             return {
-                "artist": self._catalog_artist_item(
+                "artist": catalog_artist_item(
                     artist_id=artist_id,
                     name="Artista",
                     img_url="",
@@ -625,7 +643,7 @@ class AppleMixin:
             }
         item = data_list[0]
         attrs = item.get("attributes") or {}
-        artist_info = self._am_artist_item_from_raw(item) or self._catalog_artist_item(
+        artist_info = self._am_artist_item_from_raw(item) or catalog_artist_item(
             artist_id=artist_id,
             name=str(attrs.get("name") or "Artista"),
             img_url="",
@@ -969,3 +987,32 @@ class AppleMixin:
             return False, f"Apple {r.status_code}"
         except Exception as exc:
             return False, str(exc)
+
+    # Interfaz uniforme para MusicApiService
+    init = init_apple
+    sync_init = _sync_init_apple
+    fetch_playlist = _sync_fetch_apple
+    list_library = _sync_list_apple
+    search_catalog = _am_search_catalog_sync
+    fetch_album = _am_fetch_album_sync
+    fetch_artist = _am_fetch_artist_sync
+    search_candidates = _am_search_candidates_sync
+    create_playlist = _am_create
+    add_track = _am_add_track
+    add_tracks = _am_add_tracks
+    delete_playlist = _am_delete
+
+    async def search_track(
+        self,
+        ct: str,
+        ca: str,
+        orig_name: str,
+        orig_artist: str,
+        local_duration_s: Optional[int] = None,
+        local_isrc: str | None = None,
+        **_kwargs,
+    ) -> SearchResult:
+        """Busca una pista en Apple Music con firma uniforme entre clientes."""
+        return await self._am_hunter_async(
+            ct, ca, orig_name, orig_artist, local_duration_s, local_isrc=local_isrc
+        )

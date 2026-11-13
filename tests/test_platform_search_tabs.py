@@ -96,7 +96,7 @@ class CatalogValidationTest(unittest.TestCase):
 class YouTubeSearchAndOverviewTest(unittest.TestCase):
     def test_youtube_keeps_requests_session(self) -> None:
         svc = _make_service()
-        self.assertIsInstance(svc._yt_http_session, requests.Session)
+        self.assertIsInstance(svc._youtube._yt_http_session, requests.Session)
         self.assertIsInstance(svc._http_session, httpx.Client)
         svc.cleanup_sessions()
 
@@ -135,7 +135,7 @@ class YouTubeSearchAndOverviewTest(unittest.TestCase):
             return []
 
         ytm.search.side_effect = _fake_search
-        svc._ytm = ytm
+        svc._youtube._ytm = ytm
 
         async def _run():
             songs = await svc.search_catalog("YouTube Music", "Queen", kind="songs", limit=5)
@@ -227,7 +227,7 @@ class YouTubeSearchAndOverviewTest(unittest.TestCase):
                 ]
             },
         }
-        svc._ytm = ytm
+        svc._youtube._ytm = ytm
 
         async def _run():
             meta, tracks = await svc.fetch_album_tracks(
@@ -255,7 +255,7 @@ class YouTubeSearchAndOverviewTest(unittest.TestCase):
         svc = _make_service()
         ytm = mock.MagicMock()
         ytm.add_playlist_items.return_value = {"status": "STATUS_SUCCEEDED", "playlistEditResults": []}
-        svc._ytm = ytm
+        svc._youtube._ytm = ytm
         tracks = [
             Track(id="v1", name="S1", artist="A", album="", duration="", img_url="", platform="YouTube Music"),
             Track(id="v2", name="S2", artist="A", album="", duration="", img_url="", platform="YouTube Music"),
@@ -270,8 +270,8 @@ class YouTubeSearchAndOverviewTest(unittest.TestCase):
 class AppleSearchAndOverviewTest(unittest.TestCase):
     def test_search_catalog_is_sequential_and_uses_limiter(self) -> None:
         svc = _make_service()
-        svc._am_storefront = "mx"
-        svc._am_rate_limiter = mock.MagicMock()
+        svc._apple._am_storefront = "mx"
+        svc._apple._am_rate_limiter = mock.MagicMock()
 
         def _fake_get(url, params=None, headers=None, timeout=10):
             kind = (params or {}).get("types")
@@ -327,8 +327,8 @@ class AppleSearchAndOverviewTest(unittest.TestCase):
                 }
             })
 
-        svc._http_session = mock.MagicMock()
-        svc._http_session.get.side_effect = _fake_get
+        svc._apple._http_session = mock.MagicMock()
+        svc._apple._http_session.get.side_effect = _fake_get
 
         async def _run():
             s = await svc.search_catalog("Apple Music", "Muse", kind="songs", limit=40)
@@ -337,9 +337,9 @@ class AppleSearchAndOverviewTest(unittest.TestCase):
             return s, a, r
 
         s, a, r = asyncio.run(_run())
-        self.assertEqual(svc._am_rate_limiter.wait_turn.call_count, 3)
+        self.assertEqual(svc._apple._am_rate_limiter.wait_turn.call_count, 3)
         # Apple search cap at 25
-        first_call_params = svc._http_session.get.call_args_list[0].kwargs["params"]
+        first_call_params = svc._apple._http_session.get.call_args_list[0].kwargs["params"]
         self.assertEqual(first_call_params["limit"], 25)
 
         self.assertEqual(s[0]["id"], "am_s1")
@@ -352,8 +352,8 @@ class AppleSearchAndOverviewTest(unittest.TestCase):
 
     def test_fetch_album_tracks_paginated_and_artist_overview(self) -> None:
         svc = _make_service()
-        svc._am_storefront = "us"
-        svc._am_rate_limiter = mock.MagicMock()
+        svc._apple._am_storefront = "us"
+        svc._apple._am_rate_limiter = mock.MagicMock()
 
         def _fake_get(url, params=None, headers=None, timeout=10):
             if "/albums/999/tracks" in url:
@@ -422,8 +422,8 @@ class AppleSearchAndOverviewTest(unittest.TestCase):
                 })
             return _http_response(404, {})
 
-        svc._http_session = mock.MagicMock()
-        svc._http_session.get.side_effect = _fake_get
+        svc._apple._http_session = mock.MagicMock()
+        svc._apple._http_session.get.side_effect = _fake_get
 
         async def _run():
             meta, tracks = await svc.fetch_album_tracks(
@@ -446,7 +446,7 @@ class AppleSearchAndOverviewTest(unittest.TestCase):
 
     def test_apple_add_tracks_to_playlist_batch_and_429_retry(self) -> None:
         svc = _make_service()
-        svc._am_rate_limiter = mock.MagicMock()
+        svc._apple._am_rate_limiter = mock.MagicMock()
         post_calls = []
 
         def _fake_post(url, json=None, timeout=15):
@@ -455,8 +455,8 @@ class AppleSearchAndOverviewTest(unittest.TestCase):
                 return _http_response(429, {}, headers={"Retry-After": "2"})
             return _http_response(201, {})
 
-        svc._http_session = mock.MagicMock()
-        svc._http_session.post.side_effect = _fake_post
+        svc._apple._http_session = mock.MagicMock()
+        svc._apple._http_session.post.side_effect = _fake_post
 
         tracks = [
             Track(id="10", name="A", artist="X", album="", duration="", img_url="", platform="Apple Music"),
@@ -464,7 +464,7 @@ class AppleSearchAndOverviewTest(unittest.TestCase):
         ]
         added = asyncio.run(svc.add_tracks_to_playlist("Apple Music", "p.abc", tracks))
         self.assertEqual(added, 2)
-        svc._am_rate_limiter.penalize.assert_called_once_with(2)
+        svc._apple._am_rate_limiter.penalize.assert_called_once_with(2)
         self.assertEqual(len(post_calls[1]["data"]), 2)
 
 
@@ -516,8 +516,8 @@ class SpotifySearchAndOverviewTest(unittest.TestCase):
                 }
             }
         }
-        svc._sp_song = fake_song
-        svc._sp_cfg = mock.MagicMock()
+        svc._spotify._sp_song = fake_song
+        svc._spotify._sp_cfg = mock.MagicMock()
 
         async def _run():
             s = await svc.search_catalog("Spotify", "Pink Floyd", kind="songs", limit=5)
@@ -535,7 +535,7 @@ class SpotifySearchAndOverviewTest(unittest.TestCase):
 
     def test_fetch_album_tracks_and_artist_overview(self) -> None:
         svc = _make_service()
-        svc._sp_cfg = mock.MagicMock()
+        svc._spotify._sp_cfg = mock.MagicMock()
 
         fake_album = mock.MagicMock()
         fake_album.get_album_info.return_value = {
@@ -628,10 +628,10 @@ class SpotifySearchAndOverviewTest(unittest.TestCase):
 
     def test_add_tracks_to_playlist_resolves_cross_platform_tracks(self) -> None:
         svc = _make_service(tmp_cache_path="mocked")
-        svc._sp_login = mock.MagicMock()
-        svc._sp_cfg = mock.MagicMock()
+        svc._spotify._sp_login = mock.MagicMock()
+        svc._spotify._sp_cfg = mock.MagicMock()
         fake_song = mock.MagicMock()
-        svc._sp_song = fake_song
+        svc._spotify._sp_song = fake_song
 
         tracks = [
             Track(id="sp_direct", name="Direct", artist="Artist", album="", duration="", img_url="", platform="Spotify"),
