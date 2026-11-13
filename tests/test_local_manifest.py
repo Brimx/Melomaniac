@@ -302,6 +302,30 @@ class TestLocalManifestEngine(unittest.TestCase):
                 self.assertFalse(manifest_path.exists())
                 self.assertFalse(local_manifests.remove_local_manifest(saved.manifest_id))
 
+    def test_update_manifest_track_paths_persists_only_existing_audio(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            cfg_dir = Path(tmp) / "cfg"
+            dl_dir = Path(tmp) / "downloads"
+            dl_dir.mkdir()
+            audio = dl_dir / "Artist A - Song A.mp3"
+            audio.write_bytes(b"mp3")
+            with mock.patch.object(authentication, "CONFIG_DIR", cfg_dir):
+                tr = Track(id="t1", name="Song A", artist="Artist A", album="Alb", duration="3:00", img_url="", platform="Spotify")
+                saved = local_manifests.save_local_manifest(
+                    platform="Spotify",
+                    playlist_id="pl_persist",
+                    name="Persisted",
+                    tracks=[tr],
+                )
+                tr.source_path = str(audio)
+                self.assertTrue(local_manifests.update_manifest_track_paths(saved.manifest_id, [tr]))
+                reloaded = local_manifests.load_local_manifest(saved.manifest_id)
+                self.assertIsNotNone(reloaded)
+                self.assertEqual(reloaded.tracks[0].source_path, str(audio))
+                audio.unlink()
+                reloaded_after_delete = local_manifests.load_local_manifest(saved.manifest_id)
+                self.assertEqual(reloaded_after_delete.tracks[0].source_path, "")
+
     def test_detect_platform_from_url(self) -> None:
         self.assertEqual(
             local_manifests.detect_platform_from_url("https://open.spotify.com/playlist/abc"),

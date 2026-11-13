@@ -588,6 +588,88 @@ class TestPlaylistDetailViewFeatures(unittest.TestCase):
 
         asyncio.run(_run())
 
+    def test_manifest_matches_dedicated_playlist_downloads_and_ignores_unrelated(self) -> None:
+        async def _run() -> None:
+            import types
+            from engine.downloader import write_playlist_manifest
+            from services import settings_store
+
+            with tempfile.TemporaryDirectory() as tmp:
+                tmp_path = Path(tmp)
+                dl_dir = tmp_path / "Descargas"
+                dl_dir.mkdir()
+                other_local = tmp_path / "MiMusica"
+                other_local.mkdir()
+                # Archivo ajeno en carpeta local y archivo suelto en raíz de Descargas:
+                # NO deben marcarse como descargados en un manifiesto virgen.
+                (other_local / "Artist 1 - Track 1.mp3").write_bytes(b"")
+                (dl_dir / "Artist 1 - Track 1.mp3").write_bytes(b"")
+                # Archivo descargado específicamente para la playlist del manifiesto:
+                pl_sub = dl_dir / "Mi Manifiesto [Apple Music]"
+                pl_sub.mkdir()
+                t2_file = pl_sub / "Artist 2 - Track 2.mp3"
+                t2_file.write_bytes(b"")
+                write_playlist_manifest(
+                    pl_sub,
+                    name="Mi Manifiesto",
+                    platform="Apple Music",
+                    entries=[{"id": "id_2", "name": "Track 2", "artist": "Artist 2", "path": str(t2_file)}],
+                )
+
+                t1 = Track(id="id_1", name="Track 1", artist="Artist 1", album="Alb 1", duration="3:00", img_url="", platform="Apple Music")
+                t2 = Track(id="id_2", name="Track 2", artist="Artist 2", album="Alb 2", duration="3:00", img_url="", platform="Apple Music")
+                summary = PlaylistSummary(
+                    id="apple_music__pl1",
+                    name="Mi Manifiesto · Apple Music",
+                    platform="Local",
+                    track_count=2,
+                )
+                page = _DummyPage()
+                app_state = MagicMock()
+                app_state.download_state = TransferState.IDLE
+
+                async def _dl_complete(*args, **kwargs):
+                    t1.source_path = str(dl_dir / "Artist 1 - Track 1.mp3")
+                    return None
+
+                app_state.download_tracks.side_effect = (
+                    lambda tracks, **kwargs: asyncio.create_task(_dl_complete())
+                )
+
+                with patch.object(settings_store, "get_download_dir", return_value=str(dl_dir)), \
+                     patch.object(settings_store, "get_local_folders", return_value=[str(other_local)]):
+                    async def _loader():
+                        return types.SimpleNamespace(name="Mi Manifiesto"), [t1, t2]
+
+                    detail = PlaylistDetailView(
+                        page,
+                        summary,
+                        MagicMock(),
+                        on_back=lambda: None,
+                        app_state=app_state,
+                        loader=_loader,
+                        is_imported_manifest=True,
+                    )
+                    try:
+                        if detail._init_reload_task is not None:
+                            await detail._init_reload_task
+                        else:
+                            await detail.reload()
+                        self.assertFalse(detail._has_file_by_id.get(id(t1), False))
+                        self.assertTrue(detail._has_file_by_id.get(id(t2), False))
+                        self.assertEqual(detail._playlist_download_identity(), ("Mi Manifiesto", "Apple Music"))
+
+                        detail._on_download()
+                        _, dl_kw = app_state.download_tracks.call_args
+                        self.assertEqual(dl_kw.get("playlist_name"), "Mi Manifiesto")
+                        self.assertEqual(dl_kw.get("platform"), "Apple Music")
+                        await asyncio.sleep(0.05)
+                        self.assertTrue(detail._has_file_by_id.get(id(t1), False))
+                    finally:
+                        detail.will_unmount()
+
+        asyncio.run(_run())
+
 
 suite = unittest.defaultTestLoader.loadTestsFromTestCase(TestContextMenuHelpers)
 suite.addTests(unittest.defaultTestLoader.loadTestsFromTestCase(TestCardAndSongRowContextMenus))

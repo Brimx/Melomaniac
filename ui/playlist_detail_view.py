@@ -83,6 +83,8 @@ class PlaylistDetailView(ft.Container):
         self._selected_ids: set[int] = set()
         self._row_checkboxes: dict[int, ft.Checkbox] = {}
         self._row_containers: dict[int, ft.Container] = {}
+        self._action_containers: dict[int, ft.Container] = {}
+        self._manifest_base_name: str = ""
 
         # header
         cover_url = summary.cover_urls[0] if summary.cover_urls else ""
@@ -261,6 +263,74 @@ class PlaylistDetailView(ft.Container):
             return
         self._on_open_gestion(self.summary.name, list(self._tracks))
 
+    def _playlist_download_identity(self) -> tuple[str, str]:
+        """Nombre base y plataforma de origen para subcarpeta de descargas."""
+        if not self._is_manifest and not self._is_local:
+            return str(self.summary.name or "").strip(), str(self.summary.platform or "").strip()
+        pl_plat = next(
+            (
+                str(getattr(tr, "platform", "") or "").strip()
+                for tr in self._tracks
+                if getattr(tr, "platform", "") and tr.platform != LOCAL_LIBRARY_LABEL
+            ),
+            "",
+        )
+        raw_name = str(self._manifest_base_name or self.summary.name or "").strip()
+        if pl_plat and raw_name.endswith(f" · {pl_plat}"):
+            raw_name = raw_name[: -len(f" · {pl_plat}")].strip()
+        elif not pl_plat and " · " in raw_name:
+            base, maybe_plat = raw_name.rsplit(" · ", 1)
+            if maybe_plat.strip() in {"Spotify", "YouTube Music", "Apple Music"}:
+                raw_name, pl_plat = base.strip(), maybe_plat.strip()
+        return raw_name, pl_plat
+
+    def _persist_manifest_downloads(self, tracks: list[Track]) -> None:
+        """Guarda rutas descargadas dentro del manifiesto importado para preservarlas al reabrir."""
+        if not self._is_manifest or not tracks:
+            return
+        try:
+            from engine.local_manifests import update_manifest_track_paths
+
+            update_manifest_track_paths(self.summary.id, tracks)
+        except Exception:
+            pass
+
+    def _apply_downloaded_tracks(self, downloaded_tracks: list[Track]) -> None:
+        """Sincroniza filas y cabecera tras terminar una descarga de lote o playlist."""
+        updated: list[Track] = []
+        for tr in downloaded_tracks:
+            if tr.source_path and os.path.isfile(tr.source_path):
+                self._has_file_by_id[id(tr)] = True
+                updated.append(tr)
+                ic = self._action_containers.get(id(tr))
+                if ic is not None:
+                    ic.content = app_icon(PIcons.PLAY, size=16, color=ACCENT, fill=True)
+                    ic.tooltip = "Reproducir"
+                    safe_update(ic)
+        if updated:
+            self._persist_manifest_downloads(updated)
+            self._update_header_play_count()
+            safe_update(self._play_all_btn)
+            safe_update(self._shuffle_btn)
+
+    def _watch_download_task(self, task: asyncio.Task, target_tracks: list[Track]) -> None:
+        """Espera el cierre de una tarea de descarga sin bloquear para refrescar el detalle."""
+        async def _wait() -> None:
+            try:
+                await task
+            except Exception:
+                return
+            if not self._unmounted:
+                self._apply_downloaded_tracks(target_tracks)
+
+        try:
+            self._page_ref.run_task(_wait)
+        except Exception:
+            try:
+                asyncio.create_task(_wait())
+            except Exception:
+                pass
+
     def _on_download(self, _e=None) -> None:
         """Encola todas las pistas de la playlist en la cola de Descargas."""
         st = self.app_state
@@ -269,11 +339,19 @@ class PlaylistDetailView(ft.Container):
         if st.download_state == TransferState.RUNNING:
             notify(self._page_ref, "Ya hay una descarga en curso", kind="error")
             return
+        pl_name, pl_plat = self._playlist_download_identity()
         try:
-            st.download_tracks(self._tracks, destination_dir=settings_store.get_download_dir())
+            task = st.download_tracks(
+                self._tracks,
+                destination_dir=settings_store.get_download_dir(),
+                playlist_name=pl_name,
+                platform=pl_plat,
+            )
         except Exception as exc:  # noqa: BLE001
             notify(self._page_ref, f"No se pudo iniciar la descarga: {exc}", kind="error")
             return
+        if task is not None:
+            self._watch_download_task(task, list(self._tracks))
         cb = self._on_open_downloads
         notify(
             self._page_ref, f"Descargando {len(self._tracks)} pistas",
@@ -413,12 +491,14 @@ class PlaylistDetailView(ft.Container):
                 return
             self._tracks = self._apply_manifest_order(tracks)
             tracks = self._tracks
+            self._manifest_base_name = str(getattr(_meta, "name", "") or "").strip() if _meta is not None else ""
 
-            # Mapear pistas que ya existen en descargas o carpetas locales
-            # (carpetas locales y manifiestos importados sin audio no deben
-            # atribuirse archivos sueltos de otras carpetas).
+            # Mapear pistas descargadas:
+            # - Carpetas locales (_is_local y no _is_manifest) ya traen source_path del escaneo.
+            # - Manifiestos importados buscan solo sus descargas propias o su subcarpeta dedicada.
+            # - Playlists de plataforma buscan además en descarga general y carpetas locales.
             self._has_file_by_id = {}
-            if not self._is_local and not self._is_manifest:
+            if not self._is_local or self._is_manifest:
                 await asyncio.to_thread(self._match_local_files)
                 if len(self._has_file_by_id) != len(tracks):
                     self._has_file_by_id = await asyncio.to_thread(
@@ -561,17 +641,61 @@ class PlaylistDetailView(ft.Container):
         }
 
     def _match_local_files(self) -> int:
-        """Asocia source_path a las pistas que ya existen en el directorio de descargas o carpetas locales."""
+        """Asocia source_path a pistas descargadas de esta playlist o en Descargas/locales."""
         try:
-            from engine.downloader import _target_stem, resolve_download_dir
+            from engine.downloader import (
+                _target_stem,
+                read_playlist_manifest,
+                resolve_download_dir,
+                resolve_playlist_dir,
+            )
             from engine.parsers import _LOCAL_AUDIO_EXTENSIONS
-            candidate_dirs = [resolve_download_dir(settings_store.get_download_dir())]
-            for extra in settings_store.get_local_folders():
-                if extra and os.path.isdir(extra):
-                    candidate_dirs.append(Path(extra))
 
+            dl_dir = resolve_download_dir(settings_store.get_download_dir(), create=False)
+            pl_name, pl_plat = self._playlist_download_identity()
+            candidate_dirs: list[Path] = []
+            if pl_name:
+                pl_dir = resolve_playlist_dir(dl_dir, pl_name, pl_plat, create=False)
+                if pl_dir.is_dir():
+                    candidate_dirs.append(pl_dir)
+                if pl_plat:
+                    plain_dir = resolve_playlist_dir(dl_dir, pl_name, "", create=False)
+                    if plain_dir != pl_dir and plain_dir.is_dir():
+                        candidate_dirs.append(plain_dir)
+
+            if not self._is_manifest:
+                candidate_dirs.append(dl_dir)
+                for extra in settings_store.get_local_folders():
+                    if not extra or not os.path.isdir(extra):
+                        continue
+                    extra_path = Path(extra)
+                    if pl_name:
+                        sub = resolve_playlist_dir(extra_path, pl_name, pl_plat, create=False)
+                        if sub.is_dir():
+                            candidate_dirs.append(sub)
+                    candidate_dirs.append(extra_path)
+
+            manifest_paths_by_id: dict[str, str] = {}
+            manifest_paths_by_pair: dict[tuple[str, str], str] = {}
             disk_files: dict[str, str] = {}
             for d in candidate_dirs:
+                if d.is_dir():
+                    mdata = read_playlist_manifest(d)
+                    for entry in mdata.get("tracks") or []:
+                        if not isinstance(entry, dict):
+                            continue
+                        epath = str(entry.get("path") or "").strip()
+                        if not epath or not os.path.isfile(epath):
+                            continue
+                        eid = str(entry.get("id") or "").strip()
+                        if eid and eid not in manifest_paths_by_id:
+                            manifest_paths_by_id[eid] = epath
+                        epair = (
+                            str(entry.get("name") or entry.get("title") or "").strip().lower(),
+                            str(entry.get("artist") or "").strip().lower(),
+                        )
+                        if epair[0] and epair not in manifest_paths_by_pair:
+                            manifest_paths_by_pair[epair] = epath
                 try:
                     for fname in os.listdir(d):
                         lower = fname.lower()
@@ -584,6 +708,14 @@ class PlaylistDetailView(ft.Container):
             has_file_map: dict[int, bool] = {}
             for tr in list(self._tracks):
                 if tr.source_path and os.path.isfile(tr.source_path):
+                    matched += 1
+                    has_file_map[id(tr)] = True
+                    continue
+                direct = manifest_paths_by_id.get(str(tr.id or "").strip()) or manifest_paths_by_pair.get(
+                    (str(tr.name or "").strip().lower(), str(tr.artist or "").strip().lower())
+                )
+                if direct and os.path.isfile(direct):
+                    tr.source_path = direct
                     matched += 1
                     has_file_map[id(tr)] = True
                     continue
@@ -709,18 +841,14 @@ class PlaylistDetailView(ft.Container):
             if target.source_path and os.path.isfile(target.source_path):
                 track.source_path = target.source_path
                 self._has_file_by_id[id(track)] = True
+                self._persist_manifest_downloads([track])
                 if action_container is not None:
                     action_container.content = app_icon(PIcons.PLAY, size=16, color=ACCENT, fill=True)
                     action_container.tooltip = "Reproducir"
-                    try:
-                        action_container.update()
-                    except Exception:
-                        pass
+                    safe_update(action_container)
                 self._update_header_play_count()
-                try:
-                    self.update()
-                except Exception:
-                    pass
+                safe_update(self._play_all_btn)
+                safe_update(self._shuffle_btn)
                 notify(
                     self._page_ref,
                     f"Descarga lista: {track.artist} — {track.name}",
@@ -867,6 +995,7 @@ class PlaylistDetailView(ft.Container):
 
             if track.source_path and os.path.isfile(track.source_path):
                 self._has_file_by_id[id(track)] = True
+                self._persist_manifest_downloads([track])
                 notify(
                     self._page_ref,
                     f"Descarga lista: {track.artist} — {track.name}",
@@ -875,17 +1004,10 @@ class PlaylistDetailView(ft.Container):
                 )
                 action_container.content = app_icon(PIcons.PLAY, size=16, color=ACCENT, fill=True)
                 action_container.tooltip = "Reproducir"
-                try:
-                    action_container.update()
-                except Exception:
-                    pass
+                safe_update(action_container)
                 self._update_header_play_count()
-                for ctrl in (self._play_all_btn, self._shuffle_btn):
-                    if ctrl is not None:
-                        try:
-                            ctrl.update()
-                        except Exception:
-                            pass
+                safe_update(self._play_all_btn)
+                safe_update(self._shuffle_btn)
             else:
                 notify(self._page_ref, f"No se pudo descargar «{track.name}»", kind="error")
                 action_container.content = app_icon(PIcons.DOWNLOAD_SIMPLE, size=16, color=TEXT_MUTED)
@@ -971,6 +1093,7 @@ class PlaylistDetailView(ft.Container):
         self._selected_ids.clear()
         self._row_checkboxes.clear()
         self._row_containers.clear()
+        self._action_containers.clear()
         if hasattr(self, "_batch_bar"):
             self._batch_bar.visible = False
         if hasattr(self, "_select_all_chk"):
@@ -1135,11 +1258,19 @@ class PlaylistDetailView(ft.Container):
         if st.download_state == TransferState.RUNNING:
             notify(self._page_ref, "Ya hay una descarga en curso", kind="error")
             return
+        pl_name, pl_plat = self._playlist_download_identity()
         try:
-            st.download_tracks(selected, destination_dir=settings_store.get_download_dir())
+            task = st.download_tracks(
+                selected,
+                destination_dir=settings_store.get_download_dir(),
+                playlist_name=pl_name,
+                platform=pl_plat,
+            )
         except Exception as exc:  # noqa: BLE001
             notify(self._page_ref, f"No se pudo iniciar la descarga: {exc}", kind="error")
             return
+        if task is not None:
+            self._watch_download_task(task, list(selected))
         cb = self._on_open_downloads
         notify(
             self._page_ref,
@@ -1333,6 +1464,7 @@ class PlaylistDetailView(ft.Container):
                 self._download_single_track(track, action_icon)
 
         action_icon.on_click = _on_action_click
+        self._action_containers[id(track)] = action_icon
 
         menu_btn = build_context_menu_button(
             lambda tr=track, idx=index, ic=action_icon: self._track_context_actions(tr, idx, ic),

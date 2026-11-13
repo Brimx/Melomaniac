@@ -145,6 +145,8 @@ def track_from_manifest_dict(data: dict[str, Any], default_platform: str = "") -
         track_number = max(0, int(data.get("track_number") or 0))
     except (TypeError, ValueError):
         track_number = 0
+    raw_sp = str(data.get("source_path") or "").strip()
+    resolved_sp = raw_sp if (raw_sp and os.path.isfile(raw_sp)) else ""
 
     return Track(
         id=str(data.get("id") or ""),
@@ -157,7 +159,7 @@ def track_from_manifest_dict(data: dict[str, Any], default_platform: str = "") -
         duration_ms=duration_ms,
         is_explicit=bool(data.get("is_explicit", False)),
         isrc=isrc_raw or None,
-        source_path="",
+        source_path=resolved_sp,
         source_url=str(data.get("source_url") or ""),
         genre=str(data.get("genre") or ""),
         album_artist=str(data.get("album_artist") or ""),
@@ -275,6 +277,20 @@ def _resolve_target_path(
     return base / f"{safe_stem}.json"
 
 
+def _write_manifest_json(target: Path, payload: dict[str, Any]) -> None:
+    tmp = target.with_suffix(".json.tmp")
+    try:
+        tmp.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+        os.replace(tmp, target)
+    except Exception:
+        try:
+            if tmp.exists():
+                tmp.unlink()
+        except OSError:
+            pass
+        raise
+
+
 def save_local_manifest(
     manifest: LocalPlaylistManifest | None = None,
     *,
@@ -347,18 +363,7 @@ def save_local_manifest(
         target = base / f"{safe_id}.json"
 
     manifest.path = str(target)
-    payload = manifest.to_dict()
-    tmp = target.with_suffix(".json.tmp")
-    try:
-        tmp.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
-        os.replace(tmp, target)
-    except Exception:
-        try:
-            if tmp.exists():
-                tmp.unlink()
-        except OSError:
-            pass
-        raise
+    _write_manifest_json(target, manifest.to_dict())
     return manifest
 
 
@@ -418,3 +423,59 @@ def remove_local_manifest(
         return True
     except OSError:
         return False
+
+
+def update_manifest_track_paths(
+    identifier: str | Path,
+    tracks: Iterable[Track],
+    *,
+    manifests_dir: Path | str | None = None,
+) -> bool:
+    """Asocia rutas locales descargadas a las pistas correspondientes del manifiesto."""
+    target = _resolve_target_path(identifier, manifests_dir=manifests_dir)
+    if target is None or not target.is_file():
+        return False
+    try:
+        data = json.loads(target.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return False
+    entries = data.get("tracks") if isinstance(data, dict) else None
+    if not isinstance(entries, list):
+        return False
+
+    by_id: dict[str, str] = {}
+    by_pair: dict[tuple[str, str], str] = {}
+    for tr in tracks:
+        sp = str(getattr(tr, "source_path", "") or "").strip()
+        if not sp or not os.path.isfile(sp):
+            continue
+        tid = str(getattr(tr, "id", "") or "").strip()
+        if tid:
+            by_id[tid] = sp
+        pair = (
+            str(getattr(tr, "name", "") or "").strip().lower(),
+            str(getattr(tr, "artist", "") or "").strip().lower(),
+        )
+        if pair[0]:
+            by_pair[pair] = sp
+
+    if not by_id and not by_pair:
+        return False
+
+    changed = False
+    for entry in entries:
+        if not isinstance(entry, dict):
+            continue
+        eid = str(entry.get("id") or "").strip()
+        epair = (
+            str(entry.get("title") or entry.get("name") or "").strip().lower(),
+            str(entry.get("artist") or "").strip().lower(),
+        )
+        new_sp = by_id.get(eid) or by_pair.get(epair)
+        if new_sp and entry.get("source_path") != new_sp:
+            entry["source_path"] = new_sp
+            changed = True
+
+    if changed:
+        _write_manifest_json(target, data)
+    return changed
