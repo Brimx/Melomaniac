@@ -425,10 +425,37 @@ class TestGestionFlows(unittest.TestCase):
             # Modo Archivo local
             with tempfile.TemporaryDirectory() as tmpdir:
                 out_path = Path(tmpdir) / "salida.txt"
+                picked_path = Path(tmpdir) / "elegida.txt"
+                ui._save_picker = types.SimpleNamespace(
+                    save_file=AsyncMock(return_value=str(picked_path))
+                )
+                orig_run_task = page.run_task
+                seen_handlers = []
+
+                def _checked_run_task(fn, *args, **kwargs):
+                    import inspect
+                    self.assertTrue(
+                        inspect.iscoroutinefunction(fn),
+                        f"run_task requiere corrutina sin invocar, recibido: {fn!r}",
+                    )
+                    seen_handlers.append(fn)
+                    return orig_run_task(fn, *args, **kwargs)
+
+                page.run_task = _checked_run_task
                 await ui._open_export_dialog(initial_mode="file")
                 dlg_file = page.dialogs[-1]
                 tfs = [c for c in _walk_controls(dlg_file) if isinstance(c, ft.TextField)]
                 self.assertTrue(tfs)
+                pick_btns = [
+                    c for c in _walk_controls(dlg_file)
+                    if callable(getattr(c, "on_click", None))
+                    and any(getattr(t, "value", "") == "Elegir…" for t in _walk_controls(c))
+                ]
+                self.assertEqual(len(pick_btns), 1)
+                pick_btns[0].on_click(None)
+                await asyncio.sleep(0.02)
+                self.assertEqual(len(seen_handlers), 1)
+                self.assertEqual(tfs[0].value, str(picked_path))
                 tfs[0].value = str(out_path)
                 dlg_file.actions[-1].on_click(None)
                 await asyncio.sleep(0.02)

@@ -493,7 +493,10 @@ class PlayerBar(ft.Container, MprisBridgeMixin):
                 asyncio.get_running_loop().create_task(result)
             except RuntimeError:
                 try:
-                    self._page_ref.run_task(lambda: result)
+                    async def _consume() -> None:
+                        await result
+
+                    self._page_ref.run_task(_consume)
                 except Exception:
                     try:
                         result.close()

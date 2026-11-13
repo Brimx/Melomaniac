@@ -1004,17 +1004,17 @@ class ActionsMixin:
                 )
                 if res and getattr(res, "path", None):
                     path_field.value = res.path
-                    path_field.update()
+                    safe_update(path_field)
                 elif isinstance(res, str) and res:
                     path_field.value = res
-                    path_field.update()
+                    safe_update(path_field)
             except Exception:
                 pass
 
         pick_btn = _ghost_btn(
             "Elegir…",
             PIcons.FOLDER_OPEN,
-            lambda e: self.page.run_task(_pick_save(e)),
+            lambda e: self.page.run_task(_pick_save, e),
             width=90,
             height=38,
         )
