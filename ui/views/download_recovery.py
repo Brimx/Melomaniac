@@ -41,6 +41,20 @@ from ui.theme.tokens import (
 )
 
 _YOUTUBE_ID_RE = re.compile(r"(?:v=|youtu\.be/|shorts/)([A-Za-z0-9_-]{11})")
+_URL_RE = re.compile(
+    r"https?://\S+|(?:www\.)?(?:music\.)?(?:youtube\.com|youtu\.be)\S*",
+    re.IGNORECASE,
+)
+_ORIGIN_LABEL_RE = re.compile(r"^url\s+directa(?:\s+de\s+youtube)?$", re.IGNORECASE)
+
+
+def _clean_candidate_text(value: Any, *, fallback: str = "") -> str:
+    """Elimina URLs y etiquetas de origen antes de mostrar texto de un candidato."""
+    text = _URL_RE.sub("", str(value or "")).strip()
+    text = re.sub(r"\s{2,}", " ", text)
+    if not text or _ORIGIN_LABEL_RE.match(text):
+        return fallback
+    return text
 
 
 def fmt_size(num: int) -> str:
@@ -118,7 +132,7 @@ def _search_ytdlp_query(original: Track, query: str, timeout_s: int = 30) -> dic
 
     entries = [e for e in (info.get("entries") or []) if isinstance(e, dict)]
     if not entries:
-        return {"query": clean_q, "candidates": [], "error": "Sin resultados en YouTube"}
+        return {"query": clean_q, "candidates": [], "error": "Sin resultados"}
 
     candidates: list[dict[str, Any]] = []
     for raw in entries:
@@ -160,8 +174,8 @@ async def search_youtube_alternatives(
             "query": clean_q,
             "candidates": [{
                 "video_id": direct_id,
-                "title": original.name or f"Video {direct_id}",
-                "channel": "URL directa de YouTube",
+                "title": original.name or "Alternativa",
+                "channel": original.artist or "",
                 "duration_s": int(original.duration_ms or 0) // 1000,
                 "score": 100.0,
                 "url": f"https://www.youtube.com/watch?v={direct_id}",
@@ -182,10 +196,15 @@ async def search_youtube_alternatives(
 
 
 def candidate_to_recovery(cand: dict, *, used_video_id: str = "") -> RecoveryCandidate:
-    """Convierte un candidato dict de YouTube a ``RecoveryCandidate`` para el panel."""
+    """Convierte un candidato dict a ``RecoveryCandidate`` sin exponer URL ni origen."""
     video_id = str(cand.get("video_id") or "")
-    duration_s = int(cand.get("duration_s") or 0)
-    channel = str(cand.get("channel") or "—")
+    duration_s = int(cand.get("duration_s") or 0) or (
+        int(cand.get("duration_ms") or 0) // 1000
+    )
+    artist = _clean_candidate_text(
+        cand.get("artist") or cand.get("channel"),
+        fallback="—",
+    )
     url = str(
         cand.get("url")
         or (f"https://www.youtube.com/watch?v={video_id}" if video_id else "")
@@ -194,12 +213,12 @@ def candidate_to_recovery(cand: dict, *, used_video_id: str = "") -> RecoveryCan
     display_score = max(0.0, min(100.0, float(cand.get("score") or 0.0)))
     track = Track(
         id=video_id,
-        name=str(cand.get("title") or "Sin título"),
-        artist=channel,
-        album=url or channel,
+        name=_clean_candidate_text(cand.get("title"), fallback="Sin título"),
+        artist=artist,
+        album=_clean_candidate_text(cand.get("album"), fallback=""),
         duration=fmt_dur(duration_s * 1000) if duration_s else "—",
         img_url="",
-        platform="YouTube",
+        platform="",
         duration_ms=duration_s * 1000,
         source_url=url,
     )
@@ -490,11 +509,11 @@ async def open_youtube_recovery_dialog(
         reason=reason,
         search_fn=search_fn,
         on_select=lambda cand: on_select(cand, _current_fmt(), dlg),
-        search_label="Buscar en YouTube",
-        hint_text="Título, artista, URL de YouTube o variante",
+        search_label="Buscar alternativa",
+        hint_text="Título, artista o variante",
         action_label="Descargar",
         action_icon=PIcons.DOWNLOAD_SIMPLE,
-        empty_message="Sin coincidencias. Edita la consulta o pega una URL de YouTube.",
+        empty_message="Sin coincidencias. Edita la consulta para probar otra búsqueda.",
         query_trailing=[format_dd],
         action_trailing=[retry_btn],
     )

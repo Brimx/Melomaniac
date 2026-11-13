@@ -529,12 +529,81 @@ class DownloadsViewRecoveryTest(unittest.TestCase):
                 "channel": "Chan",
                 "duration_s": 120,
                 "score": 115.0,
+                "url": "https://www.youtube.com/watch?v=v1",
             },
             used_video_id="v1",
         )
         self.assertEqual(rc.score, 100.0)
         self.assertTrue(rc.used)
         self.assertEqual(rc.track.duration, "2:00")
+        self.assertEqual(rc.track.album, "")
+        self.assertEqual(rc.track.platform, "")
+        self.assertEqual(rc.track.source_url, "https://www.youtube.com/watch?v=v1")
+
+    def test_recovery_panel_and_direct_query_hide_url_and_origin(self) -> None:
+        orig = Track(
+            id="1", name="Track One", artist="Artist", album="",
+            duration="3:20", img_url="", platform="Spotify", duration_ms=200000,
+        )
+        st = _FakeAppState()
+        st.download_failed = [{
+            "id": "f1",
+            "name": "Track One",
+            "artist": "Artist",
+            "format": "mp3",
+            "error": "No match",
+        }]
+        st.research_response = {
+            "query": "Artist Track One",
+            "candidates": [{
+                "video_id": "abc123DEF45",
+                "title": "Track One https://youtu.be/abc123DEF45",
+                "channel": "URL directa de YouTube",
+                "album": "https://www.youtube.com/watch?v=abc123DEF45",
+                "duration_s": 200,
+                "score": 95.0,
+                "url": "https://www.youtube.com/watch?v=abc123DEF45",
+            }],
+            "error": "",
+        }
+        page = _DummyPage()
+        with (
+            mock.patch.object(settings_store, "ensure_config_dir", lambda: None),
+        ):
+            async def _run() -> None:
+                direct = await search_youtube_alternatives(
+                    orig, "https://youtu.be/dQw4w9WgXcQ", app_state=st,
+                )
+                direct_cand = candidate_to_recovery(direct["candidates"][0])
+                self.assertEqual(direct_cand.track.artist, "Artist")
+                self.assertEqual(direct_cand.track.album, "")
+                self.assertNotIn("YouTube", direct_cand.track.artist)
+                self.assertNotIn("URL", direct_cand.track.artist)
+
+                _dlg, panel = await downloads_view.open_youtube_recovery_dialog(
+                    page,
+                    orig,
+                    initial_format="mp3",
+                    reason="No match",
+                    search_fn=lambda _q: asyncio.sleep(
+                        0,
+                        result=(
+                            [candidate_to_recovery(st.research_response["candidates"][0])],
+                            "",
+                        ),
+                    ),
+                    on_select=lambda *_a: None,
+                    on_retry_format=lambda *_a: None,
+                )
+                texts = [
+                    str(getattr(c, "value", "") or getattr(c, "label", "") or getattr(c, "hint_text", "") or "")
+                    for c in _find_controls(panel, lambda _c: True)
+                ]
+                rendered = " ".join(texts).lower()
+                for forbidden in ("http://", "https://", "youtube.com", "youtu.be", "youtube", "url directa"):
+                    self.assertNotIn(forbidden, rendered)
+
+            asyncio.run(_run())
 
 
 unittest.main()
