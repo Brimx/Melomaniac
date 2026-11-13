@@ -21,7 +21,7 @@ def __getattr__(name: str):
 
         return ConfigWizard
     if name == "PlaylistManagerUI":
-        from ui.main_ui import PlaylistManagerUI
+        from ui.shell.main_ui import PlaylistManagerUI
 
         return PlaylistManagerUI
     if name in {"SongRow", "SkeletonRow", "ITEM_H"}:

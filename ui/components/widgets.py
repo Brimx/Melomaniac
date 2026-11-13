@@ -399,16 +399,6 @@ def close_dialog(page: ft.Page, dlg: ft.AlertDialog | None) -> None:
             pass
 
 
-class DialogMixin:
-    """Ciclo de vida único para diálogos: show/close."""
-
-    def show_dialog(self, page: ft.Page, dlg: ft.AlertDialog) -> None:
-        page.show_dialog(dlg)
-
-    def close_dialog(self, page: ft.Page, dlg: ft.AlertDialog | None) -> None:
-        close_dialog(page, dlg)
-
-
 def notify(
     page: ft.Page,
     msg: str,

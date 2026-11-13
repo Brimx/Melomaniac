@@ -4,10 +4,10 @@
 ║              Interfaz Principal de Usuario                           ║
 ╚══════════════════════════════════════════════════════════════════════╝
 
-Módulo: ui/main_ui.py
+Módulo: ui/shell/main_ui.py
 Descripción: Componente principal de la interfaz de usuario. Implementa
-            PlaylistManagerUI, la vista principal que orquesta todos los
-            componentes visuales y maneja la interacción del usuario.
+            PlaylistManagerUI, la vista principal que orquesta controladores de
+            layout, catálogo, acciones y divisiones sin mixins.
 
 Estrategia de Diseño - Arquitectura Reactiva:
     PlaylistManagerUI es una clase UI pura que no conoce detalles de APIs.
@@ -74,7 +74,7 @@ from ui.theme.icons import PIcons
 from ui.dialogs.transfer_report import TransferReportDialog
 from ui.components.widgets import (
     app_text_field,
-    DialogMixin,
+    close_dialog,
     notify,
     input_border,
     safe_update,
@@ -89,16 +89,17 @@ from ui.theme.tokens import (
     TEXT_MUTED,
     TEXT_DIM,
 )
-from ui.dialogs.division_dialogs import DivisionMixin
-from ui.main_actions import ActionsMixin
-from ui.main_layout import LayoutMixin, compute_contextual_actions_state
+from ui.dialogs.division_dialogs import DivisionController
+from ui.shell.catalog_panel import CatalogController
+from ui.shell.main_actions import ActionsController
+from ui.shell.main_layout import LayoutController, compute_contextual_actions_state
 
 # Por encima de este número conviene un único update del ListView en vez de
 # publicar una actualización por fila (transferencias masivas, reordenamientos).
 _ROW_UPDATE_BATCH_THRESHOLD = 16
 
 
-class PlaylistManagerUI(DialogMixin, DivisionMixin, ActionsMixin, LayoutMixin):
+class PlaylistManagerUI:
     """
     Interfaz principal de usuario para gestión de playlists.
     
@@ -142,10 +143,18 @@ class PlaylistManagerUI(DialogMixin, DivisionMixin, ActionsMixin, LayoutMixin):
 
     # Número de filas skeleton mostradas durante carga
     SKELETON_COUNT = 14
+    _CONTROLLER_ATTRS = ("_layout", "_actions", "_catalog", "_divisions")
+
+    def __getattr__(self, name: str):
+        """Delega métodos de los controladores compuestos manteniendo estado único en ``self``."""
+        for attr in self._CONTROLLER_ATTRS:
+            ctrl = self.__dict__.get(attr)
+            if ctrl is not None and hasattr(ctrl, name):
+                return getattr(ctrl, name)
+        raise AttributeError(f"{type(self).__name__!r} object has no attribute {name!r}")
 
     def _close_dlg(self, dlg) -> None:
-        # Compat: ciclo de vida canónico en DialogMixin.
-        self.close_dialog(self.page, dlg)
+        close_dialog(self.page, dlg)
 
     def _calc_skeleton_count(self) -> int:
         """Calcula cuántos SkeletonRow caben en alto visible — overfill garantizado."""
@@ -482,9 +491,14 @@ class PlaylistManagerUI(DialogMixin, DivisionMixin, ActionsMixin, LayoutMixin):
         )
 
         # ──────────────────────────────────────────────────────────────
-        # CONSTRUCCIÓN DE COMPONENTES PRINCIPALES
+        # CONTROLADORES COMPUESTOS Y CONSTRUCCIÓN DE COMPONENTES
         # ──────────────────────────────────────────────────────────────
-        
+
+        self._divisions = DivisionController(self)
+        self._actions = ActionsController(self)
+        self._catalog = CatalogController(self)
+        self._layout = LayoutController(self)
+
         self._build_sidebar()
         self._build_content()
 

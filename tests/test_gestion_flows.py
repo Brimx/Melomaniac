@@ -23,8 +23,8 @@ import flet as ft
 from core.library_models import PlaylistSummary
 from core.models import LoadState, PlaylistMeta, SearchResult, Track, TransferState
 from core.state import AppState
-from ui.main_layout import compute_contextual_actions_state
-from ui.main_ui import PlaylistManagerUI
+from ui.shell.main_layout import compute_contextual_actions_state
+from ui.shell.main_ui import PlaylistManagerUI
 
 
 class _DummyPage:
@@ -96,7 +96,7 @@ class TestGestionFlows(unittest.TestCase):
     def _build_ui(self, service=None):
         page = _DummyPage()
         state = AppState(service=service)
-        with patch("ui.main_layout.LayoutMixin._build_modules_and_root") as _:
+        with patch("ui.shell.main_layout.LayoutController._build_modules_and_root") as _:
             pass
         ui = PlaylistManagerUI(page, state)
         return page, state, ui
@@ -576,7 +576,14 @@ class TestGestionFlowsSuite(unittest.TestCase):
     def test_agents_ui_rules_in_gestion_files(self) -> None:
         hex_re = re.compile(r"#[0-9a-fA-F]{6,8}")
         anim_re = re.compile(r"ft\.Animation\(\s*[0-9]+|animation_duration\s*=\s*[0-9]+")
-        for rel in ("ui/main_layout.py", "ui/main_actions.py", "ui/main_ui.py"):
+        for rel in (
+            "ui/shell/main_layout.py",
+            "ui/shell/main_actions.py",
+            "ui/shell/main_ui.py",
+            "ui/shell/catalog_panel.py",
+            "ui/shell/nav_rail.py",
+            "ui/shell/sidebar.py",
+        ):
             src = Path(rel).read_text(encoding="utf-8")
             self.assertIsNone(hex_re.search(src), f"Hex hardcodeado en {rel}")
             self.assertIsNone(anim_re.search(src), f"Duración literal en {rel}")

@@ -1,7 +1,6 @@
-"""ui/division_dialogs.py — Diálogos y acciones de Organizar, Dividir y edición de divisiones.
+"""ui/dialogs/division_dialogs.py — Diálogos y acciones de Organizar, Dividir y edición de divisiones.
 
-Mixin de `PlaylistManagerUI` (ui/main_ui.py): los métodos se mezclan en la clase
-y comparten su `self`.
+Controlador compuesto por ``PlaylistManagerUI`` (``ui/shell/main_ui.py``).
 """
 
 from __future__ import annotations
@@ -35,8 +34,25 @@ from ui.theme.icons import PIcons, app_icon
 from ui.theme.fonts import FONT_HEADLINE, FONT_TEXT
 
 
-class DivisionMixin:
-    """Diálogos y acciones de Organizar, Dividir y edición de divisiones."""
+class DivisionController:
+    """Controlador de diálogos y acciones de Organizar, Dividir y divisiones."""
+
+    def __init__(self, ui) -> None:
+        self._ui = ui
+
+    @property
+    def page(self):
+        return self._ui.page
+
+    @property
+    def state(self):
+        return self._ui.state
+
+    def _close_dlg(self, dlg) -> None:
+        self._ui._close_dlg(dlg)
+
+    def _snack(self, msg: str, error: bool = False) -> None:
+        self._ui._snack(msg, error=error)
 
     def _on_organize(self, _e: ft.ControlEvent) -> None:
         """Organizar separado — Mantener orden (agrupar) o A→Z/Z→A + agrupar; sin alcance."""
@@ -153,31 +169,32 @@ class DivisionMixin:
 
     def _refresh_division_popup(self) -> None:
         """Popup dinámico 2..5 divisiones — texto del botón = activa."""
+        ui = self._ui
         try:
             s = self.state
             if not s.segments:
-                self._division_popup.visible = False
-                self._division_col.visible = False
+                ui._division_popup.visible = False
+                ui._division_col.visible = False
                 return
             active = s.active_segment_key or next(iter(s.segments.keys()))
-            self._division_btn_text.value = active
+            ui._division_btn_text.value = active
             items = []
             for k in s.segments.keys():
                 cnt = len(s.segments.get(k, []))
                 def _on_pick(e, _k=k):
                     try:
                         s.set_active_segment(_k)
-                        self._division_btn_text.value = _k
-                        self._division_popup.update()
+                        ui._division_btn_text.value = _k
+                        ui._division_popup.update()
                     except Exception:
                         pass
                 items.append(ft.PopupMenuItem(content=ft.Text(f"{k} ({cnt})"), data=k, on_click=_on_pick, checked=(k == active)))
-            self._division_popup.items = items
-            self._division_popup.visible = True
-            self._division_col.visible = True
+            ui._division_popup.items = items
+            ui._division_popup.visible = True
+            ui._division_col.visible = True
             try:
-                self._division_popup.update()
-                self._division_col.update()
+                ui._division_popup.update()
+                ui._division_col.update()
             except Exception:
                 pass
         except Exception:

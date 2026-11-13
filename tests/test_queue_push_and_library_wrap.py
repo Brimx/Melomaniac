@@ -165,7 +165,7 @@ class TestQueuePushAndLibraryWrap(unittest.TestCase):
         self.assertEqual(res.returncode, 0, msg=res.stderr or res.stdout)
 
     def test_main_layout_places_player_queue_as_third_row_child(self) -> None:
-        src = Path("ui/main_layout.py").read_text(encoding="utf-8")
+        src = Path("ui/shell/main_layout.py").read_text(encoding="utf-8")
         tree = ast.parse(src)
         found_row = False
         for node in ast.walk(tree):
@@ -211,7 +211,7 @@ class TestQueuePushAndLibraryWrap(unittest.TestCase):
             panel.set_open(False)
         self.assertEqual(events, [True, False])
 
-        layout_src = (Path(__file__).resolve().parent.parent / "ui/main_layout.py").read_text(encoding="utf-8")
+        layout_src = (Path(__file__).resolve().parent.parent / "ui/shell/main_layout.py").read_text(encoding="utf-8")
         self.assertIn("def _sync_queue_album_column(", layout_src)
         self.assertIn("on_open_change=self._sync_queue_album_column", layout_src)
 

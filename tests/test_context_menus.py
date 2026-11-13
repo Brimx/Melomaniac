@@ -533,7 +533,7 @@ class TestPlaylistDetailViewFeatures(unittest.TestCase):
 
     def test_hover_boolean_manifest_actions_and_hidden_updates(self) -> None:
         from ui.views.downloads_view import DownloadsView
-        from ui.main_ui import PlaylistManagerUI
+        from ui.shell.main_ui import PlaylistManagerUI
 
         async def _run() -> None:
             summary = PlaylistSummary(

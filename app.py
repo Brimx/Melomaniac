@@ -39,7 +39,7 @@ from services.authentication import ensure_config_dir, load_runtime_env
 from services.circuit_breaker import CircuitBreaker
 from ui.setup.auth_manager import AuthManager
 from ui.theme.fonts import FONT_TEXT, build_font_registry
-from ui.main_ui import PlaylistManagerUI
+from ui.shell.main_ui import PlaylistManagerUI
 from ui.theme.tokens import BG_LIST, ACCENT, BG_SURFACE, TEXT_PRIMARY
 from ui.components.widgets import build_input_decoration_theme
 
