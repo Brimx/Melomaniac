@@ -274,7 +274,6 @@ def build_detail_track_row(
         padding=ft.Padding.symmetric(horizontal=12, vertical=8),
         ink=True,
         animate=ft.Animation(MOTION_HOVER_MS, ft.AnimationCurve.EASE_OUT),
-        animate_scale=ft.Animation(MOTION_HOVER_MS, ft.AnimationCurve.EASE_OUT),
         animate_opacity=ft.Animation(MOTION_HOVER_MS, ft.AnimationCurve.EASE_OUT),
         content=wrap_with_context_menu(
             row_inner,
@@ -292,7 +291,6 @@ def build_detail_track_row(
             selected=(id(track) in view._selected_ids),
             hovering=hovering,
         )
-        row.scale = 1.01 if hovering else 1.0
         safe_update(row)
 
     def _on_click(_e) -> None:
@@ -302,7 +300,6 @@ def build_detail_track_row(
 
         async def _press_and_act() -> None:
             try:
-                row.scale = 0.99
                 row.opacity = 0.85
                 row.update()
                 try:
@@ -311,7 +308,6 @@ def build_detail_track_row(
                     raise
             finally:
                 try:
-                    row.scale = 1.0
                     row.opacity = 1.0
                     row.update()
                 except Exception:
@@ -327,7 +323,6 @@ def build_detail_track_row(
             task.add_done_callback(view._press_tasks.discard)
         except Exception:
             try:
-                row.scale = 1.0
                 row.opacity = 1.0
             except Exception:
                 pass

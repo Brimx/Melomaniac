@@ -562,11 +562,14 @@ class TestPlaylistDetailViewFeatures(unittest.TestCase):
                 await asyncio.sleep(0)
                 self.assertTrue(detail._download_btn.visible)
                 row1 = detail._build_track_row(tracks[0], 1)
+                self.assertIsNone(row1.animate_scale)
                 row1.on_hover(type("E", (), {"data": True})())
                 self.assertIsNotNone(row1.border)
+                self.assertIsNone(row1.scale)
                 detail._selected_ids.add(id(tracks[0]))
                 row1.on_hover(type("E", (), {"data": False})())
                 self.assertIsNotNone(row1.border)
+                self.assertIsNone(row1.scale)
             finally:
                 detail.will_unmount()
 
