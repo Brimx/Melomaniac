@@ -94,6 +94,21 @@ jobs:
           pip install -r requirements.txt
           pip install pyinstaller
 
+      - name: Patch flet-cli 1.1.2 Windows binary open bug
+        shell: bash
+        run: |
+          python - <<'PY'
+          import importlib.util, pathlib
+          spec = importlib.util.find_spec("flet_cli")
+          base = pathlib.Path(spec.origin).parent if spec.origin else pathlib.Path(list(spec.submodule_search_locations)[0])
+          p = base / "__pyinstaller" / "win_utils.py"
+          txt = p.read_text(encoding="utf-8")
+          patched = txt.replace('open(exe_path, "ab", encoding="utf-8")', 'open(exe_path, "ab")')
+          assert patched != txt, f"Expected pattern not found in {p}"
+          p.write_text(patched, encoding="utf-8")
+          print(f"Patched {p}")
+          PY
+
       - name: Build Windows folder with Flet pack
         run: |
           python -m flet_cli.cli pack app.py --onedir --name Melomaniac --add-data "resources;resources" --hidden-import "mutagen" -y --pyinstaller-build-args="--collect-data=ytmusicapi"
