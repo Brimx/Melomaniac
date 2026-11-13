@@ -22,6 +22,7 @@ from ui.widgets import (
     ContextMenuAction,
     build_context_menu_button,
     open_external,
+    safe_update,
     wrap_with_context_menu,
 )
 
@@ -120,6 +121,7 @@ class PlaylistCard(ft.Container):
             ink=True,
             on_click=lambda e: on_tap(summary) if on_tap else None,
             animate=ft.Animation(MOTION_HOVER_MS, ft.AnimationCurve.EASE_OUT),
+            animate_scale=ft.Animation(MOTION_HOVER_MS, ft.AnimationCurve.EASE_OUT),
             on_hover=self._on_hover,
         )
 
@@ -195,8 +197,8 @@ class PlaylistCard(ft.Container):
         return actions
 
     def _on_hover(self, e: ft.HoverEvent) -> None:
-        self.bgcolor = BG_HOVER if e.data == "true" else BG_SURFACE
-        try:
-            self.update()
-        except Exception:
-            pass
+        hovering = e.data == "true" or e.data is True
+        self.bgcolor = BG_HOVER if hovering else BG_SURFACE
+        self.scale = 1.02 if hovering else 1.0
+        self.border = ft.Border.all(0.8, ACCENT if hovering else BORDER_LIGHT)
+        safe_update(self)

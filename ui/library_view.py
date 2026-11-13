@@ -229,7 +229,16 @@ class LibraryView(ft.Container, DialogMixin):
             return None, tracks
 
         def _remove_local() -> None:
-            self.library_state.remove_local_folder(summary.id)
+            is_downloaded_sub = bool(
+                not is_manifest
+                and local
+                and str(summary.id) not in set(self.library_state.local_folders)
+                and hasattr(self.library_state, "remove_downloaded_playlist")
+            )
+            if is_downloaded_sub:
+                self.library_state.remove_downloaded_playlist(summary.id)
+            else:
+                self.library_state.remove_local_folder(summary.id)
             self._on_back_from_detail()
 
         loader = _load_manifest if is_manifest else (_load_local if local else None)
@@ -243,6 +252,7 @@ class LibraryView(ft.Container, DialogMixin):
             on_open_downloads=self._on_open_downloads,
             on_open_gestion=self._on_open_gestion,
             player_bar=getattr(self, "player_bar", None),
+            is_imported_manifest=is_manifest,
         )
         self.content = self._detail
         try:
@@ -392,24 +402,33 @@ class LibraryView(ft.Container, DialogMixin):
 
     def _open_import_dialog(self) -> None:
         """Abre diálogo para importar una playlist remota como manifiesto local."""
-        cached_entries: list[tuple[str, object]] = []
+        entries_by_plat: dict[str, list[tuple[str, object]]] = {}
+        cached_by_key: dict[str, object] = {}
         for plat in PLATFORM_ORDER:
             snap = self.library_state.get_snapshot(plat)
+            plat_entries: list[tuple[str, object]] = []
             for summ in snap.items:
                 key = f"{plat}::{summ.id}"
-                cached_entries.append((key, summ))
+                plat_entries.append((key, summ))
+                cached_by_key[key] = summ
+            if plat_entries:
+                entries_by_plat[plat] = plat_entries
 
-        default_plat = PLATFORM_ORDER[0] if PLATFORM_ORDER else "Spotify"
-        url_input = app_text_field(
-            label="URL o ID de playlist",
-            hint_text="https://open.spotify.com/playlist/... o ID",
-            autofocus=True,
+        default_plat = (
+            self._platform
+            if getattr(self, "_platform", None) in PLATFORM_ORDER
+            else (PLATFORM_ORDER[0] if PLATFORM_ORDER else "Spotify")
         )
         platform_dd = organize_dropdown(
             [(p, p) for p in PLATFORM_ORDER],
             value=default_plat,
             label="Plataforma",
             width=380,
+        )
+        url_input = app_text_field(
+            label="URL o ID de playlist",
+            hint_text="https://open.spotify.com/playlist/... o ID",
+            autofocus=True,
         )
         owner_input = app_text_field(
             label="Propietario / autor (opcional)",
@@ -418,6 +437,52 @@ class LibraryView(ft.Container, DialogMixin):
         status_txt = app_text("", size=11, color=TEXT_MUTED, font_family=FONT_TEXT)
 
         selected_summary: dict[str, object | None] = {"item": None}
+
+        def _options_for_platform(plat: str) -> list[tuple[str, str]]:
+            plat_items = entries_by_plat.get(plat, [])
+            return [("", "— Escribir URL o ID manualmente —")] + [
+                (key, s.name) for key, s in plat_items
+            ]
+
+        has_any_cached = bool(cached_by_key)
+        cached_dd = organize_dropdown(
+            _options_for_platform(default_plat),
+            value="",
+            label="Playlist sincronizada",
+            width=380,
+        )
+        cached_dd.visible = has_any_cached
+
+        def _sync_cached_for_platform(plat: str, *, clear_pick: bool = True) -> None:
+            if not has_any_cached:
+                return
+            plat_opts = _options_for_platform(plat)
+            cached_dd.options = [
+                ft.dropdown.Option(key=k, text=lbl) for k, lbl in plat_opts
+            ]
+            cached_dd.visible = len(plat_opts) > 1
+            if clear_pick:
+                cached_dd.value = ""
+                selected_summary["item"] = None
+            try:
+                cached_dd.update()
+            except Exception:
+                pass
+
+        def _on_platform_change(e) -> None:
+            plat = str(getattr(e.control, "value", "") or default_plat)
+            _sync_cached_for_platform(plat, clear_pick=True)
+
+        def _on_pick_cached(e) -> None:
+            chosen = cached_by_key.get(str(e.control.value or ""))
+            selected_summary["item"] = chosen
+            if chosen is None:
+                return
+            url_input.value = chosen.external_url or chosen.id
+            try:
+                url_input.update()
+            except Exception:
+                pass
 
         def _on_url_change(_e) -> None:
             selected_summary["item"] = None
@@ -428,40 +493,16 @@ class LibraryView(ft.Container, DialogMixin):
                     platform_dd.update()
                 except Exception:
                     pass
+                _sync_cached_for_platform(detected, clear_pick=True)
 
+        platform_dd.on_select = _on_platform_change
+        cached_dd.on_select = _on_pick_cached
         url_input.on_change = _on_url_change
 
-        controls: list[ft.Control] = []
-        if cached_entries:
-            cached_options = [("", "— Escribir URL o ID manualmente —")] + [
-                (key, f"{s.name} ({s.platform})") for key, s in cached_entries
-            ]
-            cached_by_key = dict(cached_entries)
-            cached_dd = organize_dropdown(
-                cached_options,
-                value="",
-                label="O elegir de playlists sincronizadas",
-                width=380,
-            )
-
-            def _on_pick_cached(e) -> None:
-                chosen = cached_by_key.get(str(e.control.value or ""))
-                selected_summary["item"] = chosen
-                if chosen is None:
-                    return
-                url_input.value = chosen.external_url or chosen.id
-                if chosen.platform in PLATFORM_ORDER:
-                    platform_dd.value = chosen.platform
-                try:
-                    url_input.update()
-                    platform_dd.update()
-                except Exception:
-                    pass
-
-            cached_dd.on_select = _on_pick_cached
+        controls: list[ft.Control] = [platform_dd]
+        if has_any_cached:
             controls.append(cached_dd)
-
-        controls.extend([url_input, platform_dd, owner_input, status_txt])
+        controls.extend([url_input, owner_input, status_txt])
         dlg_body = ft.Column(controls=controls, spacing=10, tight=True)
 
         dlg: ft.AlertDialog | None = None
@@ -647,6 +688,14 @@ class LibraryView(ft.Container, DialogMixin):
                 badge_text="DESCARGADA",
                 badge_bgcolor=BG_PANEL,
                 badge_border=SUCCESS,
+                on_remove_manifest=(
+                    (lambda _e, s=summ: (
+                        self.library_state.remove_downloaded_playlist(s.id)
+                        and self._refresh()
+                    ))
+                    if hasattr(self.library_state, "remove_downloaded_playlist")
+                    else None
+                ),
             )
             for summ in downloaded
         ]

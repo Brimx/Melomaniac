@@ -65,9 +65,17 @@ with tempfile.TemporaryDirectory() as tmp:
     folder_a.mkdir()
     downloaded_sub = folder_a / "Mix Descargado [Spotify]"
     downloaded_sub.mkdir()
+    (downloaded_sub / "track1.mp3").write_bytes(b"")
     write_target = downloaded_sub / "playlist.json"
     write_target.write_text(
-        json.dumps({"name": "Mix Descargado", "platform": "Spotify", "count": 2, "tracks": []}),
+        json.dumps({"name": "Mix Descargado", "platform": "Spotify", "count": 1, "tracks": []}),
+        encoding="utf-8",
+    )
+    # Subcarpeta sin archivos de audio: no debe aparecer como playlist descargada
+    empty_sub = folder_a / "Vacia [Spotify]"
+    empty_sub.mkdir()
+    (empty_sub / "playlist.json").write_text(
+        json.dumps({"name": "Vacia", "platform": "Spotify", "count": 1, "tracks": []}),
         encoding="utf-8",
     )
 
@@ -129,26 +137,67 @@ with tempfile.TemporaryDirectory() as tmp:
         view._on_open_playlist(imported_summ)
         tc.assertIsNotNone(view._detail)
         tc.assertIsNotNone(view._detail._loader)
+        tc.assertTrue(view._detail._is_manifest)
+
+        # Subcarpeta descargada vacía ignorada; la que tiene audio se puede desvincular sin borrar mp3
+        dl_summs = state.downloaded_playlist_summaries()
+        tc.assertEqual(len(dl_summs), 1)
+        tc.assertTrue(state.remove_downloaded_playlist(str(downloaded_sub)))
+        tc.assertFalse(write_target.exists())
+        tc.assertTrue((downloaded_sub / "track1.mp3").exists())
+        tc.assertEqual(len(state.downloaded_playlist_summaries()), 0)
 
         # Quitar el manifiesto limpiamente desde LibraryState / callback
         removed = state.remove_local_manifest(saved.manifest_id)
         tc.assertTrue(removed)
         view._on_back_from_detail()
         tc.assertEqual(len(state.imported_manifest_summaries()), 0)
-        tc.assertEqual(len(view._playlists_row.controls), 1)
+        tc.assertEqual(len(view._playlists_row.controls), 0)
         tc.assertEqual(len(view._grid_row.controls), 1)
 
-        # El diálogo de importación se construye y autodetección de plataforma funciona
+        # El diálogo de importación pone Plataforma primero y autodetecta desde URL
         view._open_import_dialog()
         tc.assertEqual(len(page.dialogs), 1)
         dlg = page.dialogs[0]
         tc.assertIsInstance(dlg, ft.AlertDialog)
         body_col = dlg.content.content
-        url_field = body_col.controls[0]
-        plat_dd = body_col.controls[1]
+        plat_dd = body_col.controls[0]
+        url_field = body_col.controls[1]
         url_field.value = "https://open.spotify.com/playlist/37i9dQZF1DXcBWIGoYBM5M"
         url_field.on_change(None)
         tc.assertEqual(plat_dd.value, "Spotify")
+
+        # Con playlists sincronizadas por plataforma, el selector filtra según Plataforma
+        from core.library_models import LibraryLoadState, LibrarySnapshot, PlaylistSummary
+        state._snapshots["Spotify"] = LibrarySnapshot(
+            platform="Spotify",
+            state=LibraryLoadState.READY,
+            items=[PlaylistSummary(platform="Spotify", id="sp_1", name="Mix SP", track_count=5)],
+        )
+        state._snapshots["YouTube Music"] = LibrarySnapshot(
+            platform="YouTube Music",
+            state=LibraryLoadState.READY,
+            items=[PlaylistSummary(platform="YouTube Music", id="yt_1", name="Mix YT", track_count=3)],
+        )
+        page.dialogs.clear()
+        view._platform = "Spotify"
+        view._open_import_dialog()
+        body_col2 = page.dialogs[0].content.content
+        plat_dd2 = body_col2.controls[0]
+        cached_dd2 = body_col2.controls[1]
+        url_field2 = body_col2.controls[2]
+        tc.assertEqual(plat_dd2.value, "Spotify")
+        tc.assertEqual([o.text for o in cached_dd2.options[1:]], ["Mix SP"])
+        cached_dd2.value = "Spotify::sp_1"
+        cached_dd2.on_select(type("E", (), {"control": cached_dd2})())
+        plat_dd2.value = "YouTube Music"
+        plat_dd2.on_select(type("E", (), {"control": plat_dd2})())
+        tc.assertEqual(cached_dd2.value, "")
+        tc.assertEqual([o.text for o in cached_dd2.options[1:]], ["Mix YT"])
+        url_field2.value = "https://open.spotify.com/playlist/sp_1"
+        url_field2.on_change(None)
+        tc.assertEqual(plat_dd2.value, "Spotify")
+        tc.assertEqual([o.text for o in cached_dd2.options[1:]], ["Mix SP"])
 """
 
 
@@ -283,6 +332,7 @@ class TestLibraryStateManifestIntegration(unittest.IsolatedAsyncioTestCase):
             music_dir.mkdir()
             dl_sub = music_dir / "Descargada [YouTube Music]"
             dl_sub.mkdir()
+            (dl_sub / "a.mp3").write_bytes(b"")
             write_playlist_manifest(
                 dl_sub,
                 name="Descargada",

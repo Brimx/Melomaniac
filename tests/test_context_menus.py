@@ -528,6 +528,66 @@ class TestPlaylistDetailViewFeatures(unittest.TestCase):
 
         asyncio.run(_run())
 
+    def test_hover_boolean_manifest_actions_and_hidden_updates(self) -> None:
+        from ui.downloads_view import DownloadsView
+        from ui.main_ui import PlaylistManagerUI
+
+        async def _run() -> None:
+            summary = PlaylistSummary(
+                id="local_pl",
+                name="M.M.",
+                platform="Local",
+                track_count=2,
+                external_url="https://music.apple.com/playlist/pl.u-123",
+            )
+            card = PlaylistCard(summary, state=LibraryLoadState.READY, on_tap=lambda _s: None)
+            card._on_hover(type("E", (), {"data": True})())
+            self.assertEqual(card.scale, 1.02)
+            card._on_hover(type("E", (), {"data": False})())
+            self.assertEqual(card.scale, 1.0)
+
+            page = _DummyPage()
+            tracks = [_make_track(1), _make_track(2)]
+            detail = PlaylistDetailView(
+                page,
+                summary,
+                MagicMock(),
+                on_back=lambda: None,
+                is_imported_manifest=True,
+            )
+            try:
+                await asyncio.sleep(0)
+                self.assertTrue(detail._download_btn.visible)
+                row1 = detail._build_track_row(tracks[0], 1)
+                row1.on_hover(type("E", (), {"data": True})())
+                self.assertIsNotNone(row1.border)
+                detail._selected_ids.add(id(tracks[0]))
+                row1.on_hover(type("E", (), {"data": False})())
+                self.assertIsNotNone(row1.border)
+            finally:
+                detail.will_unmount()
+
+            dv = DownloadsView.__new__(DownloadsView)
+            ft.Container.__init__(dv)
+            dv.visible = False
+            dv._downloads_dirty = False
+            dv.update = MagicMock()
+            dv._refresh()
+            self.assertTrue(dv._downloads_dirty)
+            dv.update.assert_not_called()
+
+            ui = PlaylistManagerUI.__new__(PlaylistManagerUI)
+            ui.state = MagicMock(transfer_state=None)
+            ui._current_module = 1
+            ui._gestion_dirty = False
+            ui.page = MagicMock()
+            ui._sync_report_dialog = MagicMock()
+            ui._on_state_changed()
+            self.assertTrue(ui._gestion_dirty)
+            ui.page.update.assert_not_called()
+
+        asyncio.run(_run())
+
 
 suite = unittest.defaultTestLoader.loadTestsFromTestCase(TestContextMenuHelpers)
 suite.addTests(unittest.defaultTestLoader.loadTestsFromTestCase(TestCardAndSongRowContextMenus))

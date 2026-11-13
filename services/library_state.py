@@ -62,11 +62,34 @@ class LibraryState:
 
     def downloaded_playlist_summaries(self) -> list[PlaylistSummary]:
         """Tarjetas de subcarpetas descargadas con ``playlist.json``."""
+        from services.local_index import quick_count
+
         out: list[PlaylistSummary] = []
         for folder in self.local_folders:
             for child in self._playlist_subfolders(folder):
+                if quick_count(child) <= 0:
+                    continue
                 out.append(self._summary_for(child, playlist_folder=True))
         return out
+
+    def remove_downloaded_playlist(self, folder: str) -> bool:
+        """Quita el manifiesto ``playlist.json`` de una subcarpeta descargada sin borrar audios."""
+        from engine.downloader import PLAYLIST_MANIFEST_NAME
+
+        target = Path(folder) / PLAYLIST_MANIFEST_NAME
+        if not target.is_file():
+            return False
+        try:
+            target.unlink()
+        except OSError:
+            return False
+        try:
+            if Path(folder).is_dir() and not any(Path(folder).iterdir()):
+                Path(folder).rmdir()
+        except OSError:
+            pass
+        self.notify()
+        return True
 
     def imported_manifest_summaries(self) -> list[PlaylistSummary]:
         """Tarjetas de playlists importadas como manifiesto local (sin audio)."""

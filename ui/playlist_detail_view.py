@@ -43,6 +43,7 @@ from ui.widgets import (
     notify,
     open_external,
     organize_dropdown,
+    safe_update,
     wrap_with_context_menu,
 )
 
@@ -56,13 +57,15 @@ class PlaylistDetailView(ft.Container):
                  on_remove: Optional[Callable[[], None]] = None,
                  on_open_downloads: Optional[Callable[[], None]] = None,
                  on_open_gestion: Optional[Callable[[str, list], None]] = None,
-                 player_bar=None):
+                 player_bar=None,
+                 is_imported_manifest: bool = False):
         super().__init__(expand=True, bgcolor=BG_LIST)
         self.app_state = app_state
         self.player_bar = player_bar
         self._loader = loader
         self._on_open_downloads = on_open_downloads
         self._on_open_gestion = on_open_gestion
+        self._is_manifest = bool(is_imported_manifest)
         self._is_local = summary.platform == LOCAL_LIBRARY_LABEL
         self._page_ref = page
         self.summary = summary
@@ -79,6 +82,7 @@ class PlaylistDetailView(ft.Container):
         self._selection_mode: bool = False
         self._selected_ids: set[int] = set()
         self._row_checkboxes: dict[int, ft.Checkbox] = {}
+        self._row_containers: dict[int, ft.Container] = {}
 
         # header
         cover_url = summary.cover_urls[0] if summary.cover_urls else ""
@@ -103,7 +107,29 @@ class PlaylistDetailView(ft.Container):
             disabled=True,
         )
 
-        if self._is_local:
+        if self._is_manifest:
+            self._play_all_btn = _primary_btn("Reproducir", PIcons.PLAY, self._on_play_all, height=40)
+            self._play_all_btn.visible = False
+            self._shuffle_btn.visible = False
+            self._download_btn = _primary_btn("Descargar playlist", PIcons.DOWNLOAD_SIMPLE, self._on_download, height=40)
+            self._download_btn.disabled = True
+            self._create_btn = _ghost_btn(
+                "Crear playlist", PIcons.PLAYLIST,
+                lambda e: self._on_create_playlist(), height=40,
+            )
+            self._create_btn.disabled = True
+            actions = [
+                self._play_all_btn,
+                self._shuffle_btn,
+                self._download_btn,
+                self._select_mode_btn,
+                self._create_btn,
+            ]
+            if on_remove is not None:
+                actions.append(
+                    _ghost_btn("Quitar de la Biblioteca", PIcons.TRASH, lambda e: on_remove(), height=40)
+                )
+        elif self._is_local:
             self._play_all_btn = _primary_btn("Reproducir", PIcons.PLAY, self._on_play_all, height=40)
             self._play_all_btn.disabled = True
             self._create_btn = _ghost_btn(
@@ -389,9 +415,10 @@ class PlaylistDetailView(ft.Container):
             tracks = self._tracks
 
             # Mapear pistas que ya existen en descargas o carpetas locales
-            # (las carpetas locales ya traen source_path desde el escaneo).
+            # (carpetas locales y manifiestos importados sin audio no deben
+            # atribuirse archivos sueltos de otras carpetas).
             self._has_file_by_id = {}
-            if not self._is_local:
+            if not self._is_local and not self._is_manifest:
                 await asyncio.to_thread(self._match_local_files)
                 if len(self._has_file_by_id) != len(tracks):
                     self._has_file_by_id = await asyncio.to_thread(
@@ -591,7 +618,11 @@ class PlaylistDetailView(ft.Container):
             self._shuffle_btn.visible = True
             self._shuffle_btn.disabled = False
             try:
-                txt = "Reproducir" if downloaded == total or self._is_local else f"Reproducir ({downloaded})"
+                txt = (
+                    "Reproducir"
+                    if (downloaded == total or (self._is_local and not self._is_manifest))
+                    else f"Reproducir ({downloaded})"
+                )
                 if hasattr(self._play_all_btn.content, "value"):
                     self._play_all_btn.content.value = txt
                 elif hasattr(self._play_all_btn, "text"):
@@ -599,7 +630,7 @@ class PlaylistDetailView(ft.Container):
             except Exception:
                 pass
         else:
-            if not self._is_local:
+            if not self._is_local or self._is_manifest:
                 self._play_all_btn.visible = False
                 self._shuffle_btn.visible = False
             else:
@@ -849,10 +880,12 @@ class PlaylistDetailView(ft.Container):
                 except Exception:
                     pass
                 self._update_header_play_count()
-                try:
-                    self.update()
-                except Exception:
-                    pass
+                for ctrl in (self._play_all_btn, self._shuffle_btn):
+                    if ctrl is not None:
+                        try:
+                            ctrl.update()
+                        except Exception:
+                            pass
             else:
                 notify(self._page_ref, f"No se pudo descargar «{track.name}»", kind="error")
                 action_container.content = app_icon(PIcons.DOWNLOAD_SIMPLE, size=16, color=TEXT_MUTED)
@@ -863,9 +896,12 @@ class PlaylistDetailView(ft.Container):
                     pass
 
         try:
-            asyncio.create_task(_do_download())
+            self._page_ref.run_task(_do_download)
         except Exception:
-            pass
+            try:
+                asyncio.create_task(_do_download())
+            except Exception:
+                pass
 
     def _on_play_all(self, _e=None) -> None:
         """Reproduce todas las pistas locales disponibles en el reproductor."""
@@ -934,6 +970,7 @@ class PlaylistDetailView(ft.Container):
         self._selection_mode = False
         self._selected_ids.clear()
         self._row_checkboxes.clear()
+        self._row_containers.clear()
         if hasattr(self, "_batch_bar"):
             self._batch_bar.visible = False
         if hasattr(self, "_select_all_chk"):
@@ -946,6 +983,18 @@ class PlaylistDetailView(ft.Container):
         """Devuelve las pistas seleccionadas preservando su orden en la lista."""
         return [t for t in self._tracks if id(t) in self._selected_ids]
 
+    @staticmethod
+    def _apply_row_visual_state(row: ft.Container, *, selected: bool, hovering: bool = False) -> None:
+        if selected:
+            row.bgcolor = BG_HOVER
+            row.border = ft.Border.only(
+                left=ft.BorderSide(2.5, ACCENT),
+                bottom=ft.BorderSide(0.5, BORDER_ROW),
+            )
+        else:
+            row.bgcolor = BG_HOVER if hovering else BG_LIST
+            row.border = ft.Border.only(bottom=ft.BorderSide(0.5, BORDER_ROW))
+
     def set_selection_mode(self, enabled: bool) -> None:
         """Activa o desactiva el modo de selección múltiple."""
         target = bool(enabled) and bool(self._tracks)
@@ -953,10 +1002,19 @@ class PlaylistDetailView(ft.Container):
         if not target:
             self._selected_ids.clear()
         for tid, chk in self._row_checkboxes.items():
+            is_sel = tid in self._selected_ids if target else False
             chk.visible = target
-            chk.value = tid in self._selected_ids if target else False
+            chk.value = is_sel
+            row = self._row_containers.get(tid)
+            if row is not None:
+                self._apply_row_visual_state(row, selected=is_sel)
         self._batch_bar.visible = target
-        self._sync_selection_ui(notify_ui=True)
+        self._sync_selection_ui(notify_ui=False)
+        for ctrl in (self._batch_bar, self._list_view):
+            try:
+                ctrl.update()
+            except Exception:
+                pass
 
     def _toggle_selection_mode(self) -> None:
         self.set_selection_mode(not self._selection_mode)
@@ -968,10 +1026,22 @@ class PlaylistDetailView(ft.Container):
             self._selected_ids.remove(tid)
         else:
             self._selected_ids.add(tid)
+        is_sel = tid in self._selected_ids
         chk = self._row_checkboxes.get(tid)
         if chk is not None:
-            chk.value = tid in self._selected_ids
-        self._sync_selection_ui(notify_ui=True)
+            chk.value = is_sel
+        row = self._row_containers.get(tid)
+        if row is not None:
+            self._apply_row_visual_state(row, selected=is_sel)
+            try:
+                row.update()
+            except Exception:
+                pass
+        self._sync_selection_ui(notify_ui=False)
+        try:
+            self._batch_bar.update()
+        except Exception:
+            pass
 
     def _start_selection_with(self, track: Track) -> None:
         if not self._selection_mode:
@@ -986,8 +1056,17 @@ class PlaylistDetailView(ft.Container):
         else:
             self._selected_ids.clear()
         for tid, chk in self._row_checkboxes.items():
-            chk.value = tid in self._selected_ids
-        self._sync_selection_ui(notify_ui=True)
+            is_sel = tid in self._selected_ids
+            chk.value = is_sel
+            row = self._row_containers.get(tid)
+            if row is not None:
+                self._apply_row_visual_state(row, selected=is_sel)
+        self._sync_selection_ui(notify_ui=False)
+        for ctrl in (self._batch_bar, self._list_view):
+            try:
+                ctrl.update()
+            except Exception:
+                pass
 
     def _on_select_all_change(self, e) -> None:
         self.select_all(bool(getattr(e, "control", None) and e.control.value))
@@ -1274,8 +1353,19 @@ class PlaylistDetailView(ft.Container):
             menu_btn,
         ], spacing=16, vertical_alignment=ft.CrossAxisAlignment.CENTER)
 
+        is_selected = id(track) in self._selected_ids
         row = ft.Container(
-            height=ITEM_H, bgcolor=BG_LIST, border=ft.Border.only(bottom=ft.BorderSide(0.5, BORDER_ROW)), padding=ft.Padding.symmetric(horizontal=12, vertical=8),
+            height=ITEM_H,
+            bgcolor=BG_HOVER if is_selected else BG_LIST,
+            border=(
+                ft.Border.only(
+                    left=ft.BorderSide(2.5, ACCENT),
+                    bottom=ft.BorderSide(0.5, BORDER_ROW),
+                )
+                if is_selected
+                else ft.Border.only(bottom=ft.BorderSide(0.5, BORDER_ROW))
+            ),
+            padding=ft.Padding.symmetric(horizontal=12, vertical=8),
             ink=True,
             animate=ft.Animation(MOTION_HOVER_MS, ft.AnimationCurve.EASE_OUT),
             animate_scale=ft.Animation(MOTION_HOVER_MS, ft.AnimationCurve.EASE_OUT),
@@ -1287,15 +1377,17 @@ class PlaylistDetailView(ft.Container):
                 get_page=lambda: self._page_ref,
             ),
         )
+        self._row_containers[id(track)] = row
 
         def _on_hover(e: ft.HoverEvent) -> None:
-            hovering = e.data == "true"
-            row.bgcolor = BG_HOVER if hovering else BG_LIST
+            hovering = e.data == "true" or e.data is True
+            self._apply_row_visual_state(
+                row,
+                selected=(id(track) in self._selected_ids),
+                hovering=hovering,
+            )
             row.scale = 1.01 if hovering else 1.0
-            try:
-                row.update()
-            except Exception:
-                pass
+            safe_update(row)
 
         def _on_click(_e) -> None:
             if self._selection_mode:
