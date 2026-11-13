@@ -25,7 +25,7 @@ from core.config import AUDIO_FORMATS
 from services import settings_store
 from ui.theme.fonts import FONT_HEADLINE, FONT_TEXT, mono_family
 from ui.theme.icons import PIcons, app_icon
-from ui.onboarding_bg import OnboardingBackground
+from ui.setup.onboarding_bg import OnboardingBackground
 from ui.theme.tokens import (
     ACCENT, BG_DEEP, BG_SURFACE, BORDER_LIGHT, BORDER_MUTED, MOTION_ENTER_MS, MOTION_PANEL_MS,
     ONBOARDING_BG_FPS, ONBOARDING_CARD_ALPHA, ONBOARDING_CARD_H, ONBOARDING_CARD_W,

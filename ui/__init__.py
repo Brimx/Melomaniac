@@ -13,11 +13,11 @@ __all__ = [
 def __getattr__(name: str):
     """Lazily expose UI components to avoid eager Flet import chains."""
     if name == "AuthManager":
-        from ui.auth_manager import AuthManager
+        from ui.setup.auth_manager import AuthManager
 
         return AuthManager
     if name == "ConfigWizard":
-        from ui.config_wizard import ConfigWizard
+        from ui.setup.config_wizard import ConfigWizard
 
         return ConfigWizard
     if name == "PlaylistManagerUI":

@@ -37,7 +37,7 @@ from services.api_service import MusicApiService
 from services import settings_store
 from services.authentication import ensure_config_dir, load_runtime_env
 from services.circuit_breaker import CircuitBreaker
-from ui.auth_manager import AuthManager
+from ui.setup.auth_manager import AuthManager
 from ui.theme.fonts import FONT_TEXT, build_font_registry
 from ui.main_ui import PlaylistManagerUI
 from ui.theme.tokens import BG_LIST, ACCENT, BG_SURFACE, TEXT_PRIMARY
@@ -189,7 +189,7 @@ async def main(page: ft.Page) -> None:
         page.add(root_stack)
 
         def show_onboarding() -> None:
-            from ui.onboarding import OnboardingView
+            from ui.setup.onboarding import OnboardingView
 
             def _close() -> None:
                 if overlay in root_stack.controls:

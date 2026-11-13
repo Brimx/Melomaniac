@@ -1,7 +1,7 @@
 """Authentication session coordinator for the Flet UI.
 
 Credential storage and pre-flight checks live in services.authentication.
-The configuration dialog implementation lives in ui.config_wizard.
+The configuration dialog implementation lives in ui.setup.config_wizard.
 """
 
 from __future__ import annotations
@@ -19,7 +19,7 @@ from services.authentication import (
     load_runtime_env,
     preflight_result,
 )
-from ui.config_wizard import ConfigWizard
+from ui.setup.config_wizard import ConfigWizard
 
 
 class AuthManager:

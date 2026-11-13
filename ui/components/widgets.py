@@ -377,6 +377,11 @@ def organize_dropdown(
     )
 
 
+def show_dialog(page: ft.Page, dlg: ft.AlertDialog) -> None:
+    """Abre ``dlg`` usando el canal estándar de ``page.show_dialog``."""
+    page.show_dialog(dlg)
+
+
 def close_dialog(page: ft.Page, dlg: ft.AlertDialog | None) -> None:
     """Cierra ``dlg`` actualizando solo el diálogo (evita ``page.update()`` completo)."""
     if dlg is None:
