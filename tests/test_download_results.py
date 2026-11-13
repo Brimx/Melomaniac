@@ -166,5 +166,53 @@ class SearchCandidatesTest(unittest.TestCase):
         self.assertEqual(result.duration_s, 200)
 
 
+class CrossDownloadManifestTest(unittest.TestCase):
+    def test_write_download_manifest_clears_external_source_path(self) -> None:
+        import tempfile
+        from pathlib import Path
+        from engine.downloader import read_playlist_manifest, write_playlist_manifest
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            target_dir = root / "FM [Spotify]"
+            other_dir = root / "MM [Apple Music]"
+            target_dir.mkdir()
+            other_dir.mkdir()
+
+            ext_file = other_dir / "Artist A - External.mp3"
+            ext_file.write_bytes(b"mp3")
+            own_file = target_dir / "Artist B - Local.mp3"
+            own_file.write_bytes(b"mp3")
+
+            ext_track = Track(
+                id="ext_1", name="External", artist="Artist A", album="Alb A",
+                duration="3:10", img_url="", platform="Spotify",
+                isrc="USABC2400001", duration_ms=190000, source_path=str(ext_file),
+            )
+            own_track = Track(
+                id="own_1", name="Local", artist="Artist B", album="Alb B",
+                duration="2:50", img_url="", platform="Spotify",
+                isrc="USABC2400002", duration_ms=170000, source_path=str(own_file),
+            )
+
+            state = AppState(service=None)
+            state._download_runner._write_download_manifest(
+                target_dir,
+                "FM",
+                "Spotify",
+                [ext_track, own_track],
+                write_playlist_manifest,
+                read_playlist_manifest,
+            )
+
+            manifest = read_playlist_manifest(target_dir)
+            self.assertIsNotNone(manifest)
+            by_id = {e["id"]: e for e in manifest["tracks"]}
+            self.assertEqual(by_id["ext_1"]["path"], "")
+            self.assertEqual(by_id["ext_1"]["isrc"], "USABC2400001")
+            self.assertEqual(by_id["ext_1"]["duration_ms"], 190000)
+            self.assertEqual(by_id["own_1"]["path"], str(own_file))
+
+
 if __name__ == "__main__":
     unittest.main()

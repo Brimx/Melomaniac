@@ -265,16 +265,21 @@ class DownloadRunner:
         except Exception as exc:  # noqa: BLE001 - portadas nunca bloquean la cola
             self._state._log(f"[WARN] Portadas online no disponibles: {exc}")
 
+        dl_dir_arg = destination_dir
+        local_folders_arg: tuple[str, ...] = ()
         if not pinned_video_id:
             try:
                 from services import settings_store
                 from services.local_index import match_tracks_against_library
 
+                if not dl_dir_arg:
+                    dl_dir_arg = settings_store.get_download_dir()
+                local_folders_arg = tuple(settings_store.get_local_folders())
                 await asyncio.to_thread(
                     match_tracks_against_library,
                     selected,
-                    download_dir=destination_dir or settings_store.get_download_dir(),
-                    local_folders=settings_store.get_local_folders(),
+                    download_dir=dl_dir_arg,
+                    local_folders=local_folders_arg,
                     playlist_name=playlist_name,
                     platform=platform,
                 )
@@ -320,6 +325,21 @@ class DownloadRunner:
                     if track not in self._state._download_pending_tracks:
                         self._state._download_pending_tracks.append(track)
                     return
+                if not pinned_video_id and not (track.source_path and os.path.isfile(track.source_path)):
+                    try:
+                        from services import settings_store
+                        from services.local_index import match_tracks_against_library
+
+                        await asyncio.to_thread(
+                            match_tracks_against_library,
+                            [track],
+                            download_dir=dl_dir_arg or settings_store.get_download_dir(),
+                            local_folders=local_folders_arg or settings_store.get_local_folders(),
+                            playlist_name=playlist_name,
+                            platform=platform,
+                        )
+                    except Exception:
+                        pass
                 if not pinned_video_id and track.source_path and os.path.isfile(track.source_path):
                     async with lock:
                         item["status"], item["percent"] = "skipped", 100.0
@@ -621,6 +641,20 @@ class DownloadRunner:
         parcial dentro de una playlist ya existente, y enriquece las entradas
         nuevas o descargadas con ``id``, ``isrc``, ``duration_ms`` y ``path``.
         """
+        try:
+            target_resolved = os.path.normcase(os.path.realpath(str(target_dir)))
+        except OSError:
+            target_resolved = ""
+
+        def _in_target_dir(path_str: str) -> bool:
+            if not path_str or not target_resolved:
+                return False
+            try:
+                file_resolved = os.path.normcase(os.path.realpath(path_str))
+                return os.path.commonpath([target_resolved, file_resolved]) == target_resolved
+            except (OSError, ValueError):
+                return False
+
         new_entries = [
             {
                 "position": i,
@@ -631,7 +665,7 @@ class DownloadRunner:
                 "platform": t.platform,
                 "isrc": t.isrc,
                 "duration_ms": t.duration_ms,
-                "path": t.source_path or "",
+                "path": t.source_path if _in_target_dir(t.source_path or "") else "",
             }
             for i, t in enumerate(selected, 1)
         ]
