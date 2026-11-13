@@ -868,10 +868,6 @@ class SongRow(ft.Container):
             self._sync_status_cell()
             dirty = True
 
-        if dirty:
-            from ui.widgets import build_popup_menu_items
-            self._menu_btn.items = build_popup_menu_items(self.context_actions())
-
         if dirty and notify:
             self.update()
         return dirty

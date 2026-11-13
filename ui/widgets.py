@@ -838,37 +838,73 @@ def build_context_menu_button(
     width: float = 28,
     height: float = 28,
     visible: bool = True,
-) -> ft.PopupMenuButton:
-    """Botón «⋮» OLED con menú desplegable anclado nativamente al disparador."""
-    btn = ft.PopupMenuButton(
-        content=ft.Container(
-            content=app_icon(icon, size=icon_size, color=icon_color),
-            width=width,
-            height=height,
-            alignment=ft.Alignment.CENTER,
-            border_radius=RADIUS_INPUT,
-        ),
-        items=build_popup_menu_items(_resolve_actions(actions)),
+    title: str | None = None,
+    get_page: Callable[[], ft.Page | None] | None = None,
+) -> ft.GestureDetector:
+    """Botón «⋮» OLED ligero que abre ``show_context_menu`` bajo demanda."""
+    ico_ctrl = app_icon(icon, size=icon_size, color=icon_color)
+    box = ft.Container(
+        content=ico_ctrl,
+        width=width,
+        height=height,
+        alignment=ft.Alignment.CENTER,
+        border_radius=RADIUS_INPUT,
+        bgcolor=ft.Colors.TRANSPARENT,
         tooltip=tooltip,
-        bgcolor=BG_SURFACE,
-        shadow_color=ACCENT_HALO,
-        elevation=6,
-        shape=ft.RoundedRectangleBorder(radius=RADIUS_INPUT),
-        menu_padding=ft.Padding.symmetric(vertical=4),
-        padding=ft.Padding.all(0),
+        ink=True,
+        animate=ft.Animation(MOTION_HOVER_MS, ft.AnimationCurve.EASE_OUT),
+        animate_scale=ft.Animation(MOTION_HOVER_MS, ft.AnimationCurve.EASE_OUT),
+    )
+    tap_pos: dict[str, float | None] = {"x": None, "y": None}
+
+    def _on_hover(e: ft.HoverEvent) -> None:
+        hovering = e.data == "true" or e.data is True
+        box.bgcolor = BG_HOVER if hovering else ft.Colors.TRANSPARENT
+        box.scale = 1.08 if hovering else 1.0
+        ico_ctrl.color = TEXT_PRIMARY if hovering else icon_color
+        try:
+            box.update()
+        except Exception:
+            pass
+
+    def _open_menu(
+        page: ft.Page | None = None,
+        *,
+        x: float | None = None,
+        y: float | None = None,
+    ) -> ft.Control | None:
+        target_page = (
+            page
+            or (get_page() if get_page is not None else None)
+            or getattr(btn, "page", None)
+            or getattr(box, "page", None)
+        )
+        return show_context_menu(
+            target_page,
+            actions,
+            title=title,
+            x=tap_pos["x"] if x is None else x,
+            y=tap_pos["y"] if y is None else y,
+        )
+
+    def _on_tap_down(e: ft.TapEvent) -> None:
+        pos = getattr(e, "global_position", None)
+        tap_pos["x"] = getattr(pos, "x", None)
+        tap_pos["y"] = getattr(pos, "y", None)
+
+    def _on_click(_e=None) -> None:
+        _open_menu()
+
+    box.on_hover = _on_hover
+    box.on_click = _on_click
+    btn = ft.GestureDetector(
+        content=box,
+        on_tap_down=_on_tap_down,
         visible=visible,
     )
-
-    def _refresh_items(_e=None) -> None:
-        if callable(actions):
-            btn.items = build_popup_menu_items(_resolve_actions(actions))
-            try:
-                btn.update()
-            except Exception:
-                pass
-
-    btn.on_open = _refresh_items
-    btn.refresh_items = _refresh_items  # type: ignore[attr-defined]
+    btn.actions = actions  # type: ignore[attr-defined]
+    btn.open_menu = _open_menu  # type: ignore[attr-defined]
+    btn.refresh_items = lambda _e=None: None  # type: ignore[attr-defined]
     return btn
 
 

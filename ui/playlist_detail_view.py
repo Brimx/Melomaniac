@@ -809,7 +809,7 @@ class PlaylistDetailView(ft.Container):
                 await st.download_tracks(
                     [target],
                     destination_dir=settings_store.get_download_dir(),
-                    output_format=fmt,
+                    audio_format=fmt,
                 )
             except Exception as exc:  # noqa: BLE001
                 notify(self._page_ref, f"Error al descargar: {exc}", kind="error")
@@ -872,14 +872,16 @@ class PlaylistDetailView(ft.Container):
 
         format_dd.on_select = _on_fmt_select
 
+        sized_body = ft.Container(
+            content=ft.Column(controls=[], spacing=8, tight=True),
+            width=620,
+            min_width=360,
+            max_width=660,
+            max_height=520,
+        )
         dlg = app_dialog(
             "Recuperar pista",
-            ft.Container(
-                content=ft.Column(controls=[], spacing=8, tight=True),
-                min_width=360,
-                max_width=660,
-                max_height=520,
-            ),
+            sized_body,
             [],
             width=None,
             icon=PIcons.MAGNIFYING_GLASS,
@@ -937,7 +939,7 @@ class PlaylistDetailView(ft.Container):
             query_trailing=[format_dd],
             action_trailing=[retry_btn],
         )
-        dlg.content.content = panel
+        sized_body.content = panel
         dlg.actions = [dialog_action("Cerrar", _close, kind="muted")]
         self._recovery_dialog = dlg
         self._recovery_panel = panel
@@ -1456,6 +1458,8 @@ class PlaylistDetailView(ft.Container):
             width=28,
             height=28,
             icon_size=16,
+            title=track.name,
+            get_page=lambda: self._page_ref,
         )
 
         row_inner = ft.Row(controls=[

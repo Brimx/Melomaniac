@@ -108,17 +108,20 @@ class TestContextMenuHelpers(unittest.TestCase):
 
     def test_build_context_menu_button_dynamic_provider(self) -> None:
         state = {"label": "Seleccionar"}
+        page = _DummyPage(width=800, height=500)
         btn = build_context_menu_button(
             lambda: [ContextMenuAction(state["label"], icon=PIcons.CHECK_CIRCLE)],
+            get_page=lambda: page,
         )
-        self.assertIsInstance(btn, ft.PopupMenuButton)
-        self.assertEqual(btn.bgcolor, tokens.BG_SURFACE)
-        self.assertEqual(len(btn.items), 1)
-        self.assertEqual(btn.items[0].content.controls[-1].value, "Seleccionar")
+        self.assertIsInstance(btn, ft.GestureDetector)
+        ov1 = btn.open_menu()
+        self.assertIsNotNone(ov1)
+        self.assertEqual(ov1.menu_card.content.controls[0].content.controls[-1].value, "Seleccionar")
 
         state["label"] = "Deseleccionar"
-        btn.on_open(None)
-        self.assertEqual(btn.items[0].content.controls[-1].value, "Deseleccionar")
+        ov2 = btn.open_menu()
+        self.assertIsNotNone(ov2)
+        self.assertEqual(ov2.menu_card.content.controls[0].content.controls[-1].value, "Deseleccionar")
 
     def test_show_context_menu_clamps_replaces_and_dismisses(self) -> None:
         page = _DummyPage(width=800, height=500)
@@ -198,7 +201,7 @@ class TestCardAndSongRowContextMenus(unittest.TestCase):
             on_remove=lambda s: events.append(("remove", s.id)),
         )
         self.assertIsInstance(card.content, ft.GestureDetector)
-        self.assertIsInstance(card._menu_btn, ft.PopupMenuButton)
+        self.assertIsInstance(card._menu_btn, ft.GestureDetector)
 
         actions = card.context_actions()
         labels = [a.label for a in actions]
@@ -243,7 +246,7 @@ class TestCardAndSongRowContextMenus(unittest.TestCase):
             on_open_external=lambda t: events.append(("external", t.id)),
         )
         self.assertIsInstance(row.content, ft.GestureDetector)
-        self.assertIsInstance(row._menu_btn, ft.PopupMenuButton)
+        self.assertIsInstance(row._menu_btn, ft.GestureDetector)
 
         actions = row.context_actions()
         labels = [a.label for a in actions]
@@ -522,7 +525,7 @@ class TestPlaylistDetailViewFeatures(unittest.TestCase):
                     await asyncio.sleep(0)
                     app_state.download_tracks.assert_called_once()
                     _, dl_kwargs = app_state.download_tracks.call_args
-                    self.assertEqual(dl_kwargs.get("output_format"), "flac")
+                    self.assertEqual(dl_kwargs.get("audio_format"), "flac")
             finally:
                 view.will_unmount()
 
