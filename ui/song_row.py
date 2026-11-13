@@ -217,6 +217,40 @@ class _BaseSkeletonRow(ft.Container):
             pass
 
 
+def start_skeleton_pulse_tasks(
+    skeletons: list[_BaseSkeletonRow],
+    tasks: list[asyncio.Task],
+) -> None:
+    """Lanza las tareas de pulso skeleton solo si hay un event loop activo."""
+    if tasks or not skeletons:
+        return
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        return
+    for sk in skeletons:
+        tasks.append(loop.create_task(sk.start_pulse()))
+
+
+def stop_skeleton_pulse_tasks(
+    skeletons: list[_BaseSkeletonRow],
+    tasks: list[asyncio.Task],
+) -> None:
+    """Detiene y cancela todas las tareas de pulso skeleton de forma segura."""
+    for sk in skeletons:
+        try:
+            sk.stop_pulse()
+        except Exception:
+            pass
+    for task in tasks:
+        try:
+            if not task.done():
+                task.cancel()
+        except Exception:
+            pass
+    tasks.clear()
+
+
 class SkeletonRow(_BaseSkeletonRow):
     """
     Fila placeholder con Shimmer + zoom sutil (reemplaza opacity pulse).

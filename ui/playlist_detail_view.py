@@ -397,28 +397,12 @@ class PlaylistDetailView(ft.Container):
             pass
 
     def _ensure_skeletons_pulsing(self) -> None:
-        try:
-            for sk in self._skeletons:
-                try:
-                    self._skeleton_tasks.append(asyncio.create_task(sk.start_pulse()))
-                except Exception:
-                    pass
-        except Exception:
-            pass
+        from ui.song_row import start_skeleton_pulse_tasks
+        start_skeleton_pulse_tasks(self._skeletons, self._skeleton_tasks)
 
     def _stop_skeleton_pulse(self) -> None:
-        for sk in self._skeletons:
-            try:
-                sk.stop_pulse()
-            except Exception:
-                pass
-        for t in self._skeleton_tasks:
-            try:
-                if not t.done():
-                    t.cancel()
-            except Exception:
-                pass
-        self._skeleton_tasks = []
+        from ui.song_row import stop_skeleton_pulse_tasks
+        stop_skeleton_pulse_tasks(self._skeletons, self._skeleton_tasks)
 
     def did_mount(self) -> None:
         self._unmounted = False

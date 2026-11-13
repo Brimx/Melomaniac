@@ -426,6 +426,10 @@ class PlaylistManagerUI(DialogMixin, DivisionMixin, ActionsMixin, LayoutMixin):
         self._preview_skeleton_tasks: list[asyncio.Task]     = []
         self._preview_sig:            tuple | None = None
         self._render_scheduled:       bool = False
+        try:
+            self._ui_loop: Optional[asyncio.AbstractEventLoop] = asyncio.get_running_loop()
+        except RuntimeError:
+            self._ui_loop = None
         self._failed_dialog_shown:    bool  = False
         self._report_dialog_shown:    bool  = False
         self._transfer_start:         float = 0.0
@@ -559,16 +563,43 @@ class PlaylistManagerUI(DialogMixin, DivisionMixin, ActionsMixin, LayoutMixin):
 
     # ── STATE REACTIONS ────────────────────────────────────────────────
 
+    def _dispatch_to_ui_loop(self, callback) -> bool:
+        """Reenvía callbacks desde hilos worker al event loop UI cuando existe."""
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            ui_loop = getattr(self, "_ui_loop", None)
+            if ui_loop is not None and not ui_loop.is_closed():
+                try:
+                    ui_loop.call_soon_threadsafe(callback)
+                except RuntimeError:
+                    return False
+                return True
+            return False
+        if getattr(self, "_ui_loop", None) is None:
+            self._ui_loop = loop
+        return False
+
     def _schedule_state_render(self) -> None:
-        """Coalesce ráfagas de notify() en un solo render por tick."""
+        """Coalesce ráfagas de notify() en un solo render por tick sobre el loop UI."""
         if self._render_scheduled:
             return
         try:
             loop = asyncio.get_running_loop()
         except RuntimeError:
-            # Notify desde un hilo sin loop: conserva el comportamiento previo.
+            ui_loop = getattr(self, "_ui_loop", None)
+            if ui_loop is not None and not ui_loop.is_closed():
+                self._render_scheduled = True
+                try:
+                    ui_loop.call_soon_threadsafe(self._flush_state_render)
+                except RuntimeError:
+                    self._render_scheduled = False
+                return
+            # Entorno síncrono sin loop activo (tests unitarios): render directo.
             self._on_state_changed()
             return
+        if getattr(self, "_ui_loop", None) is None:
+            self._ui_loop = loop
         self._render_scheduled = True
         loop.call_soon(self._flush_state_render)
 
@@ -1019,30 +1050,26 @@ class PlaylistManagerUI(DialogMixin, DivisionMixin, ActionsMixin, LayoutMixin):
     # ── Skeleton pulse ─────────────────────────────────────────────────
 
     def _ensure_skeletons_pulsing(self) -> None:
-        if self._skeleton_tasks:
-            return
-        for sk in self._skeletons:
-            self._skeleton_tasks.append(asyncio.create_task(sk.start_pulse()))
+        from ui.song_row import start_skeleton_pulse_tasks
+        start_skeleton_pulse_tasks(self._skeletons, self._skeleton_tasks)
 
     def _ensure_preview_skeletons_pulsing(self) -> None:
+        from ui.song_row import start_skeleton_pulse_tasks
         if getattr(self, '_preview_skeleton_tasks', None) is None:
             self._preview_skeleton_tasks = []
-        if self._preview_skeleton_tasks:
-            return
-        for sk in getattr(self, '_preview_skeletons', []):
-            self._preview_skeleton_tasks.append(asyncio.create_task(sk.start_pulse()))
+        start_skeleton_pulse_tasks(
+            getattr(self, '_preview_skeletons', []),
+            self._preview_skeleton_tasks,
+        )
 
     def _stop_skeleton_pulse(self) -> None:
-        for task in self._skeleton_tasks:
-            task.cancel()
-        self._skeleton_tasks.clear()
-        for sk in self._skeletons:
-            sk.stop_pulse()
-        # preview skeletons
+        from ui.song_row import stop_skeleton_pulse_tasks
+        stop_skeleton_pulse_tasks(self._skeletons, self._skeleton_tasks)
         if hasattr(self, '_preview_skeleton_tasks'):
-            for task in self._preview_skeleton_tasks:
-                task.cancel()
-            self._preview_skeleton_tasks.clear()
+            stop_skeleton_pulse_tasks(
+                getattr(self, '_preview_skeletons', []),
+                self._preview_skeleton_tasks,
+            )
         for sk in getattr(self, '_preview_skeletons', []):
             try:
                 sk.stop_pulse()
@@ -1085,11 +1112,18 @@ class PlaylistManagerUI(DialogMixin, DivisionMixin, ActionsMixin, LayoutMixin):
     # ── Circuit breaker reactions ──────────────────────────────────────
 
     def _on_circuit_change(self, platform: str, is_open: bool, remaining: int) -> None:
+        if self._dispatch_to_ui_loop(lambda: self._on_circuit_change(platform, is_open, remaining)):
+            return
         banner_text = self._rl_banner.content.controls[1]
         self._rl_banner.visible = is_open
         if is_open:
             banner_text.value = f"Rate limit en {platform} · {remaining}s"
-            asyncio.create_task(self._countdown(platform, remaining))
+            try:
+                loop = asyncio.get_running_loop()
+            except RuntimeError:
+                loop = None
+            if loop is not None:
+                loop.create_task(self._countdown(platform, remaining))
         else:
             banner_text.value = ""
         self._rl_banner.update()

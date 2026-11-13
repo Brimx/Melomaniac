@@ -512,6 +512,44 @@ class TestGestionFlows(unittest.TestCase):
 
         asyncio.run(_run())
 
+    def test_schedule_state_render_from_worker_thread_marshals_to_ui_loop(self) -> None:
+        import threading
+        import warnings
+        from ui.song_row import SkeletonRow, start_skeleton_pulse_tasks
+
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always", RuntimeWarning)
+            tasks = []
+            start_skeleton_pulse_tasks([SkeletonRow(0)], tasks)
+            self.assertEqual(tasks, [])
+        self.assertFalse(
+            any("was never awaited" in str(w.message) for w in caught),
+            f"Unexpected unawaited coroutine warning: {[str(w.message) for w in caught]}",
+        )
+
+        async def _run():
+            _, _, ui = self._build_ui()
+            rendered_threads: list[int] = []
+            ui_tid = threading.get_ident()
+            ui._on_state_changed = lambda: rendered_threads.append(threading.get_ident())
+
+            worker_errors: list[Exception] = []
+
+            def _worker() -> None:
+                try:
+                    ui._schedule_state_render()
+                except Exception as exc:  # pragma: no cover
+                    worker_errors.append(exc)
+
+            t = threading.Thread(target=_worker)
+            t.start()
+            t.join()
+            await asyncio.sleep(0.02)
+            self.assertEqual(worker_errors, [])
+            self.assertEqual(rendered_threads, [ui_tid])
+
+        asyncio.run(_run())
+
 
 suite = unittest.defaultTestLoader.loadTestsFromTestCase(TestGestionFlows)
 result = unittest.TextTestRunner(verbosity=2).run(suite)
