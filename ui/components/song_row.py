@@ -54,7 +54,7 @@ from ui.components.context_menu import (
     wrap_with_context_menu,
 )
 from ui.components.skeletons import ITEM_H
-from ui.components.widgets import _status_icon, input_border, open_external
+from ui.components.widgets import _status_icon, control_page, input_border, open_external
 
 
 
@@ -439,7 +439,7 @@ class SongRow(ft.Container):
                 row_content,
                 self.context_actions,
                 title=track.name,
-                get_page=lambda: getattr(self, "page", None),
+                get_page=lambda: control_page(self),
             ),
         )
 
@@ -497,7 +497,7 @@ class SongRow(ft.Container):
                 if self._on_open_external is not None:
                     self._on_open_external(tr)
                 else:
-                    open_external(getattr(self, "page", None), tr.source_url or "")
+                    open_external(control_page(self), tr.source_url or "")
 
             actions.append(
                 ContextMenuAction(

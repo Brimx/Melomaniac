@@ -7,7 +7,7 @@ from typing import Callable, Sequence
 
 import flet as ft
 
-from ui.components.widgets import _as_icon
+from ui.components.widgets import _as_icon, control_page
 from ui.theme.fonts import FONT_HEADLINE, FONT_TEXT
 from ui.theme.icons import PIcons, app_icon
 from ui.theme.tokens import (
@@ -164,8 +164,8 @@ def build_context_menu_button(
         target_page = (
             page
             or (get_page() if get_page is not None else None)
-            or getattr(btn, "page", None)
-            or getattr(box, "page", None)
+            or control_page(btn)
+            or control_page(box)
         )
         return show_context_menu(
             target_page,
@@ -416,7 +416,7 @@ def wrap_with_context_menu(
     """Envuelve un control para abrir ``show_context_menu`` con clic secundario."""
 
     def _on_secondary(e: ft.TapEvent) -> None:
-        target_page = get_page() if get_page is not None else getattr(control, "page", None)
+        target_page = get_page() if get_page is not None else control_page(control)
         pos = getattr(e, "global_position", None)
         show_context_menu(
             target_page,

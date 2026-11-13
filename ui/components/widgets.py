@@ -62,14 +62,19 @@ FONT_SEMI = FONT_TEXT_SEMI
 _DEBOUNCE_TASKS: dict[Any, asyncio.Task] = {}
 
 
+def control_page(ctrl: ft.Control | None) -> ft.Page | None:
+    """Devuelve ``ctrl.page`` o ``None`` si el control aún no está montado en Flet."""
+    if ctrl is None:
+        return None
+    try:
+        return ctrl.page
+    except Exception:
+        return None
+
+
 def is_mounted(control: object) -> bool:
     """Devuelve True solo si el control sigue adjunto a una Page de Flet."""
-    if control is None:
-        return False
-    try:
-        return control.page is not None
-    except Exception:
-        return False
+    return control_page(control) is not None  # type: ignore[arg-type]
 
 
 def safe_update(control: object) -> bool:
@@ -388,7 +393,7 @@ def close_dialog(page: ft.Page, dlg: ft.AlertDialog | None) -> None:
         return
     try:
         dlg.open = False
-        if getattr(dlg, "page", None) is not None:
+        if control_page(dlg) is not None:
             dlg.update()
         else:
             page.update()

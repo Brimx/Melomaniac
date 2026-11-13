@@ -19,6 +19,7 @@ from ui.theme.tokens import (
     MOTION_HOVER_MS,
 )
 from ui.components.widgets import (
+    control_page,
     open_external,
     safe_update,
 )
@@ -111,7 +112,7 @@ class PlaylistCard(ft.Container):
             col,
             self.context_actions,
             title=summary.name,
-            get_page=lambda: getattr(self, "page", None),
+            get_page=lambda: control_page(self),
         )
         super().__init__(
             content=content,
@@ -176,7 +177,7 @@ class PlaylistCard(ft.Container):
                 if self._on_open_external is not None:
                     self._on_open_external(summary)
                 else:
-                    open_external(getattr(self, "page", None), summary.external_url or "")
+                    open_external(control_page(self), summary.external_url or "")
 
             actions.append(
                 ContextMenuAction(

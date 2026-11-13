@@ -70,10 +70,9 @@ def build_nav_rail(ui) -> None:
                 if 0 <= idx < len(ui._module_panels)
                 else None
             )
-            with ft.context.disable_auto_update():
-                for i, panel in enumerate(ui._module_panels):
-                    panel.visible = (i == idx)
-                ui._refresh_rail_selection()
+            for i, panel in enumerate(ui._module_panels):
+                panel.visible = (i == idx)
+            ui._refresh_rail_selection()
             # Publica el cambio visual de pestaña antes de refrescar contenido diferido.
             safe_update(prev_panel)
             safe_update(ui._nav_rail)
@@ -92,7 +91,7 @@ def build_nav_rail(ui) -> None:
                 if not safe_update(curr_panel):
                     safe_update(ui._module_stack)
         except Exception:
-            pass
+            ui._current_module = prev_idx
 
     ui._select_module = _select_module
 

@@ -553,6 +553,28 @@ class TestGestionFlows(unittest.TestCase):
 
         asyncio.run(_run())
 
+    def test_nav_rail_module_switching_and_control_page(self) -> None:
+        from ui.components.widgets import control_page
+
+        self.assertIsNone(control_page(None))
+        unmounted = ft.Container()
+        self.assertIsNone(control_page(unmounted))
+
+        page, state, ui = self._build_ui()
+        for idx in (1, 2, 3, 0):
+            ui._select_module(idx)
+            self.assertEqual(ui._current_module, idx)
+            self.assertEqual(
+                [bool(p.visible) for p in ui._module_panels],
+                [i == idx for i in range(len(ui._module_panels))],
+            )
+
+        state.load_state = LoadState.READY
+        state.tracks = [_make_track("1", "Track One")]
+        state.source_tracks = list(state.tracks)
+        ui._on_state_changed()
+        self.assertEqual(ui._track_count.value, "1 canciones")
+
 
 suite = unittest.defaultTestLoader.loadTestsFromTestCase(TestGestionFlows)
 result = unittest.TextTestRunner(verbosity=2).run(suite)

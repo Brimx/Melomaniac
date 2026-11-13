@@ -220,12 +220,12 @@ class TelemetryDrawer:
             def _on_click(_):
                 self._switch_to_tab(idx, _panels, _btns)
                 target = self.container if _panels is self._d_panels else self._overlay_panel
-                if getattr(target, "page", None) is not None:
-                    try:
+                try:
+                    if target is not None and target.page is not None:
                         target.update()
                         return
-                    except Exception:
-                        pass
+                except Exception:
+                    pass
                 self.page.update()
             return _on_click
 

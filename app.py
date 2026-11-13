@@ -21,6 +21,7 @@ Fecha: 2026
 
 import asyncio
 import os
+import sys
 from pathlib import Path
 
 # El flavor "light" del cliente de escritorio no incluye el plugin de audio de
@@ -28,6 +29,11 @@ from pathlib import Path
 # Debe fijarse antes de que flet_desktop resuelva el flavor (al arrancar el
 # cliente), por eso va aquí y no en un pyproject.toml que el repo no usa.
 os.environ["FLET_DESKTOP_FLAVOR"] = "full"
+if sys.platform.startswith("linux"):
+    # Evita que el embedder GTK de Flet active ATK/AT-SPI sobre un socket sin
+    # plug_id (`atk_socket_embed: assertion 'plug_id != NULL' failed`), que en
+    # Hyprland/Wayland puede bloquear el hilo GTK y disparar el diálogo ANR.
+    os.environ.setdefault("NO_AT_BRIDGE", "1")
 
 import flet as ft
 
@@ -215,6 +221,7 @@ async def main(page: ft.Page) -> None:
             al estado para actualizar la UI con el estado inicial.
             """
             await auth_manager.run_startup_check()
+            state.notify()
             from services import desktop_integration
             desktop_integration.auto_sync_if_installed()
             library_state = getattr(ui, "library_state", None)

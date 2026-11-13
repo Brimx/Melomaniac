@@ -19,6 +19,7 @@ from ui.components.skeletons import (
 )
 from ui.components.song_row import SongRow, build_preview_row
 from ui.components.telemetry import TelemetryDrawer
+from ui.components.widgets import control_page
 
 __all__ = [
     "ContextMenuAction",
@@ -32,6 +33,7 @@ __all__ = [
     "build_context_menu_button",
     "build_popup_menu_items",
     "build_preview_row",
+    "control_page",
     "is_reduced_motion",
     "show_context_menu",
     "start_skeleton_pulse_tasks",
