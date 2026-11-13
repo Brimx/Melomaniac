@@ -351,6 +351,8 @@ class LibraryView(ft.Container, DialogMixin):
             return
         removed = self.library_state.remove_local_manifest(summary.id)
         if removed:
+            if self._detail is None:
+                self._refresh()
             try:
                 notify(self._page_ref, f"Manifiesto «{summary.name}» quitado")
             except Exception:
@@ -415,7 +417,10 @@ class LibraryView(ft.Container, DialogMixin):
         )
         status_txt = app_text("", size=11, color=TEXT_MUTED, font_family=FONT_TEXT)
 
+        selected_summary: dict[str, object | None] = {"item": None}
+
         def _on_url_change(_e) -> None:
+            selected_summary["item"] = None
             detected = detect_platform_from_url(url_input.value or "")
             if detected and detected in PLATFORM_ORDER and platform_dd.value != detected:
                 platform_dd.value = detected
@@ -441,6 +446,7 @@ class LibraryView(ft.Container, DialogMixin):
 
             def _on_pick_cached(e) -> None:
                 chosen = cached_by_key.get(str(e.control.value or ""))
+                selected_summary["item"] = chosen
                 if chosen is None:
                     return
                 url_input.value = chosen.external_url or chosen.id
@@ -500,11 +506,15 @@ class LibraryView(ft.Container, DialogMixin):
 
             async def _run_import() -> None:
                 nonlocal busy
+                chosen = selected_summary["item"]
                 try:
                     manifest = await self.library_state.import_playlist_manifest(
                         plat,
                         raw_id,
                         owner=owner,
+                        name=str(getattr(chosen, "name", "") or "") if chosen is not None else "",
+                        cover_urls=list(getattr(chosen, "cover_urls", None) or []) if chosen is not None else None,
+                        external_url=str(getattr(chosen, "external_url", "") or "") if chosen is not None else "",
                     )
                 except Exception as exc:  # noqa: BLE001
                     busy = False

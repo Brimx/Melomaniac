@@ -179,14 +179,52 @@ class LibraryState:
         meta_name = str(getattr(meta, "name", "") or "") if meta is not None else ""
         meta_desc = str(getattr(meta, "description", "") or "") if meta is not None else ""
         resolved_name = name or meta_name or f"Playlist {pid}"
+
+        resolved_covers: list[str] = [str(u) for u in (cover_urls or []) if str(u or "").strip()]
+        resolved_img = str(img_url or "").strip()
+        if resolved_img and not resolved_covers:
+            resolved_covers = [resolved_img]
+
+        if not resolved_covers:
+            snap = self._snapshots.get(platform)
+            if snap is not None:
+                for summ in snap.items:
+                    summ_ext_id = normalize_playlist_id(platform, summ.external_url or "") if summ.external_url else ""
+                    if summ.id == pid or summ_ext_id == pid:
+                        resolved_covers = [str(u) for u in (summ.cover_urls or []) if str(u or "").strip()]
+                        if not external_url and summ.external_url:
+                            external_url = summ.external_url
+                        break
+
+        if not resolved_covers and meta is not None:
+            meta_covers = getattr(meta, "cover_urls", None) or []
+            resolved_covers = [str(u) for u in meta_covers if str(u or "").strip()]
+            if not resolved_covers:
+                meta_img = str(getattr(meta, "img_url", "") or "").strip()
+                if meta_img:
+                    resolved_covers = [meta_img]
+
+        if not resolved_covers:
+            seen_urls: set[str] = set()
+            for tr in tracks:
+                u = str(getattr(tr, "img_url", "") or "").strip()
+                if u and u not in seen_urls:
+                    seen_urls.add(u)
+                    resolved_covers.append(u)
+                    if len(resolved_covers) >= 4:
+                        break
+
+        if resolved_covers and not resolved_img:
+            resolved_img = resolved_covers[0]
+
         manifest = save_local_manifest(
             platform=platform,
             playlist_id=pid,
             name=resolved_name,
             owner=owner,
             description=meta_desc,
-            img_url=img_url,
-            cover_urls=cover_urls,
+            img_url=resolved_img,
+            cover_urls=resolved_covers,
             external_url=external_url,
             tracks=tracks,
         )

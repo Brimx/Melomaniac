@@ -392,6 +392,48 @@ class TestLibraryViewManifestUI(unittest.TestCase):
                         "ft.Animation no debe usar duraciones numéricas literales",
                     )
 
+    def test_import_manifest_resolves_cover_from_snapshot(self) -> None:
+        import asyncio
+        from unittest.mock import AsyncMock, MagicMock, patch
+
+        from core.library_models import LibraryLoadState, LibrarySnapshot, PlaylistSummary
+        from core.models import PlaylistMeta, Track
+        from services.library_state import LibraryState
+
+        with tempfile.TemporaryDirectory() as tmp:
+            cfg = Path(tmp) / "cfg"
+            cfg.mkdir()
+            with patch("services.authentication.CONFIG_DIR", cfg), \
+                 patch("services.library_state.load_library", return_value={}):
+                state = LibraryState()
+                state._snapshots["Spotify"] = LibrarySnapshot(
+                    platform="Spotify",
+                    state=LibraryLoadState.READY,
+                    items=[
+                        PlaylistSummary(
+                            platform="Spotify",
+                            id="pl_cov_1",
+                            name="Exact Cover Playlist",
+                            track_count=1,
+                            cover_urls=["https://img.example/exact_playlist_cover.jpg"],
+                            external_url="https://open.spotify.com/playlist/pl_cov_1",
+                        )
+                    ],
+                )
+                service = MagicMock()
+                service.fetch_playlist = AsyncMock(
+                    return_value=(
+                        PlaylistMeta(name="Exact Cover Playlist", description="desc"),
+                        [Track(id="t1", name="Song", artist="Artist", album="Alb", duration="3:00", img_url="https://img.example/track.jpg", platform="Spotify")],
+                    )
+                )
+                state.set_service(service)
+                manifest = asyncio.run(
+                    state.import_playlist_manifest("Spotify", "https://open.spotify.com/playlist/pl_cov_1")
+                )
+                self.assertEqual(manifest.cover_urls, ["https://img.example/exact_playlist_cover.jpg"])
+                self.assertEqual(manifest.img_url, "https://img.example/exact_playlist_cover.jpg")
+
 
 if __name__ == "__main__":
     unittest.main()
