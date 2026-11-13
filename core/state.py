@@ -74,11 +74,11 @@ from core.models import (
 from core.transfer import TransferReport, normalize_playlist_id
 from engine.organizer import merge_playlists, sort_tracks, split_tracks
 from services.circuit_breaker import CircuitBreaker, RateLimitError
-from core.transfer_flow import TransferMixin
-from core.download_flow import DownloadMixin
+from core.transfer_flow import TransferRunner
+from core.download_flow import DownloadRunner
 
 
-class AppState(TransferMixin, DownloadMixin):
+class AppState:
     """
     ViewModel central siguiendo el patrón BLoC (Business Logic Component).
     
@@ -316,6 +316,8 @@ class AppState(TransferMixin, DownloadMixin):
 
         self._listeners: list[Callable[[], None]] = []
         self._lazy_task: Optional[asyncio.Task]   = None
+        self._transfer_runner = TransferRunner(self)
+        self._download_runner = DownloadRunner(self)
 
     # ══════════════════════════════════════════════════════════════════
     # PATRÓN OBSERVER
@@ -487,7 +489,7 @@ class AppState(TransferMixin, DownloadMixin):
             self.load_state = LoadState.ERROR
             self.load_error = f"Rate limit en {e.platform}. Espera {e.retry_after}s."
         except Exception as e:  # pylint: disable=broad-exception-caught
-            self._record_auth_operation_failure(self.source, e)
+            self._transfer_runner._record_auth_operation_failure(self.source, e)
             self.load_state = LoadState.ERROR
             self.load_error = str(e)
         finally:
@@ -918,7 +920,7 @@ class AppState(TransferMixin, DownloadMixin):
             self._lazy_task = None
 
     async def _lazy_availability_scan(self, tracks: list) -> None:
-        dest_ok = await self._ensure_auth(self.destination)
+        dest_ok = await self._transfer_runner._ensure_auth(self.destination)
         if not dest_ok:
             return
 
@@ -961,3 +963,111 @@ class AppState(TransferMixin, DownloadMixin):
         self.lazy_scan_running = False
         self.lazy_scan_done    = True
         self.notify()
+
+    # ══════════════════════════════════════════════════════════════════
+    # TRANSFERENCIA Y DESCARGAS (delegación por composición)
+    # ══════════════════════════════════════════════════════════════════
+
+    async def transfer_playlist(
+        self,
+        title_override: Optional[str] = None,
+        description_override: Optional[str] = None,
+    ) -> None:
+        """Ejecuta la transferencia de pistas seleccionadas hacia el destino."""
+        await self._transfer_runner.transfer_playlist(
+            title_override=title_override,
+            description_override=description_override,
+        )
+
+    async def search_candidates(self, platform: str, query: str, limit: int = 5) -> list[Track]:
+        """Busca pistas candidatas en la plataforma de destino."""
+        return await self._transfer_runner.search_candidates(platform, query, limit)
+
+    async def add_track_to_remote(
+        self, platform: str, playlist_id: str, track_id: str
+    ) -> tuple[bool, str]:
+        """Inserta una pista en una playlist remota ya existente."""
+        return await self._transfer_runner.add_track_to_remote(platform, playlist_id, track_id)
+
+    def remember_resolution(
+        self, name: str, artist: str, platform: str, track_id: str, *, isrc: str = ""
+    ) -> None:
+        """Persiste en caché una resolución manual de alternativa."""
+        self._transfer_runner.remember_resolution(
+            name, artist, platform, track_id, isrc=isrc
+        )
+
+    async def create_remote_playlist(
+        self, platform: str, title: str, track_ids: list[str], description: str = ""
+    ) -> tuple[bool, str, int, list[str]]:
+        """Crea una playlist remota en la plataforma indicada."""
+        return await self._transfer_runner.create_remote_playlist(
+            platform, title, track_ids, description
+        )
+
+    async def delete_remote_playlist(self, platform: str, playlist_id: str) -> tuple[bool, str]:
+        """Elimina una playlist remota en la plataforma indicada."""
+        return await self._transfer_runner.delete_remote_playlist(platform, playlist_id)
+
+    def download_selected(self, *, audio_format: str = "", destination_dir: str = "") -> asyncio.Task:
+        """Lanza la descarga de audio de las pistas seleccionadas."""
+        return self._download_runner.download_selected(
+            audio_format=audio_format, destination_dir=destination_dir
+        )
+
+    def download_tracks(
+        self,
+        tracks: list[Track],
+        *,
+        audio_format: str = "",
+        destination_dir: str = "",
+        playlist_name: str = "",
+        platform: str = "",
+    ) -> asyncio.Task:
+        """Lanza la descarga de una lista arbitraria de pistas."""
+        return self._download_runner.download_tracks(
+            tracks,
+            audio_format=audio_format,
+            destination_dir=destination_dir,
+            playlist_name=playlist_name,
+            platform=platform,
+        )
+
+    def cancel_downloads(self) -> None:
+        """Marca la descarga en curso para detenerse tras la pista actual."""
+        self._download_runner.cancel_downloads()
+
+    def pause_downloads(self) -> None:
+        """Pausa la cola de descargas preservando el archivo parcial."""
+        self._download_runner.pause_downloads()
+
+    def resume_downloads(self) -> Optional[asyncio.Task]:
+        """Reanuda la cola de descargas pausada."""
+        return self._download_runner.resume_downloads()
+
+    def retry_downloads(self, entries: list[dict], *, audio_format: str = "") -> Optional[asyncio.Task]:
+        """Reintenta las entradas fallidas o faltantes indicadas."""
+        return self._download_runner.retry_downloads(entries, audio_format=audio_format)
+
+    async def research_download(self, entry: dict, *, audio_format: str = "") -> dict:
+        """Busca candidatos alternativos en YouTube para una entrada fallida."""
+        return await self._download_runner.research_download(entry, audio_format=audio_format)
+
+    def download_candidate(
+        self, track: Track, video_id: str, *, audio_format: str = ""
+    ) -> Optional[asyncio.Task]:
+        """Descarga un candidato concreto elegido manualmente."""
+        return self._download_runner.download_candidate(
+            track, video_id, audio_format=audio_format
+        )
+
+    def _collect_download_missing(self, selected: list[Track]) -> None:
+        self._download_runner._collect_download_missing(selected)
+
+    def _write_download_manifest(
+        self, target_dir, playlist_name: str, platform: str,
+        selected: list[Track], writer, reader=None,
+    ) -> None:
+        self._download_runner._write_download_manifest(
+            target_dir, playlist_name, platform, selected, writer, reader=reader
+        )

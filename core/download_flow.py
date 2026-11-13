@@ -1,7 +1,6 @@
 """core/download_flow.py — Descargas con yt-dlp: cola, pausa, reintentos y manifiesto.
 
-Mixin de `AppState` (core/state.py): los métodos se mezclan en la clase
-y comparten su `self`.
+Coordinador de descargas compuesto por `AppState` (core/state.py).
 """
 
 from __future__ import annotations
@@ -12,8 +11,11 @@ import time
 from core.models import Track, TransferState
 
 
-class DownloadMixin:
+class DownloadRunner:
     """Descargas con yt-dlp: cola, pausa, reintentos y manifiesto."""
+
+    def __init__(self, state) -> None:
+        self._state = state
 
     def download_selected(
         self,
@@ -41,12 +43,12 @@ class DownloadMixin:
             La tarea creada. Si ya hay una descarga en curso, devuelve esa
             misma tarea sin lanzar otra.
         """
-        selected = [t for t in self.tracks if t.selected]
+        selected = [t for t in self._state.tracks if t.selected]
         platforms = {t.platform for t in selected if t.platform}
-        return self.download_tracks(
+        return self._state.download_tracks(
             selected,
             audio_format=audio_format, destination_dir=destination_dir,
-            playlist_name=self.playlist_name if self.playlist_name else "",
+            playlist_name=self._state.playlist_name if self._state.playlist_name else "",
             platform=platforms.pop() if len(platforms) == 1 else "",
         )
 
@@ -73,20 +75,20 @@ class DownloadMixin:
         Returns:
             La tarea creada, o la en curso si ya hay una descarga activa.
         """
-        if self._download_task is not None and not self._download_task.done():
-            return self._download_task
-        self._download_task = asyncio.create_task(
+        if self._state._download_task is not None and not self._state._download_task.done():
+            return self._state._download_task
+        self._state._download_task = asyncio.create_task(
             self._run_downloads(
                 list(tracks), audio_format=audio_format, destination_dir=destination_dir,
                 playlist_name=playlist_name, platform=platform,
             )
         )
-        return self._download_task
+        return self._state._download_task
 
     def cancel_downloads(self) -> None:
         """Marca la descarga en curso para que se detenga en la próxima pista."""
-        if self._download_cancel is not None:
-            self._download_cancel.set()
+        if self._state._download_cancel is not None:
+            self._state._download_cancel.set()
 
     def pause_downloads(self) -> None:
         """Pausa la cola, incluida la pista que se está descargando.
@@ -94,20 +96,20 @@ class DownloadMixin:
         No se limita a esperar a que termine la pista: la aborta desde el
         progress hook y deja el ``.part`` en disco para reanudar desde ahí.
         """
-        if self.download_state != TransferState.RUNNING:
+        if self._state.download_state != TransferState.RUNNING:
             return
-        if self._download_pause is not None:
-            self._download_pause.set()
-        self.download_paused = True
+        if self._state._download_pause is not None:
+            self._state._download_pause.set()
+        self._state.download_paused = True
         # La pista activa se marca como pausada en el acto. yt-dlp tarda un
         # momento en abortar, y hasta ahora la fila pasaba por «Error» antes
         # de llegar al estado correcto, que se lee como un fallo real.
-        for item in self.download_items:
+        for item in self._state.download_items:
             if item.get("status") == "running":
                 item["status"] = "paused"
                 item["error"] = "Pausada"
-        self._log("[INFO] Descargas en pausa")
-        self.notify()
+        self._state._log("[INFO] Descargas en pausa")
+        self._state.notify()
 
     def resume_downloads(self) -> asyncio.Task | None:
         """Reanuda la cola pausada desde donde se quedó.
@@ -117,29 +119,29 @@ class DownloadMixin:
         ``skip_existing`` y la pista interrumpida se reanuda desde su
         ``.part``.
         """
-        if not self.download_paused:
+        if not self._state.download_paused:
             return None
-        pending = list(self._download_pending_tracks)
-        ctx = dict(self._download_resume_ctx)
-        self.download_paused = False
+        pending = list(self._state._download_pending_tracks)
+        ctx = dict(self._state._download_resume_ctx)
+        self._state.download_paused = False
         if not pending:
-            self._log("[WARN] No hay pistas pendientes para reanudar")
-            self.notify()
+            self._state._log("[WARN] No hay pistas pendientes para reanudar")
+            self._state.notify()
             return None
-        self._log(f"[INFO] Reanudando descargas · {len(pending)} pistas pendientes")
+        self._state._log(f"[INFO] Reanudando descargas · {len(pending)} pistas pendientes")
 
         async def _resume_after_pause() -> None:
             # El task pausado puede seguir vivo unos instantes mientras las
             # tareas en espera ven el evento. ``download_tracks`` devolvería
             # ese task sin arrancar nada, así que primero se deja terminar.
-            previous = self._download_task
+            previous = self._state._download_task
             if previous is not None and not previous.done():
                 try:
                     await previous
                 except Exception:
                     pass
-            self._download_task = None
-            self.download_tracks(
+            self._state._download_task = None
+            self._state.download_tracks(
                 pending,
                 audio_format=ctx.get("format", ""),
                 destination_dir=ctx.get("destination_dir", ""),
@@ -186,30 +188,30 @@ class DownloadMixin:
         else:
             target_dir = resolve_download_dir(destination_dir or None)
 
-        self.audio_format      = fmt
-        self.download_dir      = str(target_dir)
-        self.download_state    = TransferState.RUNNING
-        self.download_progress = 0
-        self.download_total    = len(selected)
-        self.download_current  = ""
-        self.download_done     = []
-        self.download_skipped  = []
-        self.download_failed   = []
-        self.download_missing  = []
+        self._state.audio_format      = fmt
+        self._state.download_dir      = str(target_dir)
+        self._state.download_state    = TransferState.RUNNING
+        self._state.download_progress = 0
+        self._state.download_total    = len(selected)
+        self._state.download_current  = ""
+        self._state.download_done     = []
+        self._state.download_skipped  = []
+        self._state.download_failed   = []
+        self._state.download_missing  = []
         items = {
             id(t): {"id": t.id, "title": f"{t.artist} — {t.name}", "status": "queued",
                     "percent": 0.0, "error": ""}
             for t in selected
         }
-        self.download_items    = list(items.values())
-        self._download_cancel  = asyncio.Event()
-        self._download_pause   = asyncio.Event()
-        cancel = self._download_cancel
-        pause = self._download_pause
+        self._state.download_items    = list(items.values())
+        self._state._download_cancel  = asyncio.Event()
+        self._state._download_pause   = asyncio.Event()
+        cancel = self._state._download_cancel
+        pause = self._state._download_pause
         # Contexto para reanudar exactamente esta cola, no otra.
-        self.download_paused = False
-        self._download_pending_tracks = []
-        self._download_resume_ctx = {
+        self._state.download_paused = False
+        self._state._download_pending_tracks = []
+        self._state._download_resume_ctx = {
             "format": fmt,
             "destination_dir": str(destination_dir or ""),
             "playlist_name": playlist_name,
@@ -221,12 +223,12 @@ class DownloadMixin:
         # una vez para que la UI muestre un solo diagnóstico accionable.
         if not ffmpeg_available():
             message = "FFmpeg no está instalado o no está en PATH"
-            for item in self.download_items:
+            for item in self._state.download_items:
                 item["status"] = "failed"
                 item["error"] = message
             # Misma forma que una falla real para que el panel de resultados
             # pueda renderizarlas y reintentarlas sin un caso especial.
-            self.download_failed = [
+            self._state.download_failed = [
                 {
                     "id": t.id, "name": t.name, "artist": t.artist,
                     "album": t.album, "platform": t.platform,
@@ -235,16 +237,16 @@ class DownloadMixin:
                 }
                 for t in selected
             ]
-            self.download_progress = self.download_total
-            self.download_state    = TransferState.DONE
-            self._log(f"[ERROR] Descargas canceladas · {message}")
-            self.notify()
+            self._state.download_progress = self._state.download_total
+            self._state.download_state    = TransferState.DONE
+            self._state._log(f"[ERROR] Descargas canceladas · {message}")
+            self._state.notify()
             return
 
-        self._log(
+        self._state._log(
             f"[INFO] Descargas · {len(selected)} pistas → {fmt.upper()} en {target_dir}"
         )
-        self.notify()
+        self._state.notify()
 
         # Un único resolver por cola: su memo por álbum evita repetir la
         # consulta para cada pista del mismo disco. ``engine`` no puede
@@ -260,7 +262,7 @@ class DownloadMixin:
                     t, allow_youtube_thumb=True
                 ).data or None
         except Exception as exc:  # noqa: BLE001 - portadas nunca bloquean la cola
-            self._log(f"[WARN] Portadas online no disponibles: {exc}")
+            self._state._log(f"[WARN] Portadas online no disponibles: {exc}")
 
         if not pinned_video_id:
             try:
@@ -288,7 +290,7 @@ class DownloadMixin:
             now = time.monotonic()
             if now - last_push[0] >= 0.25:
                 last_push[0] = now
-                self.notify()
+                self._state.notify()
 
         async def _one(track: Track) -> None:
             item = items[id(track)]
@@ -314,13 +316,13 @@ class DownloadMixin:
                 if pause.is_set():
                     item["status"] = "paused"
                     item["error"] = "Pausada"
-                    if track not in self._download_pending_tracks:
-                        self._download_pending_tracks.append(track)
+                    if track not in self._state._download_pending_tracks:
+                        self._state._download_pending_tracks.append(track)
                     return
                 if not pinned_video_id and track.source_path and os.path.isfile(track.source_path):
                     async with lock:
                         item["status"], item["percent"] = "skipped", 100.0
-                        self.download_skipped.append(
+                        self._state.download_skipped.append(
                             {
                                 "id": track.id,
                                 "name": track.name,
@@ -331,13 +333,13 @@ class DownloadMixin:
                                 "duration_ms": track.duration_ms,
                             }
                         )
-                        self.download_progress += 1
-                        self.notify()
+                        self._state.download_progress += 1
+                        self._state.notify()
                     return
                 async with lock:
                     item["status"] = "running"
-                    self.download_current = f"{track.artist} — {track.name}"[:80]
-                    self.notify()
+                    self._state.download_current = f"{track.artist} — {track.name}"[:80]
+                    self._state.notify()
                 try:
                     result = await asyncio.to_thread(
                         download_audio,
@@ -364,10 +366,10 @@ class DownloadMixin:
                     async with lock:
                         item["status"] = "paused"
                         item["error"] = "Pausada"
-                        if track not in self._download_pending_tracks:
-                            self._download_pending_tracks.append(track)
-                        self.download_progress += 1
-                        self.notify()
+                        if track not in self._state._download_pending_tracks:
+                            self._state._download_pending_tracks.append(track)
+                        self._state.download_progress += 1
+                        self._state.notify()
                     return
 
                 async with lock:
@@ -386,13 +388,13 @@ class DownloadMixin:
                             # Ya existía: no se descargó ni se reescribió. Se
                             # cuenta aparte para que «Completado» no mienta.
                             item["status"], item["percent"] = "skipped", 100.0
-                            self.download_skipped.append(entry)
+                            self._state.download_skipped.append(entry)
                         else:
                             item["status"], item["percent"] = "done", 100.0
-                            self.download_done.append(entry)
+                            self._state.download_done.append(entry)
                     else:
                         item["status"], item["error"] = "failed", error or "Error desconocido"
-                        self.download_failed.append(
+                        self._state.download_failed.append(
                             {
                                 "id": track.id,
                                 "name": track.name,
@@ -409,11 +411,11 @@ class DownloadMixin:
                                 "_track": track,
                             }
                         )
-                        self._log(
+                        self._state._log(
                             f"[ERROR] ✗ Descarga · {track.name[:42]}: {error[:90]}"
                         )
-                    self.download_progress += 1
-                    self.notify()
+                    self._state.download_progress += 1
+                    self._state.notify()
 
         try:
             await asyncio.gather(*(_one(t) for t in selected))
@@ -423,43 +425,43 @@ class DownloadMixin:
                 # cuentan como pendientes: no se descargaron. Las que sí
                 # terminaron (o ya existían) no se repiten al reanudar.
                 finished = {
-                    str(e.get("id")) for e in (*self.download_done, *self.download_skipped)
+                    str(e.get("id")) for e in (*self._state.download_done, *self._state.download_skipped)
                     if isinstance(e, dict)
                 }
                 for t in queued:
                     if t.id in finished:
                         continue
-                    if t not in self._download_pending_tracks:
-                        self._download_pending_tracks.append(t)
-                self._log(
-                    f"[INFO] Descargas pausadas · {len(self._download_pending_tracks)} pendientes"
+                    if t not in self._state._download_pending_tracks:
+                        self._state._download_pending_tracks.append(t)
+                self._state._log(
+                    f"[INFO] Descargas pausadas · {len(self._state._download_pending_tracks)} pendientes"
                 )
-            self.download_state = TransferState.DONE
+            self._state.download_state = TransferState.DONE
             self._collect_download_missing(selected)
-            skipped = len(self.download_skipped)
-            missing = len(self.download_missing)
+            skipped = len(self._state.download_skipped)
+            missing = len(self._state.download_missing)
             summary = (
                 f"Descargas {'canceladas' if cancelled else 'completas'} · "
-                f"OK: {len(self.download_done)} · Fallidas: {len(self.download_failed)}"
+                f"OK: {len(self._state.download_done)} · Fallidas: {len(self._state.download_failed)}"
                 + (f" · Omitidas: {skipped}" if skipped else "")
                 + (f" · Faltantes: {missing}" if missing else "")
             )
-            self._log(f"[INFO] {summary}")
+            self._state._log(f"[INFO] {summary}")
             if playlist_name:
                 self._write_download_manifest(
                     target_dir, playlist_name, platform, selected,
                     write_playlist_manifest, read_playlist_manifest,
                 )
         except Exception as exc:  # noqa: BLE001
-            self.download_state = TransferState.ERROR
-            self._log(f"[ERROR] Descargas interrumpidas: {exc}")
+            self._state.download_state = TransferState.ERROR
+            self._state._log(f"[ERROR] Descargas interrumpidas: {exc}")
         finally:
-            self.download_current = ""
-            self._download_cancel = None
+            self._state.download_current = ""
+            self._state._download_cancel = None
             # ``_download_pause`` se conserva si la cola quedó pausada: la
             # siguiente ejecución arranca con un evento nuevo.
-            self._download_pause = None
-            self.notify()
+            self._state._download_pause = None
+            self._state.notify()
 
     def _collect_download_missing(self, selected: list[Track]) -> None:
         """Pistas de la cola que quedaron sin archivo y sin error propio.
@@ -470,11 +472,11 @@ class DownloadMixin:
         error del extractor.
         """
         finished = {
-            str(e.get("id")) for e in (*self.download_done, *self.download_skipped)
+            str(e.get("id")) for e in (*self._state.download_done, *self._state.download_skipped)
             if isinstance(e, dict)
         }
-        pending = {id(t) for t in self._download_pending_tracks}
-        self.download_missing = [
+        pending = {id(t) for t in self._state._download_pending_tracks}
+        self._state.download_missing = [
             {
                 "id": t.id,
                 "name": t.name,
@@ -485,7 +487,7 @@ class DownloadMixin:
                 "isrc": t.isrc,
                 "src_url": t.source_url,
                 "error": "Pausada" if id(t) in pending else "No se intentó",
-                "format": self.audio_format,
+                "format": self._state.audio_format,
                 "_track": t,
             }
             for t in selected
@@ -528,11 +530,11 @@ class DownloadMixin:
                 tracks.append(track)
         if not tracks:
             return None
-        ctx = dict(self._download_resume_ctx)
-        fmt = (audio_format or ctx.get("format") or self.audio_format or "").lower().lstrip(".")
-        self.download_paused = False
-        self._log(f"[INFO] Reintentando descargas · {len(tracks)} pistas en {fmt.upper()}")
-        return self.download_tracks(
+        ctx = dict(self._state._download_resume_ctx)
+        fmt = (audio_format or ctx.get("format") or self._state.audio_format or "").lower().lstrip(".")
+        self._state.download_paused = False
+        self._state._log(f"[INFO] Reintentando descargas · {len(tracks)} pistas en {fmt.upper()}")
+        return self._state.download_tracks(
             tracks,
             audio_format=fmt,
             destination_dir=ctx.get("destination_dir", ""),
@@ -571,7 +573,7 @@ class DownloadMixin:
                 source_url=str((entry or {}).get("src_url") or ""),
             )
         found = await asyncio.to_thread(search_candidates, track)
-        found["format"] = (audio_format or self.audio_format or "").lower().lstrip(".")
+        found["format"] = (audio_format or self._state.audio_format or "").lower().lstrip(".")
         found["track"] = track
         return found
 
@@ -585,18 +587,18 @@ class DownloadMixin:
         """
         if not video_id:
             return None
-        ctx = dict(self._download_resume_ctx)
-        fmt = (audio_format or ctx.get("format") or self.audio_format or "").lower().lstrip(".")
-        self._log(f"[INFO] Descargando candidato {video_id} · {track.name[:42]} en {fmt.upper()}")
+        ctx = dict(self._state._download_resume_ctx)
+        fmt = (audio_format or ctx.get("format") or self._state.audio_format or "").lower().lstrip(".")
+        self._state._log(f"[INFO] Descargando candidato {video_id} · {track.name[:42]} en {fmt.upper()}")
         return self._download_video_task(track, video_id, fmt, ctx)
 
     def _download_video_task(
         self, track: Track, video_id: str, fmt: str, ctx: dict,
     ) -> asyncio.Task | None:
         """Cola de una sola pista con ``video_id`` ya resuelto."""
-        if self._download_task is not None and not self._download_task.done():
-            return self._download_task
-        self._download_task = asyncio.create_task(
+        if self._state._download_task is not None and not self._state._download_task.done():
+            return self._state._download_task
+        self._state._download_task = asyncio.create_task(
             self._run_downloads(
                 [track],
                 audio_format=fmt,
@@ -606,7 +608,7 @@ class DownloadMixin:
                 pinned_video_id=video_id,
             )
         )
-        return self._download_task
+        return self._state._download_task
 
     def _write_download_manifest(
         self, target_dir, playlist_name: str, platform: str,
@@ -675,6 +677,6 @@ class DownloadMixin:
             target_dir, name=playlist_name, platform=platform, entries=entries
         )
         if written:
-            self._log(f"[INFO] Manifiesto de playlist: {written}")
+            self._state._log(f"[INFO] Manifiesto de playlist: {written}")
         else:
-            self._log("[WARN] No se pudo escribir el manifiesto de la playlist")
+            self._state._log("[WARN] No se pudo escribir el manifiesto de la playlist")
