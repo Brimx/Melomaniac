@@ -79,6 +79,7 @@ class LibraryView(ft.Container):
 
     def _build(self) -> None:
         # selector plataforma
+        self._platform_btns = {}
         self._platform_row = ft.Row(spacing=8, wrap=False)
         self._rebuild_platform_selector()
 

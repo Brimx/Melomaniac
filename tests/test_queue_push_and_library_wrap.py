@@ -21,7 +21,7 @@ import flet as ft
 from core.library_models import LibraryLoadState, LibrarySnapshot, PlaylistSummary
 from core.playback import PlayQueue
 from services import settings_store
-from ui.views.library_view import LibraryView
+from ui.views.library_view import LibraryView, SOURCES
 from ui.player.player_queue import PlayerQueuePanel
 from ui.theme.tokens import BORDER_MUTED, MOTION_PANEL_MS, PLAYER_QUEUE_W
 
@@ -146,6 +146,10 @@ tc.assertEqual(len(view._grid_row.controls), 1)
 tc.assertEqual(view._grid_row.controls[0].width, 160)
 tc.assertTrue(view._grid.visible)
 tc.assertFalse(view._empty.visible)
+
+tc.assertEqual(len(view._platform_row.controls), len(SOURCES))
+view._build()
+tc.assertEqual(len(view._platform_row.controls), len(SOURCES))
 
 empty_view = LibraryView(_DummyPage(), _DummyLibraryState([]), service=None)
 tc.assertFalse(empty_view._grid.visible)
