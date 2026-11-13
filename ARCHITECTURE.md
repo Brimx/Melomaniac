@@ -53,10 +53,10 @@ Melomaniac/
 │   ├── library_store.py           # Persistencia atómica de metadatos locales
 │   ├── models.py                  # Track, PlaylistMeta, SearchResult, enums
 │   ├── playback.py                # Cola PlayQueue, audio y modos repeat/shuffle
-│   ├── download_flow.py           # DownloadMixin: cola yt-dlp, pausa y reintentos
+│   ├── download_flow.py           # DownloadRunner: cola yt-dlp, pausa y reintentos
 │   ├── state.py                   # AppState y flujo BLoC/Observer
 │   ├── transfer.py                # Reporte de transferencia y búsqueda con rate limit
-│   └── transfer_flow.py           # TransferMixin: búsqueda, creación y verificación
+│   └── transfer_flow.py           # TransferRunner: búsqueda, creación y verificación
 ├── engine/
 │   ├── audio_metadata.py          # Tags de audio con Mutagen
 │   ├── covers.py                  # Normalización de carátulas a 800 px cuadrados
@@ -65,13 +65,14 @@ Melomaniac/
 │   ├── downloader.py              # Descarga de audio, metadatos y manifiesto (yt-dlp)
 │   ├── exporters.py               # Exportación local en varios formatos
 │   ├── local_index.py             # Índice local persistente de carpetas de audio
+│   ├── local_manifests.py         # Manifiestos JSON locales y rutas de audio
 │   ├── match.py                   # Validación, scoring y Hunter Recovery
 │   ├── normalizer.py              # Limpieza, ruido, ISRC y cirílico
 │   ├── organizer.py               # sort_tracks y split_tracks en memoria
 │   └── parsers.py                 # Formatos locales y Track local
 ├── services/
 │   ├── api_service.py             # Fachada YouTube/Apple/Spotify (estado, caché y despacho)
-│   ├── platforms/                 # Mixins por plataforma (youtube.py, apple.py, spotify.py)
+│   ├── platforms/                 # Clientes compuestos (youtube.py, apple.py, spotify.py, _common.py)
 │   ├── authentication.py          # Archivos runtime y resultado de pre-flight
 │   ├── browser_session.py         # Detección de navegador y sesión en memoria
 │   ├── circuit_breaker.py         # RateLimitError y cooldowns
@@ -79,40 +80,24 @@ Melomaniac/
 │   ├── covers.py                  # Resolución inteligente de portadas por álbum
 │   ├── desktop_integration.py     # Lanzadores .desktop/.lnk y auto-sync en binarios
 │   ├── library_state.py           # Sincronización de la Biblioteca
+│   ├── local_index.py             # Fachada de índice local y manifiestos
 │   ├── mpris_service.py           # Servicio D-Bus MPRIS para control en Linux
 │   ├── settings_store.py          # Persistencia de ajustes y preferencias
 │   └── update_checker.py          # Comprobación de actualizaciones contra GitHub Releases
 ├── ui/
-│   ├── auth_manager.py            # Coordinación de autenticación
-│   ├── config_view.py             # Ajustes de descarga, portadas y carpetas
-│   ├── config_wizard.py           # Edición gráfica de credenciales
-│   ├── downloads_view.py          # Cola, progreso y resultados de descargas
-│   ├── fonts.py                   # Clasificación Unicode y registro de fuentes
-│   ├── division_dialogs.py        # DivisionMixin: diálogos de Organizar y Dividir
-│   ├── library_view.py            # Biblioteca y acceso al módulo Descargas
-│   ├── main_actions.py            # ActionsMixin: carga, ingesta, transferencia y export
-│   ├── main_layout.py             # LayoutMixin: sidebar, rail flotante y contenido
-│   ├── main_ui.py                 # Ventana principal y sincronización reactiva
-│   ├── onboarding.py              # Bienvenida de primera ejecución (ONBOARDING_STEPS)
-│   ├── onboarding_bg.py           # Fondo animado de la bienvenida
-│   ├── organize_panel.py          # Diálogos Organizar/Dividir/Reorganizar
-│   ├── player_bar.py              # Barra de reproducción persistente con scrubbing
-│   ├── player_mpris.py            # MprisBridgeMixin: puente entre PlayerBar y MPRIS
-│   ├── player_queue.py            # Panel de cola de reproducción
-│   ├── playlist_card.py           # Tarjetas de playlist
-│   ├── playlist_detail_view.py    # Detalle y carga de pistas bajo demanda
-│   ├── playlist_meta_dialog.py    # Nombre/descripción de playlist
-│   ├── song_row.py                # Filas y skeletons animados
-│   ├── telemetry.py               # Monitor, Consola y Post-Mortem
-│   ├── tokens.py                  # Tokens de diseño
-│   ├── transfer_report.py         # Reporte de cierre e inserción de alternativas
-│   └── widgets.py                 # Controles reutilizables
+│   ├── theme/                     # tokens.py, fonts.py, icons.py
+│   ├── components/                # widgets.py, song_row.py, skeletons.py, playlist_card.py, context_menu.py, telemetry.py
+│   ├── dialogs/                   # organize_panel.py, division_dialogs.py, playlist_meta_dialog.py, transfer_*, export_dialog.py, merge_dialog.py, recovery_panel.py
+│   ├── setup/                     # auth_manager.py, config_wizard.py, wizard_forms.py, onboarding.py, onboarding_bg.py
+│   ├── views/                     # library_view.py, playlist_detail_*, downloads_view.py, download_recovery.py, config_view.py
+│   ├── player/                    # player_bar.py, bar_layout.py, player_queue.py, player_mpris.py
+│   └── shell/                     # main_ui.py, main_layout.py, main_actions.py, catalog_panel.py, nav_rail.py, sidebar.py, keymap.py
 ├── resources/fonts/               # Stack Sans e IBM Plex; CJK opcional
 ├── scripts/                       # Empaquetado standalone y bundle portátil
 │   ├── build_linux.py             # AppImage + tar.gz (digest SHA-256 vía GitHub)
 │   ├── build_release_bundle.py    # ZIP portátil del código fuente
 │   └── windows/installer.iss      # Inno Setup para Windows
-└── tests/                         # Reservado para unittest y regresiones
+└── tests/                         # Suite unittest y regresiones
 ```
 
 ## Modelos y estado
@@ -213,7 +198,7 @@ El diálogo Organizar conserva el orden actual o permite ordenar A→Z/Z→A y a
 
 ### Reproductor de audio y MPRIS
 
-El reproductor nativo vive en `ui.player_bar.PlayerBar` utilizando `flet-audio` 1.0.5 sobre `FLET_DESKTOP_FLAVOR=full`. Soporta FLAC, MP3, M4A, Opus y WAV para fuentes locales y pistas descargadas. La cola de reproducción vive en `core.playback.PlayQueue` (con modos repeat, shuffle y control reordenable en `ui.player_queue.PlayerQueuePanel`). En Linux, `services.mpris_service.MPRISService` (`org.mpris.MediaPlayer2.melomaniac`) sincroniza el estado de transporte, posición, carátulas y metadatos con el bus D-Bus de sesión, habilitando control mediante teclas multimedia del sistema y widgets de escritorio.
+El reproductor nativo vive en `ui.player.player_bar.PlayerBar` utilizando `flet-audio` sobre `FLET_DESKTOP_FLAVOR=full`. Soporta FLAC, MP3, M4A, Opus y WAV para fuentes locales y pistas descargadas. La cola de reproducción vive en `core.playback.PlayQueue` (con modos repeat, shuffle y control reordenable en `ui.player.player_queue.PlayerQueuePanel`). En Linux, `services.mpris_service.MPRISService` (`org.mpris.MediaPlayer2.melomaniac`) sincroniza el estado de transporte, posición, carátulas y metadatos con el bus D-Bus de sesión vía `ui.player.player_mpris.MprisController`, habilitando control mediante teclas multimedia del sistema y widgets de escritorio.
 
 ## Concurrencia, caché y resiliencia
 
@@ -238,7 +223,7 @@ Apple procesa la transferencia de forma secuencial para evitar ráfagas. El rest
 
 ## Bienvenida guiada (onboarding)
 
-Al primer arranque, `ui.onboarding.OnboardingView` muestra un overlay a pantalla completa con los pasos de `ONBOARDING_STEPS` (única lista: toda función visible nueva añade o actualiza un paso ahí; hoy siete, incluido «Sistema y actualizaciones»). El fondo vive en `ui.onboarding_bg`. Al finalizar se guarda `onboarding_done` en `services.settings_store` (`config/settings.json`); la bienvenida se reabre desde Config. Medidas en `ui.tokens` (`ONBOARDING_*`).
+Al primer arranque, `ui.setup.onboarding.OnboardingView` muestra un overlay a pantalla completa con los pasos de `ONBOARDING_STEPS` (única lista: toda función visible nueva añade o actualiza un paso ahí; hoy siete, incluido «Sistema y actualizaciones»). El fondo vive en `ui.setup.onboarding_bg`. Al finalizar se guarda `onboarding_done` en `services.settings_store` (`config/settings.json`); la bienvenida se reabre desde Config. Medidas en `ui.theme.tokens` (`ONBOARDING_*`).
 
 ## Integración con el sistema y actualizaciones
 
@@ -279,7 +264,8 @@ Melomaniac no está afiliado, patrocinado ni respaldado por Spotify, Apple, Goog
 ## Verificación
 
 ```bash
-python -m compileall -q app.py core engine services ui
+python -m compileall -q app.py core engine services ui scripts
+python -m unittest discover -s tests -t .
 ```
 
-La UI Flet se valida manualmente, incluyendo los modos Lista/Doble/Preview, los diálogos de Organizar/Dividir, la navegación responsive, el skeleton animado y la exportación local. La carpeta `tests/` queda reservada para regresiones futuras.
+La suite unitaria en `tests/` cubre el motor, la concurrencia, la composición de capas y las reglas/flujos de la UI; los flujos gráficos completos se validan manualmente (modos Lista/Doble/Preview, diálogos Organizar/Dividir, navegación responsive, skeleton animado y exportación local).
