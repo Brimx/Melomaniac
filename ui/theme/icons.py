@@ -10,8 +10,8 @@ from __future__ import annotations
 from typing import Callable, Optional
 import flet as ft
 
-from ui.fonts import FONT_PHOSPHOR, FONT_PHOSPHOR_FILL, FONT_PHOSPHOR_DUOTONE
-from ui.tokens import (
+from ui.theme.fonts import FONT_PHOSPHOR, FONT_PHOSPHOR_FILL, FONT_PHOSPHOR_DUOTONE
+from ui.theme.tokens import (
     TEXT_PRIMARY,
     TEXT_MUTED,
     MOTION_HOVER_MS,

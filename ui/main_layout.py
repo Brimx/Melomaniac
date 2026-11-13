@@ -9,7 +9,7 @@ from __future__ import annotations
 import asyncio
 import flet as ft
 
-from ui.tokens import (
+from ui.theme.tokens import (
     BG_DEEP,
     BG_HOVER,
     MOTION_HOVER_MS,
@@ -60,8 +60,8 @@ from ui.widgets import (
     organize_dropdown,
     safe_update,
 )
-from ui.icons import FONT_PHOSPHOR, FONT_PHOSPHOR_FILL, PIcons, app_icon, app_icon_button
-from ui.fonts import (
+from ui.theme.icons import FONT_PHOSPHOR, FONT_PHOSPHOR_FILL, PIcons, app_icon, app_icon_button
+from ui.theme.fonts import (
     FONT_HEADLINE_MEDIUM,
     FONT_HEADLINE,
     FONT_HEADLINE_BOLD,

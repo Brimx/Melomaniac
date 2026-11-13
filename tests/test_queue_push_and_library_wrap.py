@@ -23,7 +23,7 @@ from core.playback import PlayQueue
 from services import settings_store
 from ui.library_view import LibraryView
 from ui.player_queue import PlayerQueuePanel
-from ui.tokens import BORDER_MUTED, MOTION_PANEL_MS, PLAYER_QUEUE_W
+from ui.theme.tokens import BORDER_MUTED, MOTION_PANEL_MS, PLAYER_QUEUE_W
 
 
 class _DummyPage:

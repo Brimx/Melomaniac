@@ -62,11 +62,11 @@ from core.models import Track, LoadState, TransferState
 from core.state import AppState
 from core.config import EXPORT_DEST_LABEL
 from ui.song_row import SongRow, SkeletonRow, PreviewSkeletonRow, build_preview_row, ITEM_H
-from ui.icons import PIcons
+from ui.theme.icons import PIcons
 from ui.transfer_report import TransferReportDialog
 from ui.widgets import app_text_field, DialogMixin, notify, input_border, safe_update
 
-from ui.tokens import (
+from ui.theme.tokens import (
     BORDER_LIGHT,
     ACCENT,
     SUCCESS,

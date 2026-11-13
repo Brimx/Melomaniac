@@ -5,6 +5,7 @@ tests/test_merge_and_shuffle.py — Pruebas unitarias de fusión, deduplicación
 from __future__ import annotations
 
 import random
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -244,7 +245,13 @@ class TestAppStateMergeSources(unittest.TestCase):
 
 class TestShuffleFromContext(unittest.TestCase):
     def test_no_flet_imported(self) -> None:
-        self.assertNotIn("flet", sys.modules)
+        proc = subprocess.run(
+            [sys.executable, "-c", "import core.playback, sys; assert 'flet' not in sys.modules"],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        self.assertEqual(proc.returncode, 0, msg=proc.stderr)
 
     def test_shuffle_from_context_picks_random_start_and_enables_shuffle(self) -> None:
         items = [_make_playable(i) for i in range(6)]

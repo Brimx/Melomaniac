@@ -3,9 +3,9 @@ from __future__ import annotations
 
 import flet as ft
 
-from ui.fonts import FONT_HEADLINE, FONT_HEADLINE_SEMI, FONT_TEXT, mono_family
-from ui.icons import PIcons, app_icon
-from ui.tokens import (
+from ui.theme.fonts import FONT_HEADLINE, FONT_HEADLINE_SEMI, FONT_TEXT, mono_family
+from ui.theme.icons import PIcons, app_icon
+from ui.theme.tokens import (
     BG_PANEL, BG_HOVER, BORDER_LIGHT, BORDER_MUTED,
     ACCENT, SUCCESS, ERROR_COL,
     TEXT_PRIMARY, TEXT_MUTED, TEXT_DIM,

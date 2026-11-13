@@ -18,7 +18,7 @@ from ui.widgets import (
     organize_dropdown,
     safe_update,
 )
-from ui.tokens import (
+from ui.theme.tokens import (
     ACCENT,
     BG_INPUT,
     BG_SURFACE,
@@ -31,8 +31,8 @@ from ui.tokens import (
     TEXT_PRIMARY,
     WARNING,
 )
-from ui.icons import PIcons, app_icon
-from ui.fonts import FONT_HEADLINE, FONT_TEXT
+from ui.theme.icons import PIcons, app_icon
+from ui.theme.fonts import FONT_HEADLINE, FONT_TEXT
 
 
 class DivisionMixin:

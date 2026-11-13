@@ -10,10 +10,10 @@ from typing import Any, Callable, Optional, Sequence
 import flet as ft
 
 from core.library_models import LibraryLoadState, PlaylistSummary
-from ui.fonts import FONT_HEADLINE, FONT_HEADLINE_BOLD, FONT_TEXT, font_family_for
-from ui.icons import PIcons
+from ui.theme.fonts import FONT_HEADLINE, FONT_HEADLINE_BOLD, FONT_TEXT, font_family_for
+from ui.theme.icons import PIcons
 from ui.song_row import _thumb_content_for
-from ui.tokens import (
+from ui.theme.tokens import (
     ACCENT, BG_HOVER, BG_LIST, BG_SURFACE, BORDER_LIGHT, BORDER_MUTED,
     ERROR_COL, SKELETON_DARK, TEXT_DIM, TEXT_MUTED, TEXT_PRIMARY, WARNING,
     MOTION_HOVER_MS,

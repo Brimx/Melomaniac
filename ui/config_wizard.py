@@ -15,9 +15,9 @@ if TYPE_CHECKING:
 import flet as ft
 
 from core.config import PLATFORM_ORDER
-from ui.fonts import FONT_HEADLINE, FONT_HEADLINE_BOLD, FONT_HEADLINE_SEMI, FONT_TEXT, mono_family
-from ui.icons import PIcons, app_icon, app_icon_button
-from ui.tokens import (
+from ui.theme.fonts import FONT_HEADLINE, FONT_HEADLINE_BOLD, FONT_HEADLINE_SEMI, FONT_TEXT, mono_family
+from ui.theme.icons import PIcons, app_icon, app_icon_button
+from ui.theme.tokens import (
     BG_PANEL, BG_SURFACE, BG_INPUT, BORDER_LIGHT,
     ACCENT, SUCCESS, WARNING, ERROR_COL,
     TEXT_PRIMARY, TEXT_MUTED, TEXT_DIM,

@@ -36,7 +36,7 @@ from core.transfer import (
 from engine.match import _fuzzy_scores_triple
 from engine.normalizer import build_search_query, clean_metadata
 from services.authentication import TRANSFER_HISTORY_JSONL, TRANSFER_REPORTS_DIR
-from ui.fonts import (
+from ui.theme.fonts import (
     FONT_HEADLINE,
     FONT_HEADLINE_BOLD,
     FONT_HEADLINE_SEMI,
@@ -44,8 +44,8 @@ from ui.fonts import (
     mono_family,
 )
 from ui.song_row import build_preview_row
-from ui.icons import PIcons, app_icon, app_icon_button
-from ui.tokens import (
+from ui.theme.icons import PIcons, app_icon, app_icon_button
+from ui.theme.tokens import (
     ACCENT,
     BG_INPUT,
     BG_PANEL,

@@ -26,12 +26,12 @@ from core.models import Track, TransferState
 from engine.downloader import ffmpeg_available, open_in_file_manager, resolve_download_dir
 from engine.parsers import list_audio_files
 from services import settings_store
-from ui.fonts import (
+from ui.theme.fonts import (
     FONT_HEADLINE, FONT_HEADLINE_BOLD, FONT_PHOSPHOR, FONT_PHOSPHOR_FILL, FONT_TEXT,
     mono_family,
 )
-from ui.icons import PIcons, app_icon, app_icon_button
-from ui.tokens import (
+from ui.theme.icons import PIcons, app_icon, app_icon_button
+from ui.theme.tokens import (
     ACCENT, BG_LIST, BG_SURFACE, BORDER_MUTED, ERROR_COL, RADIUS_INPUT,
     SUCCESS, TEXT_DIM, TEXT_MUTED, TEXT_PRIMARY,
 )

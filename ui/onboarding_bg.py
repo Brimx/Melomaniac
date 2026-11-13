@@ -16,7 +16,7 @@ import random
 import flet as ft
 import flet.canvas as cv
 
-from ui.tokens import (
+from ui.theme.tokens import (
     ACCENT, ONBOARDING_BG_DASHES, ONBOARDING_BG_FPS, ONBOARDING_BG_LAYERS,
     ONBOARDING_BG_LINK, ONBOARDING_BG_POINTS, ONBOARDING_BG_SPEED, TEXT_DIM,
 )

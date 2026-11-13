@@ -29,11 +29,11 @@ from dataclasses import dataclass
 
 import flet as ft
 
-from ui.tokens import (
+from ui.theme.tokens import (
     BG_PANEL, BG_INPUT, BORDER_LIGHT,
     ACCENT, TEXT_PRIMARY, TEXT_MUTED, TEXT_DIM,
 )
-from ui.icons import PIcons
+from ui.theme.icons import PIcons
 from ui.widgets import _section_label, app_text_field, dialog_action, app_dialog, DialogMixin
 
 CONTENT_W = 420

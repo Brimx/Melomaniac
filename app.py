@@ -38,9 +38,9 @@ from services import settings_store
 from services.authentication import ensure_config_dir, load_runtime_env
 from services.circuit_breaker import CircuitBreaker
 from ui.auth_manager import AuthManager
-from ui.fonts import FONT_TEXT, build_font_registry
+from ui.theme.fonts import FONT_TEXT, build_font_registry
 from ui.main_ui import PlaylistManagerUI
-from ui.tokens import BG_LIST, ACCENT, BG_SURFACE, TEXT_PRIMARY
+from ui.theme.tokens import BG_LIST, ACCENT, BG_SURFACE, TEXT_PRIMARY
 from ui.widgets import build_input_decoration_theme
 
 # Fuentes locales (IBM Plex Sans variable)

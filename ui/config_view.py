@@ -24,9 +24,9 @@ import flet as ft
 
 from core.config import APP_VERSION, AUDIO_FORMATS
 from services import desktop_integration, settings_store, update_checker
-from ui.fonts import FONT_HEADLINE, FONT_TEXT, mono_family
-from ui.icons import PIcons, app_icon
-from ui.tokens import (
+from ui.theme.fonts import FONT_HEADLINE, FONT_TEXT, mono_family
+from ui.theme.icons import PIcons, app_icon
+from ui.theme.tokens import (
     ACCENT, BG_LIST, BG_SURFACE, BORDER_MUTED, RADIUS_INPUT,
     SUCCESS, TEXT_MUTED, TEXT_PRIMARY, WARNING,
 )

@@ -8,6 +8,7 @@ eliminación, reordenamiento e historial de reproducción.
 from __future__ import annotations
 
 import random
+import subprocess
 import sys
 import unittest
 from pathlib import Path
@@ -45,7 +46,13 @@ class TestPlayQueue(unittest.TestCase):
         self.items = [_make_item(i) for i in range(5)]
 
     def test_no_flet_imported_by_playback(self) -> None:
-        self.assertNotIn("flet", sys.modules)
+        proc = subprocess.run(
+            [sys.executable, "-c", "import core.playback, sys; assert 'flet' not in sys.modules"],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        self.assertEqual(proc.returncode, 0, msg=proc.stderr)
 
     def test_shuffle_twice_preserves_current_and_restores_original_order_by_identity(self) -> None:
         # Dos instancias distintas con los mismos metadatos para verificar identidad (`is`)

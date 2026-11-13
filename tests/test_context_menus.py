@@ -38,8 +38,8 @@ import flet as ft
 from core.library_models import LibraryLoadState, PlaylistSummary
 from core.models import Track, TransferState
 from core.playback import PlayQueue, build_playable_track
-from ui import tokens
-from ui.icons import PIcons
+from ui.theme import tokens
+from ui.theme.icons import PIcons
 from ui.playlist_card import PlaylistCard
 from ui.playlist_detail_view import PlaylistDetailView
 from ui.song_row import SongRow

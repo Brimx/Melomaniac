@@ -17,13 +17,13 @@ import flet as ft
 
 from core.playback import PlayableTrack
 from services import settings_store
-from ui.fonts import (
+from ui.theme.fonts import (
     FONT_HEADLINE, FONT_HEADLINE_BOLD, FONT_PHOSPHOR, FONT_PHOSPHOR_FILL,
     FONT_TEXT, font_family_for, mono_family,
 )
-from ui.icons import PIcons, app_icon, app_icon_button
+from ui.theme.icons import PIcons, app_icon, app_icon_button
 from ui.song_row import ITEM_H
-from ui.tokens import (
+from ui.theme.tokens import (
     ACCENT, ACCENT_HALO, BG_PANEL, BG_SURFACE, BORDER_MUTED,
     CHIP_BG, MOTION_HOVER_MS, MOTION_PANEL_MS, PLAYER_QUEUE_W,
     RADIUS_BUTTON, RADIUS_INPUT, TEXT_DIM, TEXT_MUTED, TEXT_PRIMARY,

@@ -23,8 +23,8 @@ from ui.widgets import (
     organize_dropdown,
     safe_update,
 )
-from ui.fonts import FONT_HEADLINE, FONT_HEADLINE_BOLD, FONT_TEXT, mono_family
-from ui.tokens import (
+from ui.theme.fonts import FONT_HEADLINE, FONT_HEADLINE_BOLD, FONT_TEXT, mono_family
+from ui.theme.tokens import (
     ACCENT,
     BG_INPUT,
     BG_SURFACE,
@@ -44,7 +44,7 @@ from ui.tokens import (
 from core.models import LoadState, Track, TransferState
 from core.config import EXPORT_DEST_LABEL, EXPORT_FORMATS
 from engine.parsers import build_local_tracks, parse_local_playlist_with_paths
-from ui.icons import PIcons, app_icon
+from ui.theme.icons import PIcons, app_icon
 from ui.song_row import _thumb_content_for
 from core.state import AppState
 from engine.exporters import default_export_path, export_tracks

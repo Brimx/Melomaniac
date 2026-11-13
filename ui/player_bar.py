@@ -25,12 +25,12 @@ from core.models import Track
 from core.playback import PlayableTrack, PlayQueue, RepeatMode, build_playable_track
 from services.mpris_service import MPRISService
 from services import settings_store
-from ui.fonts import (
+from ui.theme.fonts import (
     FONT_HEADLINE_BOLD, FONT_TEXT, FONT_PHOSPHOR, FONT_PHOSPHOR_FILL,
     font_family_for, mono_family
 )
-from ui.icons import PIcons, app_icon, app_icon_button
-from ui.tokens import (
+from ui.theme.icons import PIcons, app_icon, app_icon_button
+from ui.theme.tokens import (
     ACCENT,
     BG_HOVER,
     BG_PANEL,

@@ -22,10 +22,10 @@ from core.models import Track, TransferState
 from engine.downloader import open_in_file_manager
 from services import settings_store
 from ui.downloads_view import candidate_to_recovery, search_youtube_alternatives
-from ui.fonts import FONT_HEADLINE, FONT_HEADLINE_BOLD, FONT_TEXT, font_family_for, mono_family
-from ui.icons import PIcons, app_icon, app_icon_button
+from ui.theme.fonts import FONT_HEADLINE, FONT_HEADLINE_BOLD, FONT_TEXT, font_family_for, mono_family
+from ui.theme.icons import PIcons, app_icon, app_icon_button
 from ui.song_row import ITEM_H, LibrarySkeletonRow, _thumb_content_for
-from ui.tokens import (
+from ui.theme.tokens import (
     ACCENT, BG_HOVER, BG_LIST, BG_SURFACE, BORDER_LIGHT, BORDER_MUTED, BORDER_ROW,
     RADIUS_INPUT, SKELETON_DARK, TEXT_DIM, TEXT_MUTED, TEXT_PRIMARY,
     MOTION_HOVER_MS,

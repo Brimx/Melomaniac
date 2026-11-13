@@ -38,13 +38,13 @@ from typing import Any, Callable, Sequence
 
 import flet as ft
 
-from ui.fonts import (
+from ui.theme.fonts import (
     FONT_HEADLINE, FONT_HEADLINE_BOLD,
     FONT_TEXT, FONT_TEXT_MEDIUM, FONT_TEXT_SEMI, mono_family,
 )
-from ui.icons import app_icon, PIcons
+from ui.theme.icons import app_icon, PIcons
 
-from ui.tokens import (
+from ui.theme.tokens import (
     TEXT_PRIMARY, TEXT_MUTED, TEXT_DIM,
     ACCENT, ACCENT_HOVER, ACCENT_DIM, ACCENT_HALO, BG_HOVER,
     BG_DEEP, BG_SURFACE, BORDER_ROW,
@@ -414,7 +414,7 @@ def notify(
     duration: int | None = None,
 ) -> ft.SnackBar:
     """SnackBar canónico FLOATING. Unifica telemetry + main_ui x3."""
-    from ui.tokens import BG_PANEL as _BG_PANEL, ERROR_COL as _ERR
+    from ui.theme.tokens import BG_PANEL as _BG_PANEL, ERROR_COL as _ERR
     bgcolor = _ERR if kind == "error" else _BG_PANEL
     snack = ft.SnackBar(
         content=ft.Text(msg, color=ft.Colors.WHITE, font_family=FONT_TEXT, size=12, opacity=1.0),

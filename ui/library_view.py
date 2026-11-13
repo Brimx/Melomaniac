@@ -13,15 +13,15 @@ from core.library_models import LibraryLoadState
 from core.models import PlaylistMeta
 from engine.local_manifests import detect_platform_from_url
 from services.library_state import LibraryState
-from ui.fonts import FONT_HEADLINE, FONT_HEADLINE_BOLD, FONT_TEXT
+from ui.theme.fonts import FONT_HEADLINE, FONT_HEADLINE_BOLD, FONT_TEXT
 from ui.playlist_card import PlaylistCard
 from ui.playlist_detail_view import PlaylistDetailView
-from ui.tokens import (
+from ui.theme.tokens import (
     ACCENT, ACCENT_HALO, BG_HOVER, BG_LIST, BG_PANEL, BG_SURFACE,
     BORDER_LIGHT, BORDER_MUTED, ERROR_COL, MOTION_HOVER_MS, RADIUS_BUTTON,
     SUCCESS, TEXT_DIM, TEXT_MUTED, TEXT_PRIMARY,
 )
-from ui.icons import PIcons, app_icon, app_icon_button
+from ui.theme.icons import PIcons, app_icon, app_icon_button
 from ui.widgets import (
     DialogMixin, _ghost_btn, app_dialog, app_text, app_text_field,
     dialog_action, notify, organize_dropdown, section_label,
@@ -195,7 +195,7 @@ class LibraryView(ft.Container, DialogMixin):
             ico_ctrl.value = icon
             ico_ctrl.color = ACCENT if selected else TEXT_DIM
             # Sincroniza relleno Phosphor sin reconstruir controles
-            from ui.fonts import FONT_PHOSPHOR, FONT_PHOSPHOR_FILL
+            from ui.theme.fonts import FONT_PHOSPHOR, FONT_PHOSPHOR_FILL
             ico_ctrl.font_family = FONT_PHOSPHOR_FILL if selected else FONT_PHOSPHOR
             lbl_ctrl.color = TEXT_PRIMARY if selected else TEXT_MUTED
             btn.bgcolor = ACCENT_HALO if selected else BG_SURFACE

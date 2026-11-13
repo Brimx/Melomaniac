@@ -39,9 +39,9 @@ from typing import Any, Callable, Optional, Sequence
 import flet as ft
 
 from core.models import Track
-from ui.fonts import font_family_for, mono_family
-from ui.icons import PIcons, app_icon
-from ui.tokens import (
+from ui.theme.fonts import font_family_for, mono_family
+from ui.theme.icons import PIcons, app_icon
+from ui.theme.tokens import (
     BG_LIST, BG_HOVER, SKELETON_DARK,
     TEXT_PRIMARY, TEXT_MUTED, TEXT_DIM,
     ACCENT, SUCCESS, BG_SURFACE, BORDER_ROW,

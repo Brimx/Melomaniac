@@ -16,11 +16,11 @@ from __future__ import annotations
 
 import flet as ft
 
-from ui.tokens import (
+from ui.theme.tokens import (
     BG_SURFACE, BG_INPUT, BORDER_LIGHT, ACCENT, TEXT_PRIMARY, TEXT_MUTED,
     TEXT_DIM, CHIP_BG, DIALOG_OPTION_LIMIT,
 )
-from ui.icons import PIcons, app_icon
+from ui.theme.icons import PIcons, app_icon
 from ui.widgets import (
     dialog_action, app_dialog, close_dialog, organize_dropdown, input_border, debounce,
     limit_label,

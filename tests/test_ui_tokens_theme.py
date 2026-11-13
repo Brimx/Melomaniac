@@ -8,7 +8,7 @@ import subprocess
 import sys
 import unittest
 
-from ui import tokens
+from ui.theme import tokens
 
 
 def _run_in_subprocess(code: str) -> None:
@@ -35,7 +35,7 @@ class TestTokensAndTheme(unittest.TestCase):
 import os
 import flet as ft
 import app
-from ui import tokens
+from ui.theme import tokens
 from ui.widgets import app_text_field, build_input_decoration_theme, input_border, organize_dropdown
 
 assert os.environ.get("FLET_DESKTOP_FLAVOR") == "full"
