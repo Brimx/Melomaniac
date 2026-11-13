@@ -477,6 +477,55 @@ class TestPlaylistDetailViewFeatures(unittest.TestCase):
 
         asyncio.run(_run())
 
+    def test_missing_track_context_has_recovery_and_requeues_format(self) -> None:
+        async def _run() -> None:
+            tracks = [_make_track(1, source_path="")]
+            view, page, _pb, _q, app_state = self._build_detail_with_tracks(tracks)
+            page.show_dialog = MagicMock()
+            page.run_task = lambda fn, *a, **kw: asyncio.create_task(fn(*a, **kw))
+            async def _fake_dl(tr_list, **kwargs):
+                return None
+            app_state.download_tracks = MagicMock(side_effect=_fake_dl)
+            try:
+                await view.reload()
+                actions = view._track_context_actions(tracks[0], 1)
+                rec_act = next((a for a in actions if "Buscar alternativa" in a.label), None)
+                self.assertIsNotNone(rec_act)
+                async def _fake_search(*_a, **_kw):
+                    return {
+                        "candidates": [{
+                            "video_id": "yt_alt_9",
+                            "title": "Track 1 (Live)",
+                            "artist": "Artist 1",
+                            "duration": "3:10",
+                            "duration_ms": 190000,
+                            "url": "https://www.youtube.com/watch?v=yt_alt_9",
+                        }],
+                        "error": "",
+                    }
+
+                with patch(
+                    "ui.playlist_detail_view.search_youtube_alternatives",
+                    side_effect=_fake_search,
+                ):
+                    panel = await view._open_track_recovery(tracks[0])
+                    self.assertTrue(page.show_dialog.called)
+                    self.assertEqual(len(panel.results_column.controls), 1)
+                    view._download_recovered_track(
+                        tracks[0],
+                        video_id="yt_alt_9",
+                        candidate_url="https://www.youtube.com/watch?v=yt_alt_9",
+                        audio_format="flac",
+                    )
+                    await asyncio.sleep(0)
+                    app_state.download_tracks.assert_called_once()
+                    _, dl_kwargs = app_state.download_tracks.call_args
+                    self.assertEqual(dl_kwargs.get("output_format"), "flac")
+            finally:
+                view.will_unmount()
+
+        asyncio.run(_run())
+
 
 suite = unittest.defaultTestLoader.loadTestsFromTestCase(TestContextMenuHelpers)
 suite.addTests(unittest.defaultTestLoader.loadTestsFromTestCase(TestCardAndSongRowContextMenus))

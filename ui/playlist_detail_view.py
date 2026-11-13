@@ -16,11 +16,12 @@ from typing import Callable, Optional
 
 import flet as ft
 
-from core.config import LOCAL_LIBRARY_LABEL
+from core.config import AUDIO_FORMATS, DEFAULT_AUDIO_FORMAT, LOCAL_LIBRARY_LABEL
 from core.library_models import PlaylistSummary
 from core.models import Track, TransferState
 from engine.downloader import open_in_file_manager
 from services import settings_store
+from ui.downloads_view import candidate_to_recovery, search_youtube_alternatives
 from ui.fonts import FONT_HEADLINE, FONT_HEADLINE_BOLD, FONT_TEXT, font_family_for, mono_family
 from ui.icons import PIcons, app_icon, app_icon_button
 from ui.song_row import ITEM_H, LibrarySkeletonRow, _thumb_content_for
@@ -29,14 +30,18 @@ from ui.tokens import (
     RADIUS_INPUT, SKELETON_DARK, TEXT_DIM, TEXT_MUTED, TEXT_PRIMARY,
     MOTION_HOVER_MS,
 )
+from ui.transfer_report import AlternativeSearchPanel, RecoveryCandidate
 from ui.widgets import (
     ContextMenuAction,
     _ghost_btn,
     _primary_btn,
+    app_dialog,
     app_text,
     build_context_menu_button,
+    dialog_action,
     notify,
     open_external,
+    organize_dropdown,
     wrap_with_context_menu,
 )
 
@@ -603,6 +608,207 @@ class PlaylistDetailView(ft.Container):
             self._create_btn.disabled = total == 0
         self._select_mode_btn.disabled = total == 0
 
+    def _download_recovered_track(
+        self,
+        track: Track,
+        action_container: ft.Container | None = None,
+        *,
+        video_id: str = "",
+        candidate_url: str = "",
+        audio_format: str = "",
+        dlg: ft.AlertDialog | None = None,
+    ) -> None:
+        """Reencola la descarga de una pista de Biblioteca con alternativa o formato nuevo."""
+        st = self.app_state
+        if st is None:
+            notify(self._page_ref, "Estado de aplicación no disponible", kind="error")
+            return
+        if st.download_state == TransferState.RUNNING:
+            notify(self._page_ref, "Ya hay una descarga en curso", kind="error")
+            return
+        if dlg is not None:
+            dlg.open = False
+            try:
+                self._page_ref.update()
+            except Exception:
+                pass
+
+        fmt = str(audio_format or settings_store.get_download_format() or DEFAULT_AUDIO_FORMAT).lower().lstrip(".")
+        if fmt not in AUDIO_FORMATS:
+            fmt = DEFAULT_AUDIO_FORMAT
+        vid = str(video_id or "").strip()
+        url = str(candidate_url or "").strip()
+        if not url and vid:
+            url = f"https://www.youtube.com/watch?v={vid}"
+        target = Track(
+            id=vid or track.id,
+            name=track.name,
+            artist=track.artist,
+            album=track.album,
+            duration=track.duration,
+            duration_ms=track.duration_ms,
+            img_url=track.img_url,
+            source_url=url or track.source_url,
+            platform=track.platform or getattr(self.summary, "platform", "") or "",
+        )
+
+        async def _run_recovery_download() -> None:
+            if action_container is not None:
+                action_container.content = ft.ProgressRing(width=16, height=16, stroke_width=2, color=ACCENT)
+                action_container.tooltip = "Descargando..."
+                try:
+                    action_container.update()
+                except Exception:
+                    pass
+            notify(self._page_ref, f"Descargando «{track.name}» ({fmt.upper()})...")
+            try:
+                await st.download_tracks(
+                    [target],
+                    destination_dir=settings_store.get_download_dir(),
+                    output_format=fmt,
+                )
+            except Exception as exc:  # noqa: BLE001
+                notify(self._page_ref, f"Error al descargar: {exc}", kind="error")
+                if action_container is not None:
+                    action_container.content = app_icon(PIcons.DOWNLOAD_SIMPLE, size=16, color=TEXT_MUTED)
+                    action_container.tooltip = "Descargar canción"
+                    try:
+                        action_container.update()
+                    except Exception:
+                        pass
+                return
+
+            if target.source_path and os.path.isfile(target.source_path):
+                track.source_path = target.source_path
+                self._has_file_by_id[id(track)] = True
+                if action_container is not None:
+                    action_container.content = app_icon(PIcons.PLAY, size=16, color=ACCENT, fill=True)
+                    action_container.tooltip = "Reproducir"
+                    try:
+                        action_container.update()
+                    except Exception:
+                        pass
+                self._update_header_play_count()
+                try:
+                    self.update()
+                except Exception:
+                    pass
+                notify(
+                    self._page_ref,
+                    f"Descarga lista: {track.artist} — {track.name}",
+                    action="Reproducir",
+                    on_action=lambda _e: self._play_single_track(track, 1),
+                )
+            elif action_container is not None:
+                action_container.content = app_icon(PIcons.DOWNLOAD_SIMPLE, size=16, color=TEXT_MUTED)
+                action_container.tooltip = "Descargar canción"
+                try:
+                    action_container.update()
+                except Exception:
+                    pass
+
+        self._page_ref.run_task(_run_recovery_download)
+
+    async def _open_track_recovery(
+        self,
+        track: Track,
+        action_container: ft.Container | None = None,
+    ) -> AlternativeSearchPanel:
+        """Abre el diálogo 2.6 de recuperación para una pista faltante en Biblioteca."""
+        raw_fmt = str(settings_store.get_download_format() or DEFAULT_AUDIO_FORMAT).lower().lstrip(".")
+        initial_fmt = raw_fmt if raw_fmt in AUDIO_FORMATS else DEFAULT_AUDIO_FORMAT
+        selected_fmt = {"value": initial_fmt}
+
+        format_dd = organize_dropdown(
+            [(f, f.upper()) for f in AUDIO_FORMATS],
+            initial_fmt,
+            "Formato",
+            width=124,
+        )
+
+        def _on_fmt_select(e) -> None:
+            val = str(getattr(e.control, "value", "") or initial_fmt).lower().lstrip(".")
+            selected_fmt["value"] = val if val in AUDIO_FORMATS else initial_fmt
+
+        format_dd.on_select = _on_fmt_select
+
+        dlg = app_dialog(
+            "Recuperar pista",
+            ft.Container(
+                content=ft.Column(controls=[], spacing=8, tight=True),
+                min_width=360,
+                max_width=660,
+                max_height=520,
+            ),
+            [],
+            width=None,
+            icon=PIcons.MAGNIFYING_GLASS,
+        )
+
+        def _close(_e=None) -> None:
+            dlg.open = False
+            try:
+                self._page_ref.update()
+            except Exception:
+                pass
+
+        async def _search(query: str) -> tuple[list[RecoveryCandidate], str]:
+            found = await search_youtube_alternatives(track, query, app_state=self.app_state)
+            candidates = [
+                candidate_to_recovery(c)
+                for c in (found.get("candidates") or [])[:5]
+            ]
+            err = str(found.get("error") or "")
+            return candidates, err
+
+        def _pick(cand: RecoveryCandidate) -> None:
+            payload = cand.payload if isinstance(cand.payload, dict) else {}
+            vid = str(payload.get("video_id") or cand.track.id or "")
+            url = str(payload.get("url") or cand.track.source_url or "")
+            fmt = str(format_dd.value or selected_fmt["value"] or initial_fmt).lower()
+            self._download_recovered_track(
+                track,
+                action_container,
+                video_id=vid,
+                candidate_url=url,
+                audio_format=fmt,
+                dlg=dlg,
+            )
+
+        retry_btn = _ghost_btn(
+            "Reintentar con formato",
+            PIcons.ARROWS_CLOCKWISE,
+            lambda _e: self._download_recovered_track(
+                track,
+                action_container,
+                audio_format=str(format_dd.value or selected_fmt["value"] or initial_fmt).lower(),
+                dlg=dlg,
+            ),
+            height=38,
+        )
+
+        panel = AlternativeSearchPanel(
+            self._page_ref,
+            track,
+            reason="Archivo no disponible en disco",
+            search_fn=_search,
+            on_select=_pick,
+            search_label="Buscar en YouTube",
+            hint_text="Título, artista, URL de YouTube o variante",
+            action_label="Descargar",
+            action_icon=PIcons.DOWNLOAD_SIMPLE,
+            empty_message="Sin coincidencias. Edita la consulta o pega una URL de YouTube.",
+            query_trailing=[format_dd],
+            action_trailing=[retry_btn],
+        )
+        dlg.content.content = panel
+        dlg.actions = [dialog_action("Cerrar", _close, kind="muted")]
+        self._recovery_dialog = dlg
+        self._recovery_panel = panel
+        self._page_ref.show_dialog(dlg)
+        await panel.run_search()
+        return panel
+
     def _download_single_track(self, track: Track, action_container: ft.Container) -> None:
         """Descarga una pista individual y al completarse habilita su reproducción inmediata."""
         st = self.app_state
@@ -932,14 +1138,20 @@ class PlaylistDetailView(ft.Container):
                 ),
             ])
         else:
-            actions.append(
+            actions.extend([
                 ContextMenuAction(
                     "Descargar canción",
                     icon=PIcons.DOWNLOAD_SIMPLE,
                     on_click=(lambda: self._download_single_track(track, action_icon)) if action_icon is not None else None,
                     disabled=self.app_state is None or action_icon is None,
-                )
-            )
+                ),
+                ContextMenuAction(
+                    "Buscar alternativa...",
+                    icon=PIcons.MAGNIFYING_GLASS,
+                    on_click=lambda: self._page_ref.run_task(self._open_track_recovery, track, action_icon),
+                    disabled=self.app_state is None,
+                ),
+            ])
         if track.source_url:
             actions.append(
                 ContextMenuAction(
