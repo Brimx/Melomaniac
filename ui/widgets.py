@@ -866,26 +866,37 @@ def show_context_menu(
                 pass
 
     overlay_holder: dict[str, ft.Control | None] = {"control": None}
+    host_holder: dict[str, ft.Container | None] = {"host": None}
 
     def _dismiss(_e=None, *, update_page: bool = True) -> None:
         ctrl = overlay_holder["control"]
+        host = host_holder["host"]
         if page is not None:
             if getattr(page, "_active_context_menu", None) is ctrl:
                 try:
                     setattr(page, "_active_context_menu", None)
                 except Exception:
                     pass
-            overlay = getattr(page, "overlay", None)
-            if overlay is not None and ctrl in overlay:
-                try:
-                    overlay.remove(ctrl)
-                except ValueError:
-                    pass
-            if update_page:
-                try:
-                    page.update()
-                except Exception:
-                    pass
+            if host is not None:
+                host.content = None
+                host.visible = False
+                if update_page:
+                    try:
+                        host.update()
+                    except Exception:
+                        pass
+            else:
+                overlay = getattr(page, "overlay", None)
+                if overlay is not None and ctrl in overlay:
+                    try:
+                        overlay.remove(ctrl)
+                    except ValueError:
+                        pass
+                if update_page:
+                    try:
+                        page.update()
+                    except Exception:
+                        pass
 
     card_controls: list[ft.Control] = []
     if title:
@@ -1002,11 +1013,33 @@ def show_context_menu(
             setattr(page, "_active_context_menu", overlay_ctrl)
         except Exception:
             pass
-        page.overlay.append(overlay_ctrl)
-        try:
-            page.update()
-        except Exception:
-            pass
+        host = getattr(page, "_context_menu_host", None)
+        if not isinstance(host, ft.Container):
+            host = ft.Container(visible=False, expand=True)
+            try:
+                setattr(page, "_context_menu_host", host)
+            except Exception:
+                pass
+        host_holder["host"] = host
+        overlay = page.overlay
+        if host not in overlay:
+            overlay.append(host)
+            host.content = overlay_ctrl
+            host.visible = True
+            try:
+                page.update()
+            except Exception:
+                pass
+        else:
+            host.content = overlay_ctrl
+            host.visible = True
+            try:
+                host.update()
+            except Exception:
+                try:
+                    page.update()
+                except Exception:
+                    pass
     return overlay_ctrl
 
 

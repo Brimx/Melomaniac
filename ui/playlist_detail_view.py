@@ -1112,7 +1112,9 @@ class PlaylistDetailView(ft.Container):
         notify(self._page_ref, f"Siguiente en cola: {track.name}")
 
     def _track_context_actions(self, track: Track, index: int, action_icon: ft.Container | None = None) -> list[ContextMenuAction]:
-        has_disk = bool(track.source_path and os.path.isfile(track.source_path))
+        has_disk = self._has_file_by_id.get(id(track))
+        if has_disk is None:
+            has_disk = bool(track.source_path and os.path.isfile(track.source_path))
         actions: list[ContextMenuAction] = []
         if has_disk:
             actions.extend([

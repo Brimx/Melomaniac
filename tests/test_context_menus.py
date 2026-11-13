@@ -147,14 +147,16 @@ class TestContextMenuHelpers(unittest.TestCase):
                 ContextMenuAction("Bloqueada", disabled=True, on_click=lambda: hits.append("no")),
             ],
         )
-        self.assertNotIn(ov1, page.overlay)
-        self.assertIn(ov2, page.overlay)
+        self.assertIsNot(page._context_menu_host.content, ov1)
+        self.assertIs(page._context_menu_host.content, ov2)
+        self.assertTrue(page._context_menu_host.visible)
 
         menu_col = ov2.menu_card.content
         item_dos = menu_col.controls[0]
         item_dos.on_click(None)
         self.assertEqual(hits, ["dos"])
-        self.assertEqual(len(page.overlay), 0)
+        self.assertFalse(page._context_menu_host.visible)
+        self.assertIsNone(page._context_menu_host.content)
 
     def test_wrap_with_context_menu_secondary_tap(self) -> None:
         page = _DummyPage()
@@ -169,7 +171,7 @@ class TestContextMenuHelpers(unittest.TestCase):
         evt = SimpleNamespace(global_position=SimpleNamespace(x=120.0, y=80.0))
         gd.on_secondary_tap_down(evt)
         self.assertEqual(len(page.overlay), 1)
-        ov = page.overlay[0]
+        ov = page.overlay[0].content
         self.assertEqual(ov.controls[1].left, 120.0)
         self.assertEqual(ov.controls[1].top, 80.0)
 
