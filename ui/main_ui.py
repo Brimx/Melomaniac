@@ -64,7 +64,7 @@ from core.config import EXPORT_DEST_LABEL
 from ui.song_row import SongRow, SkeletonRow, PreviewSkeletonRow, build_preview_row, ITEM_H
 from ui.icons import PIcons
 from ui.transfer_report import TransferReportDialog
-from ui.widgets import app_text_field, DialogMixin, notify, input_border
+from ui.widgets import app_text_field, DialogMixin, notify, input_border, safe_update
 
 from ui.tokens import (
     BORDER_LIGHT,
@@ -578,6 +578,13 @@ class PlaylistManagerUI(DialogMixin, DivisionMixin, ActionsMixin, LayoutMixin):
 
     def _on_state_changed(self) -> None:
         s = self.state
+        if getattr(self, "_current_module", 0) != 0:
+            self._gestion_dirty = True
+            self._sync_report_dialog(s)
+            if s.transfer_state == TransferState.DONE and not getattr(self, "_completion_snack_shown", False):
+                self._sync_progress(s, False, True, False, False, False, True)
+            return
+        self._gestion_dirty = False
         is_local_src = s.source in AppState.LOCAL_SOURCES
         # Delegacion SRP - pasa datos simples (regla 10), metodos <50L (regla 6)
         self._sync_platform_ui(s, is_local_src)
@@ -606,7 +613,9 @@ class PlaylistManagerUI(DialogMixin, DivisionMixin, ActionsMixin, LayoutMixin):
             self._sync_dual_view(s)
         except Exception:
             pass
-        self.page.update()
+        panel = getattr(self, "_panel_gestion", None)
+        if not safe_update(panel):
+            self.page.update()
 
     def _sync_platform_ui(self, s, is_local_src: bool) -> None:
         """Actualiza selectores y hint segun fuente (regla 6 SRP)."""

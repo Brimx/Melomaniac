@@ -655,10 +655,15 @@ class DownloadsView(ft.Container):
 
     def refresh(self) -> None:
         """Recarga preferencias externas (formato por defecto desde Config)."""
+        self._downloads_dirty = False
         self._format_dd.value = settings_store.get_download_format()
         self._refresh()
 
     def _refresh(self) -> None:
+        if not getattr(self, "visible", True):
+            self._downloads_dirty = True
+            return
+        self._downloads_dirty = False
         st = self.app_state
         state = st.download_state
         running = state == TransferState.RUNNING

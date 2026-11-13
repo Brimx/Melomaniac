@@ -62,6 +62,27 @@ FONT_SEMI = FONT_TEXT_SEMI
 _DEBOUNCE_TASKS: dict[Any, asyncio.Task] = {}
 
 
+def is_mounted(control: object) -> bool:
+    """Devuelve True solo si el control sigue adjunto a una Page de Flet."""
+    if control is None:
+        return False
+    try:
+        return control.page is not None
+    except Exception:
+        return False
+
+
+def safe_update(control: object) -> bool:
+    """Actualiza el control solo si está montado en una Page; ignora desconexiones."""
+    if not is_mounted(control):
+        return False
+    try:
+        control.update()
+        return True
+    except Exception:
+        return False
+
+
 def debounce(key: Any, fn: Callable[[], None], delay: float = 0.25) -> None:
     """Ejecuta ``fn`` una vez tras ``delay``; cancela la llamada previa de ``key``.
 

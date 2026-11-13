@@ -16,6 +16,7 @@ from ui.widgets import (
     input_border,
     limit_label,
     organize_dropdown,
+    safe_update,
 )
 from ui.tokens import (
     ACCENT,
@@ -458,7 +459,7 @@ class DivisionMixin:
             div_tracks = s.segments.get(active, [])
             _rebuild_left(left_search.value or "")
             _rebuild_right(right_search.value or "")
-            self.page.update()
+            safe_update(dlg_ref.get("dlg"))
 
         def _remove_from_division(_e):
             nonlocal div_tracks
@@ -473,7 +474,7 @@ class DivisionMixin:
             right_sel.clear()
             div_tracks = s.segments.get(active, [])
             _rebuild_right(right_search.value or "")
-            self.page.update()
+            safe_update(dlg_ref.get("dlg"))
 
         def _apply_edit(_e):
             s.apply_search(s.search_query)
@@ -492,7 +493,7 @@ class DivisionMixin:
                 div_tracks = s.segments.get(active, [])
                 _rebuild_left(left_search.value or "")
                 _rebuild_right(right_search.value or "")
-                self.page.update()
+                safe_update(dlg_ref.get("dlg"))
             except: pass
 
         dlg_ref: dict = {}

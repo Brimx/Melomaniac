@@ -102,8 +102,6 @@ def show_organize_dialog(page: ft.Page, state) -> None:
         adv_row.visible = avanzado["value"]
         try: adv_row.update()
         except: pass
-        try: page.update()
-        except: pass
     sw_adv = ft.Switch(label="Avanzado", value=_init_adv, active_color=ACCENT, on_change=_on_adv)
 
     content = ft.Column([

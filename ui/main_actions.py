@@ -21,6 +21,7 @@ from ui.widgets import (
     input_border,
     limit_label,
     organize_dropdown,
+    safe_update,
 )
 from ui.fonts import FONT_HEADLINE, FONT_HEADLINE_BOLD, FONT_TEXT, mono_family
 from ui.tokens import (
@@ -1528,7 +1529,9 @@ class ActionsMixin:
             )
             self._mode_bar.visible = bool(has_transform and not target)
         try:
-            self.page.update()
+            content = getattr(self, "_content", None)
+            if not safe_update(content):
+                self.page.update()
         except Exception:
             pass
 

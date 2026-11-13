@@ -58,6 +58,7 @@ from ui.widgets import (
     app_text_field,
     input_border,
     organize_dropdown,
+    safe_update,
 )
 from ui.icons import FONT_PHOSPHOR, FONT_PHOSPHOR_FILL, PIcons, app_icon, app_icon_button
 from ui.fonts import (
@@ -1037,15 +1038,28 @@ class LayoutMixin:
                 self._refresh_rail_selection()
                 if idx == 0:
                     self._sync_skeleton_count()
+                    if getattr(self, "_gestion_dirty", False):
+                        self._on_state_changed()
+                        refreshed_self = True
                 if hasattr(self, "player_bar") and self.player_bar is not None:
                     self.player_bar.log_audio_services_count(
                         f"vista={self._rail_dests[idx][0]}"
                     )
-                if refreshed_self and 0 <= prev_idx < len(self._module_panels):
-                    self._module_panels[prev_idx].update()
-                else:
-                    self._module_stack.update()
-                self._nav_rail.update()
+                prev_panel = (
+                    self._module_panels[prev_idx]
+                    if 0 <= prev_idx < len(self._module_panels)
+                    else None
+                )
+                curr_panel = (
+                    self._module_panels[idx]
+                    if 0 <= idx < len(self._module_panels)
+                    else None
+                )
+                safe_update(prev_panel)
+                if not refreshed_self:
+                    if not safe_update(curr_panel):
+                        safe_update(self._module_stack)
+                safe_update(self._nav_rail)
             except Exception:
                 pass
 
