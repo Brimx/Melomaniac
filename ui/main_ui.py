@@ -77,7 +77,7 @@ from ui.tokens import (
 )
 from ui.division_dialogs import DivisionMixin
 from ui.main_actions import ActionsMixin
-from ui.main_layout import LayoutMixin
+from ui.main_layout import LayoutMixin, compute_contextual_actions_state
 
 # Por encima de este número conviene un único update del ListView en vez de
 # publicar una actualización por fila (transferencias masivas, reordenamientos).
@@ -280,7 +280,7 @@ class PlaylistManagerUI(DialogMixin, DivisionMixin, ActionsMixin, LayoutMixin):
         # mode bar visible mientras exista transformación (§25) — no solo 'doble'
         try:
             has_transform = bool(s.segments) or s.show_dual or mode in ("doble", "preview")
-            self._mode_bar.visible = bool(is_dual or has_transform)
+            self._mode_bar.visible = bool((is_dual or has_transform) and not getattr(self, "_catalog_open", False))
         except Exception:
             pass
         # headers SOURCE|RESULT + Divisiones §1,6
@@ -435,6 +435,14 @@ class PlaylistManagerUI(DialogMixin, DivisionMixin, ActionsMixin, LayoutMixin):
         self.on_show_welcome                = None  # inyectado por app.py
         self._prev_dual_mode: str = "lista"
         self._view_shimmer_task: Optional[asyncio.Task] = None
+        self._catalog_open: bool = False
+        self._catalog_tab: str = "songs"
+        self._catalog_results: list[dict] = []
+        self._catalog_detail_stack: list[dict] = []
+        self._catalog_detail_tracks: list[Track] = []
+        self._catalog_detail_title_str: str = ""
+        self._catalog_detail_platform: str = ""
+        self._catalog_search_task: Optional[asyncio.Task] = None
 
         # ──────────────────────────────────────────────────────────────
         # FILE PICKER
@@ -615,13 +623,9 @@ class PlaylistManagerUI(DialogMixin, DivisionMixin, ActionsMixin, LayoutMixin):
         if self._empty_hint_text.value != new_hint:
             self._empty_hint_text.value = new_hint
             self._empty_hint_text.update()
-        dest_needs_confirm = is_local_src and not s.destination_confirmed
-        new_dst_border = WARNING if dest_needs_confirm else BORDER_LIGHT
-        new_dst_focused = WARNING if dest_needs_confirm else ACCENT
-        if getattr(self._dst_dd, "_last_border_key", None) != (new_dst_border, new_dst_focused):
-            self._dst_dd.border = input_border(new_dst_border, new_dst_focused)
-            self._dst_dd._last_border_key = (new_dst_border, new_dst_focused)
-            self._dst_dd.update()
+        if getattr(self._dst_dd, "_last_border_key", None) != (BORDER_LIGHT, ACCENT):
+            self._dst_dd.border = input_border(BORDER_LIGHT, ACCENT)
+            self._dst_dd._last_border_key = (BORDER_LIGHT, ACCENT)
 
     def _sync_titles(self, s) -> None:
         self._playlist_title.value = s.playlist_name
@@ -644,54 +648,36 @@ class PlaylistManagerUI(DialogMixin, DivisionMixin, ActionsMixin, LayoutMixin):
             base = f"{plat}: clic para revalidar ahora"
             state_txt = "OK" if ok else ("sin validar" if ok is None else "fallo")
             ic.tooltip = f"{base} \u00b7 {hint}" if hint else f"{base} \u00b7 {state_txt}"
-        if s.destination == EXPORT_DEST_LABEL:
-            dest_ok = True
-            self._dest_session_warn.visible = False
-            self._dest_session_warn.value = ""
-        else:
-            session = s.auth_session_ok.get(s.destination)
-            # ``None`` no bloquea el botón: se confirma en _on_transfer. Solo
-            # un fallo explícito (False) deshabilita la transferencia.
-            dest_ok = session is not False
-            self._dest_session_warn.visible = session is not True
-            self._dest_session_warn.value = "" if session is True else (
-                f"Sesión de {s.destination} sin validar · pulsa el icono para comprobarla"
-                if session is None
-                else f"No se confirmó la sesión en {s.destination}"
+        # El destino se selecciona y valida con preflight en vivo dentro del diálogo
+        # de transferencia (Bloques 2.1 y 2.9), sin bloqueo permanente en el sidebar.
+        self._dest_session_warn.visible = False
+        self._dest_session_warn.value = ""
+        if s.source in AppState.PLATFORMS:
+            src_ok = s.auth_session_ok.get(s.source)
+            self._status_badge.value = (
+                f"\u2713 Origen: {s.source}"
+                if src_ok is True
+                else (f"Origen: {s.source}" if src_ok is None else f"\u26a0 Origen: {s.source} (sin sesi\u00f3n)")
             )
-        has_transform = bool(s.segments or getattr(s, 'show_dual', False) or (getattr(s, 'source_tracks', None) and s.tracks != s.source_tracks))
-        if s.source == s.destination and not has_transform:
-            self._status_badge.value = "\u26a0 Origen y destino iguales"
-            self._status_badge.color = WARNING
-        elif s.source == s.destination and has_transform:
-            self._status_badge.value = f"\u2713 {s.source} \u2192 {s.destination}"
-            self._status_badge.color = SUCCESS
-        elif s.destination == EXPORT_DEST_LABEL:
-            self._status_badge.value = f"\u2713 {s.source} \u2192 Exportar local"
-            self._status_badge.color = SUCCESS
+            self._status_badge.color = SUCCESS if src_ok is True else (TEXT_MUTED if src_ok is None else WARNING)
         else:
-            self._status_badge.value = f"\u2713 {s.source} \u2192 {s.destination}"
-            self._status_badge.color = SUCCESS
+            self._status_badge.value = f"Origen: {s.source}"
+            self._status_badge.color = TEXT_MUTED
         self._select_all_chk.value = s.select_all
-        # actualiza label del botón transferir/exportar según destino
-        try:
-            is_export = s.destination == EXPORT_DEST_LABEL
-            label = "Exportar" if is_export else "Transferir"
-            glyph = PIcons.EXPORT if is_export else PIcons.ARROWS_LEFT_RIGHT
-            if isinstance(self._transfer_btn.content, ft.Row) and len(self._transfer_btn.content.controls) >= 2:
-                self._transfer_btn.content.controls[0].value = glyph
-                self._transfer_btn.content.controls[1].value = label
-            elif hasattr(self._transfer_btn.content, "value"):
-                self._transfer_btn.content.value = label
-        except Exception:
-            pass
-        return dest_ok
+        return True
 
     def _sync_list_state(self, s, is_loading: bool, is_ready: bool, is_error: bool, is_idle: bool) -> None:
         self._empty_state.visible = is_idle
         self._skeleton_view_wrap.visible = is_loading
         self._list_view_wrap.visible = is_ready and not is_error
         self._error_state.visible = is_error
+        catalog_open = bool(getattr(self, "_catalog_open", False))
+        if hasattr(self, "_col_headers"):
+            self._col_headers.visible = not catalog_open
+        if hasattr(self, "_list_area"):
+            self._list_area.visible = not catalog_open
+        if hasattr(self, "_catalog_panel"):
+            self._catalog_panel.visible = catalog_open
         if is_error:
             self._error_text.value = s.load_error
         if is_loading:
@@ -845,27 +831,20 @@ class PlaylistManagerUI(DialogMixin, DivisionMixin, ActionsMixin, LayoutMixin):
         self._telemetry.sync_mode()
 
     def _sync_action_buttons(self, s, is_local_src: bool, dest_ok: bool, is_loading: bool, is_transferring: bool, is_ready: bool, net_blocked: bool, rule4_blocked: bool) -> None:
-        is_export = s.destination == EXPORT_DEST_LABEL
         self._load_btn.disabled = net_blocked or is_loading
-        if is_export:
-            # export local no depende de red/auth
-            self._transfer_btn.disabled = is_transferring or not is_ready or rule4_blocked
-        else:
-            self._transfer_btn.disabled = net_blocked or is_transferring or not is_ready or not dest_ok or rule4_blocked
+        self._transfer_btn.disabled = net_blocked or is_transferring or not is_ready
         self._clear_session_btn.disabled = is_loading or is_transferring
         self._id_clear_btn.visible = bool(self._id_field.value)
-        if is_export:
-            self._transfer_btn.tooltip = "Exportar selección a archivo (TXT/CSV/M3U/XSPF)"
-        elif rule4_blocked:
-            self._transfer_btn.tooltip = "\u26a0 Elige un destino antes de transferir"
-        elif not dest_ok:
-            self._transfer_btn.tooltip = f"Sesi\u00f3n expirada en {s.destination}"
-        elif s.auth_session_ok.get(s.destination) is None:
-            self._transfer_btn.tooltip = (
-                f"Sesi\u00f3n de {s.destination} sin validar \u00b7 se comprobar\u00e1 al transferir"
-            )
+        if is_transferring:
+            self._transfer_btn.tooltip = "Transferencia en curso"
+        elif net_blocked:
+            self._transfer_btn.tooltip = "Sin conexión (rate limit activo)"
         else:
-            self._transfer_btn.tooltip = "Transferir selecci\u00f3n al destino"
+            self._transfer_btn.tooltip = "Elegir destino y transferir o exportar la selección"
+        if hasattr(self, "_apply_contextual_actions_state"):
+            self._apply_contextual_actions_state(
+                compute_contextual_actions_state(s, net_blocked=net_blocked)
+            )
 
 
     def _sync_list_view(self, tracks: list[Track]) -> None:
@@ -1089,6 +1068,8 @@ class PlaylistManagerUI(DialogMixin, DivisionMixin, ActionsMixin, LayoutMixin):
             pass
         if self._search_task and not self._search_task.done():
             self._search_task.cancel()
+        if getattr(self, "_catalog_search_task", None) and not self._catalog_search_task.done():
+            self._catalog_search_task.cancel()
 
     # ── Circuit breaker reactions ──────────────────────────────────────
 

@@ -13,6 +13,8 @@ from ui.tokens import (
     BG_DEEP,
     BG_HOVER,
     MOTION_HOVER_MS,
+    RADIUS_BUTTON,
+    RADIUS_INPUT,
     RADIUS_RAIL,
     RADIUS_RAIL_ITEM,
     RAIL_ANIM_MS,
@@ -55,6 +57,7 @@ from ui.widgets import (
     app_text,
     app_text_field,
     input_border,
+    organize_dropdown,
 )
 from ui.icons import FONT_PHOSPHOR, FONT_PHOSPHOR_FILL, PIcons, app_icon, app_icon_button
 from ui.fonts import (
@@ -67,7 +70,71 @@ from ui.fonts import (
 )
 from ui.telemetry import TelemetryDrawer
 from core.config import APP_VERSION, EXPORT_DEST_LABEL
+from core.models import LoadState, TransferState
 from core.state import AppState
+
+
+def compute_contextual_actions_state(
+    state, *, net_blocked: bool = False
+) -> dict[str, dict[str, object]]:
+    """Calcula visibilidad, estado habilitado y tooltip de la barra contextual.
+
+    Mantiene la regla de 2.10: mostrar/habilitar solo acciones aplicables a la
+    fuente cargada (por ejemplo, ocultar ``Descargar`` si todas las pistas ya
+    son archivos de audio locales en disco, y ocultar acciones de pista cuando
+    no hay playlist cargada salvo ``Fusionar``).
+    """
+    tracks = list(getattr(state, "tracks", []) or [])
+    load_state = getattr(state, "load_state", LoadState.IDLE)
+    is_ready = load_state == LoadState.READY and len(tracks) > 0
+    is_transferring = getattr(state, "transfer_state", TransferState.IDLE) == TransferState.RUNNING
+    download_busy = getattr(state, "download_state", TransferState.IDLE) == TransferState.RUNNING
+    all_local_audio = bool(tracks) and all(bool(getattr(t, "source_path", "")) for t in tracks)
+
+    return {
+        "transfer": {
+            "visible": is_ready,
+            "disabled": (not is_ready) or is_transferring or net_blocked,
+            "tooltip": (
+                "Transferencia en curso"
+                if is_transferring
+                else (
+                    "Sin conexión (rate limit activo)"
+                    if net_blocked
+                    else "Elegir destino y transferir la selección"
+                )
+            ),
+        },
+        "organize": {
+            "visible": is_ready,
+            "disabled": not is_ready,
+            "tooltip": "Ordenar o agrupar las pistas cargadas",
+        },
+        "split": {
+            "visible": is_ready,
+            "disabled": not is_ready,
+            "tooltip": "Dividir la playlist por criterio o grupos manuales",
+        },
+        "merge": {
+            "visible": True,
+            "disabled": is_transferring,
+            "tooltip": "Fusionar varias playlists o fuentes locales sin duplicados",
+        },
+        "download": {
+            "visible": is_ready and not all_local_audio,
+            "disabled": (not is_ready) or all_local_audio or download_busy,
+            "tooltip": (
+                "Descarga en curso"
+                if download_busy
+                else "Descargar pistas seleccionadas con yt-dlp"
+            ),
+        },
+        "export": {
+            "visible": is_ready,
+            "disabled": not is_ready,
+            "tooltip": "Exportar a archivo o añadir a una playlist destino",
+        },
+    }
 
 
 class LayoutMixin:
@@ -233,11 +300,13 @@ class LayoutMixin:
             options=[ft.dropdown.Option(key=p, text=p) for p in AppState.SOURCE_OPTIONS],
             on_select=_on_src_select, **_dd_style,
         )
+        # El destino definitivo se elige con preflight dentro del diálogo de
+        # transferencia; este control se conserva oculto por compatibilidad.
         _dst_opts = [*AppState.PLATFORMS, EXPORT_DEST_LABEL]
         self._dst_dd = ft.Dropdown(
             label="Destino", value=s.destination,
             options=[ft.dropdown.Option(key=p, text=p) for p in _dst_opts],
-            on_select=_on_dst_select, **_dd_style,
+            on_select=_on_dst_select, visible=False, **_dd_style,
         )
         self._status_badge      = ft.Text("", size=10, color=SUCCESS, font_family=mono_family(), opacity=1.0)
         self._dest_session_warn = ft.Text("", size=9, color=ERROR_COL, font_family=FONT_TEXT, visible=False)
@@ -381,10 +450,218 @@ class LayoutMixin:
 
     def _build_content(self) -> None:
         header_bar = self._build_content_header()
-        col_headers = self._build_col_headers()
+        self._contextual_bar = self._build_contextual_bar()
+        self._catalog_panel = self._build_catalog_panel()
+        self._col_headers = self._build_col_headers()
         self._build_list_and_preview_panels()
         self._build_mode_bar()
-        self._assemble_content_area(header_bar, col_headers)
+        self._assemble_content_area(header_bar, self._col_headers)
+
+    def _build_contextual_bar(self) -> ft.Container:
+        """Barra de acciones contextuales encima de la tabla (Bloque 2.10)."""
+        self._ctx_transfer_btn = _primary_btn(
+            "Transferir", PIcons.ARROWS_LEFT_RIGHT, self._on_transfer, height=34,
+        )
+        self._ctx_organize_btn = _ghost_btn(
+            "Organizar", PIcons.SLIDERS_HORIZONTAL, self._on_organize, height=34,
+        )
+        self._ctx_split_btn = _ghost_btn(
+            "Dividir", PIcons.GIT_BRANCH, self._on_split, height=34,
+        )
+        self._ctx_merge_btn = _ghost_btn(
+            "Fusionar", PIcons.QUEUE, lambda _: self._open_merge_dialog(), height=34,
+        )
+        self._ctx_download_btn = _ghost_btn(
+            "Descargar", PIcons.DOWNLOAD_SIMPLE, lambda _: self._on_batch_download(), height=34,
+        )
+        self._ctx_export_btn = _ghost_btn(
+            "Exportar", PIcons.EXPORT,
+            lambda _: asyncio.create_task(self._open_export_dialog()), height=34,
+        )
+        self._ctx_action_buttons = {
+            "transfer": self._ctx_transfer_btn,
+            "organize": self._ctx_organize_btn,
+            "split": self._ctx_split_btn,
+            "merge": self._ctx_merge_btn,
+            "download": self._ctx_download_btn,
+            "export": self._ctx_export_btn,
+        }
+        row = ft.Row(
+            controls=[
+                self._ctx_transfer_btn,
+                self._ctx_organize_btn,
+                self._ctx_split_btn,
+                self._ctx_merge_btn,
+                self._ctx_download_btn,
+                self._ctx_export_btn,
+            ],
+            spacing=8,
+            wrap=True,
+            vertical_alignment=ft.CrossAxisAlignment.CENTER,
+        )
+        bar = ft.Container(
+            content=row,
+            bgcolor=BG_SURFACE,
+            border=ft.Border.all(0.8, BORDER_MUTED),
+            border_radius=RADIUS_INPUT,
+            padding=ft.Padding.symmetric(horizontal=12, vertical=8),
+        )
+        self._apply_contextual_actions_state(
+            compute_contextual_actions_state(self.state)
+        )
+        return bar
+
+    def _apply_contextual_actions_state(
+        self, states: dict[str, dict[str, object]]
+    ) -> None:
+        """Aplica visibilidad, habilitación y tooltips a la barra contextual."""
+        buttons = getattr(self, "_ctx_action_buttons", {})
+        for key, btn in buttons.items():
+            spec = states.get(key)
+            if not spec:
+                continue
+            btn.visible = bool(spec.get("visible", True))
+            btn.disabled = bool(spec.get("disabled", False))
+            tip = str(spec.get("tooltip", "") or "")
+            if tip:
+                btn.tooltip = tip
+
+    def _build_catalog_panel(self) -> ft.Container:
+        """Panel de búsqueda en catálogo con pestañas Canciones/Álbumes/Artistas (2.11)."""
+        default_plat = (
+            self.state.source
+            if self.state.source in AppState.PLATFORMS
+            else AppState.PLATFORMS[0]
+        )
+        self._catalog_platform_dd = organize_dropdown(
+            [(p, p) for p in AppState.PLATFORMS],
+            default_plat,
+            "Plataforma",
+            width=170,
+            height=38,
+            on_select=self._on_catalog_platform_change,
+        )
+        self._catalog_query_field = app_text_field(
+            hint_text="Buscar canciones, álbumes o artistas…",
+            prefix_icon=PIcons.MAGNIFYING_GLASS,
+            expand=True,
+            height=38,
+            on_submit=lambda _: asyncio.create_task(self._on_catalog_search_submit()),
+        )
+        self._catalog_run_btn = _primary_btn(
+            "Buscar",
+            PIcons.MAGNIFYING_GLASS,
+            lambda _: asyncio.create_task(self._on_catalog_search_submit()),
+            height=38,
+        )
+        self._catalog_close_btn = app_icon_button(
+            glyph=PIcons.X,
+            icon_color=TEXT_MUTED,
+            hover_color_icon=TEXT_PRIMARY,
+            size=16,
+            tooltip="Volver a la tabla de playlist",
+            on_click=lambda _: self._toggle_catalog_panel(False),
+            width=32,
+            height=32,
+        )
+        try:
+            self._catalog_tabs: ft.Control = ft.SegmentedButton(
+                selected=["songs"],
+                allow_empty_selection=False,
+                allow_multiple_selection=False,
+                show_selected_icon=False,
+                style=ft.ButtonStyle(
+                    bgcolor={ft.ControlState.SELECTED: ACCENT, ft.ControlState.DEFAULT: BG_SURFACE},
+                    color={ft.ControlState.SELECTED: TEXT_PRIMARY, ft.ControlState.DEFAULT: TEXT_MUTED},
+                ),
+                segments=[
+                    ft.Segment(value="songs", label=ft.Text("Canciones", size=11, font_family=FONT_HEADLINE)),
+                    ft.Segment(value="albums", label=ft.Text("Álbumes", size=11, font_family=FONT_HEADLINE)),
+                    ft.Segment(value="artists", label=ft.Text("Artistas", size=11, font_family=FONT_HEADLINE)),
+                ],
+                on_change=self._on_catalog_tab_change,
+            )
+        except Exception:
+            self._catalog_tabs = organize_dropdown(
+                [("songs", "Canciones"), ("albums", "Álbumes"), ("artists", "Artistas")],
+                "songs",
+                "Tipo",
+                width=160,
+                height=38,
+                on_select=self._on_catalog_tab_change,
+            )
+
+        self._catalog_detail_title = ft.Text(
+            "", size=13, color=TEXT_PRIMARY, font_family=FONT_HEADLINE_BOLD, expand=True,
+        )
+        self._catalog_detail_load_btn = _primary_btn(
+            "Cargar en Gestión", PIcons.PLAYLIST, lambda _: self._on_catalog_detail_load(), height=32,
+        )
+        self._catalog_detail_dl_btn = _ghost_btn(
+            "Descargar", PIcons.DOWNLOAD_SIMPLE, lambda _: self._on_catalog_detail_download(), height=32,
+        )
+        self._catalog_detail_add_btn = _ghost_btn(
+            "Añadir a playlist", PIcons.PLUS,
+            lambda _: asyncio.create_task(self._on_catalog_detail_add()), height=32,
+        )
+        self._catalog_detail_bar = ft.Container(
+            visible=False,
+            bgcolor=CHIP_BG,
+            border=ft.Border.all(0.8, BORDER_LIGHT),
+            border_radius=RADIUS_INPUT,
+            padding=ft.Padding.symmetric(horizontal=10, vertical=8),
+            content=ft.Row(
+                [
+                    _ghost_btn("Volver", PIcons.ARROW_LEFT, lambda _: self._on_catalog_back(), height=32),
+                    self._catalog_detail_title,
+                    self._catalog_detail_load_btn,
+                    self._catalog_detail_dl_btn,
+                    self._catalog_detail_add_btn,
+                ],
+                spacing=8,
+                vertical_alignment=ft.CrossAxisAlignment.CENTER,
+            ),
+        )
+        self._catalog_status = ft.Text(
+            "Elige una pestaña y escribe una búsqueda para explorar el catálogo.",
+            size=11,
+            color=TEXT_MUTED,
+            font_family=FONT_TEXT,
+        )
+        self._catalog_results_lv = ft.ListView(
+            spacing=6, expand=True, padding=ft.Padding.only(bottom=12),
+        )
+        return ft.Container(
+            visible=False,
+            expand=True,
+            bgcolor=BG_LIST,
+            border=ft.Border.all(0.8, BORDER_LIGHT),
+            border_radius=RADIUS_INPUT,
+            padding=ft.Padding.all(14),
+            content=ft.Column(
+                [
+                    ft.Row(
+                        [
+                            self._catalog_platform_dd,
+                            self._catalog_query_field,
+                            self._catalog_run_btn,
+                            self._catalog_close_btn,
+                        ],
+                        spacing=8,
+                        vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                    ),
+                    ft.Row(
+                        [self._catalog_tabs, ft.Container(expand=True), self._catalog_status],
+                        spacing=10,
+                        vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                    ),
+                    self._catalog_detail_bar,
+                    self._catalog_results_lv,
+                ],
+                spacing=10,
+                expand=True,
+            ),
+        )
 
     def _build_content_header(self) -> ft.Row:
         self._playlist_title = ft.Text(
@@ -399,6 +676,13 @@ class LayoutMixin:
             content_padding=ft.Padding.symmetric(horizontal=10, vertical=0),
             on_change=self._on_search_change,
         )
+        self._catalog_search_btn = _ghost_btn(
+            "Catálogo",
+            PIcons.GLOBE,
+            lambda _: self._on_toggle_catalog_search(),
+            height=36,
+        )
+        self._catalog_search_btn.tooltip = "Buscar canciones, álbumes o artistas en plataformas"
         self._segment_dd = ft.Dropdown(
             width=160, height=38,
             bgcolor=BG_INPUT, border=input_border(),
@@ -471,8 +755,8 @@ class LayoutMixin:
         header_bar = ft.Row(controls=[
             ft.Column([self._playlist_title, self._track_count], spacing=2),
             ft.Container(expand=True),
-            self._auth_strip, self._search_field, self._select_all_chk,
-            self._clear_session_btn,
+            self._auth_strip, self._search_field, self._catalog_search_btn,
+            self._select_all_chk, self._clear_session_btn,
         ], vertical_alignment=ft.CrossAxisAlignment.CENTER)
 
         return header_bar
@@ -529,6 +813,12 @@ class LayoutMixin:
                 ft.Text("Sin playlist cargada", size=14, color=TEXT_MUTED, font_family=FONT_HEADLINE,
                         opacity=1.0),
                 self._empty_hint_text,
+                _ghost_btn(
+                    "Buscar en catálogo",
+                    PIcons.MAGNIFYING_GLASS,
+                    lambda _: self._on_toggle_catalog_search(),
+                    height=34,
+                ),
             ], horizontal_alignment=ft.CrossAxisAlignment.CENTER,
                alignment=ft.CrossAxisAlignment.CENTER, spacing=8),
             alignment=ft.Alignment.CENTER, visible=True, **_sf,
@@ -673,8 +963,19 @@ class LayoutMixin:
 
         self._content = ft.Container(
             expand=True, bgcolor=BG_LIST, padding=ft.Padding.all(24),
-            content=ft.Column(controls=[self._content_progress, header_bar, col_headers, self._mode_bar, list_area],
-                              spacing=10, expand=True),
+            content=ft.Column(
+                controls=[
+                    self._content_progress,
+                    header_bar,
+                    self._contextual_bar,
+                    self._catalog_panel,
+                    col_headers,
+                    self._mode_bar,
+                    list_area,
+                ],
+                spacing=10,
+                expand=True,
+            ),
         )
 
     def _build_nav_rail(self) -> None:
