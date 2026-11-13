@@ -331,30 +331,47 @@ class PlaylistDetailView(ft.Container):
             except Exception:
                 pass
 
+    def _download_context(self) -> dict[str, str]:
+        """Destino de descarga común para lote, pista individual y recuperación."""
+        pl_name, pl_plat = self._playlist_download_identity()
+        return {
+            "destination_dir": settings_store.get_download_dir(),
+            "playlist_name": pl_name,
+            "platform": pl_plat,
+        }
+
     def _on_download(self, _e=None) -> None:
-        """Encola todas las pistas de la playlist en la cola de Descargas."""
+        """Encola las pistas faltantes de la playlist en la cola de Descargas."""
         st = self.app_state
         if st is None or not self._tracks:
             return
         if st.download_state == TransferState.RUNNING:
             notify(self._page_ref, "Ya hay una descarga en curso", kind="error")
             return
-        pl_name, pl_plat = self._playlist_download_identity()
+        self._match_local_files()
+        missing = [
+            t for t in self._tracks
+            if not (t.source_path and os.path.isfile(t.source_path))
+        ]
+        if not missing:
+            self._update_header_play_count()
+            safe_update(self._play_all_btn)
+            safe_update(self._shuffle_btn)
+            notify(self._page_ref, "Todas las canciones ya están descargadas en disco")
+            return
         try:
             task = st.download_tracks(
-                self._tracks,
-                destination_dir=settings_store.get_download_dir(),
-                playlist_name=pl_name,
-                platform=pl_plat,
+                missing,
+                **self._download_context(),
             )
         except Exception as exc:  # noqa: BLE001
             notify(self._page_ref, f"No se pudo iniciar la descarga: {exc}", kind="error")
             return
         if task is not None:
-            self._watch_download_task(task, list(self._tracks))
+            self._watch_download_task(task, list(missing))
         cb = self._on_open_downloads
         notify(
-            self._page_ref, f"Descargando {len(self._tracks)} pistas",
+            self._page_ref, f"Descargando {len(missing)} pistas",
             action="Ver" if cb else None,
             on_action=(lambda e: cb()) if cb else None,
         )
@@ -625,97 +642,19 @@ class PlaylistDetailView(ft.Container):
         }
 
     def _match_local_files(self) -> int:
-        """Asocia source_path a pistas descargadas de esta playlist o en Descargas/locales."""
+        """Asocia ``source_path`` cruzando carpeta propia, otras playlists y locales."""
         try:
-            from engine.downloader import (
-                _target_stem,
-                read_playlist_manifest,
-                resolve_download_dir,
-                resolve_playlist_dir,
-            )
-            from engine.parsers import _LOCAL_AUDIO_EXTENSIONS
+            from services.local_index import match_tracks_against_library
 
-            dl_dir = resolve_download_dir(settings_store.get_download_dir(), create=False)
             pl_name, pl_plat = self._playlist_download_identity()
-            candidate_dirs: list[Path] = []
-            if pl_name:
-                pl_dir = resolve_playlist_dir(dl_dir, pl_name, pl_plat, create=False)
-                if pl_dir.is_dir():
-                    candidate_dirs.append(pl_dir)
-                if pl_plat:
-                    plain_dir = resolve_playlist_dir(dl_dir, pl_name, "", create=False)
-                    if plain_dir != pl_dir and plain_dir.is_dir():
-                        candidate_dirs.append(plain_dir)
-
-            if not self._is_manifest:
-                candidate_dirs.append(dl_dir)
-                for extra in settings_store.get_local_folders():
-                    if not extra or not os.path.isdir(extra):
-                        continue
-                    extra_path = Path(extra)
-                    if pl_name:
-                        sub = resolve_playlist_dir(extra_path, pl_name, pl_plat, create=False)
-                        if sub.is_dir():
-                            candidate_dirs.append(sub)
-                    candidate_dirs.append(extra_path)
-
-            manifest_paths_by_id: dict[str, str] = {}
-            manifest_paths_by_pair: dict[tuple[str, str], str] = {}
-            disk_files: dict[str, str] = {}
-            for d in candidate_dirs:
-                if d.is_dir():
-                    mdata = read_playlist_manifest(d)
-                    for entry in mdata.get("tracks") or []:
-                        if not isinstance(entry, dict):
-                            continue
-                        epath = str(entry.get("path") or "").strip()
-                        if not epath or not os.path.isfile(epath):
-                            continue
-                        eid = str(entry.get("id") or "").strip()
-                        if eid and eid not in manifest_paths_by_id:
-                            manifest_paths_by_id[eid] = epath
-                        epair = (
-                            str(entry.get("name") or entry.get("title") or "").strip().lower(),
-                            str(entry.get("artist") or "").strip().lower(),
-                        )
-                        if epair[0] and epair not in manifest_paths_by_pair:
-                            manifest_paths_by_pair[epair] = epath
-                try:
-                    for fname in os.listdir(d):
-                        lower = fname.lower()
-                        if lower not in disk_files:
-                            disk_files[lower] = os.path.join(str(d), fname)
-                except OSError:
-                    continue
-
-            matched = 0
-            has_file_map: dict[int, bool] = {}
-            for tr in list(self._tracks):
-                if tr.source_path and os.path.isfile(tr.source_path):
-                    matched += 1
-                    has_file_map[id(tr)] = True
-                    continue
-                direct = manifest_paths_by_id.get(str(tr.id or "").strip()) or manifest_paths_by_pair.get(
-                    (str(tr.name or "").strip().lower(), str(tr.artist or "").strip().lower())
-                )
-                if direct and os.path.isfile(direct):
-                    tr.source_path = direct
-                    matched += 1
-                    has_file_map[id(tr)] = True
-                    continue
-                stem = _target_stem(tr).lower()
-                found = False
-                for ext in _LOCAL_AUDIO_EXTENSIONS:
-                    candidate_name = f"{stem}{ext}".lower()
-                    if candidate_name in disk_files:
-                        candidate_path = disk_files[candidate_name]
-                        if os.path.isfile(candidate_path):
-                            tr.source_path = candidate_path
-                            matched += 1
-                            found = True
-                            break
-                has_file_map[id(tr)] = found
-            self._has_file_by_id = has_file_map
+            matched = match_tracks_against_library(
+                self._tracks,
+                download_dir=settings_store.get_download_dir(),
+                local_folders=settings_store.get_local_folders(),
+                playlist_name=pl_name,
+                platform=pl_plat,
+            )
+            self._has_file_by_id = self._compute_has_file_map(self._tracks)
             return matched
         except Exception:
             self._has_file_by_id = {}
@@ -808,8 +747,8 @@ class PlaylistDetailView(ft.Container):
             try:
                 await st.download_tracks(
                     [target],
-                    destination_dir=settings_store.get_download_dir(),
                     audio_format=fmt,
+                    **self._download_context(),
                 )
             except Exception as exc:  # noqa: BLE001
                 notify(self._page_ref, f"Error al descargar: {exc}", kind="error")
@@ -967,7 +906,11 @@ class PlaylistDetailView(ft.Container):
 
             notify(self._page_ref, f"Descargando «{track.name}»...")
             try:
-                task = st.download_tracks([track], destination_dir=settings_store.get_download_dir())
+                task = st.download_tracks(
+                    [track],
+                    audio_format=settings_store.get_download_format(),
+                    **self._download_context(),
+                )
                 await task
             except Exception as exc:  # noqa: BLE001
                 notify(self._page_ref, f"Error al descargar: {exc}", kind="error")

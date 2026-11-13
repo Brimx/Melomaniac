@@ -591,10 +591,11 @@ class TestPlaylistDetailViewFeatures(unittest.TestCase):
 
         asyncio.run(_run())
 
-    def test_manifest_matches_dedicated_playlist_downloads_and_ignores_unrelated(self) -> None:
+    def test_cross_playlist_recognition_routes_downloads_and_merges_manifest(self) -> None:
         async def _run() -> None:
             import types
-            from engine.downloader import write_playlist_manifest
+            from engine.downloader import read_playlist_manifest, write_playlist_manifest
+            from core.state import AppState
             from services import settings_store
 
             with tempfile.TemporaryDirectory() as tmp:
@@ -603,15 +604,27 @@ class TestPlaylistDetailViewFeatures(unittest.TestCase):
                 dl_dir.mkdir()
                 other_local = tmp_path / "MiMusica"
                 other_local.mkdir()
-                # Archivo ajeno en carpeta local y archivo suelto en raíz de Descargas:
-                # NO deben marcarse como descargados en un manifiesto virgen.
-                (other_local / "Artist 1 - Track 1.mp3").write_bytes(b"")
-                (dl_dir / "Artist 1 - Track 1.mp3").write_bytes(b"")
-                # Archivo descargado específicamente para la playlist del manifiesto:
+
+                # Pista ya descargada en otra playlist y otra en carpeta local:
+                # deben reconocerse de forma cruzada sin duplicar descargas.
+                other_pl = dl_dir / "Otra Playlist [Spotify]"
+                other_pl.mkdir()
+                t3_file = other_pl / "Artist 3 - Track 3.mp3"
+                t3_file.write_bytes(b"mp3")
+                write_playlist_manifest(
+                    other_pl,
+                    name="Otra Playlist",
+                    platform="Spotify",
+                    entries=[{"id": "id_3", "name": "Track 3", "artist": "Artist 3", "path": str(t3_file)}],
+                )
+                t4_file = other_local / "Artist 4 - Track 4.mp3"
+                t4_file.write_bytes(b"mp3")
+
+                # Archivo descargado específicamente para la playlist actual:
                 pl_sub = dl_dir / "Mi Manifiesto [Apple Music]"
                 pl_sub.mkdir()
                 t2_file = pl_sub / "Artist 2 - Track 2.mp3"
-                t2_file.write_bytes(b"")
+                t2_file.write_bytes(b"mp3")
                 write_playlist_manifest(
                     pl_sub,
                     name="Mi Manifiesto",
@@ -621,28 +634,33 @@ class TestPlaylistDetailViewFeatures(unittest.TestCase):
 
                 t1 = Track(id="id_1", name="Track 1", artist="Artist 1", album="Alb 1", duration="3:00", img_url="", platform="Apple Music")
                 t2 = Track(id="id_2", name="Track 2", artist="Artist 2", album="Alb 2", duration="3:00", img_url="", platform="Apple Music")
+                t3 = Track(id="id_3", name="Track 3", artist="Artist 3", album="Alb 3", duration="3:00", img_url="", platform="Apple Music")
+                t4 = Track(id="id_4", name="Track 4", artist="Artist 4", album="Alb 4", duration="3:00", img_url="", platform="Apple Music")
                 summary = PlaylistSummary(
                     id="apple_music__pl1",
                     name="Mi Manifiesto · Apple Music",
                     platform="Local",
-                    track_count=2,
+                    track_count=4,
                 )
                 page = _DummyPage()
                 app_state = MagicMock()
                 app_state.download_state = TransferState.IDLE
 
-                async def _dl_complete(*args, **kwargs):
-                    t1.source_path = str(dl_dir / "Artist 1 - Track 1.mp3")
+                async def _dl_complete(tracks, **_kwargs):
+                    dest = pl_sub / "Artist 1 - Track 1.mp3"
+                    dest.write_bytes(b"mp3")
+                    for tr in tracks:
+                        tr.source_path = str(dest)
                     return None
 
                 app_state.download_tracks.side_effect = (
-                    lambda tracks, **kwargs: asyncio.create_task(_dl_complete())
+                    lambda tracks, **kwargs: asyncio.create_task(_dl_complete(tracks, **kwargs))
                 )
 
                 with patch.object(settings_store, "get_download_dir", return_value=str(dl_dir)), \
                      patch.object(settings_store, "get_local_folders", return_value=[str(other_local)]):
                     async def _loader():
-                        return types.SimpleNamespace(name="Mi Manifiesto"), [t1, t2]
+                        return types.SimpleNamespace(name="Mi Manifiesto"), [t1, t2, t3, t4]
 
                     detail = PlaylistDetailView(
                         page,
@@ -660,14 +678,37 @@ class TestPlaylistDetailViewFeatures(unittest.TestCase):
                             await detail.reload()
                         self.assertFalse(detail._has_file_by_id.get(id(t1), False))
                         self.assertTrue(detail._has_file_by_id.get(id(t2), False))
+                        self.assertTrue(detail._has_file_by_id.get(id(t3), False))
+                        self.assertTrue(detail._has_file_by_id.get(id(t4), False))
                         self.assertEqual(detail._playlist_download_identity(), ("Mi Manifiesto", "Apple Music"))
 
+                        # Lote: solo pide la pista faltante hacia su subcarpeta de playlist
                         detail._on_download()
-                        _, dl_kw = app_state.download_tracks.call_args
+                        dl_args, dl_kw = app_state.download_tracks.call_args
+                        self.assertEqual([t.id for t in dl_args[0]], ["id_1"])
                         self.assertEqual(dl_kw.get("playlist_name"), "Mi Manifiesto")
                         self.assertEqual(dl_kw.get("platform"), "Apple Music")
                         await asyncio.sleep(0.05)
                         self.assertTrue(detail._has_file_by_id.get(id(t1), False))
+
+                        # Descarga individual: también enruta a la carpeta de la playlist
+                        app_state.download_tracks.reset_mock()
+                        t_single = Track(id="id_5", name="Track 5", artist="Artist 5", album="Alb 5", duration="3:00", img_url="", platform="Apple Music")
+                        detail._download_single_track(t_single, ft.Container())
+                        await asyncio.sleep(0.05)
+                        _, single_kw = app_state.download_tracks.call_args
+                        self.assertEqual(single_kw.get("playlist_name"), "Mi Manifiesto")
+                        self.assertEqual(single_kw.get("platform"), "Apple Music")
+
+                        # Merge de manifiesto: descargar una pista no borra las previas
+                        real_state = AppState(service=None)
+                        real_state._write_download_manifest(
+                            pl_sub, "Mi Manifiesto", "Apple Music", [t_single],
+                            write_playlist_manifest, read_playlist_manifest,
+                        )
+                        merged = read_playlist_manifest(pl_sub)
+                        merged_ids = [e.get("id") for e in merged.get("tracks", [])]
+                        self.assertEqual(merged_ids, ["id_2", "id_5"])
                     finally:
                         detail.will_unmount()
 

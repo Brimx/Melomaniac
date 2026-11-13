@@ -53,6 +53,22 @@ from engine.exporters import default_export_path, export_tracks
 class ActionsMixin:
     """Acciones del usuario: cargar, pegar, importar, transferir, exportar y buscar."""
 
+    def _playlist_download_context(self, tracks: list) -> dict[str, str]:
+        from services import settings_store
+
+        platforms = {getattr(t, "platform", "") for t in tracks if getattr(t, "platform", "")}
+        if len(platforms) == 1:
+            platform = next(iter(platforms))
+        elif getattr(self.state, "source", "") not in ("", "Archivo Local", "Pegar Texto"):
+            platform = str(self.state.source)
+        else:
+            platform = ""
+        return {
+            "destination_dir": settings_store.get_download_dir(),
+            "playlist_name": self.state.playlist_name or "",
+            "platform": platform,
+        }
+
     def _on_row_download(self, track_id: str) -> None:
         if self.state.download_state == TransferState.RUNNING:
             self._snack("Descarga en curso", error=True)
@@ -62,12 +78,11 @@ class ActionsMixin:
             target = next((t for t in self.state.source_tracks if t.id == track_id), None)
         if target is None:
             return
-        from services import settings_store
         self._auto_play_download_ids.add(target.id)
         try:
             self.state.download_tracks(
                 [target],
-                destination_dir=settings_store.get_download_dir(),
+                **self._playlist_download_context([target]),
             )
             self._snack(f"Descargando: {target.artist} — {target.name}")
         except Exception as exc:  # noqa: BLE001
@@ -87,14 +102,10 @@ class ActionsMixin:
         if not to_download:
             self._snack("Las canciones seleccionadas ya son archivos locales en disco", error=True)
             return
-        from services import settings_store
-        platforms = {t.platform for t in to_download if getattr(t, "platform", "")}
         try:
             self.state.download_tracks(
                 to_download,
-                destination_dir=settings_store.get_download_dir(),
-                playlist_name=self.state.playlist_name or "",
-                platform=platforms.pop() if len(platforms) == 1 else "",
+                **self._playlist_download_context(to_download),
             )
             self._snack(f"Descargando {len(to_download)} canciones…")
         except Exception as exc:  # noqa: BLE001

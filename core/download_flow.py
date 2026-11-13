@@ -169,8 +169,8 @@ class DownloadMixin:
             DOWNLOAD_CONCURRENCY,
         )
         from engine.downloader import (
-            download_audio, ffmpeg_available, resolve_download_dir, resolve_playlist_dir,
-            write_playlist_manifest,
+            download_audio, ffmpeg_available, read_playlist_manifest,
+            resolve_download_dir, resolve_playlist_dir, write_playlist_manifest,
         )
 
         if not selected:
@@ -262,6 +262,22 @@ class DownloadMixin:
         except Exception as exc:  # noqa: BLE001 - portadas nunca bloquean la cola
             self._log(f"[WARN] Portadas online no disponibles: {exc}")
 
+        if not pinned_video_id:
+            try:
+                from services import settings_store
+                from services.local_index import match_tracks_against_library
+
+                await asyncio.to_thread(
+                    match_tracks_against_library,
+                    selected,
+                    download_dir=destination_dir or settings_store.get_download_dir(),
+                    local_folders=settings_store.get_local_folders(),
+                    playlist_name=playlist_name,
+                    platform=platform,
+                )
+            except Exception:
+                pass
+
         semaphore = asyncio.Semaphore(max(1, DOWNLOAD_CONCURRENCY))
         lock = asyncio.Lock()
 
@@ -300,6 +316,23 @@ class DownloadMixin:
                     item["error"] = "Pausada"
                     if track not in self._download_pending_tracks:
                         self._download_pending_tracks.append(track)
+                    return
+                if not pinned_video_id and track.source_path and os.path.isfile(track.source_path):
+                    async with lock:
+                        item["status"], item["percent"] = "skipped", 100.0
+                        self.download_skipped.append(
+                            {
+                                "id": track.id,
+                                "name": track.name,
+                                "artist": track.artist,
+                                "path": track.source_path,
+                                "video_id": "",
+                                "format": fmt,
+                                "duration_ms": track.duration_ms,
+                            }
+                        )
+                        self.download_progress += 1
+                        self.notify()
                     return
                 async with lock:
                     item["status"] = "running"
@@ -414,7 +447,8 @@ class DownloadMixin:
             self._log(f"[INFO] {summary}")
             if playlist_name:
                 self._write_download_manifest(
-                    target_dir, playlist_name, platform, selected, write_playlist_manifest
+                    target_dir, playlist_name, platform, selected,
+                    write_playlist_manifest, read_playlist_manifest,
                 )
         except Exception as exc:  # noqa: BLE001
             self.download_state = TransferState.ERROR
@@ -576,26 +610,67 @@ class DownloadMixin:
 
     def _write_download_manifest(
         self, target_dir, playlist_name: str, platform: str,
-        selected: list[Track], writer,
+        selected: list[Track], writer, reader=None,
     ) -> None:
-        """Deja ``playlist.json`` con el orden original de la playlist.
+        """Actualiza ``playlist.json`` fusionando pistas nuevas sin borrar el resto.
 
-        El orden se toma de ``selected``, no de ``download_done``: esa lista
-        se llena a medida que terminan las descargas concurrentes y no
-        representa el orden de la lista. Las pistas sin archivo quedan con
-        ``path`` vacío para saber qué falta.
+        Conserva el orden previo cuando se descarga una canción suelta o un lote
+        parcial dentro de una playlist ya existente, y enriquece las entradas
+        nuevas o descargadas con ``id``, ``isrc``, ``duration_ms`` y ``path``.
         """
-        entries = [
+        new_entries = [
             {
                 "position": i,
+                "id": t.id,
                 "name": t.name,
                 "artist": t.artist,
                 "album": t.album,
                 "platform": t.platform,
+                "isrc": t.isrc,
+                "duration_ms": t.duration_ms,
                 "path": t.source_path or "",
             }
             for i, t in enumerate(selected, 1)
         ]
+
+        def _entry_key(entry: dict) -> tuple[str, str]:
+            eid = str(entry.get("id") or "").strip()
+            if eid:
+                return ("id", eid)
+            name = str(entry.get("name") or entry.get("title") or "").strip().lower()
+            artist = str(entry.get("artist") or "").strip().lower()
+            return ("pair", f"{name}::{artist}")
+
+        existing_raw = reader(target_dir) if callable(reader) else {}
+        existing_list = existing_raw.get("tracks") if isinstance(existing_raw, dict) else None
+        if isinstance(existing_list, list) and existing_list:
+            merged: list[dict] = [dict(e) for e in existing_list if isinstance(e, dict)]
+            idx_by_key = {_entry_key(e): idx for idx, e in enumerate(merged)}
+            for entry in new_entries:
+                key = _entry_key(entry)
+                idx = idx_by_key.get(key)
+                if idx is None and key[0] == "id":
+                    pair_key = (
+                        "pair",
+                        f"{str(entry.get('name') or '').strip().lower()}::{str(entry.get('artist') or '').strip().lower()}",
+                    )
+                    idx = idx_by_key.get(pair_key)
+                if idx is not None:
+                    cur = merged[idx]
+                    for field in ("id", "name", "artist", "album", "platform", "isrc", "duration_ms"):
+                        if entry.get(field) and not cur.get(field):
+                            cur[field] = entry[field]
+                    if entry.get("path"):
+                        cur["path"] = entry["path"]
+                else:
+                    idx_by_key[key] = len(merged)
+                    merged.append(entry)
+            for pos, entry in enumerate(merged, 1):
+                entry["position"] = pos
+            entries = merged
+        else:
+            entries = new_entries
+
         written = writer(
             target_dir, name=playlist_name, platform=platform, entries=entries
         )
