@@ -7,7 +7,7 @@ from typing import Callable, Sequence
 
 import flet as ft
 
-from ui.components.widgets import _as_icon, control_page
+from ui.components.widgets import _as_icon, control_page, safe_update
 from ui.theme.fonts import FONT_HEADLINE, FONT_TEXT
 from ui.theme.icons import PIcons, app_icon
 from ui.theme.tokens import (
@@ -18,6 +18,7 @@ from ui.theme.tokens import (
     BORDER_ROW,
     ERROR_COL,
     MOTION_HOVER_MS,
+    OVERLAY_14,
     RADIUS_INPUT,
     TEXT_DIM,
     TEXT_MUTED,
@@ -119,7 +120,7 @@ def build_popup_menu_items(
 def build_context_menu_button(
     actions: Sequence[ContextMenuAction] | Callable[[], Sequence[ContextMenuAction]],
     *,
-    tooltip: str = "Más opciones",
+    tooltip: str | None = "Más opciones",
     icon: str = PIcons.DOTS_THREE_VERTICAL,
     icon_size: float = 16,
     icon_color: str = TEXT_MUTED,
@@ -131,29 +132,7 @@ def build_context_menu_button(
 ) -> ft.GestureDetector:
     """Botón «⋮» OLED ligero que abre ``show_context_menu`` bajo demanda."""
     ico_ctrl = app_icon(icon, size=icon_size, color=icon_color)
-    box = ft.Container(
-        content=ico_ctrl,
-        width=width,
-        height=height,
-        alignment=ft.Alignment.CENTER,
-        border_radius=RADIUS_INPUT,
-        bgcolor=ft.Colors.TRANSPARENT,
-        tooltip=tooltip,
-        ink=True,
-        animate=ft.Animation(MOTION_HOVER_MS, ft.AnimationCurve.EASE_OUT),
-        animate_scale=ft.Animation(MOTION_HOVER_MS, ft.AnimationCurve.EASE_OUT),
-    )
     tap_pos: dict[str, float | None] = {"x": None, "y": None}
-
-    def _on_hover(e: ft.HoverEvent) -> None:
-        hovering = e.data == "true" or e.data is True
-        box.bgcolor = BG_HOVER if hovering else ft.Colors.TRANSPARENT
-        box.scale = 1.08 if hovering else 1.0
-        ico_ctrl.color = TEXT_PRIMARY if hovering else icon_color
-        try:
-            box.update()
-        except Exception:
-            pass
 
     def _open_menu(
         page: ft.Page | None = None,
@@ -182,6 +161,26 @@ def build_context_menu_button(
 
     def _on_click(_e=None) -> None:
         _open_menu()
+
+    box = ft.Container(
+        content=ico_ctrl,
+        width=width,
+        height=height,
+        alignment=ft.Alignment.CENTER,
+        border_radius=RADIUS_INPUT,
+        bgcolor=ft.Colors.TRANSPARENT,
+        tooltip=tooltip,
+        scale=1.0,
+        animate=ft.Animation(MOTION_HOVER_MS, ft.AnimationCurve.EASE_OUT),
+        animate_scale=ft.Animation(MOTION_HOVER_MS, ft.AnimationCurve.EASE_OUT),
+    )
+
+    def _on_hover(e: ft.HoverEvent) -> None:
+        hovering = e.data == "true" or e.data is True
+        box.bgcolor = OVERLAY_14 if hovering else ft.Colors.TRANSPARENT
+        box.scale = 1.08 if hovering else 1.0
+        ico_ctrl.color = TEXT_PRIMARY if hovering else icon_color
+        safe_update(box)
 
     box.on_hover = _on_hover
     box.on_click = _on_click

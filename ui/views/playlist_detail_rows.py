@@ -22,6 +22,7 @@ from ui.theme.tokens import (
     BG_SURFACE,
     BORDER_ROW,
     MOTION_HOVER_MS,
+    OVERLAY_14,
     SKELETON_DARK,
     TEXT_DIM,
     TEXT_MUTED,
@@ -32,8 +33,9 @@ from ui.theme.tokens import (
 def apply_row_visual_state(
     row: ft.Container, *, selected: bool, hovering: bool = False
 ) -> None:
-    """Actualiza el fondo y borde izquierdo de una fila de detalle según selección/hover."""
-    row.bgcolor = BG_HOVER if (selected or hovering) else BG_LIST
+    """Actualiza el fondo y borde izquierdo de una fila de detalle según selección."""
+    del hovering
+    row.bgcolor = BG_HOVER if selected else BG_LIST
     row.border = (
         ft.Border.only(
             left=ft.BorderSide(2.5, ACCENT),
@@ -48,7 +50,7 @@ def build_track_context_actions(
     view,
     track: Track,
     index: int,
-    action_icon: ft.Container | None = None,
+    action_icon: ft.Control | None = None,
 ) -> list[ContextMenuAction]:
     """Construye las acciones del menú contextual para una fila de Biblioteca."""
     has_disk = view._has_file_by_id.get(id(track))
@@ -199,19 +201,16 @@ def build_detail_track_row(
         border_radius=16,
         bgcolor=ft.Colors.TRANSPARENT,
         alignment=ft.Alignment.CENTER,
-        tooltip="Reproducir" if has_file else "Descargar canción",
-        ink=True,
+        scale=1.0,
         animate=ft.Animation(MOTION_HOVER_MS, ft.AnimationCurve.EASE_OUT),
         animate_scale=ft.Animation(MOTION_HOVER_MS, ft.AnimationCurve.EASE_OUT),
     )
 
     def _on_action_hover(e: ft.HoverEvent) -> None:
         hovering = e.data == "true" or e.data is True
-        action_icon.bgcolor = BG_HOVER if hovering else ft.Colors.TRANSPARENT
+        action_icon.bgcolor = OVERLAY_14 if hovering else ft.Colors.TRANSPARENT
         action_icon.scale = 1.12 if hovering else 1.0
         safe_update(action_icon)
-
-    action_icon.on_hover = _on_action_hover
 
     def _on_action_click(_e) -> None:
         if track.source_path and os.path.isfile(track.source_path):
@@ -219,12 +218,13 @@ def build_detail_track_row(
         else:
             view._download_single_track(track, action_icon)
 
+    action_icon.on_hover = _on_action_hover
     action_icon.on_click = _on_action_click
     view._action_containers[id(track)] = action_icon
 
     menu_btn = build_context_menu_button(
         lambda tr=track, idx=index, ic=action_icon: view._track_context_actions(tr, idx, ic),
-        tooltip="Opciones de pista",
+        tooltip=None,
         width=28,
         height=28,
         icon_size=16,
@@ -272,8 +272,6 @@ def build_detail_track_row(
             else ft.Border.only(bottom=ft.BorderSide(0.5, BORDER_ROW))
         ),
         padding=ft.Padding.symmetric(horizontal=12, vertical=8),
-        ink=True,
-        animate=ft.Animation(MOTION_HOVER_MS, ft.AnimationCurve.EASE_OUT),
         animate_opacity=ft.Animation(MOTION_HOVER_MS, ft.AnimationCurve.EASE_OUT),
         content=wrap_with_context_menu(
             row_inner,
@@ -283,15 +281,6 @@ def build_detail_track_row(
         ),
     )
     view._row_containers[id(track)] = row
-
-    def _on_hover(e: ft.HoverEvent) -> None:
-        hovering = e.data == "true" or e.data is True
-        apply_row_visual_state(
-            row,
-            selected=(id(track) in view._selected_ids),
-            hovering=hovering,
-        )
-        safe_update(row)
 
     def _on_click(_e) -> None:
         if view._selection_mode:
@@ -331,7 +320,6 @@ def build_detail_track_row(
             else:
                 view._download_single_track(track, action_icon)
 
-    row.on_hover = _on_hover
     row.on_click = _on_click
     return row
 

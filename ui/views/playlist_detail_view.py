@@ -98,7 +98,7 @@ class PlaylistDetailView(ft.Container):
         self._selected_ids: set[int] = set()
         self._row_checkboxes: dict[int, ft.Checkbox] = {}
         self._row_containers: dict[int, ft.Container] = {}
-        self._action_containers: dict[int, ft.Container] = {}
+        self._action_containers: dict[int, ft.Control] = {}
         self._manifest_base_name: str = ""
 
         # header
@@ -331,7 +331,6 @@ class PlaylistDetailView(ft.Container):
                 ic = self._action_containers.get(id(tr))
                 if ic is not None:
                     ic.content = app_icon(PIcons.PLAY, size=16, color=ACCENT, fill=True)
-                    ic.tooltip = "Reproducir"
                     safe_update(ic)
         if updated:
             self._persist_manifest_downloads(updated)
@@ -724,7 +723,7 @@ class PlaylistDetailView(ft.Container):
     def _download_recovered_track(
         self,
         track: Track,
-        action_container: ft.Container | None = None,
+        action_container: ft.Control | None = None,
         *,
         video_id: str = "",
         candidate_url: str = "",
@@ -764,7 +763,6 @@ class PlaylistDetailView(ft.Container):
         async def _run_recovery_download() -> None:
             if action_container is not None:
                 action_container.content = ft.ProgressRing(width=16, height=16, stroke_width=2, color=ACCENT)
-                action_container.tooltip = "Descargando..."
                 try:
                     action_container.update()
                 except Exception:
@@ -780,7 +778,6 @@ class PlaylistDetailView(ft.Container):
                 notify(self._page_ref, f"Error al descargar: {exc}", kind="error")
                 if action_container is not None:
                     action_container.content = app_icon(PIcons.DOWNLOAD_SIMPLE, size=16, color=TEXT_MUTED)
-                    action_container.tooltip = "Descargar canción"
                     try:
                         action_container.update()
                     except Exception:
@@ -793,7 +790,6 @@ class PlaylistDetailView(ft.Container):
                 self._persist_manifest_downloads([track])
                 if action_container is not None:
                     action_container.content = app_icon(PIcons.PLAY, size=16, color=ACCENT, fill=True)
-                    action_container.tooltip = "Reproducir"
                     safe_update(action_container)
                 self._update_header_play_count()
                 safe_update(self._play_all_btn)
@@ -806,7 +802,6 @@ class PlaylistDetailView(ft.Container):
                 )
             elif action_container is not None:
                 action_container.content = app_icon(PIcons.DOWNLOAD_SIMPLE, size=16, color=TEXT_MUTED)
-                action_container.tooltip = "Descargar canción"
                 try:
                     action_container.update()
                 except Exception:
@@ -817,7 +812,7 @@ class PlaylistDetailView(ft.Container):
     async def _open_track_recovery(
         self,
         track: Track,
-        action_container: ft.Container | None = None,
+        action_container: ft.Control | None = None,
     ) -> AlternativeSearchPanel:
         """Abre el diálogo 2.6 de recuperación para una pista faltante en Biblioteca."""
         initial_fmt = str(settings_store.get_download_format() or DEFAULT_AUDIO_FORMAT)
@@ -859,7 +854,7 @@ class PlaylistDetailView(ft.Container):
         self._recovery_panel = panel
         return panel
 
-    def _download_single_track(self, track: Track, action_container: ft.Container) -> None:
+    def _download_single_track(self, track: Track, action_container: ft.Control) -> None:
         """Descarga una pista individual y al completarse habilita su reproducción inmediata."""
         st = self.app_state
         if st is None:
@@ -871,7 +866,6 @@ class PlaylistDetailView(ft.Container):
 
         async def _do_download() -> None:
             action_container.content = ft.ProgressRing(width=16, height=16, stroke_width=2, color=ACCENT)
-            action_container.tooltip = "Descargando..."
             try:
                 action_container.update()
             except Exception:
@@ -888,7 +882,6 @@ class PlaylistDetailView(ft.Container):
             except Exception as exc:  # noqa: BLE001
                 notify(self._page_ref, f"Error al descargar: {exc}", kind="error")
                 action_container.content = app_icon(PIcons.DOWNLOAD_SIMPLE, size=16, color=TEXT_MUTED)
-                action_container.tooltip = "Descargar canción"
                 try:
                     action_container.update()
                 except Exception:
@@ -905,7 +898,6 @@ class PlaylistDetailView(ft.Container):
                     on_action=lambda e: self._play_single_track(track, 1),
                 )
                 action_container.content = app_icon(PIcons.PLAY, size=16, color=ACCENT, fill=True)
-                action_container.tooltip = "Reproducir"
                 safe_update(action_container)
                 self._update_header_play_count()
                 safe_update(self._play_all_btn)
@@ -913,7 +905,6 @@ class PlaylistDetailView(ft.Container):
             else:
                 notify(self._page_ref, f"No se pudo descargar «{track.name}»", kind="error")
                 action_container.content = app_icon(PIcons.DOWNLOAD_SIMPLE, size=16, color=TEXT_MUTED)
-                action_container.tooltip = "Descargar canción"
                 try:
                     action_container.update()
                 except Exception:
@@ -1208,7 +1199,7 @@ class PlaylistDetailView(ft.Container):
                 pb.move_queue_item(idx, dest)
         notify(self._page_ref, f"Siguiente en cola: {track.name}")
 
-    def _track_context_actions(self, track: Track, index: int, action_icon: ft.Container | None = None) -> list[ContextMenuAction]:
+    def _track_context_actions(self, track: Track, index: int, action_icon: ft.Control | None = None) -> list[ContextMenuAction]:
         return build_track_context_actions(self, track, index, action_icon)
 
     def _play_single_track(self, track: Track, index: int) -> None:
