@@ -189,8 +189,8 @@ class LibraryState:
         external_url: str = "",
     ):
         """Importa una playlist remota como manifiesto local sin descargar audio."""
-        from core.transfer import normalize_playlist_id
         from engine.local_manifests import save_local_manifest
+        from engine.normalizer import normalize_playlist_id
 
         if self.service is None:
             raise RuntimeError("service no disponible")

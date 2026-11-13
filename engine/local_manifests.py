@@ -19,23 +19,27 @@ from pathlib import Path
 from typing import Any, Iterable, Optional
 
 from core.models import Track
-from core.transfer import normalize_playlist_id, playlist_url
-from services import authentication
+from engine.normalizer import normalize_playlist_id, playlist_url
 
-_INITIAL_LOCAL_PLAYLISTS_DIR = authentication.CONFIG_DIR / "local_playlists"
-LOCAL_PLAYLISTS_DIR = _INITIAL_LOCAL_PLAYLISTS_DIR
+LOCAL_PLAYLISTS_DIR: Path | None = None
 MANIFEST_VERSION = 1
 
 _SAFE_KEY_RE = re.compile(r"[^a-zA-Z0-9_-]+")
+
+
+def _default_manifests_dir() -> Path:
+    from services import authentication
+
+    return Path(authentication.CONFIG_DIR) / "local_playlists"
 
 
 def get_local_manifests_dir(manifests_dir: Path | str | None = None) -> Path:
     """Resuelve la carpeta de manifiestos respetando overrides y ``CONFIG_DIR``."""
     if manifests_dir is not None:
         return Path(manifests_dir)
-    if LOCAL_PLAYLISTS_DIR != _INITIAL_LOCAL_PLAYLISTS_DIR:
+    if LOCAL_PLAYLISTS_DIR is not None:
         return Path(LOCAL_PLAYLISTS_DIR)
-    return Path(authentication.CONFIG_DIR) / "local_playlists"
+    return _default_manifests_dir()
 
 
 def _format_duration_ms(duration_ms: int) -> str:

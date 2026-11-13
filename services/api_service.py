@@ -68,14 +68,17 @@ import requests
 from core.cache import SingleFlight, make_cache_key, make_search_flight_key
 from core.library_models import PlaylistSummary
 from core.models import PlaylistMeta, SearchResult, Track
-from core.transfer import normalize_playlist_id
 from core.config import (
     NETWORK_CONCURRENCY as CFG_NETWORK_CONCURRENCY,
     RATE_LIMIT_BACKOFF_STEPS as CFG_RATE_LIMIT_BACKOFF_STEPS,
     SEARCH_CACHE_FLUSH_EVERY,
     YOUTUBE_HTTP_TIMEOUT as CFG_YOUTUBE_HTTP_TIMEOUT,
 )
-from engine.normalizer import build_search_variants, clean_metadata
+from engine.normalizer import (
+    build_search_variants,
+    clean_metadata,
+    normalize_playlist_id,
+)
 from services.authentication import (
     SEARCH_CACHE_JSON as AUTH_SEARCH_CACHE_JSON,
     ensure_config_dir,

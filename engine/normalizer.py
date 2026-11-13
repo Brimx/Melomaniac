@@ -361,3 +361,46 @@ def build_search_query(title: str, artist: str) -> str:
     if t and a:
         return f"{t} {a}"
     return t or a
+
+
+def normalize_playlist_id(platform: str, playlist_id: str) -> str:
+    """Devuelve el ID desnudo que esperan las APIs.
+
+    Acepta IDs, URIs de Spotify y URLs de las tres plataformas. Es
+    defensivo para reportes históricos que guardaron el URI completo.
+    """
+    pid = (playlist_id or "").strip()
+    if not pid:
+        return ""
+    if platform == "Spotify":
+        if ":playlist:" in pid:
+            pid = pid.split(":playlist:", 1)[1]
+        if "/playlist/" in pid:
+            pid = pid.split("/playlist/", 1)[1]
+        return pid.split("?", 1)[0].split("#", 1)[0].strip().strip("/")
+    if platform == "YouTube Music":
+        if "list=" in pid:
+            pid = pid.split("list=", 1)[1]
+        return pid.split("&", 1)[0].split("#", 1)[0].strip()
+    if platform == "Apple Music":
+        if "/playlist/" in pid:
+            pid = pid.split("/playlist/", 1)[1]
+            pid = pid.split("?", 1)[0].split("#", 1)[0].strip("/")
+            if "/" in pid:
+                pid = pid.rsplit("/", 1)[-1]
+        return pid
+    return pid
+
+
+def playlist_url(platform: str, playlist_id: str) -> str:
+    """URL externa de la playlist creada, por plataforma."""
+    pid = normalize_playlist_id(platform, playlist_id)
+    if not pid:
+        return ""
+    if platform == "Apple Music":
+        return f"https://music.apple.com/library/playlist/{pid}"
+    if platform == "Spotify":
+        return f"https://open.spotify.com/playlist/{pid}"
+    if platform == "YouTube Music":
+        return f"https://music.youtube.com/playlist?list={pid}"
+    return ""

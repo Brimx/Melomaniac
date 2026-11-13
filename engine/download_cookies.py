@@ -6,7 +6,7 @@ El jar vive solo en memoria: nunca se serializa a disco.
 from __future__ import annotations
 
 import yt_dlp
-from typing import Any, Optional
+from typing import Any, Callable, Optional
 
 from urllib.parse import unquote
 
@@ -15,8 +15,10 @@ from urllib.parse import unquote
 # Cookies de la sesión existente
 # ──────────────────────────────────────────────────────────────────────
 
-def _load_cookie_jar() -> Optional[Any]:
-    """Construye un cookie jar en memoria desde ``browser_session.youtube_cookies()``.
+def _load_cookie_jar(
+    cookie_provider: Optional[Callable[[], dict[str, str]]] = None,
+) -> Optional[Any]:
+    """Construye un cookie jar en memoria desde ``cookie_provider`` o ``browser_session.youtube_cookies()``.
 
     La decisión de Descargas prohíbe introducir un ``cookies.txt`` en disco.
     Se reutilizan las cookies de YouTube resueltas desde el navegador o desde
@@ -25,12 +27,18 @@ def _load_cookie_jar() -> Optional[Any]:
     El jar se mantiene en memoria: nunca se serializa a disco.
     """
     try:
-        from services.browser_session import youtube_cookies
         from yt_dlp.cookies import YoutubeDLCookieJar
     except ImportError:
         return None
 
-    cookies = youtube_cookies()
+    if cookie_provider is None:
+        try:
+            from services.browser_session import youtube_cookies
+        except ImportError:
+            return None
+        cookie_provider = youtube_cookies
+
+    cookies = cookie_provider()
     if not cookies:
         return None
 

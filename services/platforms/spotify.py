@@ -24,9 +24,9 @@ from engine.normalizer import (
     _normalize_title,
     build_search_query,
     normalize_isrc,
+    normalize_playlist_id,
 )
 from core.library_models import PlaylistSummary
-from core.transfer import normalize_playlist_id
 from services.platforms._common import GLOBAL_API_SEMAPHORE, _as_text
 from services.circuit_breaker import RateLimitError
 from core.config import (
