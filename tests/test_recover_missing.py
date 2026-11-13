@@ -43,9 +43,9 @@ from core.config import AUDIO_FORMATS
 from core.models import Track, TransferState
 from core.transfer import TransferIssue, TransferReport
 from services import authentication, settings_store
-from ui import downloads_view
+from ui.views import downloads_view
 from ui.dialogs import transfer_report
-from ui.downloads_view import (
+from ui.views.downloads_view import (
     DownloadsView,
     candidate_to_recovery,
     extract_youtube_video_id,
@@ -555,7 +555,8 @@ class TestRecoverMissing(unittest.TestCase):
             "ui/dialogs/transfer_dialog.py",
             "ui/dialogs/export_dialog.py",
             "ui/dialogs/merge_dialog.py",
-            "ui/downloads_view.py",
+            "ui/views/downloads_view.py",
+            "ui/views/download_recovery.py",
         ):
             src = (root / rel).read_text(encoding="utf-8")
             tree = ast.parse(src)

@@ -21,8 +21,17 @@ from core.library_models import PlaylistSummary
 from core.models import Track, TransferState
 from engine.downloader import open_in_file_manager
 from services import settings_store
-from ui.downloads_view import candidate_to_recovery, search_youtube_alternatives
-from ui.theme.fonts import FONT_HEADLINE, FONT_HEADLINE_BOLD, FONT_TEXT, font_family_for, mono_family
+from ui.views.download_recovery import (
+    candidate_to_recovery,
+    open_youtube_recovery_dialog,
+    search_youtube_alternatives,
+)
+from ui.views.playlist_detail_rows import (
+    apply_row_visual_state,
+    build_detail_track_row,
+    build_track_context_actions,
+)
+from ui.theme.fonts import FONT_HEADLINE, FONT_HEADLINE_BOLD, FONT_TEXT, mono_family
 from ui.theme.icons import PIcons, app_icon, app_icon_button
 from ui.components.song_row import (
     ITEM_H,
@@ -811,40 +820,7 @@ class PlaylistDetailView(ft.Container):
         action_container: ft.Container | None = None,
     ) -> AlternativeSearchPanel:
         """Abre el diálogo 2.6 de recuperación para una pista faltante en Biblioteca."""
-        raw_fmt = str(settings_store.get_download_format() or DEFAULT_AUDIO_FORMAT).lower().lstrip(".")
-        initial_fmt = raw_fmt if raw_fmt in AUDIO_FORMATS else DEFAULT_AUDIO_FORMAT
-        selected_fmt = {"value": initial_fmt}
-
-        format_dd = organize_dropdown(
-            [(f, f.upper()) for f in AUDIO_FORMATS],
-            initial_fmt,
-            "Formato",
-            width=124,
-        )
-
-        def _on_fmt_select(e) -> None:
-            val = str(getattr(e.control, "value", "") or initial_fmt).lower().lstrip(".")
-            selected_fmt["value"] = val if val in AUDIO_FORMATS else initial_fmt
-
-        format_dd.on_select = _on_fmt_select
-
-        sized_body = ft.Container(
-            content=ft.Column(controls=[], spacing=8, tight=True),
-            width=620,
-            min_width=360,
-            max_width=660,
-            max_height=520,
-        )
-        dlg = app_dialog(
-            "Recuperar pista",
-            sized_body,
-            [],
-            width=None,
-            icon=PIcons.MAGNIFYING_GLASS,
-        )
-
-        def _close(_e=None) -> None:
-            close_dialog(self._page_ref, dlg)
+        initial_fmt = str(settings_store.get_download_format() or DEFAULT_AUDIO_FORMAT)
 
         async def _search(query: str) -> tuple[list[RecoveryCandidate], str]:
             found = await search_youtube_alternatives(track, query, app_state=self.app_state)
@@ -852,14 +828,12 @@ class PlaylistDetailView(ft.Container):
                 candidate_to_recovery(c)
                 for c in (found.get("candidates") or [])[:5]
             ]
-            err = str(found.get("error") or "")
-            return candidates, err
+            return candidates, str(found.get("error") or "")
 
-        def _pick(cand: RecoveryCandidate) -> None:
+        def _pick(cand: RecoveryCandidate, fmt: str, dlg: ft.AlertDialog) -> None:
             payload = cand.payload if isinstance(cand.payload, dict) else {}
             vid = str(payload.get("video_id") or cand.track.id or "")
             url = str(payload.get("url") or cand.track.source_url or "")
-            fmt = str(format_dd.value or selected_fmt["value"] or initial_fmt).lower()
             self._download_recovered_track(
                 track,
                 action_container,
@@ -869,38 +843,20 @@ class PlaylistDetailView(ft.Container):
                 dlg=dlg,
             )
 
-        retry_btn = _ghost_btn(
-            "Reintentar con formato",
-            PIcons.ARROWS_CLOCKWISE,
-            lambda _e: self._download_recovered_track(
-                track,
-                action_container,
-                audio_format=str(format_dd.value or selected_fmt["value"] or initial_fmt).lower(),
-                dlg=dlg,
-            ),
-            height=38,
-        )
-
-        panel = AlternativeSearchPanel(
+        dlg, panel = await open_youtube_recovery_dialog(
             self._page_ref,
             track,
+            initial_format=initial_fmt,
             reason="Archivo no disponible en disco",
             search_fn=_search,
             on_select=_pick,
-            search_label="Buscar en YouTube",
-            hint_text="Título, artista, URL de YouTube o variante",
-            action_label="Descargar",
-            action_icon=PIcons.DOWNLOAD_SIMPLE,
-            empty_message="Sin coincidencias. Edita la consulta o pega una URL de YouTube.",
-            query_trailing=[format_dd],
-            action_trailing=[retry_btn],
+            on_retry_format=lambda fmt, dlg: self._download_recovered_track(
+                track, action_container, audio_format=fmt, dlg=dlg,
+            ),
+            fixed_width=620,
         )
-        sized_body.content = panel
-        dlg.actions = [dialog_action("Cerrar", _close, kind="muted")]
         self._recovery_dialog = dlg
         self._recovery_panel = panel
-        self._page_ref.show_dialog(dlg)
-        await panel.run_search()
         return panel
 
     def _download_single_track(self, track: Track, action_container: ft.Container) -> None:
@@ -1054,15 +1010,7 @@ class PlaylistDetailView(ft.Container):
 
     @staticmethod
     def _apply_row_visual_state(row: ft.Container, *, selected: bool, hovering: bool = False) -> None:
-        if selected:
-            row.bgcolor = BG_HOVER
-            row.border = ft.Border.only(
-                left=ft.BorderSide(2.5, ACCENT),
-                bottom=ft.BorderSide(0.5, BORDER_ROW),
-            )
-        else:
-            row.bgcolor = BG_HOVER if hovering else BG_LIST
-            row.border = ft.Border.only(bottom=ft.BorderSide(0.5, BORDER_ROW))
+        apply_row_visual_state(row, selected=selected, hovering=hovering)
 
     def set_selection_mode(self, enabled: bool) -> None:
         """Activa o desactiva el modo de selección múltiple."""
@@ -1261,76 +1209,7 @@ class PlaylistDetailView(ft.Container):
         notify(self._page_ref, f"Siguiente en cola: {track.name}")
 
     def _track_context_actions(self, track: Track, index: int, action_icon: ft.Container | None = None) -> list[ContextMenuAction]:
-        has_disk = self._has_file_by_id.get(id(track))
-        if has_disk is None:
-            has_disk = bool(track.source_path and os.path.isfile(track.source_path))
-        actions: list[ContextMenuAction] = []
-        if has_disk:
-            actions.extend([
-                ContextMenuAction(
-                    "Reproducir",
-                    icon=PIcons.PLAY,
-                    on_click=lambda: self._play_single_track(track, index),
-                ),
-                ContextMenuAction(
-                    "Reproducir siguiente",
-                    icon=PIcons.SKIP_FORWARD,
-                    on_click=lambda: self._play_next_track(track),
-                ),
-                ContextMenuAction(
-                    "Añadir a la cola",
-                    icon=PIcons.QUEUE,
-                    on_click=lambda: self._enqueue_single_track(track),
-                ),
-                ContextMenuAction(
-                    "Mostrar en carpeta",
-                    icon=PIcons.FOLDER_OPEN,
-                    on_click=lambda: open_in_file_manager(track.source_path),
-                ),
-            ])
-        else:
-            actions.extend([
-                ContextMenuAction(
-                    "Descargar canción",
-                    icon=PIcons.DOWNLOAD_SIMPLE,
-                    on_click=(lambda: self._download_single_track(track, action_icon)) if action_icon is not None else None,
-                    disabled=self.app_state is None or action_icon is None,
-                ),
-                ContextMenuAction(
-                    "Buscar alternativa...",
-                    icon=PIcons.MAGNIFYING_GLASS,
-                    on_click=lambda: self._page_ref.run_task(self._open_track_recovery, track, action_icon),
-                    disabled=self.app_state is None,
-                ),
-            ])
-        if track.source_url:
-            actions.append(
-                ContextMenuAction(
-                    "Abrir en plataforma",
-                    icon=PIcons.ARROW_SQUARE_OUT,
-                    on_click=lambda: self._launch(track.source_url or ""),
-                )
-            )
-        if self._selection_mode:
-            is_sel = id(track) in self._selected_ids
-            actions.append(
-                ContextMenuAction(
-                    "Deseleccionar" if is_sel else "Seleccionar",
-                    icon=PIcons.CIRCLE if is_sel else PIcons.CHECK_CIRCLE,
-                    on_click=lambda: self.toggle_track_selection(track),
-                    divider_before=bool(actions),
-                )
-            )
-        else:
-            actions.append(
-                ContextMenuAction(
-                    "Seleccionar varias...",
-                    icon=PIcons.CHECK_CIRCLE,
-                    on_click=lambda: self._start_selection_with(track),
-                    divider_before=bool(actions),
-                )
-            )
-        return actions
+        return build_track_context_actions(self, track, index, action_icon)
 
     def _play_single_track(self, track: Track, index: int) -> None:
         """Reproduce una sola pista local en el reproductor encolando la lista."""
@@ -1357,173 +1236,5 @@ class PlaylistDetailView(ft.Container):
             self._launch(track.source_url or "")
 
     def _build_track_row(self, track: Track, index: int, *, has_file: Optional[bool] = None) -> ft.Container:
-        """Fila Biblioteca: [chk?][#][thumb48][título/artista expand3][álbum expand2][dur48][open/play 32][⋮ 28].
-
-        Misma geometría que SongRow Gestión (spacing 16, ITEM_H) + columna
-        álbum. Hover: BG_HOVER + scale 1.01. Click: press scale 0.99 +
-        opacidad 0.85 antes de abrir URL o reproducir.
-        """
-        if has_file is None:
-            has_file = self._has_file_by_id.get(id(track), False)
-
-        thumb = ft.Container(
-            width=48, height=48, border_radius=6, bgcolor=SKELETON_DARK, clip_behavior=ft.ClipBehavior.ANTI_ALIAS,
-            content=_thumb_content_for(track.img_url, box=48, icon_size=16),
-        )
-        title = ft.Text(track.name, size=13, color=TEXT_PRIMARY, font_family=font_family_for(track.name, "semibold"), max_lines=1, overflow=ft.TextOverflow.ELLIPSIS)
-        artist = ft.Text(track.artist, size=11, color=TEXT_MUTED, font_family=font_family_for(track.artist), max_lines=1, overflow=ft.TextOverflow.ELLIPSIS)
-        album = ft.Text(track.album or "—", size=11, color=TEXT_MUTED, font_family=font_family_for(track.album or ""), max_lines=1, overflow=ft.TextOverflow.ELLIPSIS)
-        dur = ft.Text(track.duration, size=11, color=TEXT_DIM, font_family=mono_family("light"))
-
-        chk = ft.Checkbox(
-            value=id(track) in self._selected_ids,
-            visible=self._selection_mode,
-            fill_color={
-                ft.ControlState.SELECTED: ACCENT,
-                ft.ControlState.DEFAULT: BG_SURFACE,
-            },
-            check_color=TEXT_PRIMARY,
-            border_side=ft.BorderSide(1.5, TEXT_DIM),
-            on_change=lambda _e, tr=track: self.toggle_track_selection(tr),
-        )
-        self._row_checkboxes[id(track)] = chk
-
-        action_icon = ft.Container(
-            content=app_icon(
-                PIcons.PLAY if has_file else PIcons.DOWNLOAD_SIMPLE,
-                size=16,
-                color=ACCENT if has_file else TEXT_MUTED,
-                fill=has_file,
-            ),
-            width=32,
-            height=32,
-            border_radius=16,
-            bgcolor=ft.Colors.TRANSPARENT,
-            alignment=ft.Alignment.CENTER,
-            tooltip="Reproducir" if has_file else "Descargar canción",
-            ink=True,
-            animate=ft.Animation(MOTION_HOVER_MS, ft.AnimationCurve.EASE_OUT),
-            animate_scale=ft.Animation(MOTION_HOVER_MS, ft.AnimationCurve.EASE_OUT),
-        )
-
-        def _on_action_hover(e: ft.HoverEvent) -> None:
-            hovering = e.data == "true" or e.data is True
-            action_icon.bgcolor = BG_HOVER if hovering else ft.Colors.TRANSPARENT
-            action_icon.scale = 1.12 if hovering else 1.0
-            safe_update(action_icon)
-
-        action_icon.on_hover = _on_action_hover
-
-        def _on_action_click(_e) -> None:
-            if track.source_path and os.path.isfile(track.source_path):
-                self._play_single_track(track, index)
-            else:
-                self._download_single_track(track, action_icon)
-
-        action_icon.on_click = _on_action_click
-        self._action_containers[id(track)] = action_icon
-
-        menu_btn = build_context_menu_button(
-            lambda tr=track, idx=index, ic=action_icon: self._track_context_actions(tr, idx, ic),
-            tooltip="Opciones de pista",
-            width=28,
-            height=28,
-            icon_size=16,
-            title=track.name,
-            get_page=lambda: self._page_ref,
-        )
-
-        row_inner = ft.Row(controls=[
-            chk,
-            ft.Container(content=ft.Text(str(index), size=11, color=TEXT_MUTED, font_family=mono_family("light")), width=28, alignment=ft.Alignment.CENTER),
-            thumb,
-            ft.Column(controls=[title, artist], spacing=1, expand=3, tight=True, alignment=ft.MainAxisAlignment.CENTER),
-            ft.Container(content=album, expand=2, alignment=ft.Alignment.CENTER_LEFT),
-            ft.Container(content=dur, width=48, alignment=ft.Alignment.CENTER),
-            action_icon,
-            menu_btn,
-        ], spacing=16, vertical_alignment=ft.CrossAxisAlignment.CENTER)
-
-        is_selected = id(track) in self._selected_ids
-        row = ft.Container(
-            height=ITEM_H,
-            bgcolor=BG_HOVER if is_selected else BG_LIST,
-            border=(
-                ft.Border.only(
-                    left=ft.BorderSide(2.5, ACCENT),
-                    bottom=ft.BorderSide(0.5, BORDER_ROW),
-                )
-                if is_selected
-                else ft.Border.only(bottom=ft.BorderSide(0.5, BORDER_ROW))
-            ),
-            padding=ft.Padding.symmetric(horizontal=12, vertical=8),
-            ink=True,
-            animate=ft.Animation(MOTION_HOVER_MS, ft.AnimationCurve.EASE_OUT),
-            animate_scale=ft.Animation(MOTION_HOVER_MS, ft.AnimationCurve.EASE_OUT),
-            animate_opacity=ft.Animation(MOTION_HOVER_MS, ft.AnimationCurve.EASE_OUT),
-            content=wrap_with_context_menu(
-                row_inner,
-                lambda tr=track, idx=index, ic=action_icon: self._track_context_actions(tr, idx, ic),
-                title=track.name,
-                get_page=lambda: self._page_ref,
-            ),
-        )
-        self._row_containers[id(track)] = row
-
-        def _on_hover(e: ft.HoverEvent) -> None:
-            hovering = e.data == "true" or e.data is True
-            self._apply_row_visual_state(
-                row,
-                selected=(id(track) in self._selected_ids),
-                hovering=hovering,
-            )
-            row.scale = 1.01 if hovering else 1.0
-            safe_update(row)
-
-        def _on_click(_e) -> None:
-            if self._selection_mode:
-                self.toggle_track_selection(track)
-                return
-
-            async def _press_and_act() -> None:
-                try:
-                    row.scale = 0.99
-                    row.opacity = 0.85
-                    row.update()
-                    try:
-                        await asyncio.sleep(0.08)
-                    except asyncio.CancelledError:
-                        raise
-                finally:
-                    # El estado visual se restaura siempre, también si la tarea
-                    # se cancela al desmontar la vista: la fila nunca queda
-                    # encogida ni translúcida.
-                    try:
-                        row.scale = 1.0
-                        row.opacity = 1.0
-                        row.update()
-                    except Exception:
-                        pass
-                if track.source_path and os.path.isfile(track.source_path):
-                    self._play_single_track(track, index)
-                else:
-                    self._download_single_track(track, action_icon)
-
-            try:
-                task = asyncio.create_task(_press_and_act())
-                self._press_tasks.add(task)
-                task.add_done_callback(self._press_tasks.discard)
-            except Exception:
-                try:
-                    row.scale = 1.0
-                    row.opacity = 1.0
-                except Exception:
-                    pass
-                if track.source_path and os.path.isfile(track.source_path):
-                    self._play_single_track(track, index)
-                else:
-                    self._download_single_track(track, action_icon)
-
-        row.on_hover = _on_hover
-        row.on_click = _on_click
-        return row
+        """Fila Biblioteca construida vía ``playlist_detail_rows.build_detail_track_row``."""
+        return build_detail_track_row(self, track, index, has_file=has_file)

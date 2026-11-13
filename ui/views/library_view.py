@@ -15,7 +15,7 @@ from engine.local_manifests import detect_platform_from_url
 from services.library_state import LibraryState
 from ui.theme.fonts import FONT_HEADLINE, FONT_HEADLINE_BOLD, FONT_TEXT
 from ui.components.playlist_card import PlaylistCard
-from ui.playlist_detail_view import PlaylistDetailView
+from ui.views.playlist_detail_view import PlaylistDetailView
 from ui.theme.tokens import (
     ACCENT, ACCENT_HALO, BG_HOVER, BG_LIST, BG_PANEL, BG_SURFACE,
     BORDER_LIGHT, BORDER_MUTED, ERROR_COL, MOTION_HOVER_MS, RADIUS_BUTTON,
@@ -23,15 +23,16 @@ from ui.theme.tokens import (
 )
 from ui.theme.icons import PIcons, app_icon, app_icon_button
 from ui.components.widgets import (
-    DialogMixin,
     _ghost_btn,
     app_dialog,
     app_text,
     app_text_field,
+    close_dialog,
     dialog_action,
     notify,
     organize_dropdown,
     section_label,
+    show_dialog,
 )
 
 
@@ -52,7 +53,7 @@ _SHORT_LABELS = {
 }
 
 
-class LibraryView(ft.Container, DialogMixin):
+class LibraryView(ft.Container):
     def __init__(self, page: ft.Page, library_state: LibraryState, service,
                  app_state=None, on_open_downloads=None, on_open_gestion=None,
                  player_bar=None):
@@ -554,7 +555,7 @@ class LibraryView(ft.Container, DialogMixin):
         busy = False
 
         def _close(_e=None) -> None:
-            self.close_dialog(self._page_ref, dlg)
+            close_dialog(self._page_ref, dlg)
 
         def _on_submit(_e=None) -> None:
             nonlocal busy
@@ -613,7 +614,7 @@ class LibraryView(ft.Container, DialogMixin):
                     except Exception:
                         pass
                     return
-                self.close_dialog(self._page_ref, dlg)
+                close_dialog(self._page_ref, dlg)
                 notify(
                     self._page_ref,
                     f"Importada «{manifest.name}» ({len(manifest.tracks)} pistas) sin descargar audio",
@@ -633,7 +634,7 @@ class LibraryView(ft.Container, DialogMixin):
             width=400,
             icon=PIcons.PLAYLIST,
         )
-        self.show_dialog(self._page_ref, dlg)
+        show_dialog(self._page_ref, dlg)
 
     def _refresh(self) -> None:
         # called via library_state notify

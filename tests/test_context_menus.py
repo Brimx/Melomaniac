@@ -41,7 +41,7 @@ from core.playback import PlayQueue, build_playable_track
 from ui.theme import tokens
 from ui.theme.icons import PIcons
 from ui.components.playlist_card import PlaylistCard
-from ui.playlist_detail_view import PlaylistDetailView
+from ui.views.playlist_detail_view import PlaylistDetailView
 from ui.components.song_row import SongRow
 from ui.components.context_menu import (
     ContextMenuAction,
@@ -352,7 +352,7 @@ class TestPlaylistDetailViewFeatures(unittest.TestCase):
                     self.assertTrue(view._shuffle_btn.visible)
 
                     with patch.object(queue._rng, "randrange", return_value=2), \\
-                         patch("ui.playlist_detail_view.settings_store.set_shuffle") as set_shuf:
+                         patch("ui.views.playlist_detail_view.settings_store.set_shuffle") as set_shuf:
                         view._on_shuffle_play()
 
                     self.assertTrue(queue.shuffle)
@@ -379,8 +379,8 @@ class TestPlaylistDetailViewFeatures(unittest.TestCase):
                 player_bar.queue = MagicMock()
                 try:
                     await view.reload()
-                    with patch("ui.playlist_detail_view.random.randrange", return_value=1), \\
-                         patch("ui.playlist_detail_view.settings_store.set_shuffle") as set_shuf:
+                    with patch("ui.views.playlist_detail_view.random.randrange", return_value=1), \\
+                         patch("ui.views.playlist_detail_view.settings_store.set_shuffle") as set_shuf:
                         view._on_shuffle_play()
 
                     player_bar.queue.set_shuffle.assert_called_once_with(True)
@@ -510,7 +510,7 @@ class TestPlaylistDetailViewFeatures(unittest.TestCase):
                     }
 
                 with patch(
-                    "ui.playlist_detail_view.search_youtube_alternatives",
+                    "ui.views.playlist_detail_view.search_youtube_alternatives",
                     side_effect=_fake_search,
                 ):
                     panel = await view._open_track_recovery(tracks[0])
@@ -532,7 +532,7 @@ class TestPlaylistDetailViewFeatures(unittest.TestCase):
         asyncio.run(_run())
 
     def test_hover_boolean_manifest_actions_and_hidden_updates(self) -> None:
-        from ui.downloads_view import DownloadsView
+        from ui.views.downloads_view import DownloadsView
         from ui.main_ui import PlaylistManagerUI
 
         async def _run() -> None:
@@ -736,7 +736,8 @@ class TestContextMenus(unittest.TestCase):
             root / "ui/components/song_row.py",
             root / "ui/components/skeletons.py",
             root / "ui/components/playlist_card.py",
-            root / "ui/playlist_detail_view.py",
+            root / "ui/views/playlist_detail_view.py",
+            root / "ui/views/playlist_detail_rows.py",
         ]
         hex_pat = re.compile(r"""["']#[0-9A-Fa-f]{6,8}["']""")
         anim_pat = re.compile(r"""ft\.Animation\(\s*\d+""")

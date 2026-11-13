@@ -21,7 +21,7 @@ import flet as ft
 from core.library_models import LibraryLoadState, LibrarySnapshot, PlaylistSummary
 from core.playback import PlayQueue
 from services import settings_store
-from ui.library_view import LibraryView
+from ui.views.library_view import LibraryView
 from ui.player.player_queue import PlayerQueuePanel
 from ui.theme.tokens import BORDER_MUTED, MOTION_PANEL_MS, PLAYER_QUEUE_W
 

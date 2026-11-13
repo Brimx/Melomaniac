@@ -37,7 +37,7 @@ from core.config import LOCAL_LIBRARY_LABEL
 from core.models import Track
 from services import authentication, settings_store
 from services.library_state import LibraryState
-from ui.library_view import LibraryView
+from ui.views.library_view import LibraryView
 
 
 class _DummyPage:
@@ -448,7 +448,7 @@ class TestLibraryViewManifestUI(unittest.TestCase):
         self.assertEqual(res.returncode, 0, msg=res.stderr or res.stdout)
 
     def test_library_view_follows_agents_token_and_animation_rules(self) -> None:
-        src = Path("ui/library_view.py").read_text(encoding="utf-8")
+        src = Path("ui/views/library_view.py").read_text(encoding="utf-8")
         # Sin colores hex hardcodeados
         self.assertIsNone(re.search(r"#[0-9A-Fa-f]{6,8}", src))
         # Sin ft.Animation(<numero>) literal

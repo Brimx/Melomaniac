@@ -163,7 +163,7 @@ async def main(page: ft.Page) -> None:
                 # re-crea LibraryView con service real si el placeholder usó None
                 if hasattr(ui, "_panel_biblioteca") and ui._panel_biblioteca.__class__.__name__ != "LibraryView":
                     from services.library_state import LibraryState as _LS
-                    from ui.library_view import LibraryView as _LV
+                    from ui.views.library_view import LibraryView as _LV
                     ui.library_state = _LS(service)
                     ui._panel_biblioteca = _LV(page, ui.library_state, service)
                     # reemplaza en stack

@@ -1317,7 +1317,7 @@ class LayoutMixin:
         # Biblioteca: LibraryView con selector de fuente (plataformas + Local)
         try:
             from services.library_state import LibraryState
-            from ui.library_view import LibraryView
+            from ui.views.library_view import LibraryView
             # library_state con inyección service (respeta core->services)
             lib_state = LibraryState(service=getattr(self.state, "service", None) or getattr(self.state, "service", None))
             # si service aún None (init temprano), se inyectará luego via app.py/ui.library_state
@@ -1376,7 +1376,7 @@ class LayoutMixin:
                 pass
 
         try:
-            from ui.downloads_view import DownloadsView
+            from ui.views.downloads_view import DownloadsView
             self._panel_descargas = DownloadsView(self.page, self.state, library_state=getattr(self, "library_state", None))
             self._panel_descargas.player_bar = self.player_bar  # type: ignore[attr-defined]
         except Exception as exc:
@@ -1389,7 +1389,7 @@ class LayoutMixin:
         # Config: preferencias persistentes. El wizard de credenciales sigue
         # abriéndose desde el engranaje del panel izquierdo.
         try:
-            from ui.config_view import ConfigView
+            from ui.views.config_view import ConfigView
             self._panel_config = ConfigView(
                 self.page, on_change=self._on_config_changed,
                 on_welcome=lambda: self.on_show_welcome and self.on_show_welcome(),
