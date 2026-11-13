@@ -385,16 +385,13 @@ class LayoutMixin:
         )
 
         _BTN_W, _BTN_H = 129, 44
-        self._load_btn     = _primary_btn("Cargar",      PIcons.DOWNLOAD_SIMPLE,   self._on_load,     width=_BTN_W, height=_BTN_H)
-        self._transfer_btn = _ghost_btn(  "Transferir",  PIcons.ARROWS_LEFT_RIGHT, self._on_transfer, width=_BTN_W, height=_BTN_H)
-        self._organize_btn = _ghost_btn(  "Organizar",   PIcons.SLIDERS_HORIZONTAL,       self._on_organize, width=_BTN_W, height=_BTN_H, disabled=True)
-        self._split_btn    = _ghost_btn(  "Dividir",     PIcons.GIT_BRANCH, self._on_split,    width=_BTN_W, height=_BTN_H, disabled=True)
-        self._reorganize_btn = _ghost_btn("Reorganizar", PIcons.ARROWS_CLOCKWISE, self._on_reorganize, width=_BTN_W*2+6, height=_BTN_H, disabled=True)
+        self._load_btn = _primary_btn("Cargar", PIcons.DOWNLOAD_SIMPLE, self._on_load, width=_BTN_W, height=_BTN_H)
+        self._merge_sidebar_btn = _ghost_btn(
+            "Fusionar", PIcons.QUEUE, lambda _: self._open_merge_dialog(), width=_BTN_W, height=_BTN_H,
+        )
 
         actions = ft.Column([
-            ft.Row([self._load_btn,  self._transfer_btn], spacing=6),
-            ft.Row([self._organize_btn, self._split_btn], spacing=6),
-            ft.Row([self._reorganize_btn], spacing=6),
+            ft.Row([self._load_btn, self._merge_sidebar_btn], spacing=6),
         ], spacing=6)
 
         self._rl_banner = ft.Container(
@@ -468,8 +465,8 @@ class LayoutMixin:
         self._ctx_split_btn = _ghost_btn(
             "Dividir", PIcons.GIT_BRANCH, self._on_split, height=34,
         )
-        self._ctx_merge_btn = _ghost_btn(
-            "Fusionar", PIcons.QUEUE, lambda _: self._open_merge_dialog(), height=34,
+        self._ctx_reorganize_btn = _ghost_btn(
+            "Reorganizar", PIcons.ARROWS_CLOCKWISE, self._on_reorganize, height=34, disabled=True,
         )
         self._ctx_download_btn = _ghost_btn(
             "Descargar", PIcons.DOWNLOAD_SIMPLE, lambda _: self._on_batch_download(), height=34,
@@ -478,11 +475,14 @@ class LayoutMixin:
             "Exportar", PIcons.EXPORT,
             lambda _: asyncio.create_task(self._open_export_dialog()), height=34,
         )
+        self._transfer_btn = self._ctx_transfer_btn
+        self._organize_btn = self._ctx_organize_btn
+        self._split_btn = self._ctx_split_btn
+        self._reorganize_btn = self._ctx_reorganize_btn
         self._ctx_action_buttons = {
             "transfer": self._ctx_transfer_btn,
             "organize": self._ctx_organize_btn,
             "split": self._ctx_split_btn,
-            "merge": self._ctx_merge_btn,
             "download": self._ctx_download_btn,
             "export": self._ctx_export_btn,
         }
@@ -491,7 +491,7 @@ class LayoutMixin:
                 self._ctx_transfer_btn,
                 self._ctx_organize_btn,
                 self._ctx_split_btn,
-                self._ctx_merge_btn,
+                self._ctx_reorganize_btn,
                 self._ctx_download_btn,
                 self._ctx_export_btn,
             ],

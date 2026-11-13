@@ -360,11 +360,14 @@ def deduplicate_tracks(
 def merge_playlists(
     sources: Iterable[Iterable[Track]],
     *,
+    deduplicate: bool = True,
     duration_tolerance_ms: int = _DEFAULT_DEDUP_TOLERANCE_MS,
 ) -> List[Track]:
-    """Funde múltiples listas de pistas en una sola lista deduplicada en cascada."""
+    """Funde múltiples listas de pistas en una sola lista (deduplicada opcionalmente)."""
     combined: List[Track] = []
     for source in sources:
         if source:
             combined.extend(source)
+    if not deduplicate:
+        return combined
     return deduplicate_tracks(combined, duration_tolerance_ms=duration_tolerance_ms)

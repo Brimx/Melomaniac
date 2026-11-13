@@ -40,7 +40,7 @@ from ui.tokens import (
     TEXT_PRIMARY,
     WARNING,
 )
-from core.models import Track, TransferState
+from core.models import LoadState, Track, TransferState
 from core.config import EXPORT_DEST_LABEL, EXPORT_FORMATS
 from engine.parsers import build_local_tracks, parse_local_playlist_with_paths
 from ui.icons import PIcons, app_icon
@@ -1311,6 +1311,13 @@ class ActionsMixin:
         )
         limit_txt = ft.Text("", size=10, color=TEXT_DIM, font_family=mono_family("light"))
         lv = ft.ListView(spacing=4, height=230)
+        dedup_chk = ft.Checkbox(
+            label="Omitir canciones duplicadas (ISRC, ID o título y artista)",
+            value=True,
+            fill_color={ft.ControlState.SELECTED: ACCENT},
+            check_color=TEXT_PRIMARY,
+            label_style=ft.TextStyle(color=TEXT_PRIMARY, size=12, font_family=FONT_TEXT),
+        )
 
         def _rebuild_list(query: str = "") -> None:
             q = (query or "").strip().lower()
@@ -1388,44 +1395,64 @@ class ActionsMixin:
                 self._snack("Selecciona al menos 2 fuentes para fusionar", error=True)
                 return
             final_name = (name_field.value or "").strip() or "Playlist Fusionada"
+            deduplicate = bool(dedup_chk.value)
             self._close_dlg(dlg_ref["dlg"])
+            prev_load_state = self.state.load_state
+            self.state.load_state = LoadState.LOADING_TRACKS
+            self.state.notify()
             resolved_lists: list[list[Track]] = []
             service = getattr(self.state, "service", None)
-            for it in picked:
-                kind = it["kind"]
-                if kind == "current":
-                    resolved_lists.append(list(it["tracks"]))
-                elif kind == "remote":
-                    if service is None or not hasattr(service, "fetch_playlist"):
-                        continue
-                    try:
-                        _meta, tracks = await service.fetch_playlist(
-                            it["platform"], it["playlist_id"], None
-                        )
-                        if tracks:
-                            resolved_lists.append(list(tracks))
-                    except Exception as exc:  # pylint: disable=broad-exception-caught
-                        self.state.log(f"[WARN] Error cargando '{it['label']}': {exc}")
-                elif kind == "local_summary" and lib is not None:
-                    sid = it["summary_id"]
-                    try:
-                        manifest = await asyncio.to_thread(lib.load_local_manifest, sid)
-                        if manifest is not None and getattr(manifest, "tracks", None):
-                            resolved_lists.append(list(manifest.tracks))
+            try:
+                for it in picked:
+                    kind = it["kind"]
+                    if kind == "current":
+                        resolved_lists.append(list(it["tracks"]))
+                    elif kind == "remote":
+                        if service is None or not hasattr(service, "fetch_playlist"):
                             continue
-                        from services.local_index import scan_folder_async
-                        folder_tracks = await scan_folder_async(sid)
-                        if folder_tracks:
-                            resolved_lists.append(list(folder_tracks))
-                    except Exception as exc:  # pylint: disable=broad-exception-caught
-                        self.state.log(f"[WARN] Error leyendo local '{it['label']}': {exc}")
+                        try:
+                            _meta, tracks = await service.fetch_playlist(
+                                it["platform"], it["playlist_id"], None
+                            )
+                            if tracks:
+                                resolved_lists.append(list(tracks))
+                        except Exception as exc:  # pylint: disable=broad-exception-caught
+                            self.state.log(f"[WARN] Error cargando '{it['label']}': {exc}")
+                    elif kind == "local_summary" and lib is not None:
+                        sid = it["summary_id"]
+                        try:
+                            manifest = await asyncio.to_thread(lib.load_local_manifest, sid)
+                            if manifest is not None and getattr(manifest, "tracks", None):
+                                resolved_lists.append(list(manifest.tracks))
+                                continue
+                            from services.local_index import scan_folder_async
+                            folder_tracks = await scan_folder_async(sid)
+                            if folder_tracks:
+                                resolved_lists.append(list(folder_tracks))
+                        except Exception as exc:  # pylint: disable=broad-exception-caught
+                            self.state.log(f"[WARN] Error leyendo local '{it['label']}': {exc}")
 
-            if len(resolved_lists) < 2:
-                self._snack("No se pudieron cargar al menos 2 fuentes con pistas", error=True)
-                return
-            raw_total = sum(len(lst) for lst in resolved_lists)
-            merged = self.state.merge_sources(resolved_lists, name=final_name)
-            self._snack(f"Fusionadas {len(merged)} pistas únicas (de {raw_total})")
+                if len(resolved_lists) < 2:
+                    self.state.load_state = prev_load_state
+                    self.state.notify()
+                    self._snack("No se pudieron cargar al menos 2 fuentes con pistas", error=True)
+                    return
+                raw_total = sum(len(lst) for lst in resolved_lists)
+                merged = self.state.merge_sources(
+                    resolved_lists,
+                    name=final_name,
+                    deduplicate=deduplicate,
+                )
+                msg = (
+                    f"Fusionadas {len(merged)} pistas únicas (de {raw_total})"
+                    if deduplicate
+                    else f"Fusionadas {len(merged)} pistas (incluyendo duplicadas)"
+                )
+                self._snack(msg)
+            except Exception as exc:  # pylint: disable=broad-exception-caught
+                self.state.load_state = prev_load_state
+                self.state.notify()
+                self._snack(f"Error al fusionar: {exc}", error=True)
 
         _rebuild_list("")
 
@@ -1455,6 +1482,7 @@ class ActionsMixin:
                         border_radius=RADIUS_INPUT,
                         padding=ft.Padding.all(8),
                     ),
+                    dedup_chk,
                 ],
                 spacing=10,
                 tight=True,

@@ -264,7 +264,9 @@ class TestGestionFlows(unittest.TestCase):
             dlg = page.dialogs[-1]
             controls = _walk_controls(dlg)
             checkboxes = [c for c in controls if isinstance(c, ft.Checkbox)]
-            self.assertEqual(len(checkboxes), 2)
+            self.assertEqual(len(checkboxes), 3)
+            self.assertIn("duplicadas", checkboxes[-1].label.lower())
+            self.assertTrue(checkboxes[-1].value)
             # Marca la segunda fuente (Lista 2)
             checkboxes[1].value = True
             checkboxes[1].on_change(types.SimpleNamespace(control=checkboxes[1]))

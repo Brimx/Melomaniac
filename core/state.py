@@ -521,12 +521,13 @@ class AppState(TransferMixin, DownloadMixin):
         sources: Iterable[Iterable[Track]],
         name: str = "Playlist Fusionada",
         description: str = "",
+        deduplicate: bool = True,
     ) -> list[Track]:
-        """Funde listas de pistas (locales o remotas), deduplica en cascada y carga el resultado."""
+        """Funde listas de pistas (locales o remotas), opcionalmente deduplica y carga el resultado."""
         self.cancel_lazy_scan()
         materialized = [list(src) for src in sources if src]
         raw_total = sum(len(src) for src in materialized)
-        merged = merge_playlists(materialized)
+        merged = merge_playlists(materialized, deduplicate=deduplicate)
 
         self.playlist_id = f"merged_{uuid.uuid4().hex[:8]}"
         self.playlist_name = (name or "").strip() or "Playlist Fusionada"
