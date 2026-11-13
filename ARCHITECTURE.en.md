@@ -4,7 +4,7 @@
 
 Melomaniac separates the Flet UI, application state, platform services, and metadata normalization/matching engine. The current version supports YouTube Music, Apple Music, Spotify, and two local inputs: file and pasted text.
 
-The documented working version is `5.0.0` (single source: `APP_VERSION` in `core/config.py:12`). This version closes Management Block 2 (library playlist picker, merge, local manifests, export/add to platforms, catalog search in Gestión, and contextual action bar), upgrades to Flet `1.1.2`, and consolidates the composition-based modular architecture. Per-version details live in `CHANGELOG.md`.
+The documented working version is `5.0.0` (single source: `APP_VERSION` in `core/config.py:12`). This version closes Management Block 2 (library playlist picker, merge, local manifests, export/add to platforms, catalog search in Management, and contextual action bar), upgrades to Flet `1.1.2`, and consolidates the composition-based modular architecture. Per-version details live in `CHANGELOG.md`.
 
 ## Layers and dependencies
 
@@ -17,9 +17,9 @@ app.py
     └── LibraryState         # Library metadata synchronization/cache
 
 ui ───────> core / engine / services
-core ─────> engine / services (authentication, circuit_breaker; covers y settings_store en import perezoso)
+core ─────> engine / services (authentication, circuit_breaker; covers and settings_store via lazy imports)
 services ─> core / engine
-engine ───> core (models, config); services.browser_session solo en import perezoso
+engine ───> core (models, config); services.browser_session via lazy import only
 ```
 
 The actual composition in `app.py` is:

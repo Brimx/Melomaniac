@@ -26,9 +26,18 @@ Aplicación de escritorio para **transferir playlists entre YouTube Music, Apple
 - 🎵 **Reproductor integrado** — Barra inferior para archivos locales (MP3, FLAC, M4A, Opus, WAV) con cola reordenable, shuffle/repeat, volumen persistente e integración MPRIS en Linux (teclas multimedia y widgets como Waybar o GNOME).
 - ⬇️ **Descargas (uso personal)** — Guarda audio con `yt-dlp` en MP3, M4A, Opus, FLAC o WAV, con metadatos, carátula a 800 px, pausa y reanudación de la pista en curso, y una subcarpeta por playlist con su orden original. Requiere `ffmpeg`.
 - 🔎 **Panel de resultados** — Al terminar una descarga ves qué se descargó, qué ya existía, qué falló y qué faltó; puedes rebuscar la pista en YouTube, elegir otro candidato o reintentar en otro formato.
-- 🛠️ **Organización y exportación** — Vistas Lista/Doble/Preview, ordenación y agrupación por artista, álbum o fecha, división manual en 2–5 bloques y exportación a `M3U8`, `CSV`, `TXT` o `XSPF`.
+- 🛠️ **Organización y exportación** — Vistas Lista/Doble/Preview, ordenación y agrupación por artista, álbum o fecha, división manual en 2–5 bloques y exportación a `TXT`, `CSV`, `M3U`, `M3U8` o `XSPF`.
 - 🌐 **Sesión desde el navegador** — En la mayoría de los casos no hay nada que configurar: detecta tu sesión activa de Firefox/Chromium en memoria. Credenciales manuales disponibles vía asistente integrado.
 - 🖥️ **Integración con el sistema** — En binarios (AppImage/instalador), crea el acceso directo en el menú de aplicaciones o el Escritorio, lo auto-actualiza al cambiar de versión y comprueba nuevas releases desde Config.
+
+## Roadmap
+
+La versión actual es **5.0.0**. Las próximas prioridades documentadas son:
+
+- **5.1.0+ · Experiencia de uso:** página de Inicio, Biblioteca reorganizada, Configuración/Acerca de y mejoras de accesibilidad y navegación por búsqueda.
+- **Después · Funciones nuevas:** historial de actividad y escucha, favoritos y, con esas señales, una primera versión de Discover.
+
+Es una orientación de trabajo, no un calendario cerrado; las prioridades pueden cambiar según avance el proyecto.
 
 ---
 
@@ -112,7 +121,7 @@ La sesión se resuelve en memoria desde tu navegador (Firefox/Chromium). Si nece
 
 | Archivo | Uso |
 |---|---|
-| `config/browser.json` | YouTube Music: `Cookie` y `Authorization` (`SAPISIDHASH`) |
+| `config/browser.json` | YouTube Music: cookies de sesión (`Cookie`); `SAPISIDHASH` se calcula en cada lectura |
 | `config/.env` | Apple Music: `APPLE_AUTH_BEARER`, `APPLE_MUSIC_USER_TOKEN` |
 | `config/spotify_cookies.json` | Spotify: `sp_dc`, `sp_key` |
 | `config/settings.json` | Formato de descarga, carátulas online y carpetas locales |

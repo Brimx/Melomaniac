@@ -21,7 +21,7 @@ colors:
   border-muted: "#2A3040"
   border-row: "#252530"
   text-primary: "#F2F6FF"
-  text-muted: "#7A8499"
+  text-muted: "#848DA1"
   text-dim: "#3D4455"
 typography:
   brand: {fontFamily: Stack Sans Notch, fontSize: 52px, fontWeight: 700}
@@ -174,7 +174,7 @@ Estados semánticos, usados solo en iconografía y bordes, nunca como relleno gr
 
 Bordes: `border` `#3D4455` (visible), `border-muted` `#2A3040` (fantasma de botón), `border-row` `#252530` (separador de fila, 0.5 px).
 
-Texto: `text-primary` `#F2F6FF`, `text-muted` `#7A8499` (secundario, ~4.6:1 sobre chip), `text-dim` `#3D4455` (iconos de placeholder, nunca informativo).
+Texto: `text-primary` `#F2F6FF`, `text-muted` `#848DA1` (secundario), `text-dim` `#3D4455` (iconos de placeholder, nunca informativo).
 
 Los overlays blancos translúcidos (6 %, 8 %, 10 %, 14 %, 18 %) se usan para tabs, inputs, notas y banners: son el único mecanismo de "capa" sobre superficie negra.
 
@@ -217,18 +217,18 @@ La profundidad es casi plana. No hay sombras como mecanismo de jerarquía.
 
 ## Shapes
 
-Escala de radios: `xs` 3 (placeholders internos), `sm` 4 (inputs pequeños, check), `md` 6 (chips medianos, iconos), `lg` 8 (skeleton de miniatura, superficie), `xl` 10 (botones), `pill` 20 (chips redondeados, contornos circulares).
+Radios de controles centralizados en `ui/theme/tokens.py`: inputs y botones, 10 px; diálogos y rail, 14 px. Para superficies y chips se mantiene el radio propio del componente.
 
-Regla: los elementos con radio grande son interactivos y redondeados; las filas y superficies son casi rectas. Nada de radios entre 12 y 20 salvo círculos intencionales.
+Regla: inputs y botones usan 10 px; diálogos y rail, 14 px. Las filas y superficies se mantienen casi rectas y chips/círculos siguen el radio propio de su componente.
 
 ## Components
 
-- **Botón primario** — fondo `primary`, texto `text-primary`, radio `xl`, padding 12 px. Hover: `primary-hover` + halo. Pressed: `primary-pressed`.
+- **Botón primario** — fondo `primary`, texto `text-primary`, radio 10 px, padding 12 px. Hover: `primary-hover` + halo. Pressed: `primary-pressed`.
 - **Botón ghost** — fondo transparente, texto `text-muted`, borde `border-muted` 0.8 px. Hover: texto `text-primary` y borde `primary`. Es la acción secundaria o destructiva.
-- **Campo de texto** — fondo `input`, radio `md`, texto `body`.
+- **Campo de texto** — fondo `input`, radio 10 px, texto `body`.
 - **Fila de lista** — fondo `list`, separador `border-row` 0.5 px, alto 64 px. Hover: `hover`.
-- **Chip** — fondo `chip`, texto `text-muted` en `caption`, radio `pill`.
-- **Superficie elevada** — fondo `surface`, radio `lg`, padding `md`.
+- **Chip** — fondo `chip`, texto `text-muted` en `caption`, radio definido por el componente.
+- **Superficie elevada** — fondo `surface`, radio definido por el componente, padding `md`.
 - **Icono de placeholder** — `surface` + `text-dim`, para carátulas y estados vacíos.
 - **Indicador de estado** — `success` / `warning` / `error` sobre `background` en iconos pequeños.
 
@@ -241,6 +241,7 @@ La duración sale de `ui/tokens.py`, una por propósito; nunca se escribe un nú
 | `MOTION_HOVER_MS` | 120 ms | Hover, press, cambios de color o borde |
 | `MOTION_ENTER_MS` | 200 ms | Aparición de elementos, progreso, cambios de estado cortos |
 | `MOTION_PANEL_MS` | 300 ms | Paneles, rail y transiciones de vista |
+| `MOTION_REVEAL_MS` | 400 ms | Barrido ASCII de skeletons |
 | `MOTION_SKELETON_MS` | 600 ms | Pulso de carga |
 
 ## Do's and Don'ts
