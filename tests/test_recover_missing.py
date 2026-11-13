@@ -43,19 +43,20 @@ from core.config import AUDIO_FORMATS
 from core.models import Track, TransferState
 from core.transfer import TransferIssue, TransferReport
 from services import authentication, settings_store
-from ui import downloads_view, transfer_report
+from ui import downloads_view
+from ui.dialogs import transfer_report
 from ui.downloads_view import (
     DownloadsView,
     candidate_to_recovery,
     extract_youtube_video_id,
     search_youtube_alternatives,
 )
-from ui.transfer_report import (
+from ui.dialogs.recovery_panel import (
     AlternativeSearchPanel,
-    TransferReportDialog,
     default_search_query,
     track_from_entry,
 )
+from ui.dialogs.transfer_report import TransferReportDialog
 
 
 class _DummyPage:
@@ -548,7 +549,14 @@ class TestRecoverMissing(unittest.TestCase):
         root = Path(__file__).resolve().parents[1]
         hex_re = re.compile(r"#[0-9a-fA-F]{3,8}\b")
         anim_re = re.compile(r"ft\.Animation\(\s*\d+")
-        for rel in ("ui/transfer_report.py", "ui/downloads_view.py"):
+        for rel in (
+            "ui/dialogs/recovery_panel.py",
+            "ui/dialogs/transfer_report.py",
+            "ui/dialogs/transfer_dialog.py",
+            "ui/dialogs/export_dialog.py",
+            "ui/dialogs/merge_dialog.py",
+            "ui/downloads_view.py",
+        ):
             src = (root / rel).read_text(encoding="utf-8")
             tree = ast.parse(src)
             for node in ast.walk(tree):

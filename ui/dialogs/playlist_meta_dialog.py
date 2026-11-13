@@ -37,9 +37,9 @@ from ui.theme.icons import PIcons
 from ui.components.widgets import (
     _section_label,
     app_text_field,
+    close_dialog,
     dialog_action,
     app_dialog,
-    DialogMixin,
 )
 
 CONTENT_W = 420
@@ -54,7 +54,7 @@ class PlaylistMetaResult:
     per_division_destinations: dict[str, str] | None = None
 
 
-class PlaylistMetaDialog(DialogMixin):
+class PlaylistMetaDialog:
     """Modal AlertDialog para editar nombre/descripción antes de crear."""
 
     def __init__(self, page: ft.Page, *, default_title: str,
@@ -301,7 +301,7 @@ class PlaylistMetaDialog(DialogMixin):
 
     def _close(self) -> None:
         try:
-            self.close_dialog(self.page, self._dlg)
+            close_dialog(self.page, self._dlg)
         except Exception:  # pylint: disable=broad-exception-caught
             pass
         finally:

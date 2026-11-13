@@ -71,7 +71,7 @@ from ui.components.skeletons import (
     PreviewSkeletonRow,
 )
 from ui.theme.icons import PIcons
-from ui.transfer_report import TransferReportDialog
+from ui.dialogs.transfer_report import TransferReportDialog
 from ui.components.widgets import (
     app_text_field,
     DialogMixin,
@@ -89,7 +89,7 @@ from ui.theme.tokens import (
     TEXT_MUTED,
     TEXT_DIM,
 )
-from ui.division_dialogs import DivisionMixin
+from ui.dialogs.division_dialogs import DivisionMixin
 from ui.main_actions import ActionsMixin
 from ui.main_layout import LayoutMixin, compute_contextual_actions_state
 

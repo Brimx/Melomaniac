@@ -34,7 +34,7 @@ from ui.theme.tokens import (
     RADIUS_INPUT, SKELETON_DARK, TEXT_DIM, TEXT_MUTED, TEXT_PRIMARY,
     MOTION_HOVER_MS,
 )
-from ui.transfer_report import AlternativeSearchPanel, RecoveryCandidate
+from ui.dialogs.recovery_panel import AlternativeSearchPanel, RecoveryCandidate
 from ui.components.widgets import (
     _ghost_btn,
     _primary_btn,

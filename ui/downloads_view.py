@@ -35,7 +35,7 @@ from ui.theme.tokens import (
     ACCENT, BG_LIST, BG_SURFACE, BORDER_MUTED, ERROR_COL, RADIUS_INPUT,
     SUCCESS, TEXT_DIM, TEXT_MUTED, TEXT_PRIMARY,
 )
-from ui.transfer_report import (
+from ui.dialogs.recovery_panel import (
     AlternativeSearchPanel,
     RecoveryCandidate,
     default_search_query,

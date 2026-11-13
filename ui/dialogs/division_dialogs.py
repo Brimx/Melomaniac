@@ -41,7 +41,7 @@ class DivisionMixin:
     def _on_organize(self, _e: ft.ControlEvent) -> None:
         """Organizar separado — Mantener orden (agrupar) o A→Z/Z→A + agrupar; sin alcance."""
         try:
-            from ui.organize_panel import show_organize_dialog
+            from ui.dialogs.organize_panel import show_organize_dialog
             show_organize_dialog(self.page, self.state)
         except Exception as exc:
             # fallback legacy mínimo — incluye Mantener orden para agrupar
@@ -105,7 +105,7 @@ class DivisionMixin:
     def _on_reorganize(self, _e: ft.ControlEvent) -> None:
         """Reorganizar por niveles §8 — control específico Artistas/Álbumes drag & drop."""
         try:
-            from ui.organize_panel import show_reorganize_dialog
+            from ui.dialogs.organize_panel import show_reorganize_dialog
             show_reorganize_dialog(self.page, self.state)
         except Exception as exc:
             self.state.log(f"[ERROR] Reorganizar falló: {exc}")
@@ -113,7 +113,7 @@ class DivisionMixin:
     def _on_split(self, _e: ft.ControlEvent) -> None:
         """Dividir — genera Divisiones por Artista/Álbum/Género/Título §2,5."""
         try:
-            from ui.organize_panel import show_group_dialog
+            from ui.dialogs.organize_panel import show_group_dialog
             show_group_dialog(self.page, self.state)
         except Exception as exc:
             try:
