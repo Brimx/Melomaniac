@@ -42,8 +42,8 @@ from ui.transfer_report import (
     track_from_entry,
 )
 from ui.widgets import (
-    _ghost_btn, _primary_btn, app_dialog, app_text, dialog_action, fmt_ms, notify,
-    organize_dropdown, section_label, status_banner,
+    _ghost_btn, _primary_btn, app_dialog, app_text, close_dialog, dialog_action,
+    fmt_ms, notify, organize_dropdown, section_label, status_banner,
 )
 
 _HISTORY_LIMIT = 500
@@ -1019,7 +1019,7 @@ class DownloadsView(ft.Container):
             return False
 
         if dlg is not None:
-            dlg.open = False
+            close_dialog(self._page_ref, dlg)
         notify(self._page_ref, f"Reencolada: {track.name} ({fmt.upper()})")
         self._refresh()
         return True
@@ -1072,11 +1072,7 @@ class DownloadsView(ft.Container):
         )
 
         def _close(_e=None) -> None:
-            dlg.open = False
-            try:
-                self._page_ref.update()
-            except Exception:
-                pass
+            close_dialog(self._page_ref, dlg)
 
         async def _search(query: str) -> tuple[list[RecoveryCandidate], str]:
             found = await search_youtube_alternatives(

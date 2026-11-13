@@ -146,6 +146,34 @@ async def _run() -> None:
     assert sk_stop._reveal_text.value == ""
     assert sk_stop.scale == 1.0
 
+    from unittest.mock import MagicMock
+    from ui.widgets import close_dialog, notify
+    from ui.telemetry import TelemetryDrawer
+
+    dummy_page = MagicMock()
+    dummy_page.overlay = []
+    dummy_page.height = 900
+    dlg = MagicMock()
+    dlg.page = dummy_page
+    dlg.open = True
+    close_dialog(dummy_page, dlg)
+    assert dlg.open is False
+    dlg.update.assert_called_once()
+    dummy_page.update.assert_not_called()
+
+    notify(dummy_page, "Guardado")
+    dummy_page.show_dialog.assert_called_once()
+    dummy_page.update.assert_not_called()
+
+    td_page = MagicMock()
+    td_page.height = 900
+    td = TelemetryDrawer(td_page)
+    td.container = MagicMock()
+    td.container.page = td_page
+    td._d_tab_btns[2].on_click(None)
+    td.container.update.assert_called_once()
+    td_page.update.assert_not_called()
+
 asyncio.run(_run())
 """
         )

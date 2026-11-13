@@ -38,6 +38,7 @@ from ui.widgets import (
     app_dialog,
     app_text,
     build_context_menu_button,
+    close_dialog,
     dialog_action,
     notify,
     open_external,
@@ -627,11 +628,7 @@ class PlaylistDetailView(ft.Container):
             notify(self._page_ref, "Ya hay una descarga en curso", kind="error")
             return
         if dlg is not None:
-            dlg.open = False
-            try:
-                self._page_ref.update()
-            except Exception:
-                pass
+            close_dialog(self._page_ref, dlg)
 
         fmt = str(audio_format or settings_store.get_download_format() or DEFAULT_AUDIO_FORMAT).lower().lstrip(".")
         if fmt not in AUDIO_FORMATS:
@@ -746,11 +743,7 @@ class PlaylistDetailView(ft.Container):
         )
 
         def _close(_e=None) -> None:
-            dlg.open = False
-            try:
-                self._page_ref.update()
-            except Exception:
-                pass
+            close_dialog(self._page_ref, dlg)
 
         async def _search(query: str) -> tuple[list[RecoveryCandidate], str]:
             found = await search_youtube_alternatives(track, query, app_state=self.app_state)

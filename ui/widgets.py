@@ -356,6 +356,23 @@ def organize_dropdown(
     )
 
 
+def close_dialog(page: ft.Page, dlg: ft.AlertDialog | None) -> None:
+    """Cierra ``dlg`` actualizando solo el diálogo (evita ``page.update()`` completo)."""
+    if dlg is None:
+        return
+    try:
+        dlg.open = False
+        if getattr(dlg, "page", None) is not None:
+            dlg.update()
+        else:
+            page.update()
+    except Exception:
+        try:
+            page.update()
+        except Exception:
+            pass
+
+
 class DialogMixin:
     """Ciclo de vida único para diálogos: show/close."""
 
@@ -363,13 +380,7 @@ class DialogMixin:
         page.show_dialog(dlg)
 
     def close_dialog(self, page: ft.Page, dlg: ft.AlertDialog | None) -> None:
-        if dlg is None:
-            return
-        try:
-            dlg.open = False
-            page.update()
-        except Exception:
-            pass
+        close_dialog(page, dlg)
 
 
 def notify(
@@ -395,6 +406,13 @@ def notify(
         show_close_icon=True,
         close_icon_color=ACCENT,
     )
+    show_fn = getattr(page, "show_dialog", None)
+    if callable(show_fn):
+        try:
+            show_fn(snack)
+            return snack
+        except Exception:
+            pass
     page.overlay.append(snack)
     snack.open = True
     page.update()

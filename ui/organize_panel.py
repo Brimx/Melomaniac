@@ -22,20 +22,14 @@ from ui.tokens import (
 )
 from ui.icons import PIcons, app_icon
 from ui.widgets import (
-    dialog_action, app_dialog, organize_dropdown, input_border, debounce,
+    dialog_action, app_dialog, close_dialog, organize_dropdown, input_border, debounce,
     limit_label,
 )
 from engine.organizer import split_tracks
 
 
 def _close_dlg(page: ft.Page, dlg: ft.AlertDialog | None) -> None:
-    if dlg is None:
-        return
-    try:
-        dlg.open = False
-        page.update()
-    except Exception:
-        pass
+    close_dialog(page, dlg)
 
 
 def show_organize_dialog(page: ft.Page, state) -> None:

@@ -31,7 +31,7 @@ from ui.tokens import (
     SUCCESS, TEXT_MUTED, TEXT_PRIMARY, WARNING,
 )
 from ui.widgets import (
-    _ghost_btn, _primary_btn, app_text, notify, open_external,
+    _ghost_btn, _primary_btn, app_text, close_dialog, notify, open_external,
     organize_dropdown, section_label,
 )
 
@@ -510,11 +510,7 @@ class ConfigView(ft.Container):
         def _close(value: bool) -> None:
             if not future.done():
                 future.set_result(value)
-            dlg.open = False
-            try:
-                self._page_ref.update()
-            except Exception:
-                pass
+            close_dialog(self._page_ref, dlg)
 
         dlg = ft.AlertDialog(
             modal=True,
