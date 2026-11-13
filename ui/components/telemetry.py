@@ -269,7 +269,7 @@ class TelemetryDrawer:
             ph.visible = True
 
     def _snack(self, msg: str) -> None:
-        from ui.widgets import notify
+        from ui.components.widgets import notify
         notify(self.page, msg)
 
     def _do_export(self) -> None:

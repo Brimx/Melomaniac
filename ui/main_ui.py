@@ -61,10 +61,24 @@ import flet as ft
 from core.models import Track, LoadState, TransferState
 from core.state import AppState
 from core.config import EXPORT_DEST_LABEL
-from ui.song_row import SongRow, SkeletonRow, PreviewSkeletonRow, build_preview_row, ITEM_H
+from ui.components.song_row import (
+    SongRow,
+    build_preview_row,
+    ITEM_H,
+)
+from ui.components.skeletons import (
+    SkeletonRow,
+    PreviewSkeletonRow,
+)
 from ui.theme.icons import PIcons
 from ui.transfer_report import TransferReportDialog
-from ui.widgets import app_text_field, DialogMixin, notify, input_border, safe_update
+from ui.components.widgets import (
+    app_text_field,
+    DialogMixin,
+    notify,
+    input_border,
+    safe_update,
+)
 
 from ui.theme.tokens import (
     BORDER_LIGHT,
@@ -1050,11 +1064,11 @@ class PlaylistManagerUI(DialogMixin, DivisionMixin, ActionsMixin, LayoutMixin):
     # ── Skeleton pulse ─────────────────────────────────────────────────
 
     def _ensure_skeletons_pulsing(self) -> None:
-        from ui.song_row import start_skeleton_pulse_tasks
+        from ui.components.skeletons import start_skeleton_pulse_tasks
         start_skeleton_pulse_tasks(self._skeletons, self._skeleton_tasks)
 
     def _ensure_preview_skeletons_pulsing(self) -> None:
-        from ui.song_row import start_skeleton_pulse_tasks
+        from ui.components.skeletons import start_skeleton_pulse_tasks
         if getattr(self, '_preview_skeleton_tasks', None) is None:
             self._preview_skeleton_tasks = []
         start_skeleton_pulse_tasks(
@@ -1063,7 +1077,7 @@ class PlaylistManagerUI(DialogMixin, DivisionMixin, ActionsMixin, LayoutMixin):
         )
 
     def _stop_skeleton_pulse(self) -> None:
-        from ui.song_row import stop_skeleton_pulse_tasks
+        from ui.components.skeletons import stop_skeleton_pulse_tasks
         stop_skeleton_pulse_tasks(self._skeletons, self._skeleton_tasks)
         if hasattr(self, '_preview_skeleton_tasks'):
             stop_skeleton_pulse_tasks(

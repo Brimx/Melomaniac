@@ -14,7 +14,7 @@ from core.models import PlaylistMeta
 from engine.local_manifests import detect_platform_from_url
 from services.library_state import LibraryState
 from ui.theme.fonts import FONT_HEADLINE, FONT_HEADLINE_BOLD, FONT_TEXT
-from ui.playlist_card import PlaylistCard
+from ui.components.playlist_card import PlaylistCard
 from ui.playlist_detail_view import PlaylistDetailView
 from ui.theme.tokens import (
     ACCENT, ACCENT_HALO, BG_HOVER, BG_LIST, BG_PANEL, BG_SURFACE,
@@ -22,9 +22,16 @@ from ui.theme.tokens import (
     SUCCESS, TEXT_DIM, TEXT_MUTED, TEXT_PRIMARY,
 )
 from ui.theme.icons import PIcons, app_icon, app_icon_button
-from ui.widgets import (
-    DialogMixin, _ghost_btn, app_dialog, app_text, app_text_field,
-    dialog_action, notify, organize_dropdown, section_label,
+from ui.components.widgets import (
+    DialogMixin,
+    _ghost_btn,
+    app_dialog,
+    app_text,
+    app_text_field,
+    dialog_action,
+    notify,
+    organize_dropdown,
+    section_label,
 )
 
 

@@ -32,7 +32,13 @@ from ui.theme.tokens import (
     ONBOARDING_SLIDE, ONBOARDING_STAGGER_MS, PLAYER_PROGRESS_ANIM_MS, PLAYER_PROGRESS_H,
     RADIUS_DIALOG, RADIUS_INPUT, SUCCESS, TEXT_DIM, TEXT_MUTED, TEXT_PRIMARY, WARNING,
 )
-from ui.widgets import _ghost_btn, _primary_btn, app_text, notify, organize_dropdown
+from ui.components.widgets import (
+    _ghost_btn,
+    _primary_btn,
+    app_text,
+    notify,
+    organize_dropdown,
+)
 
 _PAD = 24
 _INNER_W = ONBOARDING_CARD_W - 2 * _PAD

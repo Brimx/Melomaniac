@@ -40,10 +40,10 @@ from core.models import Track, TransferState
 from core.playback import PlayQueue, build_playable_track
 from ui.theme import tokens
 from ui.theme.icons import PIcons
-from ui.playlist_card import PlaylistCard
+from ui.components.playlist_card import PlaylistCard
 from ui.playlist_detail_view import PlaylistDetailView
-from ui.song_row import SongRow
-from ui.widgets import (
+from ui.components.song_row import SongRow
+from ui.components.context_menu import (
     ContextMenuAction,
     build_context_menu_button,
     build_popup_menu_items,
@@ -731,9 +731,11 @@ class TestContextMenus(unittest.TestCase):
     def test_owned_ui_files_follow_token_and_animation_rules(self) -> None:
         root = Path(__file__).resolve().parent.parent
         owned = [
-            root / "ui/widgets.py",
-            root / "ui/song_row.py",
-            root / "ui/playlist_card.py",
+            root / "ui/components/widgets.py",
+            root / "ui/components/context_menu.py",
+            root / "ui/components/song_row.py",
+            root / "ui/components/skeletons.py",
+            root / "ui/components/playlist_card.py",
             root / "ui/playlist_detail_view.py",
         ]
         hex_pat = re.compile(r"""["']#[0-9A-Fa-f]{6,8}["']""")

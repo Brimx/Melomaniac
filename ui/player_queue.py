@@ -22,13 +22,17 @@ from ui.theme.fonts import (
     FONT_TEXT, font_family_for, mono_family,
 )
 from ui.theme.icons import PIcons, app_icon, app_icon_button
-from ui.song_row import ITEM_H
+from ui.components.song_row import ITEM_H
 from ui.theme.tokens import (
     ACCENT, ACCENT_HALO, BG_PANEL, BG_SURFACE, BORDER_MUTED,
     CHIP_BG, MOTION_HOVER_MS, MOTION_PANEL_MS, PLAYER_QUEUE_W,
     RADIUS_BUTTON, RADIUS_INPUT, TEXT_DIM, TEXT_MUTED, TEXT_PRIMARY,
 )
-from ui.widgets import _ghost_btn, app_text, section_label
+from ui.components.widgets import (
+    _ghost_btn,
+    app_text,
+    section_label,
+)
 
 _KEY_QUEUE_OPEN = "queue_panel_open"
 _KEY_QUEUE_TAB = "queue_panel_tab"

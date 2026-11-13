@@ -41,9 +41,18 @@ from ui.transfer_report import (
     default_search_query,
     track_from_entry,
 )
-from ui.widgets import (
-    _ghost_btn, _primary_btn, app_dialog, app_text, close_dialog, dialog_action,
-    fmt_ms, notify, organize_dropdown, section_label, status_banner,
+from ui.components.widgets import (
+    _ghost_btn,
+    _primary_btn,
+    app_dialog,
+    app_text,
+    close_dialog,
+    dialog_action,
+    fmt_ms,
+    notify,
+    organize_dropdown,
+    section_label,
+    status_banner,
 )
 
 _HISTORY_LIMIT = 500

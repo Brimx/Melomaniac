@@ -43,7 +43,7 @@ from ui.theme.fonts import (
     FONT_TEXT,
     mono_family,
 )
-from ui.song_row import build_preview_row
+from ui.components.song_row import build_preview_row
 from ui.theme.icons import PIcons, app_icon, app_icon_button
 from ui.theme.tokens import (
     ACCENT,
@@ -62,7 +62,7 @@ from ui.theme.tokens import (
     WARN_BORDER,
     WARNING,
 )
-from ui.widgets import (
+from ui.components.widgets import (
     DialogMixin,
     _primary_btn,
     _section_label,

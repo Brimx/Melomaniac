@@ -34,7 +34,13 @@ from ui.theme.tokens import (
     ACCENT, TEXT_PRIMARY, TEXT_MUTED, TEXT_DIM,
 )
 from ui.theme.icons import PIcons
-from ui.widgets import _section_label, app_text_field, dialog_action, app_dialog, DialogMixin
+from ui.components.widgets import (
+    _section_label,
+    app_text_field,
+    dialog_action,
+    app_dialog,
+    DialogMixin,
+)
 
 CONTENT_W = 420
 
@@ -103,7 +109,10 @@ class PlaylistMetaDialog(DialogMixin):
     @staticmethod
     def _field_style() -> dict:
         # Compat: estilo canónico vive en widgets.app_text_field.
-        from ui.widgets import app_text_field, input_border
+        from ui.components.widgets import (
+            app_text_field,
+            input_border,
+        )
         probe = app_text_field(label="x")
         return {
             "bgcolor": probe.bgcolor,
@@ -151,7 +160,7 @@ class PlaylistMetaDialog(DialogMixin):
             for div in self._divisions:
                 self._per_div_dests[div] = "Mantener"
             self._visited.add(self._divisions[0])
-            from ui.widgets import input_border as _ib
+            from ui.components.widgets import input_border as _ib
             self._div_switch = ft.Dropdown(
                 label="División", value=self._divisions[0], width=CONTENT_W, height=38,
                 bgcolor=BG_INPUT, border=_ib(),

@@ -24,26 +24,32 @@ from services import settings_store
 from ui.downloads_view import candidate_to_recovery, search_youtube_alternatives
 from ui.theme.fonts import FONT_HEADLINE, FONT_HEADLINE_BOLD, FONT_TEXT, font_family_for, mono_family
 from ui.theme.icons import PIcons, app_icon, app_icon_button
-from ui.song_row import ITEM_H, LibrarySkeletonRow, _thumb_content_for
+from ui.components.song_row import (
+    ITEM_H,
+    _thumb_content_for,
+)
+from ui.components.skeletons import LibrarySkeletonRow
 from ui.theme.tokens import (
     ACCENT, BG_HOVER, BG_LIST, BG_SURFACE, BORDER_LIGHT, BORDER_MUTED, BORDER_ROW,
     RADIUS_INPUT, SKELETON_DARK, TEXT_DIM, TEXT_MUTED, TEXT_PRIMARY,
     MOTION_HOVER_MS,
 )
 from ui.transfer_report import AlternativeSearchPanel, RecoveryCandidate
-from ui.widgets import (
-    ContextMenuAction,
+from ui.components.widgets import (
     _ghost_btn,
     _primary_btn,
     app_dialog,
     app_text,
-    build_context_menu_button,
     close_dialog,
     dialog_action,
     notify,
     open_external,
     organize_dropdown,
     safe_update,
+)
+from ui.components.context_menu import (
+    ContextMenuAction,
+    build_context_menu_button,
     wrap_with_context_menu,
 )
 
@@ -388,7 +394,7 @@ class PlaylistDetailView(ft.Container):
         )
 
     def _launch(self, url: str) -> None:
-        """Delega en ``ui.widgets.open_external``."""
+        """Delega en ``ui.components.widgets.open_external``."""
         open_external(getattr(self, "_page_ref", None), url)
 
     def _calc_detail_skeleton_count(self) -> int:
@@ -425,11 +431,11 @@ class PlaylistDetailView(ft.Container):
             pass
 
     def _ensure_skeletons_pulsing(self) -> None:
-        from ui.song_row import start_skeleton_pulse_tasks
+        from ui.components.skeletons import start_skeleton_pulse_tasks
         start_skeleton_pulse_tasks(self._skeletons, self._skeleton_tasks)
 
     def _stop_skeleton_pulse(self) -> None:
-        from ui.song_row import stop_skeleton_pulse_tasks
+        from ui.components.skeletons import stop_skeleton_pulse_tasks
         stop_skeleton_pulse_tasks(self._skeletons, self._skeleton_tasks)
 
     def did_mount(self) -> None:

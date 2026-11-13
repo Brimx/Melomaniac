@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import flet as ft
 
-from ui.widgets import (
+from ui.components.widgets import (
     app_dialog,
     app_text_field,
     debounce,

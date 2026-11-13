@@ -41,7 +41,7 @@ from ui.auth_manager import AuthManager
 from ui.theme.fonts import FONT_TEXT, build_font_registry
 from ui.main_ui import PlaylistManagerUI
 from ui.theme.tokens import BG_LIST, ACCENT, BG_SURFACE, TEXT_PRIMARY
-from ui.widgets import build_input_decoration_theme
+from ui.components.widgets import build_input_decoration_theme
 
 # Fuentes locales (IBM Plex Sans variable)
 ASSETS_DIR = Path(__file__).resolve().parent / "resources"

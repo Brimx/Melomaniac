@@ -24,7 +24,7 @@ from ui.theme.tokens import (
     OVERLAY_06, OVERLAY_08, OVERLAY_10, OVERLAY_14, OVERLAY_18,
     WARN_BG, WARN_BORDER,
 )
-from ui.widgets import (
+from ui.components.widgets import (
     DialogMixin,
     _ghost_btn,
     _primary_btn,
@@ -579,7 +579,7 @@ class ConfigWizard(DialogMixin):
         expand: bool = False,
     ) -> ft.TextField:
         """Delega en widgets.app_text_field canónico."""
-        from ui.widgets import app_text_field
+        from ui.components.widgets import app_text_field
         return app_text_field(
             label=label,
             value=value,
@@ -998,7 +998,10 @@ class ConfigWizard(DialogMixin):
     def _field_style() -> dict:
         # Compat: ahora canónico en widgets.app_text_field. Se mantiene
         # para llamadas externas, pero _make_field ya no lo usa.
-        from ui.widgets import app_text_field, input_border
+        from ui.components.widgets import (
+            app_text_field,
+            input_border,
+        )
         probe = app_text_field(label="x")
         return {
             "bgcolor": probe.bgcolor,
@@ -1009,7 +1012,7 @@ class ConfigWizard(DialogMixin):
 
     @staticmethod
     def _section(text: str) -> ft.Text:
-        from ui.widgets import section_label
+        from ui.components.widgets import section_label
         return section_label(text)
 
     @staticmethod

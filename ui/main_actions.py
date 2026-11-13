@@ -10,7 +10,7 @@ import asyncio
 import flet as ft
 import os
 
-from ui.widgets import (
+from ui.components.widgets import (
     _ghost_btn,
     _primary_btn,
     _section_label,
@@ -45,7 +45,7 @@ from core.models import LoadState, Track, TransferState
 from core.config import EXPORT_DEST_LABEL, EXPORT_FORMATS
 from engine.parsers import build_local_tracks, parse_local_playlist_with_paths
 from ui.theme.icons import PIcons, app_icon
-from ui.song_row import _thumb_content_for
+from ui.components.song_row import _thumb_content_for
 from core.state import AppState
 from engine.exporters import default_export_path, export_tracks
 

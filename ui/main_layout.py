@@ -49,8 +49,12 @@ from ui.theme.tokens import (
     TEXT_PRIMARY,
     WARNING,
 )
-from ui.song_row import ITEM_H, PreviewSkeletonRow, SkeletonRow
-from ui.widgets import (
+from ui.components.song_row import ITEM_H
+from ui.components.skeletons import (
+    PreviewSkeletonRow,
+    SkeletonRow,
+)
+from ui.components.widgets import (
     _ghost_btn,
     _primary_btn,
     _section_label,
@@ -69,7 +73,7 @@ from ui.theme.fonts import (
     brand_family,
     mono_family,
 )
-from ui.telemetry import TelemetryDrawer
+from ui.components.telemetry import TelemetryDrawer
 from core.config import APP_VERSION, EXPORT_DEST_LABEL
 from core.models import LoadState, TransferState
 from core.state import AppState

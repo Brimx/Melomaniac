@@ -36,7 +36,12 @@ import os
 import flet as ft
 import app
 from ui.theme import tokens
-from ui.widgets import app_text_field, build_input_decoration_theme, input_border, organize_dropdown
+from ui.components.widgets import (
+    app_text_field,
+    build_input_decoration_theme,
+    input_border,
+    organize_dropdown,
+)
 
 assert os.environ.get("FLET_DESKTOP_FLAVOR") == "full"
 theme = app.build_oled_theme()
@@ -80,12 +85,14 @@ import asyncio
 import os
 from unittest.mock import patch
 from core.models import Track
-from ui.song_row import (
+from ui.components.song_row import (
+    SongRow,
+    build_preview_row,
+)
+from ui.components.skeletons import (
     LibrarySkeletonRow,
     PreviewSkeletonRow,
     SkeletonRow,
-    SongRow,
-    build_preview_row,
     is_reduced_motion,
 )
 
@@ -101,7 +108,7 @@ async def _run() -> None:
             _orig(ctrl)
 
         sk._safe_update = _capture_update
-        with patch("ui.song_row.asyncio.sleep", return_value=None):
+        with patch("ui.components.skeletons.asyncio.sleep", return_value=None):
             await sk._run_ascii_reveal()
 
         assert len(seen_frames) >= 3, (cls.__name__, seen_frames)
@@ -147,8 +154,11 @@ async def _run() -> None:
     assert sk_stop.scale == 1.0
 
     from unittest.mock import MagicMock
-    from ui.widgets import close_dialog, notify
-    from ui.telemetry import TelemetryDrawer
+    from ui.components.widgets import (
+        close_dialog,
+        notify,
+    )
+    from ui.components.telemetry import TelemetryDrawer
 
     dummy_page = MagicMock()
     dummy_page.overlay = []

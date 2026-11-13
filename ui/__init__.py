@@ -25,7 +25,11 @@ def __getattr__(name: str):
 
         return PlaylistManagerUI
     if name in {"SongRow", "SkeletonRow", "ITEM_H"}:
-        from ui.song_row import ITEM_H, SkeletonRow, SongRow
+        from ui.components.song_row import (
+            ITEM_H,
+            SongRow,
+        )
+        from ui.components.skeletons import SkeletonRow
 
         return {"SongRow": SongRow, "SkeletonRow": SkeletonRow, "ITEM_H": ITEM_H}[name]
     raise AttributeError(f"module 'ui' has no attribute {name!r}")

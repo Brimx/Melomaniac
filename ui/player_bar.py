@@ -49,7 +49,11 @@ from ui.theme.tokens import (
     TEXT_PRIMARY,
     MOTION_HOVER_MS,
 )
-from ui.widgets import app_text, fmt_ms as _fmt_ms, notify
+from ui.components.widgets import (
+    app_text,
+    fmt_ms as _fmt_ms,
+    notify,
+)
 from ui.player_mpris import MprisBridgeMixin
 
 _TICKER_INTERVAL_S = 0.25

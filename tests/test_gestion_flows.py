@@ -515,7 +515,10 @@ class TestGestionFlows(unittest.TestCase):
     def test_schedule_state_render_from_worker_thread_marshals_to_ui_loop(self) -> None:
         import threading
         import warnings
-        from ui.song_row import SkeletonRow, start_skeleton_pulse_tasks
+        from ui.components.skeletons import (
+            SkeletonRow,
+            start_skeleton_pulse_tasks,
+        )
 
         with warnings.catch_warnings(record=True) as caught:
             warnings.simplefilter("always", RuntimeWarning)

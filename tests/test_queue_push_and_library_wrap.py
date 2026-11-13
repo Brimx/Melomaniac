@@ -189,7 +189,7 @@ class TestQueuePushAndLibraryWrap(unittest.TestCase):
 
         from core.models import Track
         from ui.player_queue import PlayerQueuePanel
-        from ui.song_row import SongRow
+        from ui.components.song_row import SongRow
 
         tr = Track(id="t1", name="Song", artist="Artist", album="Album", duration="3:00", img_url="", platform="Spotify")
         row = SongRow(tr, 1, lambda _tid: None, show_album=False)

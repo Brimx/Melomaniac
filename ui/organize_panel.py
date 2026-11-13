@@ -21,8 +21,13 @@ from ui.theme.tokens import (
     TEXT_DIM, CHIP_BG, DIALOG_OPTION_LIMIT,
 )
 from ui.theme.icons import PIcons, app_icon
-from ui.widgets import (
-    dialog_action, app_dialog, close_dialog, organize_dropdown, input_border, debounce,
+from ui.components.widgets import (
+    dialog_action,
+    app_dialog,
+    close_dialog,
+    organize_dropdown,
+    input_border,
+    debounce,
     limit_label,
 )
 from engine.organizer import split_tracks
@@ -498,7 +503,7 @@ def show_reorganize_dialog(page: ft.Page, state) -> None:
     src = state.display_tracks if getattr(state, "display_tracks", None) else state.tracks
     if not src:
         try:
-            from ui.widgets import notify
+            from ui.components.widgets import notify
             notify(page, "No hay playlist cargada para reorganizar", kind="error")
         except Exception:
             pass
@@ -581,7 +586,7 @@ def show_reorganize_dialog(page: ft.Page, state) -> None:
         return
     except Exception as exc:
         try:
-            from ui.widgets import notify
+            from ui.components.widgets import notify
             notify(page, f"Reorganizar fallback: {exc}", kind="error")
         except Exception:
             pass

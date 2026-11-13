@@ -12,17 +12,19 @@ import flet as ft
 from core.library_models import LibraryLoadState, PlaylistSummary
 from ui.theme.fonts import FONT_HEADLINE, FONT_HEADLINE_BOLD, FONT_TEXT, font_family_for
 from ui.theme.icons import PIcons
-from ui.song_row import _thumb_content_for
+from ui.components.song_row import _thumb_content_for
 from ui.theme.tokens import (
     ACCENT, BG_HOVER, BG_LIST, BG_SURFACE, BORDER_LIGHT, BORDER_MUTED,
     ERROR_COL, SKELETON_DARK, TEXT_DIM, TEXT_MUTED, TEXT_PRIMARY, WARNING,
     MOTION_HOVER_MS,
 )
-from ui.widgets import (
-    ContextMenuAction,
-    build_context_menu_button,
+from ui.components.widgets import (
     open_external,
     safe_update,
+)
+from ui.components.context_menu import (
+    ContextMenuAction,
+    build_context_menu_button,
     wrap_with_context_menu,
 )
 

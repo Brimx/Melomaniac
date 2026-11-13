@@ -30,9 +30,15 @@ from ui.theme.tokens import (
     ACCENT, BG_LIST, BG_SURFACE, BORDER_MUTED, RADIUS_INPUT,
     SUCCESS, TEXT_MUTED, TEXT_PRIMARY, WARNING,
 )
-from ui.widgets import (
-    _ghost_btn, _primary_btn, app_text, close_dialog, notify, open_external,
-    organize_dropdown, section_label,
+from ui.components.widgets import (
+    _ghost_btn,
+    _primary_btn,
+    app_text,
+    close_dialog,
+    notify,
+    open_external,
+    organize_dropdown,
+    section_label,
 )
 
 
