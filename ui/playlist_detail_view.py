@@ -220,10 +220,21 @@ class PlaylistDetailView(ft.Container):
         self._skeleton_tasks: list[asyncio.Task] = []
         self._press_tasks: set[asyncio.Task] = set()
         self._manifest_cache: dict[str, dict] = {}
-        self._skeleton_list = ft.ListView(expand=True, spacing=0)
+        self._skeleton_list = ft.ListView(
+            item_extent=ITEM_H,
+            cache_extent=ITEM_H * 8,
+            expand=True,
+            spacing=0,
+        )
         self._skeleton_wrap = ft.Container(content=self._skeleton_list, expand=True, visible=True)
         self._sync_skeleton_count()
-        self._list_view = ft.ListView(expand=True, spacing=0, visible=False)
+        self._list_view = ft.ListView(
+            item_extent=ITEM_H,
+            cache_extent=ITEM_H * 8,
+            expand=True,
+            spacing=0,
+            visible=False,
+        )
         self._error_box = ft.Container(visible=False, bgcolor=BG_SURFACE, border=ft.Border.all(0.8, BORDER_MUTED), border_radius=10, padding=ft.Padding.all(12), content=ft.Column(controls=[
             app_text("No se pudo cargar", size=13, color=TEXT_PRIMARY, font_family=FONT_HEADLINE_BOLD),
             app_text("", size=11, color=TEXT_MUTED, font_family=FONT_TEXT),
@@ -1381,10 +1392,21 @@ class PlaylistDetailView(ft.Container):
             width=32,
             height=32,
             border_radius=16,
+            bgcolor=ft.Colors.TRANSPARENT,
             alignment=ft.Alignment.CENTER,
             tooltip="Reproducir" if has_file else "Descargar canción",
             ink=True,
+            animate=ft.Animation(MOTION_HOVER_MS, ft.AnimationCurve.EASE_OUT),
+            animate_scale=ft.Animation(MOTION_HOVER_MS, ft.AnimationCurve.EASE_OUT),
         )
+
+        def _on_action_hover(e: ft.HoverEvent) -> None:
+            hovering = e.data == "true" or e.data is True
+            action_icon.bgcolor = BG_HOVER if hovering else ft.Colors.TRANSPARENT
+            action_icon.scale = 1.12 if hovering else 1.0
+            safe_update(action_icon)
+
+        action_icon.on_hover = _on_action_hover
 
         def _on_action_click(_e) -> None:
             if track.source_path and os.path.isfile(track.source_path):

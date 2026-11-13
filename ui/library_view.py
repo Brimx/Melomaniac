@@ -18,8 +18,8 @@ from ui.playlist_card import PlaylistCard
 from ui.playlist_detail_view import PlaylistDetailView
 from ui.tokens import (
     ACCENT, ACCENT_HALO, BG_HOVER, BG_LIST, BG_PANEL, BG_SURFACE,
-    BORDER_LIGHT, BORDER_MUTED, ERROR_COL, RADIUS_BUTTON, SUCCESS,
-    TEXT_DIM, TEXT_MUTED, TEXT_PRIMARY,
+    BORDER_LIGHT, BORDER_MUTED, ERROR_COL, MOTION_HOVER_MS, RADIUS_BUTTON,
+    SUCCESS, TEXT_DIM, TEXT_MUTED, TEXT_PRIMARY,
 )
 from ui.icons import PIcons, app_icon, app_icon_button
 from ui.widgets import (
@@ -127,42 +127,80 @@ class LibraryView(ft.Container, DialogMixin):
         self.content = ft.Container(content=body, padding=ft.Padding.all(12), expand=True)
 
     def _rebuild_platform_selector(self) -> None:
-        """Control segmentado de una sola fila: icono + etiqueta corta."""
-        self._platform_row.controls.clear()
-        for plat in SOURCES:
+        """Control segmentado de una sola fila: se construye una vez y se actualiza en sitio."""
+        btns_map = getattr(self, "_platform_btns", None)
+        if btns_map is None:
+            btns_map = {}
+            self._platform_btns = btns_map
+        if not btns_map:
+            self._platform_row.controls.clear()
+            for plat in SOURCES:
+                icon = PLATFORM_ICONS.get(plat, PIcons.MUSIC_NOTE)
+                ico_ctrl = app_icon(icon, size=18, color=TEXT_DIM, fill=False)
+                lbl_ctrl = ft.Text(
+                    _SHORT_LABELS.get(plat, plat),
+                    size=10,
+                    color=TEXT_MUTED,
+                    font_family=FONT_HEADLINE,
+                    max_lines=1,
+                    overflow=ft.TextOverflow.ELLIPSIS,
+                    text_align=ft.TextAlign.CENTER,
+                )
+                btn = ft.Container(
+                    content=ft.Column(
+                        controls=[ico_ctrl, lbl_ctrl],
+                        spacing=3,
+                        horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+                        tight=True,
+                    ),
+                    bgcolor=BG_SURFACE,
+                    border=ft.Border.all(0.8, BORDER_LIGHT),
+                    border_radius=RADIUS_BUTTON,
+                    padding=ft.Padding.symmetric(horizontal=6, vertical=7),
+                    alignment=ft.Alignment.CENTER,
+                    ink=True,
+                    tooltip=plat,
+                    expand=True,
+                    data=plat,
+                    animate=ft.Animation(MOTION_HOVER_MS, ft.AnimationCurve.EASE_OUT),
+                    animate_scale=ft.Animation(MOTION_HOVER_MS, ft.AnimationCurve.EASE_OUT),
+                    on_click=self._on_platform_click,
+                )
+
+                def _make_hover(p_name: str, container: ft.Container, ico: ft.Control, lbl: ft.Text):
+                    def _on_hover(e: ft.HoverEvent) -> None:
+                        if p_name == self._platform:
+                            return
+                        hovering = e.data == "true" or e.data is True
+                        container.bgcolor = BG_HOVER if hovering else BG_SURFACE
+                        container.border = ft.Border.all(
+                            0.8, ACCENT if hovering else BORDER_LIGHT
+                        )
+                        container.scale = 1.02 if hovering else 1.0
+                        ico.color = TEXT_PRIMARY if hovering else TEXT_DIM
+                        lbl.color = TEXT_PRIMARY if hovering else TEXT_MUTED
+                        try:
+                            container.update()
+                        except Exception:
+                            pass
+                    return _on_hover
+
+                btn.on_hover = _make_hover(plat, btn, ico_ctrl, lbl_ctrl)
+                btns_map[plat] = (btn, ico_ctrl, lbl_ctrl)
+                self._platform_row.controls.append(btn)
+
+        for plat, (btn, ico_ctrl, lbl_ctrl) in btns_map.items():
             selected = plat == self._platform
             icon = PLATFORM_ICONS.get(plat, PIcons.MUSIC_NOTE)
-            ico_ctrl = app_icon(icon, size=18, color=ACCENT if selected else TEXT_DIM, fill=selected)
-            btn = ft.Container(
-                content=ft.Column(
-                    controls=[
-                        ico_ctrl,
-                        ft.Text(
-                            _SHORT_LABELS.get(plat, plat),
-                            size=10,
-                            color=TEXT_PRIMARY if selected else TEXT_MUTED,
-                            font_family=FONT_HEADLINE,
-                            max_lines=1,
-                            overflow=ft.TextOverflow.ELLIPSIS,
-                            text_align=ft.TextAlign.CENTER,
-                        ),
-                    ],
-                    spacing=3,
-                    horizontal_alignment=ft.CrossAxisAlignment.CENTER,
-                    tight=True,
-                ),
-                bgcolor=ACCENT_HALO if selected else BG_SURFACE,
-                border=ft.Border.all(0.8, ACCENT if selected else BORDER_LIGHT),
-                border_radius=RADIUS_BUTTON,
-                padding=ft.Padding.symmetric(horizontal=6, vertical=7),
-                alignment=ft.Alignment.CENTER,
-                ink=True,
-                tooltip=plat,
-                expand=True,
-                data=plat,
-                on_click=self._on_platform_click,
-            )
-            self._platform_row.controls.append(btn)
+            ico_ctrl.value = icon
+            ico_ctrl.color = ACCENT if selected else TEXT_DIM
+            # Sincroniza relleno Phosphor sin reconstruir controles
+            from ui.fonts import FONT_PHOSPHOR, FONT_PHOSPHOR_FILL
+            ico_ctrl.font_family = FONT_PHOSPHOR_FILL if selected else FONT_PHOSPHOR
+            lbl_ctrl.color = TEXT_PRIMARY if selected else TEXT_MUTED
+            btn.bgcolor = ACCENT_HALO if selected else BG_SURFACE
+            btn.border = ft.Border.all(0.8, ACCENT if selected else BORDER_LIGHT)
+            btn.scale = 1.0
 
     def _on_platform_click(self, e) -> None:
         plat = str(e.control.data)

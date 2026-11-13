@@ -809,13 +809,13 @@ class LayoutMixin:
                 setter(show_album, update=update)
 
     def _build_list_and_preview_panels(self) -> None:
-        self._list_view = ft.ListView(item_extent=ITEM_H, spacing=0, expand=True,
+        self._list_view = ft.ListView(item_extent=ITEM_H, cache_extent=ITEM_H * 8, spacing=0, expand=True,
                                       padding=ft.Padding.only(bottom=20))
         _sf = dict(left=0, top=0, right=0, bottom=0)
         self._list_view_wrap     = ft.Container(content=self._list_view, bgcolor=BG_LIST, visible=False, **_sf)
         # skeleton count responsive (se recalcula en _calc_skeleton_count; inicial 14)
         self._skeletons          = [SkeletonRow(i) for i in range(self._calc_skeleton_count() if hasattr(self, '_calc_skeleton_count') else self.SKELETON_COUNT)]
-        self._skeleton_view      = ft.ListView(item_extent=ITEM_H, spacing=0, expand=True,
+        self._skeleton_view      = ft.ListView(item_extent=ITEM_H, cache_extent=ITEM_H * 8, spacing=0, expand=True,
                                                controls=self._skeletons, visible=True)
         self._skeleton_view_wrap = ft.Container(content=self._skeleton_view, bgcolor=BG_LIST, visible=False, **_sf)
 
@@ -854,7 +854,7 @@ class LayoutMixin:
         )
 
         # Preview readonly (derecha del doble)
-        self._preview_list_view = ft.ListView(item_extent=ITEM_H, spacing=0, expand=True,
+        self._preview_list_view = ft.ListView(item_extent=ITEM_H, cache_extent=ITEM_H * 8, spacing=0, expand=True,
                                               padding=ft.Padding.only(bottom=20))
         self._preview_count = ft.Text("", size=10, color=TEXT_MUTED, font_family=mono_family("light"), opacity=1.0)
         self._preview_empty = self._make_cono_empty("Preview vacío", "Marca canciones y organiza para ver cómo se va a pasar.", visible=False)
@@ -863,7 +863,7 @@ class LayoutMixin:
         # skeleton preview espejo (mismo cnt, sin Estado/Sel)
         _init_cnt = len(self._skeletons) if hasattr(self, '_skeletons') and self._skeletons else self._calc_skeleton_count()
         self._preview_skeletons = [PreviewSkeletonRow(i) for i in range(_init_cnt)]
-        self._preview_skeleton_view = ft.ListView(item_extent=ITEM_H, spacing=0, expand=True, controls=self._preview_skeletons, visible=True)
+        self._preview_skeleton_view = ft.ListView(item_extent=ITEM_H, cache_extent=ITEM_H * 8, spacing=0, expand=True, controls=self._preview_skeletons, visible=True)
         self._preview_skeleton_wrap = ft.Container(content=self._preview_skeleton_view, bgcolor=BG_LIST, visible=False, **_sf)
         self._preview_stack = ft.Stack(controls=[self._preview_view_wrap, self._preview_skeleton_wrap, self._preview_empty_wrap], expand=True)
         self._preview_header_text = ft.Text("Preview — cómo se va a pasar", size=11, color=TEXT_MUTED, font_family=FONT_HEADLINE_BOLD)

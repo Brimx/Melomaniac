@@ -297,10 +297,21 @@ def _thumb_content_for(
     usos que no recortan.
     """
     if img_url:
-        size = {"width": box, "height": box} if box else {}
+        size = (
+            {
+                "width": box,
+                "height": box,
+                "cache_width": box * 2,
+                "cache_height": box * 2,
+            }
+            if box
+            else {}
+        )
         return ft.Image(
             src=img_url,
             fit=ft.BoxFit.COVER,
+            gapless_playback=True,
+            filter_quality=ft.FilterQuality.MEDIUM,
             error_content=app_icon(PIcons.MUSIC_NOTE, color=TEXT_DIM, size=icon_size),
             **size,
         )
@@ -558,6 +569,10 @@ class SongRow(ft.Container):
         # ──────────────────────────────────────────────────────────────
         
         self._status_icon = _status_icon(track.transfer_status)
+        self._hover_dl_icon = app_icon(PIcons.DOWNLOAD_SIMPLE, color=ACCENT, size=16)
+        self._hover_dl_busy_icon = app_icon(PIcons.DOWNLOAD_SIMPLE, color=TEXT_DIM, size=16)
+        self._done_icon = app_icon(PIcons.CHECK_CIRCLE, color=SUCCESS, size=15, fill=True)
+        self._status_cell_state: tuple | None = None
 
         # ──────────────────────────────────────────────────────────────
         # ELEMENTOS DE TEXTO
@@ -629,11 +644,31 @@ class SongRow(ft.Container):
         # ──────────────────────────────────────────────────────────────
         # Estructura: [#] [Thumb] [Título/Artista] [Álbum] [Duración] [Estado] [✓]
 
+        def _on_status_hover(e: ft.HoverEvent) -> None:
+            if not (self._hovered and self._on_download is not None and not self._download_done and not self._download_busy):
+                if self._status_cell.scale != 1.0:
+                    self._status_cell.scale = 1.0
+                    try:
+                        self._status_cell.update()
+                    except Exception:
+                        pass
+                return
+            hovering = e.data == "true" or e.data is True
+            self._status_cell.scale = 1.12 if hovering else 1.0
+            try:
+                self._status_cell.update()
+            except Exception:
+                pass
+
         self._status_cell = ft.Container(
             content=self._status_icon,
             width=26,
+            height=26,
+            border_radius=13,
             alignment=ft.Alignment.CENTER,
             animate=ft.Animation(MOTION_HOVER_MS, ft.AnimationCurve.EASE_OUT),
+            animate_scale=ft.Animation(MOTION_HOVER_MS, ft.AnimationCurve.EASE_OUT),
+            on_hover=_on_status_hover,
         )
         self._sync_status_cell()
         self._menu_btn = build_context_menu_button(
@@ -769,15 +804,22 @@ class SongRow(ft.Container):
         status = self.track.transfer_status
         transfer_active = status in ("searching", "transferred", "not_found", "error", "revision_necesaria")
         if self._download_done:
-            self._status_cell.content = app_icon(PIcons.CHECK_CIRCLE, color=SUCCESS, size=15, fill=True)
+            key: tuple = ("done",)
+            if self._status_cell_state == key:
+                return
+            self._status_cell_state = key
+            self._status_cell.content = self._done_icon
             self._status_cell.tooltip = "Descargada"
             self._status_cell.on_click = None
+            self._status_cell.scale = 1.0
             return
         if self._hovered and self._on_download is not None and not transfer_active:
-            self._status_cell.content = app_icon(
-                PIcons.DOWNLOAD_SIMPLE,
-                color=TEXT_DIM if self._download_busy else ACCENT,
-                size=16,
+            key = ("hover_dl", self._download_busy)
+            if self._status_cell_state == key:
+                return
+            self._status_cell_state = key
+            self._status_cell.content = (
+                self._hover_dl_busy_icon if self._download_busy else self._hover_dl_icon
             )
             self._status_cell.tooltip = (
                 "Descarga en curso" if self._download_busy else "Descargar canción"
@@ -786,21 +828,20 @@ class SongRow(ft.Container):
                 None if self._download_busy else self._handle_download_click
             )
             return
+        key = ("status", status)
+        if self._status_cell_state == key:
+            return
+        self._status_cell_state = key
         self._status_cell.content = _status_icon(status)
         self._status_cell.tooltip = None
         self._status_cell.on_click = None
+        self._status_cell.scale = 1.0
 
     def _on_hover(self, e: ft.HoverEvent) -> None:
-        """
-        Maneja el evento de hover cambiando el color de fondo y la celda de acción.
-        
-        Proporciona feedback visual sutil al pasar el cursor sobre la fila.
-        La animación de 100ms (definida en __init__) suaviza la transición.
-        
-        Args:
-            e: Evento de hover con data "true" (entrando) o "false" (saliendo).
-        """
+        """Maneja hover cambiando fondo y celda de descarga sin reconstruir controles."""
         hovered = e.data == "true" or e.data is True
+        if self._hovered == hovered:
+            return
         self._hovered = hovered
         self.bgcolor = BG_HOVER if hovered else BG_LIST
         self._sync_status_cell()
