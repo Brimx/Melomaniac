@@ -696,33 +696,38 @@ class PlaylistDetailView(ft.Container):
         if pb is None:
             return
         q = getattr(pb, "queue", None)
-        if q is not None and hasattr(q, "shuffle_from_context") and hasattr(pb, "_load_and_play_current"):
-            q.shuffle_from_context(playable_tracks)
-            setter = getattr(settings_store, "set_shuffle", None)
-            if callable(setter):
-                try:
-                    setter(True)
-                except Exception:
-                    pass
-            pb._load_and_play_current()
-            notify(self._page_ref, f"Reproduciendo {len(playable_tracks)} canciones en aleatorio")
-            return
-        if q is not None and hasattr(q, "set_shuffle"):
-            if not getattr(q, "shuffle", False):
+        start_idx: int | None = None
+        used_context_shuffle = False
+        if q is not None and hasattr(q, "shuffle_from_context"):
+            picked = q.shuffle_from_context(playable_tracks)
+            picked_track = getattr(picked, "track", None)
+            if isinstance(picked_track, Track):
+                for idx, track in enumerate(playable_tracks):
+                    if track is picked_track or track == picked_track:
+                        start_idx = idx
+                        used_context_shuffle = True
+                        break
+        if not used_context_shuffle and q is not None and hasattr(q, "set_shuffle"):
+            if getattr(q, "shuffle", False) is not True:
                 q.set_shuffle(True)
-            setter = getattr(settings_store, "set_shuffle", None)
-            if callable(setter):
-                try:
-                    setter(True)
-                except Exception:
-                    pass
+        setter = getattr(settings_store, "set_shuffle", None)
+        if callable(setter):
+            try:
+                setter(True)
+            except Exception:
+                pass
         items = [(t.source_path, t) for t in playable_tracks]
-        start_idx = random.randrange(len(items))
+        if start_idx is None:
+            start_idx = random.randrange(len(items))
         if hasattr(pb, "play_files"):
             pb.play_files(items, start_index=start_idx)
             notify(self._page_ref, f"Reproduciendo {len(items)} canciones en aleatorio")
         elif hasattr(pb, "play_file"):
             pb.play_file(items[start_idx][0], track=items[start_idx][1])
+            notify(self._page_ref, f"Reproduciendo {len(items)} canciones en aleatorio")
+        elif used_context_shuffle and hasattr(pb, "_load_and_play_current"):
+            pb._load_and_play_current()
+            notify(self._page_ref, f"Reproduciendo {len(items)} canciones en aleatorio")
 
     # ── Selección múltiple y acciones por lote ─────────────────────────
 

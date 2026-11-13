@@ -346,7 +346,7 @@ class TestPlaylistDetailViewFeatures(unittest.TestCase):
                     self.assertFalse(view._shuffle_btn.disabled)
                     self.assertTrue(view._shuffle_btn.visible)
 
-                    with patch("ui.playlist_detail_view.random.randrange", return_value=2), \\
+                    with patch.object(queue._rng, "randrange", return_value=2), \\
                          patch("ui.playlist_detail_view.settings_store.set_shuffle") as set_shuf:
                         view._on_shuffle_play()
 
@@ -356,6 +356,33 @@ class TestPlaylistDetailViewFeatures(unittest.TestCase):
                     _items, kwargs = player_bar.play_files.call_args
                     self.assertEqual(kwargs["start_index"], 2)
                     self.assertEqual(queue.current.track, tracks[2])
+                finally:
+                    view.will_unmount()
+
+        asyncio.run(_run())
+
+    def test_shuffle_button_falls_back_when_queue_is_mock(self) -> None:
+        async def _run() -> None:
+            with tempfile.TemporaryDirectory() as tmp:
+                tracks = []
+                for i in range(3):
+                    p = Path(tmp) / f"mock_song_{i}.mp3"
+                    p.write_bytes(b"ID3")
+                    tracks.append(_make_track(i, source_path=str(p)))
+
+                view, _page, player_bar, _queue, _app_state = self._build_detail_with_tracks(tracks)
+                player_bar.queue = MagicMock()
+                try:
+                    await view.reload()
+                    with patch("ui.playlist_detail_view.random.randrange", return_value=1), \\
+                         patch("ui.playlist_detail_view.settings_store.set_shuffle") as set_shuf:
+                        view._on_shuffle_play()
+
+                    player_bar.queue.set_shuffle.assert_called_once_with(True)
+                    set_shuf.assert_called_once_with(True)
+                    player_bar.play_files.assert_called_once()
+                    _items, kwargs = player_bar.play_files.call_args
+                    self.assertEqual(kwargs["start_index"], 1)
                 finally:
                     view.will_unmount()
 
