@@ -650,6 +650,29 @@ class SpotifySearchAndOverviewTest(unittest.TestCase):
         mock_search.assert_awaited_once()
         fake_song.add_songs_to_playlist.assert_called_once_with(["sp_direct", "sp_resolved"])
 
+    def test_totp_fallback_cache_avoids_repeated_timeouts(self) -> None:
+        import types
+        fake_sp_client = types.SimpleNamespace(
+            _secret_cache=None,
+            _cache_expiry=-1,
+            _CACHE_TTL=900,
+        )
+        calls = {"n": 0}
+
+        def _fake_get_secret():
+            calls["n"] += 1
+            return (18, bytearray(b"fallback"))
+
+        fake_sp_client.get_latest_totp_secret = _fake_get_secret
+        with mock.patch.dict("sys.modules", {"spotapi.client": fake_sp_client}):
+            sp_mod._install_spotapi_totp_fallback_cache()
+            first = fake_sp_client.get_latest_totp_secret()
+            second = fake_sp_client.get_latest_totp_secret()
+
+        self.assertEqual(calls["n"], 1)
+        self.assertEqual(first, second)
+        self.assertEqual(fake_sp_client._secret_cache, first)
+
 
 if __name__ == "__main__":
     unittest.main()

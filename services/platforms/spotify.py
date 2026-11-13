@@ -48,6 +48,45 @@ except ImportError:
     HAS_SPOTIFY = False
 
 
+def _install_spotapi_totp_fallback_cache() -> None:
+    """Cachea ``_FALLBACK_SECRET`` en ``spotapi.client`` cuando falla ``code.thetadev.de``.
+
+    ``spotapi`` solo escribe ``_secret_cache`` en caso de éxito HTTP; ante timeout
+    repite una espera síncrona de 5s en cada generación TOTP.
+    """
+    try:
+        import importlib
+        import sys
+        import threading
+        _sp_client = sys.modules.get("spotapi.client") or importlib.import_module("spotapi.client")
+    except Exception:
+        return
+    orig_fn = getattr(_sp_client, "get_latest_totp_secret", None)
+    if not callable(orig_fn) or getattr(orig_fn, "_melomaniac_cached", False):
+        return
+    lock = threading.Lock()
+
+    def _cached_totp_secret():
+        with lock:
+            now = time.time()
+            cached = getattr(_sp_client, "_secret_cache", None)
+            expiry = getattr(_sp_client, "_cache_expiry", -1)
+            if cached and now < expiry:
+                return cached
+            res = orig_fn()
+            if not getattr(_sp_client, "_secret_cache", None):
+                _sp_client._secret_cache = res
+                _sp_client._cache_expiry = time.time() + getattr(_sp_client, "_CACHE_TTL", 900)
+            return res
+
+    _cached_totp_secret._melomaniac_cached = True  # type: ignore[attr-defined]
+    _sp_client.get_latest_totp_secret = _cached_totp_secret
+
+
+if HAS_SPOTIFY:
+    _install_spotapi_totp_fallback_cache()
+
+
 class SpotifyMixin:
     """Métodos de Spotify para `MusicApiService`."""
 
