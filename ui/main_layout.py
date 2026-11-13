@@ -1339,8 +1339,8 @@ class LayoutMixin:
                                                   content=self._make_cono_empty("Biblioteca", "Colección local, historial 20 y portadas — pronto.", visible=True))
         self._auto_play_download_ids: set[str] = set()
         from services.mpris_service import MPRISService
-        from ui.player_bar import PlayerBar
-        from ui.player_queue import PlayerQueuePanel
+        from ui.player.player_bar import PlayerBar
+        from ui.player.player_queue import PlayerQueuePanel
 
         self.player_bar = PlayerBar(
             self.page,

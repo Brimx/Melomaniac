@@ -54,7 +54,8 @@ from ui.components.widgets import (
     fmt_ms as _fmt_ms,
     notify,
 )
-from ui.player_mpris import MprisBridgeMixin
+from ui.player.bar_layout import build_player_bar_layout
+from ui.player.player_mpris import MprisController
 
 _TICKER_INTERVAL_S = 0.25
 _DEFAULT_TRACK_WIDTH = 240.0
@@ -93,7 +94,7 @@ def _resolve_pos_log_path() -> str | None:
     return raw
 
 
-class PlayerBar(ft.Container, MprisBridgeMixin):
+class PlayerBar(ft.Container):
     """Barra inferior global del reproductor y dueño del servicio ``Audio``."""
 
     def __init__(
@@ -115,6 +116,7 @@ class PlayerBar(ft.Container, MprisBridgeMixin):
         self._on_toggle_queue = on_toggle_queue
         self._listeners: list[Callable[[], None]] = []
         self._dbus_mpris = dbus_mpris
+        self._mpris = MprisController(self)
 
         # Preferencias persistidas (con fallback si aún no existen)
         init_vol = float(getattr(settings_store, "get_volume", lambda: 1.0)())
@@ -227,259 +229,7 @@ class PlayerBar(ft.Container, MprisBridgeMixin):
     # ── construcción visual ────────────────────────────────────────────
 
     def _build_ui(self) -> None:
-        meta_col = self._build_now_playing_section()
-        self._build_transport_and_progress_section()
-        vol_row = self._build_volume_and_queue_section()
-        self._assemble_bar_row(meta_col, vol_row)
-
-    def _build_now_playing_section(self) -> ft.Container:
-        # [thumb]
-        self._thumb_icon = app_icon(PIcons.DISC, size=18, color=TEXT_DIM)
-        self._thumb_img = ft.Image(
-            src="",
-            width=PLAYER_THUMB_SIZE,
-            height=PLAYER_THUMB_SIZE,
-            fit=ft.BoxFit.COVER,
-            border_radius=RADIUS_INPUT,
-            visible=False,
-        )
-        self._thumb_box = ft.Container(
-            width=PLAYER_THUMB_SIZE,
-            height=PLAYER_THUMB_SIZE,
-            bgcolor=BG_SURFACE,
-            border=ft.Border.all(0.8, BORDER_MUTED),
-            border_radius=RADIUS_INPUT,
-            alignment=ft.Alignment.CENTER,
-            content=ft.Stack(controls=[self._thumb_icon, self._thumb_img]),
-        )
-
-        # [título/artista]
-        self._title_txt = app_text(
-            "Sin reproducción",
-            size=12,
-            color=TEXT_PRIMARY,
-            font_family=FONT_HEADLINE_BOLD,
-            max_lines=1,
-            overflow=ft.TextOverflow.ELLIPSIS,
-        )
-        self._artist_txt = app_text(
-            "Selecciona una pista descargada",
-            size=11,
-            color=TEXT_MUTED,
-            font_family=FONT_TEXT,
-            max_lines=1,
-            overflow=ft.TextOverflow.ELLIPSIS,
-        )
-        meta_col = ft.Container(
-            width=190,
-            content=ft.Column(
-                controls=[self._title_txt, self._artist_txt],
-                spacing=1,
-                alignment=ft.MainAxisAlignment.CENTER,
-            ),
-        )
-
-        # [badge formato]
-        self._badge_txt = app_text(
-            "—",
-            size=10,
-            color=TEXT_MUTED,
-            font_family=mono_family("medium"),
-        )
-        self._badge_box = ft.Container(
-            bgcolor=CHIP_BG,
-            border=ft.Border.all(0.8, BORDER_MUTED),
-            border_radius=6,
-            padding=ft.Padding.symmetric(horizontal=8, vertical=4),
-            content=self._badge_txt,
-            tooltip="Formato real del archivo",
-            visible=False,
-        )
-
-        return meta_col
-
-    def _build_transport_and_progress_section(self) -> None:
-        # [⏮ ▶/⏸ ⏭]
-        self._prev_btn = app_icon_button(
-            glyph=PIcons.SKIP_BACK,
-            size=18,
-            icon_color=TEXT_PRIMARY,
-            tooltip="Anterior (o reiniciar si > 3 s)",
-            on_click=self._on_prev_click,
-            width=32,
-            height=32,
-        )
-        self._play_btn = app_icon_button(
-            glyph=PIcons.PLAY,
-            fill=True,
-            size=28,
-            icon_color=ACCENT,
-            hover_color_icon=ACCENT,
-            hover_scale=1.12,
-            tooltip="Reproducir / Pausar",
-            on_click=self._on_play_pause_click,
-            width=36,
-            height=36,
-        )
-        self._next_btn = app_icon_button(
-            glyph=PIcons.SKIP_FORWARD,
-            size=18,
-            icon_color=TEXT_PRIMARY,
-            tooltip="Siguiente",
-            on_click=self._on_next_click,
-            width=32,
-            height=32,
-        )
-        self._transport_row = ft.Row(
-            controls=[self._prev_btn, self._play_btn, self._next_btn],
-            spacing=4,
-            vertical_alignment=ft.CrossAxisAlignment.CENTER,
-            tight=True,
-        )
-
-        # [tiempo]
-        self._time_txt = app_text(
-            "0:00 / 0:00",
-            size=11,
-            color=TEXT_MUTED,
-            font_family=mono_family("light"),
-        )
-
-        # [barra]
-        self._progress_fill = ft.Container(
-            width=0,
-            height=PLAYER_PROGRESS_H,
-            bgcolor=ACCENT,
-            border_radius=PLAYER_PROGRESS_H / 2,
-            animate=ft.Animation(PLAYER_PROGRESS_ANIM_MS, ft.AnimationCurve.EASE_IN_OUT),
-        )
-        self._progress_track = ft.Container(
-            height=PLAYER_PROGRESS_H,
-            bgcolor=BORDER_MUTED,
-            border_radius=PLAYER_PROGRESS_H / 2,
-            alignment=ft.Alignment.CENTER_LEFT,
-            on_size_change=self._on_track_size_change,
-            content=self._progress_fill,
-            expand=True,
-        )
-        self._progress_gesture = ft.GestureDetector(
-            mouse_cursor=ft.MouseCursor.CLICK,
-            on_tap_down=self._on_progress_tap,
-            on_horizontal_drag_start=self._on_scrub_start,
-            on_horizontal_drag_update=self._on_scrub_update,
-            on_horizontal_drag_end=self._on_scrub_end,
-            content=ft.Container(
-                padding=ft.Padding.symmetric(vertical=8),
-                content=self._progress_track,
-                expand=True,
-            ),
-            expand=True,
-        )
-
-    def _build_volume_and_queue_section(self) -> ft.Row:
-        # [volumen]
-        self._mute_btn = app_icon_button(
-            glyph=PIcons.SPEAKER_HIGH,
-            size=18,
-            icon_color=TEXT_MUTED,
-            tooltip="Silenciar / Activar sonido",
-            on_click=self._on_mute_click,
-            width=32,
-            height=32,
-        )
-        self._vol_slider = ft.Slider(
-            min=0.0,
-            max=1.0,
-            value=0.0 if self._muted else self._volume,
-            width=100,
-            active_color=ACCENT,
-            inactive_color=BG_SURFACE,
-            on_change=self._on_volume_change,
-            on_change_end=self._on_volume_change_end,
-        )
-        vol_row = ft.Row(
-            controls=[self._mute_btn, self._vol_slider],
-            spacing=0,
-            vertical_alignment=ft.CrossAxisAlignment.CENTER,
-            tight=True,
-        )
-
-        # [aleatorio] [repetir] [cola]
-        self._shuffle_btn = app_icon_button(
-            glyph=PIcons.SHUFFLE,
-            size=18,
-            icon_color=TEXT_MUTED,
-            tooltip="Aleatorio",
-            on_click=self._on_shuffle_click,
-            width=32,
-            height=32,
-        )
-        self._repeat_btn = app_icon_button(
-            glyph=PIcons.REPEAT,
-            size=18,
-            icon_color=TEXT_MUTED,
-            tooltip="Repetir: desactivado",
-            on_click=self._on_repeat_click,
-            width=32,
-            height=32,
-        )
-        self._queue_icon = app_icon(PIcons.QUEUE, size=16, color=TEXT_PRIMARY)
-        self._queue_count_txt = app_text(
-            "0",
-            size=10,
-            color=TEXT_MUTED,
-            font_family=mono_family("medium"),
-        )
-        def _on_queue_hover(e: ft.HoverEvent) -> None:
-            is_h = e.data == "true" or e.data is True
-            self._queue_btn.bgcolor = BG_HOVER if is_h else OVERLAY_08
-            self._queue_btn.border = ft.Border.all(0.8, ACCENT if is_h else BORDER_MUTED)
-            if self._queue_btn.page:
-                self._queue_btn.update()
-
-        self._queue_btn = ft.Container(
-            bgcolor=OVERLAY_08,
-            border=ft.Border.all(0.8, BORDER_MUTED),
-            border_radius=RADIUS_BUTTON,
-            padding=ft.Padding.symmetric(horizontal=10, vertical=0),
-            height=32,
-            alignment=ft.Alignment.CENTER,
-            tooltip="Mostrar / ocultar cola de reproducción",
-            animate=ft.Animation(MOTION_HOVER_MS, ft.AnimationCurve.EASE_OUT),
-            on_click=lambda _e: self._on_toggle_queue() if self._on_toggle_queue else None,
-            on_hover=_on_queue_hover,
-            content=ft.Row(
-                controls=[
-                    self._queue_icon,
-                    self._queue_count_txt,
-                ],
-                spacing=6,
-                alignment=ft.MainAxisAlignment.CENTER,
-                vertical_alignment=ft.CrossAxisAlignment.CENTER,
-                tight=True,
-            ),
-        )
-
-        return vol_row
-
-    def _assemble_bar_row(self, meta_col: ft.Container, vol_row: ft.Row) -> None:
-        self.content = ft.Row(
-            controls=[
-                self._thumb_box,
-                meta_col,
-                self._badge_box,
-                self._transport_row,
-                self._time_txt,
-                self._progress_gesture,
-                vol_row,
-                self._shuffle_btn,
-                self._repeat_btn,
-                self._queue_btn,
-            ],
-            spacing=10,
-            vertical_alignment=ft.CrossAxisAlignment.CENTER,
-            expand=True,
-        )
+        build_player_bar_layout(self, default_track_width=_DEFAULT_TRACK_WIDTH)
 
     # ── despacho seguro de métodos de Audio (sync o coroutine) ─────────
 
@@ -1050,3 +800,13 @@ class PlayerBar(ft.Container, MprisBridgeMixin):
             self.update()
         except Exception:
             pass
+
+    def attach_mpris(self, service: MPRISService) -> None:
+        """Enlaza el servicio MPRIS a través de ``MprisController``."""
+        self._mpris.attach(service)
+
+    def _notify_mpris(self) -> None:
+        self._mpris.notify()
+
+    def _notify_mpris_playing(self, playable_or_track: PlayableTrack | Track) -> None:
+        self._mpris.notify_playing(playable_or_track)

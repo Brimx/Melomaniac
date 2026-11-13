@@ -198,7 +198,7 @@ class TestPlayerBarEnsureAudio(unittest.TestCase):
     def test_init_creates_single_audio_service_without_src(self) -> None:
         from types import SimpleNamespace
         import flet_audio as fta
-        from ui.player_bar import PlayerBar
+        from ui.player.player_bar import PlayerBar
 
         page = SimpleNamespace(services=[])
         bar = PlayerBar(page)
@@ -217,7 +217,7 @@ class TestPlayerBarEnsureAudio(unittest.TestCase):
 
     def test_ensure_audio_updates_src_and_volume_in_place(self) -> None:
         from types import SimpleNamespace
-        from ui.player_bar import PlayerBar
+        from ui.player.player_bar import PlayerBar
 
         page = SimpleNamespace(services=[])
         bar = PlayerBar(page)
@@ -241,7 +241,7 @@ class TestPlayerBarEnsureAudio(unittest.TestCase):
     def test_load_and_play_current_uses_same_service_and_plays_from_zero(self) -> None:
         import tempfile
         from types import SimpleNamespace
-        from ui.player_bar import PlayerBar
+        from ui.player.player_bar import PlayerBar
 
         page = SimpleNamespace(services=[])
         bar = PlayerBar(page)

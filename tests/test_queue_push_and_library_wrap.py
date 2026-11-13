@@ -22,7 +22,7 @@ from core.library_models import LibraryLoadState, LibrarySnapshot, PlaylistSumma
 from core.playback import PlayQueue
 from services import settings_store
 from ui.library_view import LibraryView
-from ui.player_queue import PlayerQueuePanel
+from ui.player.player_queue import PlayerQueuePanel
 from ui.theme.tokens import BORDER_MUTED, MOTION_PANEL_MS, PLAYER_QUEUE_W
 
 
@@ -188,7 +188,7 @@ class TestQueuePushAndLibraryWrap(unittest.TestCase):
         from unittest.mock import MagicMock, patch
 
         from core.models import Track
-        from ui.player_queue import PlayerQueuePanel
+        from ui.player.player_queue import PlayerQueuePanel
         from ui.components.song_row import SongRow
 
         tr = Track(id="t1", name="Song", artist="Artist", album="Album", duration="3:00", img_url="", platform="Spotify")
@@ -204,8 +204,8 @@ class TestQueuePushAndLibraryWrap(unittest.TestCase):
         dummy_bar.queue.current_index = -1
         dummy_bar.subscribe = MagicMock()
         page = MagicMock()
-        with patch("ui.player_queue._load_queue_prefs", return_value=(False, "cola")), \
-             patch("ui.player_queue._save_queue_prefs"):
+        with patch("ui.player.player_queue._load_queue_prefs", return_value=(False, "cola")), \
+             patch("ui.player.player_queue._save_queue_prefs"):
             panel = PlayerQueuePanel(page, dummy_bar, on_open_change=events.append)
             panel.set_open(True)
             panel.set_open(False)
