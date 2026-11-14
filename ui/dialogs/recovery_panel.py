@@ -22,10 +22,12 @@ from ui.theme.fonts import FONT_HEADLINE_SEMI, FONT_TEXT, mono_family
 from ui.theme.icons import PIcons
 from ui.theme.tokens import (
     ACCENT,
-    BG_INPUT,
+    BG_INSET,
     BG_PANEL,
+    BORDER_CONTROL,
     BORDER_MUTED,
     ERROR_COL,
+    RADIUS_SHARP,
     TEXT_MUTED,
     TEXT_PRIMARY,
     WARNING,
@@ -106,8 +108,9 @@ def build_original_track_card(name: str, artist: str, reason: str = "") -> ft.Co
     return ft.Container(
         content=ft.Column(items, spacing=2, tight=True),
         padding=8,
-        bgcolor=BG_INPUT,
-        border_radius=8,
+        bgcolor=BG_INSET,
+        border=ft.Border.all(0.8, BORDER_CONTROL),
+        border_radius=RADIUS_SHARP,
     )
 
 

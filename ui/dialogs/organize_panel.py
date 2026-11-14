@@ -17,8 +17,19 @@ from __future__ import annotations
 import flet as ft
 
 from ui.theme.tokens import (
-    BG_SURFACE, BG_INPUT, BORDER_LIGHT, ACCENT, TEXT_PRIMARY, TEXT_MUTED,
-    TEXT_DIM, CHIP_BG, DIALOG_OPTION_LIMIT,
+    BG_INSET,
+    BG_SURFACE,
+    BG_INPUT,
+    BORDER_CONTROL,
+    BORDER_LIGHT,
+    ACCENT,
+    ON_ACCENT,
+    RADIUS_SHARP,
+    RADIUS_SM,
+    TEXT_PRIMARY,
+    TEXT_MUTED,
+    TEXT_DIM,
+    DIALOG_OPTION_LIMIT,
 )
 from ui.theme.icons import PIcons, app_icon
 from ui.components.widgets import (
@@ -76,7 +87,7 @@ def show_organize_dialog(page: ft.Page, state) -> None:
     try:
         seg_orden = ft.SegmentedButton(
             selected=[orden["value"]], allow_empty_selection=False, allow_multiple_selection=False, show_selected_icon=False,
-            style=ft.ButtonStyle(bgcolor={ft.ControlState.SELECTED: ACCENT, ft.ControlState.DEFAULT: BG_SURFACE}, color={ft.ControlState.SELECTED: TEXT_PRIMARY, ft.ControlState.DEFAULT: TEXT_MUTED}),
+            style=ft.ButtonStyle(bgcolor={ft.ControlState.SELECTED: ACCENT, ft.ControlState.DEFAULT: BG_SURFACE}, color={ft.ControlState.SELECTED: ON_ACCENT, ft.ControlState.DEFAULT: TEXT_MUTED}),
             segments=[ft.Segment(value="original", label=ft.Text("Mantener orden", size=10)), ft.Segment(value="az", label=ft.Text("A → Z", size=11)), ft.Segment(value="za", label=ft.Text("Z → A", size=11))],
             on_change=lambda e: orden.__setitem__("value", list(e.control.selected)[0] if hasattr(e.control, "selected") and e.control.selected else e.control.value),
         )
@@ -87,7 +98,7 @@ def show_organize_dialog(page: ft.Page, state) -> None:
     try:
         seg_group = ft.SegmentedButton(
             selected=[group_by["value"]], allow_empty_selection=False, allow_multiple_selection=False, show_selected_icon=False,
-            style=ft.ButtonStyle(bgcolor={ft.ControlState.SELECTED: ACCENT, ft.ControlState.DEFAULT: BG_SURFACE}, color={ft.ControlState.SELECTED: TEXT_PRIMARY, ft.ControlState.DEFAULT: TEXT_MUTED}),
+            style=ft.ButtonStyle(bgcolor={ft.ControlState.SELECTED: ACCENT, ft.ControlState.DEFAULT: BG_SURFACE}, color={ft.ControlState.SELECTED: ON_ACCENT, ft.ControlState.DEFAULT: TEXT_MUTED}),
             segments=[ft.Segment(value="none", label=ft.Text("Sin agrupar", size=10)), ft.Segment(value="artist", label=ft.Text("Artista", size=10)), ft.Segment(value="album", label=ft.Text("Álbum", size=10)), ft.Segment(value="release_date", label=ft.Text("Fecha", size=10))],
             on_change=lambda e: group_by.__setitem__("value", list(e.control.selected)[0] if hasattr(e.control, "selected") and e.control.selected else e.control.value),
         )
@@ -250,7 +261,7 @@ def show_organize_dialog(page: ft.Page, state) -> None:
         actions,
         width=420,
         actions_alignment=ft.MainAxisAlignment.SPACE_BETWEEN if len(actions)==3 else ft.MainAxisAlignment.END,
-        bgcolor=BG_SURFACE, radius=10,
+        bgcolor=BG_SURFACE, radius=RADIUS_SM,
     )
     dlg_ref["dlg"] = dlg
     page.show_dialog(dlg)
@@ -390,24 +401,24 @@ def show_group_dialog(page: ft.Page, state) -> None:
             controls=[
                 ft.ExpansionPanel(
                     header=ft.ListTile(title=art_header),
-                    content=ft.Column([art_search, art_limit, ft.Container(content=art_lv, height=170, bgcolor=CHIP_BG, border=ft.Border.all(0.5, BORDER_LIGHT), border_radius=8)], tight=True, spacing=6),
+                    content=ft.Column([art_search, art_limit, ft.Container(content=art_lv, height=170, bgcolor=BG_INSET, border=ft.Border.all(0.8, BORDER_CONTROL), border_radius=RADIUS_SHARP)], tight=True, spacing=6),
                     bgcolor=BG_SURFACE, can_tap_header=True,
                 ),
                 ft.ExpansionPanel(
                     header=ft.ListTile(title=alb_header),
-                    content=ft.Column([alb_search, alb_limit, ft.Container(content=alb_lv, height=170, bgcolor=CHIP_BG, border=ft.Border.all(0.5, BORDER_LIGHT), border_radius=8)], tight=True, spacing=6),
+                    content=ft.Column([alb_search, alb_limit, ft.Container(content=alb_lv, height=170, bgcolor=BG_INSET, border=ft.Border.all(0.8, BORDER_CONTROL), border_radius=RADIUS_SHARP)], tight=True, spacing=6),
                     bgcolor=BG_SURFACE, can_tap_header=True,
                 ),
                 ft.ExpansionPanel(
                     header=ft.ListTile(title=song_header),
-                    content=ft.Column([song_search, song_limit, ft.Container(content=song_lv, height=200, bgcolor=CHIP_BG, border=ft.Border.all(0.5, BORDER_LIGHT), border_radius=8)], tight=True, spacing=6),
+                    content=ft.Column([song_search, song_limit, ft.Container(content=song_lv, height=200, bgcolor=BG_INSET, border=ft.Border.all(0.8, BORDER_CONTROL), border_radius=RADIUS_SHARP)], tight=True, spacing=6),
                     bgcolor=BG_SURFACE, can_tap_header=True,
                 ),
             ],
         )
         return ft.Container(
             content=ft.Column([name_tf, exp], spacing=8),
-            bgcolor=BG_SURFACE, border=ft.Border.all(0.6, BORDER_LIGHT), border_radius=10, padding=ft.Padding.all(8),
+            bgcolor=BG_SURFACE, border=ft.Border.all(0.8, BORDER_CONTROL), border_radius=RADIUS_SM, padding=ft.Padding.all(8),
         )
 
     def _rebuild_divisions():
@@ -492,7 +503,7 @@ def show_group_dialog(page: ft.Page, state) -> None:
         ft.Container(content=content, width=520, height=520, padding=ft.Padding.all(8)),
         actions,
         width=560, actions_alignment=ft.MainAxisAlignment.SPACE_BETWEEN if len(actions)==3 else ft.MainAxisAlignment.END,
-        bgcolor=BG_SURFACE, radius=10,
+        bgcolor=BG_SURFACE, radius=RADIUS_SM,
     )
     dlg_ref["dlg"] = dlg
     page.show_dialog(dlg)
@@ -574,13 +585,13 @@ def show_reorganize_dialog(page: ft.Page, state) -> None:
         content = ft.Column([
             ft.Text("REORGANIZAR — arrastra para reordenar", size=11, color=TEXT_PRIMARY, font_family="IBM Plex Sans Medium"),
             ft.Text("Artistas", size=10, color=TEXT_MUTED, font_family="IBM Plex Sans"),
-            ft.Container(content=art_lv, bgcolor=CHIP_BG, border=ft.Border.all(0.5, BORDER_LIGHT), border_radius=8, padding=ft.Padding.all(4)),
+            ft.Container(content=art_lv, bgcolor=BG_INSET, border=ft.Border.all(0.8, BORDER_CONTROL), border_radius=RADIUS_SHARP, padding=ft.Padding.all(4)),
             ft.Text("Álbumes", size=10, color=TEXT_MUTED, font_family="IBM Plex Sans"),
-            ft.Container(content=alb_lv, bgcolor=CHIP_BG, border=ft.Border.all(0.5, BORDER_LIGHT), border_radius=8, padding=ft.Padding.all(4)),
+            ft.Container(content=alb_lv, bgcolor=BG_INSET, border=ft.Border.all(0.8, BORDER_CONTROL), border_radius=RADIUS_SHARP, padding=ft.Padding.all(4)),
             ft.Text("La lista principal refleja el resultado — reordenamiento §9, no reasignación.", size=9, color=TEXT_DIM, font_family="IBM Plex Sans"),
         ], tight=True, spacing=10, scroll=ft.ScrollMode.AUTO)
 
-        dlg = app_dialog("Reorganizar", ft.Container(content=content, width=420, height=460, padding=ft.Padding.all(8)), [dialog_action("Cancelar", lambda _: _close_dlg(page, dlg_ref.get("dlg")), kind="muted"), dialog_action("Aplicar", _apply, kind="primary")], width=460, bgcolor=BG_SURFACE, radius=10)
+        dlg = app_dialog("Reorganizar", ft.Container(content=content, width=420, height=460, padding=ft.Padding.all(8)), [dialog_action("Cancelar", lambda _: _close_dlg(page, dlg_ref.get("dlg")), kind="muted"), dialog_action("Aplicar", _apply, kind="primary")], width=460, bgcolor=BG_SURFACE, radius=RADIUS_SM)
         dlg_ref["dlg"] = dlg
         page.show_dialog(dlg)
         return

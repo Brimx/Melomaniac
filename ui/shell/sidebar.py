@@ -23,13 +23,20 @@ from ui.theme.icons import PIcons, app_icon, app_icon_button
 from ui.theme.tokens import (
     ACCENT,
     ACCENT_HALO,
+    BG_INSET,
     BG_INPUT,
-    BG_PANEL,
     BG_SURFACE,
-    BORDER_LIGHT,
+    BORDER_CONTROL,
     BORDER_MUTED,
     ERROR_COL,
+    FS_META,
+    RADIUS_SHARP,
+    RADIUS_SM,
     SIDEBAR_BG,
+    SPACE_1,
+    SPACE_2,
+    SPACE_3,
+    SPACE_4,
     SUCCESS,
     TEXT_DIM,
     TEXT_MUTED,
@@ -59,7 +66,7 @@ def build_sidebar(ui) -> None:
                     ft.Container(
                         content=app_icon(PIcons.MUSIC_NOTES, color=ACCENT, size=20, fill=True),
                         bgcolor=ACCENT_HALO,
-                        border_radius=8,
+                        border_radius=RADIUS_SM,
                         padding=ft.Padding.all(6),
                     ),
                     ft.Column(
@@ -255,33 +262,34 @@ def build_sidebar(ui) -> None:
         content=ft.Row(
             [
                 app_icon(PIcons.CLOCK, color=WARNING, size=14),
-                ft.Text("", size=10, color=WARNING, font_family=mono_family("light"), opacity=1.0),
+                ft.Text("", size=FS_META, color=WARNING, font_family=mono_family("light"), opacity=1.0),
             ],
-            spacing=6,
+            spacing=SPACE_1,
         ),
-        bgcolor=BG_PANEL,
+        bgcolor=BG_INSET,
         border=ft.Border.all(0.8, WARNING),
-        border_radius=8,
-        padding=ft.Padding.symmetric(horizontal=10, vertical=6),
+        border_radius=RADIUS_SHARP,
+        padding=ft.Padding.symmetric(horizontal=SPACE_2, vertical=6),
         visible=False,
     )
 
-    ui._progress_bar = ft.ProgressBar(value=0, bgcolor=BG_SURFACE, color=ACCENT, border_radius=4)
+    ui._progress_bar = ft.ProgressBar(value=0, bgcolor=BG_SURFACE, color=ACCENT, border_radius=RADIUS_SHARP)
     ui._progress_row = ft.Container(
         content=ft.Column(
             [
                 ui._progress_bar,
                 ft.Row(
-                    [ft.Text("", size=10, color=TEXT_MUTED, font_family=mono_family("light"), opacity=1.0)],
+                    [ft.Text("", size=FS_META, color=TEXT_MUTED, font_family=mono_family("light"), opacity=1.0)],
                     alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
                 ),
             ],
-            spacing=4,
+            spacing=SPACE_1,
         ),
         visible=False,
-        border=ft.Border.all(0.8, BORDER_LIGHT),
-        border_radius=8,
-        padding=ft.Padding.symmetric(horizontal=8, vertical=6),
+        bgcolor=BG_INSET,
+        border=ft.Border.all(0.8, BORDER_CONTROL),
+        border_radius=RADIUS_SHARP,
+        padding=ft.Padding.symmetric(horizontal=SPACE_2, vertical=6),
     )
 
     ui._telemetry = TelemetryDrawer(ui.page, sidebar_width=300)
@@ -295,25 +303,25 @@ def build_sidebar(ui) -> None:
             ui._playlist_section,
             ui._playlist_divider,
         ],
-        spacing=12,
+        spacing=SPACE_3,
     )
 
     scrollable_bottom = ft.Column(
         controls=[ui._rl_banner, ui._telemetry.container],
-        spacing=12,
+        spacing=SPACE_3,
         scroll=ft.ScrollMode.ADAPTIVE,
         expand=True,
     )
 
-    sidebar_col = ft.Column(controls=[fixed_top, scrollable_bottom], spacing=12, expand=True)
+    sidebar_col = ft.Column(controls=[fixed_top, scrollable_bottom], spacing=SPACE_3, expand=True)
     sidebar_stack = ft.Stack(controls=[sidebar_col, ui._telemetry.handle], expand=True)
 
     ui._sidebar = ft.Container(
         width=300,
-        padding=ft.Padding.all(18),
+        padding=ft.Padding.all(SPACE_4),
         bgcolor=SIDEBAR_BG,
         clip_behavior=ft.ClipBehavior.ANTI_ALIAS,
-        border_radius=ft.BorderRadius.only(top_right=14, bottom_right=14),
-        border=ft.Border.only(right=ft.BorderSide(1, BORDER_LIGHT)),
+        border_radius=ft.BorderRadius.only(top_right=RADIUS_SM, bottom_right=RADIUS_SM),
+        border=ft.Border.only(right=ft.BorderSide(1, BORDER_CONTROL)),
         content=sidebar_stack,
     )

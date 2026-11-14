@@ -59,12 +59,14 @@ from ui.theme.fonts import (
 from ui.theme.icons import PIcons, app_icon, app_icon_button
 from ui.theme.tokens import (
     ACCENT,
-    BG_INPUT,
+    BG_INSET,
     BG_PANEL,
     BG_SURFACE,
-    BORDER_LIGHT,
+    BORDER_CONTROL,
     BORDER_ROW,
     ERROR_COL,
+    RADIUS_SHARP,
+    RADIUS_SM,
     SUCCESS,
     TEXT_DIM,
     TEXT_MUTED,
@@ -228,8 +230,8 @@ class TransferReportDialog:
             ], spacing=2, tight=True),
             padding=ft.Padding.all(10),
             bgcolor=BG_SURFACE,
-            border=ft.Border.all(0.6, BORDER_LIGHT),
-            border_radius=10,
+            border=ft.Border.all(0.8, BORDER_CONTROL),
+            border_radius=RADIUS_SM,
         )
 
     def _build_stats(self) -> ft.Control:
@@ -250,8 +252,9 @@ class TransferReportDialog:
                     horizontal_alignment=ft.CrossAxisAlignment.CENTER),
                 expand=True,
                 padding=ft.Padding.symmetric(horizontal=8, vertical=8),
-                bgcolor=BG_INPUT,
-                border_radius=8,
+                bgcolor=BG_INSET,
+                border=ft.Border.all(0.8, BORDER_CONTROL),
+                border_radius=RADIUS_SHARP,
             )
 
         missing = len(self.report.missing)
@@ -273,7 +276,8 @@ class TransferReportDialog:
             ], spacing=8),
             padding=10,
             bgcolor=BG_SURFACE,
-            border_radius=8,
+            border=ft.Border.all(0.8, BORDER_CONTROL),
+            border_radius=RADIUS_SHARP,
         )
 
     def _build_warning_banner(self, message: str) -> ft.Control:
@@ -287,8 +291,8 @@ class TransferReportDialog:
             ], spacing=8),
             padding=10,
             bgcolor=WARN_BG,
-            border=ft.Border.all(0.6, WARN_BORDER),
-            border_radius=8,
+            border=ft.Border.all(0.8, WARN_BORDER),
+            border_radius=RADIUS_SHARP,
         )
 
     def _build_error_banner(self) -> ft.Control:

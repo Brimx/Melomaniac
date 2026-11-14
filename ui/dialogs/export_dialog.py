@@ -32,6 +32,7 @@ from ui.theme.tokens import (
     ACCENT,
     BG_INPUT,
     BG_SURFACE,
+    ON_ACCENT,
     TEXT_MUTED,
     TEXT_PRIMARY,
 )
@@ -261,7 +262,7 @@ async def open_export_dialog(
             show_selected_icon=False,
             style=ft.ButtonStyle(
                 bgcolor={ft.ControlState.SELECTED: ACCENT, ft.ControlState.DEFAULT: BG_SURFACE},
-                color={ft.ControlState.SELECTED: TEXT_PRIMARY, ft.ControlState.DEFAULT: TEXT_MUTED},
+                color={ft.ControlState.SELECTED: ON_ACCENT, ft.ControlState.DEFAULT: TEXT_MUTED},
             ),
             segments=[
                 ft.Segment(value="file", label=ft.Text("Archivo local", size=11, font_family=FONT_HEADLINE)),

@@ -19,12 +19,15 @@ from ui.components.widgets import (
 )
 from ui.theme.tokens import (
     ACCENT,
+    BG_INSET,
     BG_INPUT,
     BG_SURFACE,
-    BORDER_LIGHT,
+    BORDER_CONTROL,
     BORDER_MUTED,
-    CHIP_BG,
     DIALOG_OPTION_LIMIT,
+    ON_ACCENT,
+    RADIUS_SHARP,
+    RADIUS_SM,
     TEXT_DIM,
     TEXT_MUTED,
     TEXT_PRIMARY,
@@ -70,7 +73,7 @@ class DivisionController:
                 _orden = {"value": _ord_raw if _ord_raw in ("az","za","original") else "az"}
                 try:
                     _seg = ft.SegmentedButton(selected=[_orden["value"]], allow_empty_selection=False, allow_multiple_selection=False, show_selected_icon=False,
-                        style=ft.ButtonStyle(bgcolor={ft.ControlState.SELECTED: ACCENT, ft.ControlState.DEFAULT: BG_SURFACE}, color={ft.ControlState.SELECTED: TEXT_PRIMARY, ft.ControlState.DEFAULT: TEXT_MUTED}),
+                        style=ft.ButtonStyle(bgcolor={ft.ControlState.SELECTED: ACCENT, ft.ControlState.DEFAULT: BG_SURFACE}, color={ft.ControlState.SELECTED: ON_ACCENT, ft.ControlState.DEFAULT: TEXT_MUTED}),
                         segments=[ft.Segment(value="original", label=ft.Text("Mantener orden", size=10)), ft.Segment(value="az", label=ft.Text("A → Z", size=11)), ft.Segment(value="za", label=ft.Text("Z → A", size=11))],
                         on_change=lambda e: _orden.__setitem__("value", list(e.control.selected)[0] if hasattr(e.control,"selected") and e.control.selected else e.control.value))
                 except Exception:
@@ -286,7 +289,7 @@ class DivisionController:
                 dialog_action("Cancelar", lambda _: self._close_dlg(dlg_ref.get("dlg")), kind="muted"),
                 dialog_action("Aplicar", _apply, kind="primary"),
             ],
-            width=None, bgcolor=BG_SURFACE, radius=10,
+            width=None, bgcolor=BG_SURFACE, radius=RADIUS_SM,
         )
         dlg_ref["dlg"] = dlg
         self.page.show_dialog(dlg)
@@ -520,8 +523,8 @@ class DivisionController:
                 content=ft.Column([
                     name_field,
                     ft.Row([
-                        ft.Column([ft.Row([add_popup, left_search], spacing=4, vertical_alignment=ft.CrossAxisAlignment.CENTER), left_limit, ft.Container(content=left_lv, bgcolor=CHIP_BG, border=ft.Border.all(0.5, BORDER_LIGHT), border_radius=8, min_height=200, max_height=320, min_width=240), dialog_action("Agregar →", _add_to_division, kind="primary", icon=PIcons.ARROW_RIGHT)], spacing=6, expand=True),
-                        ft.Column([ft.Row([remove_popup, right_search], spacing=4, vertical_alignment=ft.CrossAxisAlignment.CENTER), right_limit, ft.Container(content=right_lv, bgcolor=CHIP_BG, border=ft.Border.all(0.5, BORDER_LIGHT), border_radius=8, min_height=200, max_height=320, min_width=240), dialog_action("← Quitar", _remove_from_division, kind="danger", icon=PIcons.ARROW_LEFT)], spacing=6, expand=True),
+                        ft.Column([ft.Row([add_popup, left_search], spacing=4, vertical_alignment=ft.CrossAxisAlignment.CENTER), left_limit, ft.Container(content=left_lv, bgcolor=BG_INSET, border=ft.Border.all(0.8, BORDER_CONTROL), border_radius=RADIUS_SHARP, min_height=200, max_height=320, min_width=240), dialog_action("Agregar →", _add_to_division, kind="primary", icon=PIcons.ARROW_RIGHT)], spacing=6, expand=True),
+                        ft.Column([ft.Row([remove_popup, right_search], spacing=4, vertical_alignment=ft.CrossAxisAlignment.CENTER), right_limit, ft.Container(content=right_lv, bgcolor=BG_INSET, border=ft.Border.all(0.8, BORDER_CONTROL), border_radius=RADIUS_SHARP, min_height=200, max_height=320, min_width=240), dialog_action("← Quitar", _remove_from_division, kind="danger", icon=PIcons.ARROW_LEFT)], spacing=6, expand=True),
                     ], spacing=10, vertical_alignment=ft.CrossAxisAlignment.START),
                 ], tight=True, spacing=8),
                 min_width=520,
@@ -532,7 +535,7 @@ class DivisionController:
                 dialog_action("Revertir", _revert_edit, kind="muted"),
                 dialog_action("Aplicar", _apply_edit, kind="primary"),
             ],
-            width=None, bgcolor=BG_SURFACE, radius=10,
+            width=None, bgcolor=BG_SURFACE, radius=RADIUS_SM,
         )
         dlg_ref["dlg"] = dlg
         self.page.show_dialog(dlg)

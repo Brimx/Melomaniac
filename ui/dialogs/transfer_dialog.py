@@ -26,6 +26,7 @@ from ui.theme.icons import PIcons
 from ui.theme.tokens import (
     ACCENT,
     BG_SURFACE,
+    ON_ACCENT,
     TEXT_DIM,
     TEXT_MUTED,
     TEXT_PRIMARY,
@@ -251,7 +252,7 @@ async def open_transfer_dialog(host, *, has_divisions: bool = False) -> None:
             show_selected_icon=False,
             style=ft.ButtonStyle(
                 bgcolor={ft.ControlState.SELECTED: ACCENT, ft.ControlState.DEFAULT: BG_SURFACE},
-                color={ft.ControlState.SELECTED: TEXT_PRIMARY, ft.ControlState.DEFAULT: TEXT_MUTED},
+                color={ft.ControlState.SELECTED: ON_ACCENT, ft.ControlState.DEFAULT: TEXT_MUTED},
             ),
             segments=[
                 ft.Segment(value="new", label=ft.Text("Nueva playlist", size=11, font_family=FONT_HEADLINE)),

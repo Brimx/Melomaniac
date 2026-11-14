@@ -6,6 +6,7 @@ import asyncio
 
 import flet as ft
 
+from core.config import EXPORT_DEST_LABEL
 from core.models import LoadState, TransferState
 from ui.components.skeletons import PreviewSkeletonRow, SkeletonRow
 from ui.components.song_row import ITEM_H
@@ -14,6 +15,8 @@ from ui.components.widgets import (
     _primary_btn,
     app_text_field,
     input_border,
+    set_button_text,
+    status_chip,
 )
 from ui.shell.nav_rail import build_nav_rail
 from ui.shell.sidebar import build_sidebar
@@ -21,15 +24,29 @@ from ui.theme.fonts import FONT_HEADLINE, FONT_HEADLINE_BOLD, FONT_TEXT, mono_fa
 from ui.theme.icons import PIcons, app_icon, app_icon_button
 from ui.theme.tokens import (
     ACCENT,
+    BG_INSET,
     BG_INPUT,
     BG_LIST,
+    BG_PANEL,
     BG_SURFACE,
+    BORDER_CONTROL,
     BORDER_LIGHT,
     BORDER_MUTED,
     CHIP_BG,
     ERROR_COL,
+    FS_META,
+    FS_SEC,
+    FS_SM,
     MOTION_PANEL_MS,
-    RADIUS_INPUT,
+    ON_ACCENT,
+    RADIUS_SHARP,
+    RADIUS_SM,
+    SPACE_1,
+    SPACE_2,
+    SPACE_3,
+    SPACE_4,
+    SPACE_5,
+    SUCCESS,
     TEXT_DIM,
     TEXT_MUTED,
     TEXT_PRIMARY,
@@ -115,7 +132,7 @@ def _make_segmented_control(
             show_selected_icon=False,
             style=ft.ButtonStyle(
                 bgcolor={ft.ControlState.SELECTED: ACCENT, ft.ControlState.DEFAULT: BG_SURFACE},
-                color={ft.ControlState.SELECTED: TEXT_PRIMARY, ft.ControlState.DEFAULT: TEXT_MUTED},
+                color={ft.ControlState.SELECTED: ON_ACCENT, ft.ControlState.DEFAULT: TEXT_MUTED},
             ),
             segments=[
                 ft.Segment(value=val, label=ft.Text(label, size=11, font_family=FONT_HEADLINE))
@@ -142,6 +159,8 @@ class LayoutController:
 
     def __init__(self, ui) -> None:
         self._ui = ui
+        self._last_chip_counts: tuple[int, int, int] | None = None
+        self._last_footer_btn_label: str = "Transferir"
 
     def _make_order_segmented(self, current: str, on_change=None) -> ft.Control:
         """SegmentedButton para elegir Artista-Título vs Título-Artista."""
@@ -216,6 +235,7 @@ class LayoutController:
         ui._col_headers = self._build_col_headers()
         self._build_list_and_preview_panels()
         self._build_mode_bar()
+        ui._footer_bar = self._build_footer_bar()
         self._assemble_content_area(header_bar, ui._col_headers)
 
     def _build_contextual_bar(self) -> ft.Container:
@@ -254,7 +274,7 @@ class LayoutController:
             "download": ui._ctx_download_btn,
             "export": ui._ctx_export_btn,
         }
-        row = ft.Row(
+        actions_row = ft.Row(
             controls=[
                 ui._ctx_transfer_btn,
                 ui._ctx_organize_btn,
@@ -263,16 +283,30 @@ class LayoutController:
                 ui._ctx_download_btn,
                 ui._ctx_export_btn,
             ],
-            spacing=8,
+            spacing=SPACE_2,
             wrap=True,
+            expand=True,
+            vertical_alignment=ft.CrossAxisAlignment.CENTER,
+        )
+        ui._status_chips_row = ft.Row(
+            controls=[
+                status_chip("0 LISTA", kind="ok"),
+                status_chip("0 REVISAR", kind="warn"),
+                status_chip("0 SIN MATCH", kind="err"),
+            ],
+            spacing=SPACE_1,
             vertical_alignment=ft.CrossAxisAlignment.CENTER,
         )
         bar = ft.Container(
-            content=row,
-            bgcolor=BG_SURFACE,
-            border=ft.Border.all(0.8, BORDER_MUTED),
-            border_radius=RADIUS_INPUT,
-            padding=ft.Padding.symmetric(horizontal=12, vertical=8),
+            content=ft.Row(
+                controls=[actions_row, ui._status_chips_row],
+                spacing=SPACE_2,
+                vertical_alignment=ft.CrossAxisAlignment.CENTER,
+            ),
+            bgcolor=BG_PANEL,
+            border=ft.Border.all(0.8, BORDER_CONTROL),
+            border_radius=RADIUS_SHARP,
+            padding=ft.Padding.symmetric(horizontal=SPACE_3, vertical=SPACE_2),
             visible=False,
         )
         ui._contextual_bar = bar
@@ -282,7 +316,7 @@ class LayoutController:
     def _apply_contextual_actions_state(
         self, states: dict[str, dict[str, object]]
     ) -> None:
-        """Aplica visibilidad, habilitación y tooltips a la barra contextual."""
+        """Aplica visibilidad, habilitación, tooltips y sincroniza las 3 franjas."""
         buttons = getattr(self._ui, "_ctx_action_buttons", {})
         any_visible = False
         for key, btn in buttons.items():
@@ -301,48 +335,99 @@ class LayoutController:
         if bar is not None:
             catalog_open = bool(getattr(self._ui, "_catalog_open", False))
             bar.visible = any_visible and not catalog_open
+        self._sync_workflow_ui(states)
 
-    def _build_content_header(self) -> ft.Row:
+    def _build_content_header(self) -> ft.Container:
         ui = self._ui
+
+        def _make_step_pill(num: str, label: str):
+            num_txt = ft.Text(
+                num,
+                size=FS_META,
+                color=TEXT_DIM,
+                font_family=mono_family("light"),
+                opacity=1.0,
+            )
+            lbl_txt = ft.Text(
+                label,
+                size=FS_META,
+                color=TEXT_MUTED,
+                font_family=FONT_HEADLINE_BOLD,
+                opacity=1.0,
+            )
+            box = ft.Container(
+                content=ft.Row(
+                    controls=[num_txt, lbl_txt],
+                    spacing=SPACE_1,
+                    tight=True,
+                    vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                ),
+                bgcolor=BG_INSET,
+                border=ft.Border.all(0.8, BORDER_MUTED),
+                border_radius=RADIUS_SHARP,
+                padding=ft.Padding.symmetric(horizontal=SPACE_2, vertical=3),
+            )
+            return box, num_txt, lbl_txt
+
+        step_specs = [
+            ("01", "Origen"),
+            ("02", "Revisar"),
+            ("03", "Destino"),
+            ("04", "Transferir"),
+        ]
+        ui._step_items = [_make_step_pill(n, t) for n, t in step_specs]
+        step_controls: list[ft.Control] = []
+        for idx, (box, _, _) in enumerate(ui._step_items):
+            if idx > 0:
+                step_controls.append(app_icon(PIcons.CARET_RIGHT, size=12, color=TEXT_DIM))
+            step_controls.append(box)
+        ui._steps_strip = ft.Row(
+            controls=step_controls,
+            spacing=SPACE_1,
+            vertical_alignment=ft.CrossAxisAlignment.CENTER,
+        )
+
         ui._playlist_title = ft.Text(
             "Cargar una playlist",
-            size=22,
+            size=FS_SEC,
             color=TEXT_PRIMARY,
             font_family=FONT_HEADLINE_BOLD,
+            max_lines=1,
+            overflow=ft.TextOverflow.ELLIPSIS,
             opacity=1.0,
         )
         ui._track_count = ft.Text(
-            "", size=12, color=TEXT_MUTED, font_family=mono_family("light"), opacity=1.0
+            "", size=FS_SM, color=TEXT_MUTED, font_family=mono_family("light"), opacity=1.0
         )
         ui._search_field = app_text_field(
             hint_text="Buscar título, artista…",
             prefix_icon=PIcons.MAGNIFYING_GLASS,
-            width=240,
-            height=36,
-            content_padding=ft.Padding.symmetric(horizontal=10, vertical=0),
+            width=210,
+            height=34,
+            content_padding=ft.Padding.symmetric(horizontal=SPACE_2, vertical=0),
             on_change=ui._on_search_change,
         )
         ui._merge_btn = _ghost_btn(
             "Fusionar",
             PIcons.QUEUE,
             lambda _: ui._open_merge_dialog(),
-            height=36,
+            height=34,
         )
         ui._merge_btn.tooltip = "Fusionar varias playlists o fuentes locales sin duplicados"
         ui._catalog_search_btn = _ghost_btn(
             "Catálogo",
             PIcons.GLOBE,
             lambda _: ui._on_toggle_catalog_search(),
-            height=36,
+            height=34,
         )
         ui._catalog_search_btn.tooltip = "Buscar canciones, álbumes o artistas en plataformas"
         ui._segment_dd = ft.Dropdown(
             width=160,
-            height=38,
+            height=36,
             bgcolor=BG_INPUT,
             border=input_border(),
-            text_style=ft.TextStyle(color=TEXT_PRIMARY, size=12, font_family=FONT_TEXT),
-            content_padding=ft.Padding.symmetric(horizontal=10, vertical=0),
+            text_style=ft.TextStyle(color=TEXT_PRIMARY, size=FS_SM, font_family=FONT_TEXT),
+            content_padding=ft.Padding.symmetric(horizontal=SPACE_2, vertical=0),
             on_select=lambda e: ui.state.set_active_segment(e.control.value),
             visible=False,
             hint_text="Segmento...",
@@ -351,29 +436,29 @@ class LayoutController:
         ui._auth_yt = app_icon_button(
             glyph=PIcons.YOUTUBE_LOGO,
             icon_color=TEXT_DIM,
-            size=17,
+            size=16,
             tooltip="YouTube Music · clic = validar sesión ahora",
             on_click=lambda _: asyncio.create_task(ui._on_auth_probe("YouTube Music")),
-            width=28,
-            height=28,
+            width=26,
+            height=26,
         )
         ui._auth_am = app_icon_button(
             glyph=PIcons.APPLE_LOGO,
             icon_color=TEXT_DIM,
-            size=17,
+            size=16,
             tooltip="Apple Music · clic = validar sesión ahora",
             on_click=lambda _: asyncio.create_task(ui._on_auth_probe("Apple Music")),
-            width=28,
-            height=28,
+            width=26,
+            height=26,
         )
         ui._auth_sp = app_icon_button(
             glyph=PIcons.SPOTIFY_LOGO,
             icon_color=TEXT_DIM,
-            size=17,
+            size=16,
             tooltip="Spotify · clic = validar sesión ahora",
             on_click=lambda _: asyncio.create_task(ui._on_auth_probe("Spotify")),
-            width=28,
-            height=28,
+            width=26,
+            height=26,
         )
         ui._auth_strip = ft.Row(
             controls=[ui._auth_yt, ui._auth_am, ui._auth_sp],
@@ -383,21 +468,21 @@ class LayoutController:
 
         ui._select_all_chk = ft.Checkbox(
             label="Todo",
-            label_style=ft.TextStyle(color=TEXT_MUTED, size=11, font_family=FONT_HEADLINE),
+            label_style=ft.TextStyle(color=TEXT_MUTED, size=FS_META, font_family=FONT_HEADLINE),
             fill_color={ft.ControlState.SELECTED: ACCENT},
-            check_color=TEXT_PRIMARY,
+            check_color=ON_ACCENT,
             border_side=ft.BorderSide(1.5, TEXT_DIM),
             on_change=lambda _: ui.state.toggle_select_all(),
         )
 
         ui._content_progress_bar = ft.ProgressBar(
-            value=0, bgcolor=BG_SURFACE, color=ACCENT, border_radius=4
+            value=0, bgcolor=BG_SURFACE, color=ACCENT, border_radius=RADIUS_SHARP
         )
         ui._content_prog_label = ft.Text(
-            "", size=10, color=TEXT_MUTED, font_family=mono_family("light"), opacity=0.6
+            "", size=FS_META, color=TEXT_MUTED, font_family=mono_family("light"), opacity=0.8
         )
         ui._content_eta_label = ft.Text(
-            "", size=10, color=TEXT_DIM, font_family=mono_family("light"), opacity=0.45
+            "", size=FS_META, color=TEXT_DIM, font_family=mono_family("light"), opacity=0.65
         )
         ui._content_progress = ft.Container(
             content=ft.Column(
@@ -408,12 +493,13 @@ class LayoutController:
                         spacing=0,
                     ),
                 ],
-                spacing=4,
+                spacing=SPACE_1,
             ),
             visible=False,
-            border=ft.Border.all(0.8, BORDER_LIGHT),
-            border_radius=8,
-            padding=ft.Padding.symmetric(horizontal=8, vertical=6),
+            bgcolor=BG_INSET,
+            border=ft.Border.all(0.8, BORDER_CONTROL),
+            border_radius=RADIUS_SHARP,
+            padding=ft.Padding.symmetric(horizontal=SPACE_3, vertical=SPACE_2),
         )
 
         ui._clear_session_btn = app_icon_button(
@@ -426,29 +512,126 @@ class LayoutController:
             height=28,
         )
 
-        return ft.Row(
+        ui._route_src_text = ft.Text(
+            f"{ui.state.source} · Sin cargar",
+            size=FS_SM,
+            color=TEXT_PRIMARY,
+            font_family=FONT_TEXT,
+            max_lines=1,
+            overflow=ft.TextOverflow.ELLIPSIS,
+            expand=True,
+        )
+        ui._route_pipe_text = ft.Text(
+            "0 pistas",
+            size=FS_META,
+            color=TEXT_MUTED,
+            font_family=mono_family("light"),
+        )
+        ui._route_dst_text = ft.Text(
+            ui.state.destination or "Elegir al transferir",
+            size=FS_SM,
+            color=TEXT_PRIMARY,
+            font_family=FONT_HEADLINE,
+            max_lines=1,
+            overflow=ft.TextOverflow.ELLIPSIS,
+        )
+        ui._route_dst_btn = ft.Container(
+            content=ft.Row(
+                controls=[
+                    ft.Text(
+                        "DESTINO",
+                        size=FS_META,
+                        color=TEXT_DIM,
+                        font_family=FONT_HEADLINE_BOLD,
+                    ),
+                    ui._route_dst_text,
+                ],
+                spacing=SPACE_2,
+                tight=True,
+                vertical_alignment=ft.CrossAxisAlignment.CENTER,
+            ),
+            bgcolor=BG_SURFACE,
+            border=ft.Border.all(0.8, BORDER_CONTROL),
+            border_radius=RADIUS_SHARP,
+            padding=ft.Padding.symmetric(horizontal=SPACE_2, vertical=3),
+            tooltip="Elegir plataforma destino y transferir",
+            on_click=self._on_route_dest_click,
+        )
+        ui._route_bar = ft.Container(
+            content=ft.Row(
+                controls=[
+                    ft.Text(
+                        "ORIGEN",
+                        size=FS_META,
+                        color=TEXT_DIM,
+                        font_family=FONT_HEADLINE_BOLD,
+                    ),
+                    ui._route_src_text,
+                    app_icon(PIcons.ARROW_RIGHT, size=14, color=ACCENT),
+                    ui._route_pipe_text,
+                    app_icon(PIcons.ARROW_RIGHT, size=14, color=ACCENT),
+                    ui._route_dst_btn,
+                ],
+                spacing=SPACE_2,
+                vertical_alignment=ft.CrossAxisAlignment.CENTER,
+            ),
+            bgcolor=BG_INSET,
+            border=ft.Border.all(0.8, BORDER_CONTROL),
+            border_radius=RADIUS_SHARP,
+            padding=ft.Padding.symmetric(horizontal=SPACE_3, vertical=SPACE_1),
+        )
+
+        top_strip = ft.Row(
+            controls=[ui._steps_strip, ft.Container(expand=True), ui._auth_strip],
+            spacing=SPACE_2,
+            vertical_alignment=ft.CrossAxisAlignment.CENTER,
+        )
+        title_row = ft.Row(
             controls=[
-                ft.Column([ui._playlist_title, ui._track_count], spacing=2),
-                ft.Container(expand=True),
-                ui._auth_strip,
+                ft.Row(
+                    controls=[ui._playlist_title, ui._track_count],
+                    spacing=SPACE_2,
+                    vertical_alignment=ft.CrossAxisAlignment.BASELINE,
+                    expand=True,
+                ),
                 ui._search_field,
                 ui._merge_btn,
                 ui._catalog_search_btn,
+                ui._segment_dd,
                 ui._select_all_chk,
                 ui._clear_session_btn,
             ],
+            spacing=SPACE_2,
             vertical_alignment=ft.CrossAxisAlignment.CENTER,
         )
+        return ft.Container(
+            content=ft.Column(
+                controls=[top_strip, title_row, ui._route_bar],
+                spacing=SPACE_2,
+                tight=True,
+            ),
+        )
+
+    def _on_route_dest_click(self, _e=None) -> None:
+        ui = self._ui
+        s = ui.state
+        if getattr(s, "load_state", LoadState.IDLE) != LoadState.READY or not getattr(
+            s, "tracks", None
+        ):
+            return
+        if getattr(s, "transfer_state", TransferState.IDLE) == TransferState.RUNNING:
+            return
+        ui._on_transfer(None)
 
     def _build_col_headers(self) -> ft.Container:
         def _col_header(text, width=None, expand=False, center=False):
             align = ft.Alignment.CENTER if center else ft.Alignment.CENTER_LEFT
             ctrl = ft.Text(
                 text,
-                size=9,
+                size=FS_META,
                 color=TEXT_DIM,
                 font_family=FONT_HEADLINE_BOLD,
-                style=ft.TextStyle(letter_spacing=0.8),
+                style=ft.TextStyle(letter_spacing=0.6),
                 text_align=ft.TextAlign.CENTER if center else ft.TextAlign.LEFT,
                 opacity=1.0,
             )
@@ -467,13 +650,15 @@ class LayoutController:
                     _col_header("", width=26, center=True),
                     _col_header("SEL.", width=32, center=True),
                 ],
-                spacing=16,
+                spacing=SPACE_4,
                 vertical_alignment=ft.CrossAxisAlignment.CENTER,
             ),
-            padding=ft.Padding.symmetric(horizontal=16, vertical=8),
-            bgcolor=CHIP_BG,
-            border_radius=12,
-            border=ft.Border.all(0.8, BORDER_LIGHT),
+            padding=ft.Padding.symmetric(horizontal=SPACE_4, vertical=SPACE_2),
+            bgcolor=BG_INSET,
+            border_radius=ft.BorderRadius.only(
+                top_left=RADIUS_SHARP, top_right=RADIUS_SHARP
+            ),
+            border=ft.Border.all(0.8, BORDER_CONTROL),
             clip_behavior=ft.ClipBehavior.ANTI_ALIAS,
             visible=False,
         )
@@ -536,24 +721,17 @@ class LayoutController:
             content=ft.Column(
                 controls=[
                     ft.Container(
-                        content=app_icon(PIcons.PLAYLIST, size=52, color=TEXT_DIM),
-                        bgcolor=CHIP_BG,
-                        border=ft.Border.all(0.8, BORDER_LIGHT),
-                        border_radius=20,
-                        padding=ft.Padding.all(20),
+                        content=app_icon(PIcons.PLAYLIST, size=44, color=TEXT_DIM),
+                        bgcolor=BG_INSET,
+                        border=ft.Border.all(0.8, BORDER_CONTROL),
+                        border_radius=RADIUS_SM,
+                        padding=ft.Padding.all(SPACE_4),
                     ),
                     ft.Text(
                         "Carga una playlist",
-                        size=20,
+                        size=FS_SEC,
                         color=TEXT_PRIMARY,
                         font_family=FONT_HEADLINE_BOLD,
-                        opacity=1.0,
-                    ),
-                    ft.Text(
-                        "Sin playlist cargada",
-                        size=14,
-                        color=TEXT_MUTED,
-                        font_family=FONT_HEADLINE,
                         opacity=1.0,
                     ),
                     ui._empty_hint_text,
@@ -566,7 +744,7 @@ class LayoutController:
                 ],
                 horizontal_alignment=ft.CrossAxisAlignment.CENTER,
                 alignment=ft.CrossAxisAlignment.CENTER,
-                spacing=8,
+                spacing=SPACE_2,
             ),
             alignment=ft.Alignment.CENTER,
             visible=True,
@@ -634,8 +812,8 @@ class LayoutController:
         ui._preview_panel = ft.Container(
             expand=True,
             bgcolor=BG_LIST,
-            border=ft.Border.all(0.5, BORDER_LIGHT),
-            border_radius=10,
+            border=ft.Border.all(0.8, BORDER_CONTROL),
+            border_radius=RADIUS_SHARP,
             clip_behavior=ft.ClipBehavior.ANTI_ALIAS,
             content=ft.Column(
                 [
@@ -646,16 +824,16 @@ class LayoutController:
                             ft.Container(expand=True),
                             ui._preview_count,
                         ],
-                        spacing=6,
+                        spacing=SPACE_1,
                         vertical_alignment=ft.CrossAxisAlignment.CENTER,
                     ),
                     ft.Divider(height=1, color=BORDER_MUTED, thickness=0.5),
                     ui._preview_stack,
                 ],
-                spacing=8,
+                spacing=SPACE_2,
                 expand=True,
             ),
-            padding=ft.Padding.all(10),
+            padding=ft.Padding.all(SPACE_2),
             visible=True,
         )
 
@@ -664,25 +842,36 @@ class LayoutController:
             expand=True,
         )
         ui._lista_header_text = ft.Text(
-            "Lista editable", size=11, color=TEXT_MUTED, font_family=FONT_HEADLINE_BOLD
+            "Lista editable", size=FS_META, color=TEXT_MUTED, font_family=FONT_HEADLINE_BOLD
         )
         ui._lista_header_icon = app_icon(PIcons.LIST_BULLETS, size=14, color=TEXT_MUTED)
+        ui._lista_subheader = ft.Container(
+            content=ft.Column(
+                [
+                    ft.Row([ui._lista_header_icon, ui._lista_header_text], spacing=SPACE_1),
+                    ft.Divider(height=1, color=BORDER_MUTED, thickness=0.5),
+                ],
+                spacing=SPACE_1,
+                tight=True,
+            ),
+            padding=ft.Padding.only(left=SPACE_2, right=SPACE_2, top=SPACE_1),
+            visible=False,
+        )
         ui._lista_panel = ft.Container(
             expand=True,
             bgcolor=BG_LIST,
-            border=ft.Border.all(0.5, BORDER_LIGHT),
-            border_radius=10,
+            border=ft.Border.all(0.8, BORDER_CONTROL),
+            border_radius=RADIUS_SHARP,
             clip_behavior=ft.ClipBehavior.ANTI_ALIAS,
             content=ft.Column(
                 [
-                    ft.Row([ui._lista_header_icon, ui._lista_header_text], spacing=6),
-                    ft.Divider(height=1, color=BORDER_MUTED, thickness=0.5),
+                    ui._lista_subheader,
                     list_stack,
                 ],
-                spacing=8,
+                spacing=0,
                 expand=True,
             ),
-            padding=ft.Padding.all(10),
+            padding=ft.Padding.symmetric(horizontal=SPACE_1, vertical=0),
             visible=True,
         )
 
@@ -703,8 +892,8 @@ class LayoutController:
         ui._mode_seg = self._make_mode_segmented(
             getattr(ui.state, "dual_mode", "lista"), on_change=_on_mode_change
         )
-        ui._division_btn_text = ft.Text("División 1", size=11, color=TEXT_MUTED, font_family=FONT_HEADLINE)
-        ui._division_label = ft.Text("División", size=9, color=TEXT_DIM, font_family=FONT_HEADLINE_BOLD)
+        ui._division_btn_text = ft.Text("División 1", size=FS_META, color=TEXT_MUTED, font_family=FONT_HEADLINE)
+        ui._division_label = ft.Text("División", size=FS_META, color=TEXT_DIM, font_family=FONT_HEADLINE_BOLD)
         ui._division_popup = ft.PopupMenuButton(
             content=ft.Row(
                 [
@@ -712,15 +901,15 @@ class LayoutController:
                     ui._division_btn_text,
                     app_icon(PIcons.CARET_DOWN, size=14, color=TEXT_DIM),
                 ],
-                spacing=4,
+                spacing=SPACE_1,
                 tight=True,
                 vertical_alignment=ft.CrossAxisAlignment.CENTER,
             ),
             items=[],
             style=ft.ButtonStyle(
-                padding=ft.Padding.symmetric(horizontal=10, vertical=6),
-                side={ft.ControlState.DEFAULT: ft.BorderSide(0.7, BORDER_LIGHT)},
-                shape=ft.RoundedRectangleBorder(radius=8),
+                padding=ft.Padding.symmetric(horizontal=SPACE_2, vertical=6),
+                side={ft.ControlState.DEFAULT: ft.BorderSide(0.8, BORDER_CONTROL)},
+                shape=ft.RoundedRectangleBorder(radius=RADIUS_SHARP),
                 bgcolor={ft.ControlState.DEFAULT: ft.Colors.TRANSPARENT},
             ),
             tooltip="División activa — cambia preview",
@@ -764,11 +953,199 @@ class LayoutController:
             visible=False,
         )
 
-    def _assemble_content_area(self, header_bar: ft.Row, col_headers: ft.Container) -> None:
+    def _build_footer_bar(self) -> ft.Container:
+        """Pie fijo de 56 px con resumen de selección/estado y acción primaria."""
+        ui = self._ui
+        ui._footer_summary = ft.Text(
+            "Sin pistas cargadas · Elige una plataforma o archivo local",
+            size=FS_SM,
+            color=TEXT_PRIMARY,
+            font_family=FONT_HEADLINE_BOLD,
+            max_lines=1,
+            overflow=ft.TextOverflow.ELLIPSIS,
+            opacity=1.0,
+        )
+        ui._footer_sub = ft.Text(
+            f"Destino: {ui.state.destination}",
+            size=FS_META,
+            color=TEXT_MUTED,
+            font_family=FONT_TEXT,
+            max_lines=1,
+            overflow=ft.TextOverflow.ELLIPSIS,
+            opacity=1.0,
+        )
+        ui._footer_transfer_btn = _primary_btn(
+            "Transferir",
+            PIcons.ARROWS_LEFT_RIGHT,
+            ui._on_transfer,
+            height=36,
+            disabled=True,
+        )
+        ui._footer_transfer_btn.tooltip = "Elegir destino y transferir la selección"
+        return ft.Container(
+            height=56,
+            bgcolor=BG_PANEL,
+            border=ft.Border.only(top=ft.BorderSide(1, BORDER_CONTROL)),
+            padding=ft.Padding.symmetric(horizontal=SPACE_4, vertical=SPACE_2),
+            content=ft.Row(
+                controls=[
+                    ft.Column(
+                        controls=[ui._footer_summary, ui._footer_sub],
+                        spacing=2,
+                        alignment=ft.MainAxisAlignment.CENTER,
+                        expand=True,
+                    ),
+                    ui._footer_transfer_btn,
+                ],
+                spacing=SPACE_3,
+                vertical_alignment=ft.CrossAxisAlignment.CENTER,
+            ),
+            visible=True,
+        )
+
+    def _sync_workflow_ui(self, states: dict[str, dict[str, object]] | None = None) -> None:
+        """Sincroniza tira de pasos, ruta origen->destino, chips y pie fijo 56 px."""
+        ui = self._ui
+        s = ui.state
+        tracks = list(getattr(s, "tracks", []) or [])
+        load_state = getattr(s, "load_state", LoadState.IDLE)
+        transfer_state = getattr(s, "transfer_state", TransferState.IDLE)
+        has_tracks = len(tracks) > 0 and load_state == LoadState.READY
+        is_transferring = transfer_state == TransferState.RUNNING
+        has_report = getattr(s, "last_report", None) is not None
+        catalog_open = bool(getattr(ui, "_catalog_open", False))
+
+        # 1. Tira de pasos: 01 Origen -> 02 Revisar -> 03 Destino -> 04 Transferir
+        step_items = getattr(ui, "_step_items", None)
+        if step_items and len(step_items) == 4:
+            if not has_tracks:
+                active_idx = 0
+            elif is_transferring or has_report:
+                active_idx = 3
+            elif getattr(s, "destination_confirmed", False):
+                active_idx = 2
+            else:
+                active_idx = 1
+            for idx, (box, num_txt, lbl_txt) in enumerate(step_items):
+                if idx < active_idx or (idx == 3 and has_report and not is_transferring):
+                    box.bgcolor = BG_INSET
+                    box.border = ft.Border.all(0.8, SUCCESS)
+                    num_txt.color = SUCCESS
+                    lbl_txt.color = TEXT_PRIMARY
+                elif idx == active_idx:
+                    box.bgcolor = BG_SURFACE
+                    box.border = ft.Border.all(1.0, ACCENT)
+                    num_txt.color = ACCENT
+                    lbl_txt.color = TEXT_PRIMARY
+                else:
+                    box.bgcolor = BG_INSET
+                    box.border = ft.Border.all(0.8, BORDER_MUTED)
+                    num_txt.color = TEXT_DIM
+                    lbl_txt.color = TEXT_MUTED
+
+        # 2. Ruta origen -> destino
+        src_name = getattr(s, "source", "") or "Origen"
+        pl_name = getattr(s, "playlist_name", "") or "Sin cargar"
+        dst_name = getattr(s, "destination", "") or "Elegir al transferir"
+        route_src = getattr(ui, "_route_src_text", None)
+        if route_src is not None:
+            route_src.value = f"{src_name} · {pl_name}" if has_tracks else f"{src_name} · Sin playlist"
+        route_pipe = getattr(ui, "_route_pipe_text", None)
+        if route_pipe is not None:
+            route_pipe.value = f"{len(tracks)} pistas" if has_tracks else "0 pistas"
+        route_dst = getattr(ui, "_route_dst_text", None)
+        if route_dst is not None:
+            route_dst.value = dst_name
+        route_dst_btn = getattr(ui, "_route_dst_btn", None)
+        if route_dst_btn is not None:
+            route_dst_btn.border = ft.Border.all(
+                0.8, ACCENT if has_tracks and not is_transferring else BORDER_CONTROL
+            )
+
+        # 3. Chips LISTA / REVISAR / SIN MATCH
+        rev_cnt = sum(
+            1 for t in tracks if getattr(t, "transfer_status", "pending") == "revision_necesaria"
+        )
+        no_cnt = sum(
+            1
+            for t in tracks
+            if getattr(t, "transfer_status", "pending") in ("not_found", "error")
+        )
+        ok_cnt = max(0, len(tracks) - rev_cnt - no_cnt)
+        chips_row = getattr(ui, "_status_chips_row", None)
+        counts = (ok_cnt, rev_cnt, no_cnt)
+        if chips_row is not None and self._last_chip_counts != counts:
+            self._last_chip_counts = counts
+            chips_row.controls = [
+                status_chip(f"{ok_cnt} LISTA", kind="ok" if ok_cnt else "neutral"),
+                status_chip(f"{rev_cnt} REVISAR", kind="warn" if rev_cnt else "neutral"),
+                status_chip(f"{no_cnt} SIN MATCH", kind="err" if no_cnt else "neutral"),
+            ]
+
+        # 4. Subcabecera de lista editable solo en vista doble/preview
+        subheader = getattr(ui, "_lista_subheader", None)
+        preview_panel = getattr(ui, "_preview_panel", None)
+        if subheader is not None and preview_panel is not None:
+            subheader.visible = bool(getattr(preview_panel, "visible", False))
+
+        # 5. Pie fijo 56 px
+        footer_bar = getattr(ui, "_footer_bar", None)
+        if footer_bar is not None:
+            footer_bar.visible = not catalog_open
+        footer_summary = getattr(ui, "_footer_summary", None)
+        if footer_summary is not None:
+            if load_state in (LoadState.LOADING_META, LoadState.LOADING_TRACKS):
+                footer_summary.value = "Cargando pistas…"
+                footer_summary.color = TEXT_MUTED
+            elif load_state == LoadState.ERROR:
+                footer_summary.value = "Error al cargar · Revisa origen o sesión"
+                footer_summary.color = ERROR_COL
+            elif has_tracks:
+                sel_cnt = sum(1 for t in tracks if getattr(t, "selected", False))
+                total_ms = sum(int(getattr(t, "duration_ms", 0) or 0) for t in tracks)
+                dur_part = ""
+                if total_ms > 0:
+                    mins = total_ms // 60000
+                    dur_part = f" · {mins} min"
+                parts = [f"{sel_cnt} de {len(tracks)} seleccionadas{dur_part}"]
+                if rev_cnt:
+                    parts.append(f"{rev_cnt} revisar")
+                if no_cnt:
+                    parts.append(f"{no_cnt} sin match")
+                footer_summary.value = " · ".join(parts)
+                footer_summary.color = TEXT_PRIMARY
+            else:
+                footer_summary.value = "Sin pistas cargadas · Elige una plataforma o archivo local"
+                footer_summary.color = TEXT_MUTED
+
+        footer_sub = getattr(ui, "_footer_sub", None)
+        if footer_sub is not None:
+            dual_mode = getattr(s, "dual_mode", "lista")
+            mode_note = " · Solo vista previa" if dual_mode == "preview" else ""
+            footer_sub.value = f"Destino: {dst_name}{mode_note}"
+
+        footer_btn = getattr(ui, "_footer_transfer_btn", None)
+        if footer_btn is not None:
+            spec = (states or {}).get("transfer") or {}
+            footer_btn.disabled = bool(spec.get("disabled", (not has_tracks) or is_transferring))
+            tip = str(spec.get("tooltip", "") or "")
+            if tip:
+                footer_btn.tooltip = tip
+            desired_label = (
+                "Transfiriendo…"
+                if is_transferring
+                else ("Exportar" if dst_name == EXPORT_DEST_LABEL else "Transferir")
+            )
+            if self._last_footer_btn_label != desired_label:
+                self._last_footer_btn_label = desired_label
+                btn_icon = PIcons.EXPORT if desired_label == "Exportar" else PIcons.ARROWS_LEFT_RIGHT
+                set_button_text(footer_btn, desired_label, icon=btn_icon)
+
+    def _assemble_content_area(self, header_bar: ft.Control, col_headers: ft.Container) -> None:
         ui = self._ui
         ui._dual_row = ft.Row(
             controls=[ui._lista_panel, ui._preview_panel],
-            spacing=10,
+            spacing=SPACE_2,
             expand=True,
             visible=True,
         )
@@ -785,7 +1162,7 @@ class LayoutController:
         ui._content = ft.Container(
             expand=True,
             bgcolor=BG_LIST,
-            padding=ft.Padding.all(24),
+            padding=ft.Padding.only(left=SPACE_5, right=SPACE_5, top=SPACE_3, bottom=0),
             content=ft.Column(
                 controls=[
                     ui._content_progress,
@@ -795,11 +1172,13 @@ class LayoutController:
                     col_headers,
                     ui._mode_bar,
                     ui._list_area,
+                    ui._footer_bar,
                 ],
-                spacing=10,
+                spacing=SPACE_2,
                 expand=True,
             ),
         )
+        self._sync_workflow_ui()
 
     def _build_nav_rail(self) -> None:
         build_nav_rail(self._ui)

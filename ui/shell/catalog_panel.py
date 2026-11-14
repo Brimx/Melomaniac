@@ -21,20 +21,24 @@ from ui.theme.fonts import FONT_HEADLINE, FONT_HEADLINE_BOLD, FONT_TEXT, mono_fa
 from ui.theme.icons import PIcons, app_icon_button
 from ui.theme.tokens import (
     ACCENT,
+    BG_INSET,
     BG_LIST,
     BG_SURFACE,
-    BORDER_LIGHT,
+    BORDER_CONTROL,
     BORDER_MUTED,
-    CHIP_BG,
-    RADIUS_INPUT,
+    ON_ACCENT,
+    RADIUS_SHARP,
+    RADIUS_SM,
     SKELETON_DARK,
+    SPACE_2,
+    SPACE_3,
     TEXT_DIM,
     TEXT_MUTED,
     TEXT_PRIMARY,
 )
 
 
-def _catalog_thumb(img_url: str, *, box: int = 44, radius: int = 8, icon_size: int = 18) -> ft.Container:
+def _catalog_thumb(img_url: str, *, box: int = 44, radius: int = RADIUS_SM, icon_size: int = 18) -> ft.Container:
     return ft.Container(
         width=box,
         height=box,
@@ -98,7 +102,7 @@ class CatalogController:
                 show_selected_icon=False,
                 style=ft.ButtonStyle(
                     bgcolor={ft.ControlState.SELECTED: ACCENT, ft.ControlState.DEFAULT: BG_SURFACE},
-                    color={ft.ControlState.SELECTED: TEXT_PRIMARY, ft.ControlState.DEFAULT: TEXT_MUTED},
+                    color={ft.ControlState.SELECTED: ON_ACCENT, ft.ControlState.DEFAULT: TEXT_MUTED},
                 ),
                 segments=[
                     ft.Segment(value="songs", label=ft.Text("Canciones", size=11, font_family=FONT_HEADLINE)),
@@ -144,10 +148,10 @@ class CatalogController:
         )
         ui._catalog_detail_bar = ft.Container(
             visible=False,
-            bgcolor=CHIP_BG,
-            border=ft.Border.all(0.8, BORDER_LIGHT),
-            border_radius=RADIUS_INPUT,
-            padding=ft.Padding.symmetric(horizontal=10, vertical=8),
+            bgcolor=BG_INSET,
+            border=ft.Border.all(0.8, BORDER_CONTROL),
+            border_radius=RADIUS_SHARP,
+            padding=ft.Padding.symmetric(horizontal=SPACE_2, vertical=SPACE_2),
             content=ft.Row(
                 [
                     _ghost_btn("Volver", PIcons.ARROW_LEFT, lambda _: self._on_catalog_back(), height=32),
@@ -156,7 +160,7 @@ class CatalogController:
                     ui._catalog_detail_dl_btn,
                     ui._catalog_detail_add_btn,
                 ],
-                spacing=8,
+                spacing=SPACE_2,
                 vertical_alignment=ft.CrossAxisAlignment.CENTER,
             ),
         )
@@ -175,9 +179,9 @@ class CatalogController:
             visible=False,
             expand=True,
             bgcolor=BG_LIST,
-            border=ft.Border.all(0.8, BORDER_LIGHT),
-            border_radius=RADIUS_INPUT,
-            padding=ft.Padding.all(14),
+            border=ft.Border.all(0.8, BORDER_CONTROL),
+            border_radius=RADIUS_SHARP,
+            padding=ft.Padding.all(SPACE_3),
             content=ft.Column(
                 [
                     ft.Row(
@@ -226,6 +230,8 @@ class CatalogController:
             ui._contextual_bar.visible = has_ready and not target
         if hasattr(ui, "_list_area"):
             ui._list_area.visible = not target
+        if hasattr(ui, "_footer_bar"):
+            ui._footer_bar.visible = not target
         if hasattr(ui, "_mode_bar"):
             has_transform = bool(
                 getattr(ui.state, "segments", {})
