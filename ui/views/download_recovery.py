@@ -316,8 +316,6 @@ def build_history_row(
     )
     row._isolated = True
     return row
-    row._isolated = True
-    return row
 
 
 def build_result_row(
@@ -455,8 +453,6 @@ def build_result_row(
             vertical_alignment=ft.CrossAxisAlignment.CENTER,
         ),
     )
-    row._isolated = True
-    return row
     row._isolated = True
     return row
 
