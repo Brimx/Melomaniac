@@ -519,7 +519,15 @@ def section_label(text: str) -> ft.Text:
     return _section_label(text)
 
 
-def _primary_btn(text: str, icon: str, on_click, width=None, height=None) -> ft.Button:
+def _primary_btn(
+    text: str,
+    icon: str,
+    on_click,
+    width=None,
+    height=None,
+    *,
+    disabled: bool = False,
+) -> ft.Button:
     """
     Crea un botón primario con fondo de acento y elevación en hover.
     
@@ -586,6 +594,7 @@ def _primary_btn(text: str, icon: str, on_click, width=None, height=None) -> ft.
         ),
         width=width,
         height=height,
+        disabled=disabled,
     )
 
 

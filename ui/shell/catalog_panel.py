@@ -27,6 +27,7 @@ from ui.theme.tokens import (
     BORDER_CONTROL,
     BORDER_MUTED,
     ON_ACCENT,
+    RADIUS_INPUT,
     RADIUS_SHARP,
     RADIUS_SM,
     SKELETON_DARK,
