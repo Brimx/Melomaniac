@@ -152,9 +152,20 @@ class DownloadRunner:
             self._state._download_task is not None
             and not self._state._download_task.done()
             and self._active_session is not None
-            and not self._state.download_paused
         ):
             session = self._active_session
+            if self._session_is_closing(session):
+                # Pausada o cancelada: sus pistas nuevas saldrían como
+                # «Pausada» o «Cancelada» sin intentarse, y al cerrar pisaría
+                # el estado de la sesión siguiente. Se espera y se abre otra.
+                return self._start_after_previous(
+                    selected,
+                    audio_format=audio_format,
+                    destination_dir=destination_dir,
+                    playlist_name=playlist_name,
+                    platform=platform,
+                    pinned_video_id=pinned_video_id,
+                )
             batch_futures = self._enqueue_into_session(
                 session,
                 selected,
@@ -227,6 +238,45 @@ class DownloadRunner:
             )
         )
         return self._build_batch_wait_task(session, batch_futures)
+
+    def _session_is_closing(self, session: dict) -> bool:
+        """Una sesión pausada o cancelada no admite encolado en caliente.
+
+        Sus pistas nuevas saldrían marcadas como «Pausada» o «Cancelada» sin
+        intentarse: la descarga la hará la sesión siguiente.
+        """
+        return bool(self._state.download_paused or session["cancel"].is_set())
+
+    def _start_after_previous(self, tracks: list[Track], **kwargs) -> asyncio.Task:
+        """Espera a que la sesión anterior cierre y arranca una nueva.
+
+        La sesión pausada o cancelada sigue viva unos instantes mientras
+        yt-dlp aborta. Abrir otra encima compartiría ``download_items``,
+        ``download_state`` y los eventos de cancelación, y la vieja los
+        pisaría al terminar. Si la anterior estaba pausada, la nueva cola
+        nace pausada para no descargar sin que el usuario lo pida.
+        """
+        previous = self._state._download_task
+        was_paused = bool(self._state.download_paused)
+
+        async def _after_previous() -> None:
+            if previous is not None and not previous.done():
+                try:
+                    await previous
+                except Exception:
+                    pass
+            self._state._download_task = None
+            task = self._start_or_enqueue(tracks, **kwargs)
+            if was_paused and self._state._download_pause is not None:
+                self._state.download_paused = True
+                self._state._download_pause.set()
+                self._state.notify()
+            try:
+                await task
+            except Exception:
+                pass
+
+        return asyncio.create_task(_after_previous())
 
     def _build_batch_wait_task(
         self, session: dict, batch_futures: list[asyncio.Future]
@@ -703,7 +753,8 @@ class DownloadRunner:
                 self._state._log(
                     f"[INFO] Descargas pausadas · {len(self._state._download_pending_tracks)} pendientes"
                 )
-            self._state.download_state = TransferState.DONE
+            if self._active_session is session:
+                self._state.download_state = TransferState.DONE
             self._collect_download_missing(queued)
             skipped = len(self._state.download_skipped)
             missing = len(self._state.download_missing)
@@ -721,17 +772,23 @@ class DownloadRunner:
                         write_playlist_manifest, read_playlist_manifest,
                     )
         except Exception as exc:  # noqa: BLE001
-            self._state.download_state = TransferState.ERROR
+            if self._active_session is session:
+                self._state.download_state = TransferState.ERROR
             self._state._log(f"[ERROR] Descargas interrumpidas: {exc}")
         finally:
             if self._active_session is session:
                 self._active_session = None
+                self._state.download_current = ""
             for fut in session["track_futures"].values():
                 if not fut.done():
                     fut.set_result(False)
-            self._state.download_current = ""
-            self._state._download_cancel = None
-            self._state._download_pause = None
+            # Solo se limpian los eventos de esta sesión: si otra ya arrancó,
+            # los suyos son otros objetos y borrarlos dejaba la cola nueva sin
+            # pausa ni cancelación.
+            if self._state._download_cancel is session["cancel"]:
+                self._state._download_cancel = None
+            if self._state._download_pause is session["pause"]:
+                self._state._download_pause = None
             self._state.notify()
 
     def _collect_download_missing(self, selected: list[Track]) -> None:

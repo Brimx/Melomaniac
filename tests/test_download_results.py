@@ -271,5 +271,117 @@ class DynamicDownloadQueueTest(unittest.TestCase):
         asyncio.run(_run())
 
 
+class DownloadQueueLifecycleTest(unittest.TestCase):
+    """Regresiones del encolado en caliente: pausa, cancelación, mezcla y dedup."""
+
+    def _patches(self, fake):
+        return (
+            mock.patch("engine.downloader.ffmpeg_available", return_value=True),
+            mock.patch("engine.downloader.download_audio", side_effect=fake),
+            mock.patch("services.settings_store.get_covers_online", return_value=False),
+            mock.patch("services.local_index.match_tracks_against_library", return_value=[]),
+        )
+
+    @staticmethod
+    def _track(tid: str, name: str = "", artist: str = "") -> Track:
+        return Track(
+            id=tid, name=name or f"Song {tid}", artist=artist or f"Art {tid}",
+            album="", duration="3:00", img_url="", platform="Spotify",
+        )
+
+    def test_enqueue_while_paused_does_not_clobber_the_new_queue(self) -> None:
+        """Encolar en pausa abre sesión nueva sin que la vieja pise su estado."""
+        import asyncio
+        import tempfile
+        import time
+        from types import SimpleNamespace
+        from engine.downloader import DOWNLOAD_PAUSED
+
+        async def _run() -> None:
+            with tempfile.TemporaryDirectory() as tmp:
+                st = _state()
+                t1 = self._track("t1")
+                t2 = self._track("t2")
+
+                def _fake(track, destination_dir=None, audio_format="mp3", **kw):
+                    pause = kw.get("pause_event")
+                    for _ in range(30):
+                        if pause is not None and pause.is_set():
+                            return SimpleNamespace(
+                                ok=False, path="", video_id="", skipped=False,
+                                code=DOWNLOAD_PAUSED, error="Pausada",
+                            )
+                        time.sleep(0.01)
+                    out = Path(destination_dir) / f"{track.id}.{audio_format}"
+                    out.write_bytes(b"audio")
+                    return SimpleNamespace(
+                        ok=True, path=str(out), video_id=f"v_{track.id}",
+                        skipped=False, code="", error="",
+                    )
+
+                p1, p2, p3, p4 = self._patches(_fake)
+                with p1, p2, p3, p4:
+                    task1 = st.download_tracks(
+                        [t1], destination_dir=tmp, playlist_name="A", platform="Spotify"
+                    )
+                    await asyncio.sleep(0.02)
+                    st.pause_downloads()
+
+                    task2 = st.download_tracks(
+                        [t2], destination_dir=tmp, playlist_name="A", platform="Spotify"
+                    )
+                    await asyncio.gather(task1, task2)
+
+                # La cola nueva nace pausada y queda pendiente, no fallida.
+                self.assertTrue(st.download_paused)
+                self.assertIn(t2, st._download_pending_tracks)
+                self.assertFalse(any(e.get("id") == "t2" for e in st.download_failed))
+                self.assertEqual(
+                    [m["id"] for m in st.download_missing if m["id"] == "t2"], ["t2"]
+                )
+
+        asyncio.run(_run())
+
+    def test_enqueue_after_cancel_is_not_discarded(self) -> None:
+        """Lo encolado justo después de cancelar no sale como «Cancelada»."""
+        import asyncio
+        import tempfile
+        import time
+        from types import SimpleNamespace
+
+        async def _run() -> None:
+            with tempfile.TemporaryDirectory() as tmp:
+                st = _state()
+                t1 = self._track("t1")
+                t2 = self._track("t2")
+
+                def _fake(track, destination_dir=None, audio_format="mp3", **_kw):
+                    time.sleep(0.06)
+                    out = Path(destination_dir) / f"{track.id}.{audio_format}"
+                    out.write_bytes(b"audio")
+                    return SimpleNamespace(
+                        ok=True, path=str(out), video_id=f"v_{track.id}",
+                        skipped=False, code="", error="",
+                    )
+
+                p1, p2, p3, p4 = self._patches(_fake)
+                with p1, p2, p3, p4:
+                    task1 = st.download_tracks(
+                        [t1], destination_dir=tmp, playlist_name="A", platform="Spotify"
+                    )
+                    await asyncio.sleep(0.02)
+                    st.cancel_downloads()
+                    task2 = st.download_tracks(
+                        [t2], destination_dir=tmp, playlist_name="A", platform="Spotify"
+                    )
+                    await asyncio.gather(task1, task2)
+
+                self.assertTrue(bool(t2.source_path and Path(t2.source_path).is_file()))
+                self.assertFalse(any(e.get("id") == "t2" for e in st.download_failed))
+                self.assertIn("t2", [e["id"] for e in st.download_done])
+
+        asyncio.run(_run())
+
+
 if __name__ == "__main__":
     unittest.main()
