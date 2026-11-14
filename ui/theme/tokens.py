@@ -105,9 +105,21 @@ ONBOARDING_SLIDE       = 0.04   # desplazamiento horizontal relativo entre pasos
 ONBOARDING_STAGGER_MS  = 70     # retraso entre elementos al entrar un paso
 ONBOARDING_BG_POINTS   = 48
 ONBOARDING_BG_LINK     = 150    # distancia máxima (px) para unir dos puntos
-ONBOARDING_BG_FPS      = 30
+ONBOARDING_BG_FPS      = 24     # acotado a 20-24 fps para reducir CPU en Flet
 ONBOARDING_BG_SPEED    = 12     # px/s de la capa más cercana
 # Profundidad falsa por capas: (factor de velocidad, radio, alfa del punto).
 ONBOARDING_BG_LAYERS   = ((0.4, 1.4, 0.35), (0.7, 2.0, 0.55), (1.0, 2.8, 0.85))
 # Trazos por arista: continua, discontinua, punteada.
 ONBOARDING_BG_DASHES   = (None, (7, 5), (1.5, 5))
+
+# Fondo DISCO del onboarding (modo H: capa estática + reflejo/sello giratorio).
+ONBOARDING_DISC_BODY        = "#FF060609"
+ONBOARDING_DISC_SEAL        = "#FFD9443B"
+ONBOARDING_DISC_HIGHLIGHT   = "#FFFAFCFF"
+ONBOARDING_DISC_BLUR        = 22
+ONBOARDING_DISC_MASK_MARGIN = 26
+# (cx_frac, cy_frac, r_frac, groove_alpha, rpm, use_accent) — misma dirección (+).
+ONBOARDING_DISC_SPECS = (
+    (1.00, -0.04, 0.46, 0.17, 1.1, True),
+    (-0.02, 1.03, 0.40, 0.13, 0.7, False),
+)

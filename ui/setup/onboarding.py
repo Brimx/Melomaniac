@@ -13,24 +13,23 @@ la navegación, el slider y el conteo salen de ella.
 from __future__ import annotations
 
 import asyncio
-import math
 import os
 from dataclasses import dataclass
 from typing import Callable
 
 import flet as ft
-import flet.canvas as cv
 
 from core.config import AUDIO_FORMATS
 from services import settings_store
+from ui.components.skeletons import is_reduced_motion
 from ui.theme.fonts import FONT_HEADLINE, FONT_TEXT, mono_family
 from ui.theme.icons import PIcons, app_icon
-from ui.setup.onboarding_bg import OnboardingBackground
+from ui.setup.onboarding_bg import OnboardingBackground, OnboardingDiscoBackground
 from ui.theme.tokens import (
-    ACCENT, BG_DEEP, BG_SURFACE, BORDER_LIGHT, BORDER_MUTED, MOTION_ENTER_MS, MOTION_PANEL_MS,
-    ONBOARDING_BG_FPS, ONBOARDING_CARD_ALPHA, ONBOARDING_CARD_H, ONBOARDING_CARD_W,
+    ACCENT, BG_DEEP, BG_SURFACE, BORDER_MUTED, MOTION_ENTER_MS, MOTION_PANEL_MS,
+    ONBOARDING_CARD_ALPHA, ONBOARDING_CARD_H, ONBOARDING_CARD_W,
     ONBOARDING_SLIDE, ONBOARDING_STAGGER_MS, PLAYER_PROGRESS_ANIM_MS, PLAYER_PROGRESS_H,
-    RADIUS_DIALOG, RADIUS_INPUT, SUCCESS, TEXT_DIM, TEXT_MUTED, TEXT_PRIMARY, WARNING,
+    RADIUS_DIALOG, RADIUS_INPUT, SUCCESS, TEXT_MUTED, TEXT_PRIMARY, WARNING,
 )
 from ui.components.widgets import (
     _ghost_btn,
@@ -40,134 +39,22 @@ from ui.components.widgets import (
     organize_dropdown,
 )
 
-_PAD = 24
+_PAD = 28
 _INNER_W = ONBOARDING_CARD_W - 2 * _PAD
-ONBOARDING_BG_MODES: tuple[str, ...] = ("constellation", "vinyl")
+ONBOARDING_BG_MODES: tuple[str, ...] = ("constellation", "disco", "vinyl", "none")
 
 
-class _CornerVinylBackground(cv.Canvas):
-    """Modo alternativo de fondo: disco de vinilo OLED minimalista en esquina."""
+class _EmptyBackground(ft.Container):
+    """Fondo vacío cuando el modo seleccionado es ``"none"``."""
 
     def __init__(self) -> None:
-        super().__init__(expand=True, on_resize=self._on_resize)
-        self._w, self._h = 1280.0, 800.0
-        self._angle = 0.0
-        self._task: asyncio.Task | None = None
-        self._arc_specs: list[tuple[cv.Arc, float]] = []
-        self._rebuild_shapes()
-
-    def _on_resize(self, e) -> None:
-        nw = float(e.width or 0)
-        nh = float(e.height or 0)
-        if nw <= 0 or nh <= 0:
-            return
-        self._w, self._h = nw, nh
-        self._rebuild_shapes()
-
-    def _rebuild_shapes(self) -> None:
-        cx = self._w * 0.90
-        cy = self._h * 0.86
-        outer_r = max(180.0, min(self._w, self._h) * 0.38)
-        shapes: list[cv.Shape] = [
-            cv.Circle(
-                cx, cy, outer_r,
-                ft.Paint(color=ft.Colors.with_opacity(0.85, BG_SURFACE)),
-            ),
-            cv.Circle(
-                cx, cy, outer_r,
-                ft.Paint(
-                    color=ft.Colors.with_opacity(0.45, BORDER_LIGHT),
-                    stroke_width=1.2,
-                    style=ft.PaintingStyle.STROKE,
-                ),
-            ),
-        ]
-        for ratio in (0.86, 0.72, 0.58, 0.44):
-            shapes.append(
-                cv.Circle(
-                    cx, cy, outer_r * ratio,
-                    ft.Paint(
-                        color=ft.Colors.with_opacity(0.30, BORDER_MUTED),
-                        stroke_width=0.9,
-                        style=ft.PaintingStyle.STROKE,
-                    ),
-                )
-            )
-
-        self._arc_specs = []
-        for ratio, base_offset, sweep, color, alpha in (
-            (0.79, 0.25, 0.85, ACCENT, 0.28),
-            (0.65, 2.35, 0.70, TEXT_DIM, 0.35),
-            (0.51, 4.10, 0.95, ACCENT, 0.22),
-        ):
-            r = outer_r * ratio
-            arc = cv.Arc(
-                cx - r, cy - r, r * 2, r * 2,
-                start_angle=self._angle + base_offset,
-                sweep_angle=sweep,
-                use_center=False,
-                paint=ft.Paint(
-                    color=ft.Colors.with_opacity(alpha, color),
-                    stroke_width=1.4,
-                    style=ft.PaintingStyle.STROKE,
-                ),
-            )
-            self._arc_specs.append((arc, base_offset))
-            shapes.append(arc)
-
-        label_r = outer_r * 0.28
-        shapes.extend([
-            cv.Circle(
-                cx, cy, label_r,
-                ft.Paint(color=ft.Colors.with_opacity(0.22, ACCENT)),
-            ),
-            cv.Circle(
-                cx, cy, label_r,
-                ft.Paint(
-                    color=ft.Colors.with_opacity(0.55, ACCENT),
-                    stroke_width=1.2,
-                    style=ft.PaintingStyle.STROKE,
-                ),
-            ),
-            cv.Circle(
-                cx, cy, outer_r * 0.045,
-                ft.Paint(color=BG_DEEP),
-            ),
-            cv.Circle(
-                cx, cy, outer_r * 0.045,
-                ft.Paint(
-                    color=ft.Colors.with_opacity(0.6, BORDER_LIGHT),
-                    stroke_width=1.0,
-                    style=ft.PaintingStyle.STROKE,
-                ),
-            ),
-        ])
-        self.shapes = shapes
-
-    def _frame(self, dt: float) -> None:
-        self._angle = (self._angle + 0.18 * dt) % math.tau
-        for arc, base_offset in self._arc_specs:
-            arc.start_angle = self._angle + base_offset
-
-    async def run(self) -> None:
-        """Rotación lenta del disco; se cancela con ``stop()`` o al desmontar."""
-        step = 1.0 / ONBOARDING_BG_FPS
-        try:
-            while True:
-                await asyncio.sleep(step)
-                self._frame(step)
-                self.update()
-        except (asyncio.CancelledError, RuntimeError):
-            pass
+        super().__init__(expand=True)
 
     def start(self) -> None:
-        if self._task is None or self._task.done():
-            self._task = asyncio.create_task(self.run())
+        pass
 
     def stop(self) -> None:
-        if self._task is not None and not self._task.done():
-            self._task.cancel()
-        self._task = None
+        pass
 
 
 def _feature(icon: str, title: str, text: str) -> ft.Control:
@@ -182,7 +69,7 @@ def _feature(icon: str, title: str, text: str) -> ft.Control:
             app_text(title, size=13, color=TEXT_PRIMARY, font_family=FONT_HEADLINE),
             app_text(text, size=11, color=TEXT_MUTED, font_family=FONT_TEXT),
         ], spacing=4, expand=True),
-    ], spacing=12, vertical_alignment=ft.CrossAxisAlignment.CENTER)
+    ], spacing=14, vertical_alignment=ft.CrossAxisAlignment.CENTER)
 
 
 # ── pasos ──────────────────────────────────────────────────────────────
@@ -434,7 +321,7 @@ class OnboardingView(ft.Container):
         page: Página Flet.
         on_connect: Abre el asistente de credenciales.
         on_close: Se invoca tras el fundido de salida (quitar el overlay).
-        bg_mode: Fondo animado (``"constellation"`` por defecto o ``"vinyl"``).
+        bg_mode: Fondo animado (``"constellation"`` por defecto, ``"disco"``/``"vinyl"`` o ``"none"``).
     """
 
     def __init__(self, page: ft.Page, on_connect: Callable[[], None] | None = None,
@@ -450,11 +337,13 @@ class OnboardingView(ft.Container):
         self._index = 0
         self._busy = False
         self._mounted = False
+        self._reduced_motion = is_reduced_motion(page)
+        self._prev_key_handler = None
         self.dir_text: ft.Text | None = None
         self._picker = ft.FilePicker()
         page.services.append(self._picker)
         self._bg_mode = bg_mode if bg_mode in ONBOARDING_BG_MODES else "constellation"
-        self._bg = self._create_background(self._bg_mode)
+        self._bg = self._create_background(self._bg_mode, self._reduced_motion)
 
         self._fill = ft.Container(
             height=PLAYER_PROGRESS_H, bgcolor=ACCENT, border_radius=PLAYER_PROGRESS_H,
@@ -465,7 +354,7 @@ class OnboardingView(ft.Container):
         self._title = app_text("", size=22, color=TEXT_PRIMARY, font_family=FONT_HEADLINE)
         self._subtitle = app_text("", size=12, color=TEXT_MUTED, font_family=FONT_TEXT)
         self._icon = app_icon(PIcons.CIRCLE, size=26, color=ACCENT)
-        self._items = ft.Column(spacing=12)
+        self._items = ft.Column(spacing=14)
         self._body = ft.Container(
             expand=True, opacity=1, offset=ft.Offset(0, 0),
             animate_opacity=ft.Animation(MOTION_ENTER_MS, ft.AnimationCurve.EASE_IN_OUT),
@@ -513,24 +402,26 @@ class OnboardingView(ft.Container):
     # ── fondo variable ─────────────────────────────────────────────────
 
     @staticmethod
-    def _create_background(mode: str):
-        if mode == "vinyl":
-            return _CornerVinylBackground()
-        return OnboardingBackground()
+    def _create_background(mode: str, reduced_motion: bool = False):
+        if mode in ("disco", "vinyl"):
+            return OnboardingDiscoBackground(reduced_motion=reduced_motion)
+        if mode == "none":
+            return _EmptyBackground()
+        return OnboardingBackground(reduced_motion=reduced_motion)
 
     @property
     def bg_mode(self) -> str:
-        """Modo de fondo activo (``"constellation"`` o ``"vinyl"``)."""
+        """Modo de fondo activo (``"constellation"``, ``"disco"``, ``"vinyl"`` o ``"none"``)."""
         return self._bg_mode
 
     def set_bg_mode(self, mode: str, *, update: bool = True) -> None:
-        """Alterna entre la constelación por defecto y el disco de esquina."""
+        """Alterna entre la constelación por defecto y el fondo DISCO."""
         target = mode if mode in ONBOARDING_BG_MODES else "constellation"
         if target == self._bg_mode:
             return
         self._bg.stop()
         self._bg_mode = target
-        self._bg = self._create_background(target)
+        self._bg = self._create_background(target, self._reduced_motion)
         self._stack.controls[0] = self._bg
         if self._mounted:
             self._bg.start()
@@ -542,13 +433,35 @@ class OnboardingView(ft.Container):
 
     # ── ciclo de vida ──────────────────────────────────────────────────
 
+    def _on_key_event(self, e: ft.KeyboardEvent) -> None:
+        key = getattr(e, "key", "") or ""
+        if key == "Escape":
+            asyncio.create_task(self._close())
+        elif key == "Enter":
+            if self._index == len(ONBOARDING_STEPS) - 1:
+                asyncio.create_task(self._close())
+            else:
+                asyncio.create_task(self._go(1))
+        elif key == "Arrow Right":
+            asyncio.create_task(self._go(1))
+        elif key == "Arrow Left":
+            asyncio.create_task(self._go(-1))
+
+    def _restore_key_handler(self) -> None:
+        if getattr(self._page_ref, "on_keyboard_event", None) is self._on_key_event:
+            self._page_ref.on_keyboard_event = self._prev_key_handler
+            self._prev_key_handler = None
+
     def did_mount(self) -> None:
         self._mounted = True
+        self._prev_key_handler = getattr(self._page_ref, "on_keyboard_event", None)
+        self._page_ref.on_keyboard_event = self._on_key_event
         self._bg.start()
         asyncio.create_task(self._enter(0))
 
     def will_unmount(self) -> None:
         self._mounted = False
+        self._restore_key_handler()
         self._bg.stop()
 
     # ── utilidades de pasos ────────────────────────────────────────────
@@ -616,7 +529,8 @@ class OnboardingView(ft.Container):
                 c.update()
             except Exception:
                 return
-            await asyncio.sleep(ONBOARDING_STAGGER_MS / 1000)
+            if not self._reduced_motion:
+                await asyncio.sleep(ONBOARDING_STAGGER_MS / 1000)
 
     async def _go(self, delta: int) -> None:
         target = self._index + delta
@@ -624,6 +538,11 @@ class OnboardingView(ft.Container):
             return
         self._busy = True
         try:
+            if self._reduced_motion:
+                self._index = target
+                self._render()
+                await self._enter(delta)
+                return
             self._body.opacity = 0
             self._body.offset = ft.Offset(-delta * ONBOARDING_SLIDE, 0)
             self._body.update()
@@ -662,9 +581,14 @@ class OnboardingView(ft.Container):
             return
         self._busy = True
         settings_store.set_onboarding_done(True)
+        self._restore_key_handler()
         self.opacity = 0
-        self.update()
-        await asyncio.sleep(MOTION_PANEL_MS / 1000)
+        try:
+            self.update()
+        except Exception:
+            pass
+        if not self._reduced_motion:
+            await asyncio.sleep(MOTION_PANEL_MS / 1000)
         self._bg.stop()
         if self._on_close is not None:
             self._on_close()
