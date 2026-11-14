@@ -1138,7 +1138,7 @@ class PlaylistDetailView(ft.Container):
         items = [
             (t.source_path, t)
             for t in self.selected_tracks()
-            if t.source_path and (self._has_file_by_id.get(id(t), False) or os.path.isfile(t.source_path))
+            if t.source_path and os.path.isfile(t.source_path)
         ]
         if not items:
             notify(self._page_ref, "Las pistas seleccionadas no están en disco", kind="error")
@@ -1153,7 +1153,7 @@ class PlaylistDetailView(ft.Container):
         items = [
             (t.source_path, t)
             for t in self.selected_tracks()
-            if t.source_path and (self._has_file_by_id.get(id(t), False) or os.path.isfile(t.source_path))
+            if t.source_path and os.path.isfile(t.source_path)
         ]
         if not items:
             notify(self._page_ref, "Las pistas seleccionadas no están en disco", kind="error")
