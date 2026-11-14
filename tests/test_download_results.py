@@ -422,6 +422,45 @@ class DownloadQueueLifecycleTest(unittest.TestCase):
 
         asyncio.run(_run())
 
+    def test_dedup_by_key_copies_source_path_to_every_track_object(self) -> None:
+        """Dos objetos Track de la misma canción reciben el mismo archivo."""
+        import asyncio
+        import tempfile
+        import time
+        from types import SimpleNamespace
+
+        async def _run() -> None:
+            with tempfile.TemporaryDirectory() as tmp:
+                st = _state()
+                a = self._track("dup", "Same Song", "Same Artist")
+                b = self._track("dup", "Same Song", "Same Artist")
+
+                def _fake(track, destination_dir=None, audio_format="mp3", **_kw):
+                    time.sleep(0.06)
+                    out = Path(destination_dir) / f"{track.id}.{audio_format}"
+                    out.write_bytes(b"audio")
+                    return SimpleNamespace(
+                        ok=True, path=str(out), video_id="v_dup",
+                        skipped=False, code="", error="",
+                    )
+
+                p1, p2, p3, p4 = self._patches(_fake)
+                with p1, p2, p3, p4:
+                    task_a = st.download_tracks(
+                        [a], destination_dir=tmp, playlist_name="A", platform="Spotify"
+                    )
+                    await asyncio.sleep(0.01)
+                    task_b = st.download_tracks(
+                        [b], destination_dir=tmp, playlist_name="A", platform="Spotify"
+                    )
+                    await asyncio.gather(task_a, task_b)
+
+                self.assertEqual(st.download_total, 1)
+                self.assertTrue(a.source_path)
+                self.assertEqual(a.source_path, b.source_path)
+
+        asyncio.run(_run())
+
 
 if __name__ == "__main__":
     unittest.main()

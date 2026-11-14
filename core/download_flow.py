@@ -72,6 +72,8 @@ class DownloadRunner:
                 and existing_item is not None
                 and existing_item.get("status") in ("queued", "running")
             ):
+                # Mismo objeto Track: el future ya es suyo, no hay nada que
+                # propagar al terminar.
                 batch_futures.append(existing_fut)
                 continue
             if not pinned_video_id:
@@ -90,6 +92,10 @@ class DownloadRunner:
                         and dup_item is not None
                         and dup_item.get("status") in ("queued", "running")
                     ):
+                        # Otro objeto Track con la misma canción (por ejemplo al
+                        # recargar el detalle): comparte la descarga, pero
+                        # necesita recibir el source_path cuando acabe.
+                        session["alias_tracks"].setdefault(dup_tid, []).append(t)
                         batch_futures.append(dup_fut)
                         continue
                 if any(t_key):
@@ -215,6 +221,7 @@ class DownloadRunner:
         session = {
             "items": {},
             "track_futures": {},
+            "alias_tracks": {},
             "active_keys": {},
             "queued": [],
             "pending_jobs": [],
@@ -746,6 +753,10 @@ class DownloadRunner:
                                     job_target_dir, job_playlist_name, job_platform,
                                     [track], write_playlist_manifest, read_playlist_manifest,
                                 )
+                            # Otros objetos ``Track`` de la misma canción (el
+                            # detalle recargado) reciben también el archivo.
+                            for alias in session["alias_tracks"].get(id(track), ()):
+                                alias.source_path = result.path
                         else:
                             item["status"], item["error"] = "failed", error or "Error desconocido"
                             self._state.download_failed.append(
