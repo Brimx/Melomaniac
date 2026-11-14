@@ -34,7 +34,7 @@ Desktop application to **transfer playlists between YouTube Music, Apple Music, 
 
 The current release is **4.10.0**. The documented next priorities are:
 
-- **5.1.0+ · User experience:** a Home page, a reorganized Library, Settings/About, and accessibility and search navigation improvements.
+- **4.11.0+ · User experience:** a Home page, a reorganized Library, Settings/About, and accessibility and search navigation improvements.
 - **Later · New capabilities:** activity and listening history, favorites, and then an initial version of Discover built on those signals.
 
 This is a direction of work, not a fixed schedule; priorities may change as the project progresses.
