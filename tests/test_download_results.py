@@ -382,6 +382,46 @@ class DownloadQueueLifecycleTest(unittest.TestCase):
 
         asyncio.run(_run())
 
+    def test_resume_keeps_each_track_context_when_playlists_are_mixed(self) -> None:
+        """Reanudar devuelve cada pista a su carpeta y a su playlist."""
+        import asyncio
+
+        async def _run() -> None:
+            st = _state()
+            a = self._track("a")
+            b = self._track("b")
+            runner = st._download_runner
+            runner._track_ctx[id(a)] = {
+                "format": "mp3", "destination_dir": "/tmp/A",
+                "playlist_name": "PlA", "platform": "Spotify",
+            }
+            runner._track_ctx[id(b)] = {
+                "format": "mp3", "destination_dir": "/tmp/B",
+                "playlist_name": "PlB", "platform": "Spotify",
+            }
+
+            groups = runner._group_by_ctx([a, b])
+            self.assertEqual(
+                sorted(n for _, trs in groups for n in [len(trs)]), [1, 1]
+            )
+            self.assertEqual(
+                sorted(ctx["playlist_name"] for ctx, _ in groups), ["PlA", "PlB"]
+            )
+
+            st._download_pending_tracks = [a, b]
+            st.download_paused = True
+            st._download_task = None
+            with mock.patch.object(st, "download_tracks") as dl:
+                await st.resume_downloads()
+
+            self.assertEqual(dl.call_count, 2)
+            names = sorted(
+                c.kwargs.get("playlist_name", "") for c in dl.call_args_list
+            )
+            self.assertEqual(names, ["PlA", "PlB"])
+
+        asyncio.run(_run())
+
 
 if __name__ == "__main__":
     unittest.main()

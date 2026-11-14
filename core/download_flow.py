@@ -18,6 +18,10 @@ class DownloadRunner:
     def __init__(self, state) -> None:
         self._state = state
         self._active_session: dict | None = None
+        # Contexto de descarga por pista (formato, carpeta, playlist y
+        # plataforma). Una sesión puede mezclar pistas de varias playlists, así
+        # que reanudar y reintentar no pueden depender del contexto inicial.
+        self._track_ctx: dict[int, dict] = {}
 
     def _resolve_fmt_and_dir(
         self,
@@ -91,6 +95,12 @@ class DownloadRunner:
                 if any(t_key):
                     session["active_keys"][t_key] = tid
 
+            self._track_ctx[tid] = {
+                "format": fmt,
+                "destination_dir": str(destination_dir or ""),
+                "playlist_name": playlist_name,
+                "platform": platform,
+            }
             fut = loop.create_future()
             session["track_futures"][tid] = fut
             item = {
@@ -278,6 +288,37 @@ class DownloadRunner:
 
         return asyncio.create_task(_after_previous())
 
+    def _ctx_for(self, track: Track) -> dict:
+        """Contexto de descarga de una pista, con la sesión inicial de respaldo."""
+        ctx = self._track_ctx.get(id(track))
+        if ctx:
+            return dict(ctx)
+        return dict(self._state._download_resume_ctx)
+
+    def _group_by_ctx(self, tracks: list[Track]) -> list[tuple[dict, list[Track]]]:
+        """Agrupa pistas por contexto, conservando el orden de llegada.
+
+        Una sesión puede mezclar playlists; reanudar y reintentar tienen que
+        devolver cada pista a su carpeta y a su manifiesto.
+        """
+        groups: list[tuple[dict, list[Track]]] = []
+        index: dict[tuple, int] = {}
+        for track in tracks:
+            ctx = self._ctx_for(track)
+            key = (
+                ctx.get("format", ""),
+                ctx.get("destination_dir", ""),
+                ctx.get("playlist_name", ""),
+                ctx.get("platform", ""),
+            )
+            pos = index.get(key)
+            if pos is None:
+                index[key] = len(groups)
+                groups.append((ctx, [track]))
+            else:
+                groups[pos][1].append(track)
+        return groups
+
     def _build_batch_wait_task(
         self, session: dict, batch_futures: list[asyncio.Future]
     ) -> asyncio.Task:
@@ -391,13 +432,13 @@ class DownloadRunner:
         if not self._state.download_paused:
             return None
         pending = list(self._state._download_pending_tracks)
-        ctx = dict(self._state._download_resume_ctx)
         self._state.download_paused = False
         if not pending:
             self._state._log("[WARN] No hay pistas pendientes para reanudar")
             self._state.notify()
             return None
         self._state._log(f"[INFO] Reanudando descargas · {len(pending)} pistas pendientes")
+        groups = self._group_by_ctx(pending)
 
         async def _resume_after_pause() -> None:
             # El task pausado puede seguir vivo unos instantes mientras las
@@ -410,13 +451,23 @@ class DownloadRunner:
                 except Exception:
                     pass
             self._state._download_task = None
-            self._state.download_tracks(
-                pending,
-                audio_format=ctx.get("format", ""),
-                destination_dir=ctx.get("destination_dir", ""),
-                playlist_name=ctx.get("playlist_name", ""),
-                platform=ctx.get("platform", ""),
-            )
+            # Un grupo por carpeta y playlist: el primero abre la sesión y el
+            # resto entra en caliente con su propio contexto.
+            tasks = [
+                self._state.download_tracks(
+                    tracks,
+                    audio_format=ctx.get("format", ""),
+                    destination_dir=ctx.get("destination_dir", ""),
+                    playlist_name=ctx.get("playlist_name", ""),
+                    platform=ctx.get("platform", ""),
+                )
+                for ctx, tracks in groups
+            ]
+            for task in tasks:
+                try:
+                    await task
+                except Exception:
+                    pass
 
         return asyncio.create_task(_resume_after_pause())
 
@@ -858,17 +909,34 @@ class DownloadRunner:
                 tracks.append(track)
         if not tracks:
             return None
-        ctx = dict(self._state._download_resume_ctx)
-        fmt = (audio_format or ctx.get("format") or self._state.audio_format or "").lower().lstrip(".")
         self._state.download_paused = False
-        self._state._log(f"[INFO] Reintentando descargas · {len(tracks)} pistas en {fmt.upper()}")
-        return self._state.download_tracks(
-            tracks,
-            audio_format=fmt,
-            destination_dir=ctx.get("destination_dir", ""),
-            playlist_name=ctx.get("playlist_name", ""),
-            platform=ctx.get("platform", ""),
+        groups = self._group_by_ctx(tracks)
+        base_fmt = (audio_format or self._state.audio_format or "").lower().lstrip(".")
+        formats = {
+            str(ctx.get("format") or base_fmt).upper() for ctx, _ in groups
+        }
+        detail = f" en {next(iter(formats))}" if len(formats) == 1 and base_fmt else ""
+        self._state._log(
+            f"[INFO] Reintentando descargas · {len(tracks)} pistas{detail}"
         )
+
+        # Se encola un grupo por carpeta y playlist. La primera llamada abre la
+        # sesión y las siguientes entran en caliente con su propio contexto, así
+        # que el reintento no devuelve todas las pistas a la carpeta de la
+        # primera.
+        tasks = [
+            self._state.download_tracks(
+                group,
+                audio_format=(
+                    audio_format or ctx.get("format") or base_fmt
+                ).lower().lstrip("."),
+                destination_dir=ctx.get("destination_dir", ""),
+                playlist_name=ctx.get("playlist_name", ""),
+                platform=ctx.get("platform", ""),
+            )
+            for ctx, group in groups
+        ]
+        return tasks[0] if tasks else None
 
     async def research_download(self, entry: dict, *, audio_format: str = "") -> dict:
         """Rebusca una pista en YouTube y devuelve los mejores candidatos.
@@ -915,7 +983,7 @@ class DownloadRunner:
         """
         if not video_id:
             return None
-        ctx = dict(self._state._download_resume_ctx)
+        ctx = self._ctx_for(track)
         fmt = (audio_format or ctx.get("format") or self._state.audio_format or "").lower().lstrip(".")
         self._state._log(f"[INFO] Descargando candidato {video_id} · {track.name[:42]} en {fmt.upper()}")
         return self._download_video_task(track, video_id, fmt, ctx)
