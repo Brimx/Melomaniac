@@ -246,10 +246,12 @@ class ConfigViewAsyncTests(unittest.IsolatedAsyncioTestCase):
         self._p1.stop()
         self._tmp.cleanup()
 
-    async def test_remove_local_folder_requires_confirmation(self) -> None:
+    async def test_remove_local_folder_requires_confirmation_and_isolates_rows(self) -> None:
         settings_store.add_local_folder("/tmp/musica-uno")
         view = ConfigView(_mock_page(1280))
         view.select_section("biblioteca", update=False)
+
+        self.assertTrue(all(ctrl.is_isolated() for ctrl in view._local_folders_col.controls))
 
         with patch.object(view, "_ask_confirm", new=AsyncMock(return_value=False)) as ask_mock:
             await view._remove_local_folder_async("/tmp/musica-uno")
@@ -260,6 +262,24 @@ class ConfigViewAsyncTests(unittest.IsolatedAsyncioTestCase):
             await view._remove_local_folder_async("/tmp/musica-uno")
             ask_mock.assert_awaited_once()
             self.assertEqual(settings_store.get_local_folders(), [])
+
+    async def test_verify_without_service_does_not_instantiate_api_service_and_ask_confirm_uses_app_dialog(self) -> None:
+        view = ConfigView(_mock_page(1280))
+        self.assertIsNone(view.auth_manager)
+        self.assertIsNone(view.service)
+
+        await view._verify_platform_async("YouTube Music")
+        self.assertEqual(view._provider_status["YouTube Music"]["label"], "Sin servicio")
+
+        with patch.object(config_view_mod, "app_dialog", wraps=config_view_mod.app_dialog) as dlg_spy, \
+             patch.object(config_view_mod, "show_dialog") as show_mock:
+            def _dismiss_first(page, dlg):
+                dlg.on_dismiss(None)
+
+            show_mock.side_effect = _dismiss_first
+            res = await view._ask_confirm("Título", "Mensaje")
+            self.assertFalse(res)
+            dlg_spy.assert_called_once()
 
 
 if __name__ == "__main__":

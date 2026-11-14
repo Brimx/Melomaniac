@@ -32,6 +32,7 @@ from services.authentication import (
 from ui.components.widgets import (
     _ghost_btn,
     _primary_btn,
+    app_dialog,
     app_text,
     close_dialog,
     notify,
@@ -107,6 +108,8 @@ class _StandaloneAuthAdapter:
 
 async def _probe_platform_session(service: Any, platform: str) -> PreFlightResult:
     """Ejecuta init_* de una plataforma sobre ``MusicApiService`` y devuelve ``PreFlightResult``."""
+    if service is None:
+        return preflight_result(platform, False, "Servicio de API no disponible en este contexto")
     try:
         if platform == "YouTube Music":
             ok = await service.init_youtube()
@@ -200,6 +203,22 @@ class ConfigView(ft.Container):
 
         self._nav_items: dict[str, dict[str, Any]] = {}
         self.content = self._build()
+
+    @property
+    def auth_manager(self):
+        return self._auth_manager
+
+    @auth_manager.setter
+    def auth_manager(self, value) -> None:
+        self._auth_manager = value
+
+    @property
+    def service(self):
+        return self._service
+
+    @service.setter
+    def service(self, value) -> None:
+        self._service = value
 
     # ── Responsividad y estructura ─────────────────────────────────────
 
@@ -651,13 +670,9 @@ class ConfigView(ft.Container):
             self._browser_note.value = note
             self._browser_note.visible = bool(note)
 
-    def _get_or_create_service(self):
+    def _resolve_service(self):
         if self._auth_manager is not None and getattr(self._auth_manager, "service", None) is not None:
             return self._auth_manager.service
-        if self._service is None:
-            from services.api_service import MusicApiService
-
-            self._service = MusicApiService()
         return self._service
 
     def _on_verify_platform(self, platform: str) -> None:
@@ -678,7 +693,16 @@ class ConfigView(ft.Container):
                 results = await self._auth_manager.check_sessions([platform])
                 self._auth_manager.ingest_preflight_results(results)
             else:
-                svc = self._get_or_create_service()
+                svc = self._resolve_service()
+                if svc is None:
+                    self._provider_status[platform] = {
+                        "kind": "warn",
+                        "label": "Sin servicio",
+                        "meta": "Verificación en vivo requiere servicio inicializado",
+                    }
+                    self._apply_provider_status_ui(platform)
+                    notify(self._page_ref, f"{platform}: servicio no disponible para verificar ahora", kind="error")
+                    return
                 results = [await _probe_platform_session(svc, platform)]
             for res in results:
                 if res.platform != platform:
@@ -710,9 +734,12 @@ class ConfigView(ft.Container):
         if self._auth_manager is not None:
             self._auth_manager.open_wizard(platform)
             return
+        if self._resolve_service() is None:
+            notify(self._page_ref, "Asistente no disponible sin servicio inicializado", kind="error")
+            return
         from ui.setup.config_wizard import ConfigWizard
 
-        adapter = _StandaloneAuthAdapter(self._get_or_create_service)
+        adapter = _StandaloneAuthAdapter(self._resolve_service)
         wiz = ConfigWizard(self._page_ref, adapter, on_saved=self._schedule_probe)  # type: ignore[arg-type]
         wiz.open(initial_platform=platform)
 
@@ -812,34 +839,34 @@ class ConfigView(ft.Container):
         for folder in folders:
             count = self._folder_counts.get(folder)
             count_str = f"{count} pistas" if count is not None else "…"
-            rows.append(
-                ft.Container(
-                    padding=ft.Padding.symmetric(horizontal=10, vertical=6),
-                    bgcolor=BG_LIST,
-                    border=ft.Border.all(0.6, BORDER_ROW),
-                    border_radius=6,
-                    content=ft.Row(
-                        controls=[
-                            app_icon(PIcons.FOLDER, size=16, color=TEXT_MUTED),
-                            app_text(
-                                folder, size=11, color=TEXT_PRIMARY, font_family=mono_family("light"),
-                                max_lines=1, overflow=ft.TextOverflow.ELLIPSIS, expand=True,
-                            ),
-                            app_text(count_str, size=10, color=TEXT_MUTED, font_family=mono_family("light")),
-                            app_icon_button(
-                                PIcons.X,
-                                size=14,
-                                width=28,
-                                height=28,
-                                tooltip="Quitar carpeta",
-                                on_click=lambda _e, f=folder: self._on_remove_local_folder(f),
-                            ),
-                        ],
-                        spacing=8,
-                        vertical_alignment=ft.CrossAxisAlignment.CENTER,
-                    ),
-                )
+            row = ft.Container(
+                padding=ft.Padding.symmetric(horizontal=10, vertical=6),
+                bgcolor=BG_LIST,
+                border=ft.Border.all(0.6, BORDER_ROW),
+                border_radius=6,
+                content=ft.Row(
+                    controls=[
+                        app_icon(PIcons.FOLDER, size=16, color=TEXT_MUTED),
+                        app_text(
+                            folder, size=11, color=TEXT_PRIMARY, font_family=mono_family("light"),
+                            max_lines=1, overflow=ft.TextOverflow.ELLIPSIS, expand=True,
+                        ),
+                        app_text(count_str, size=10, color=TEXT_MUTED, font_family=mono_family("light")),
+                        app_icon_button(
+                            PIcons.X,
+                            size=14,
+                            width=28,
+                            height=28,
+                            tooltip="Quitar carpeta",
+                            on_click=lambda _e, f=folder: self._on_remove_local_folder(f),
+                        ),
+                    ],
+                    spacing=8,
+                    vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                ),
             )
+            row._isolated = True
+            rows.append(row)
         self._local_folders_col.controls = rows
 
     async def _on_add_local_folder(self, e=None) -> None:
@@ -1256,21 +1283,16 @@ class ConfigView(ft.Container):
                 future.set_result(value)
             close_dialog(self._page_ref, dlg)
 
-        dlg = ft.AlertDialog(
-            modal=True,
-            bgcolor=BG_PANEL,
-            title=app_text(title, size=15, color=TEXT_PRIMARY, font_family=FONT_HEADLINE),
-            content=ft.Container(
-                width=420,
-                content=app_text(message, size=12, color=TEXT_MUTED, font_family=FONT_TEXT),
-            ),
+        dlg = app_dialog(
+            title,
+            app_text(message, size=12, color=TEXT_MUTED, font_family=FONT_TEXT),
             actions=[
                 _ghost_btn("Cancelar", PIcons.X, lambda _: _close(False), width=110, height=34),
                 _primary_btn(confirm_label, PIcons.CHECK, lambda _: _close(True), width=150, height=34),
             ],
-            actions_alignment=ft.MainAxisAlignment.END,
-            on_dismiss=lambda _: _close(False),
+            width=420,
         )
+        dlg.on_dismiss = lambda _: _close(False)
         try:
             show_dialog(self._page_ref, dlg)
         except Exception:
