@@ -1,10 +1,10 @@
 # Release Notes — Melomaniac
 
-Notas enfocadas en **qué cambió para el usuario**, no en detalles internos. La versión de trabajo documentada es `5.0.0`. El detalle técnico está en [`CHANGELOG.md`](CHANGELOG.md). La descarga de la versión estable (ZIP portátil, binarios de Linux y Windows) está en los assets del release de GitHub.
+Notas enfocadas en **qué cambió para el usuario**, no en detalles internos. La versión de trabajo documentada es `4.10.0`. El detalle técnico está en [`CHANGELOG.md`](CHANGELOG.md). La descarga de la versión estable (ZIP portátil, binarios de Linux y Windows) está en los assets del release de GitHub.
 
 ---
 
-## v5.0.0 — Gestión completa, catálogo y reconocimiento cruzado (2026-11-13)
+## v4.10.0 — Gestión completa, catálogo y reconocimiento cruzado (2026-11-13)
 
 **Novedades:**
 - **Gestión renovada y barra contextual:** elige directamente entre tus playlists sincronizadas en Biblioteca (con URL/ID plegado bajo «Avanzado»), selecciona el destino y valida la sesión en vivo dentro del diálogo **Transferir**, y usa la barra contextual sobre la tabla (**Transferir**, **Organizar**, **Dividir**, **Reorganizar**, **Descargar**, **Exportar**) que aparece solo cuando hay una playlist cargada.

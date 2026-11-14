@@ -1,4 +1,4 @@
-# 🎵 Melomaniac v5.0.0
+# 🎵 Melomaniac v4.10.0
 
 **Español** · [English](README.en.md)
 
@@ -32,7 +32,7 @@ Aplicación de escritorio para **transferir playlists entre YouTube Music, Apple
 
 ## Roadmap
 
-La versión actual es **5.0.0**. Las próximas prioridades documentadas son:
+La versión actual es **4.10.0**. Las próximas prioridades documentadas son:
 
 - **5.1.0+ · Experiencia de uso:** página de Inicio, Biblioteca reorganizada, Configuración/Acerca de y mejoras de accesibilidad y navegación por búsqueda.
 - **Después · Funciones nuevas:** historial de actividad y escucha, favoritos y, con esas señales, una primera versión de Discover.

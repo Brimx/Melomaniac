@@ -1,5 +1,5 @@
 """
-core/config.py — Melomaniac v5.0.0 — Configuración Centralizada
+core/config.py — Melomaniac v4.10.0 — Configuración Centralizada
 ══════════════════════════════════════════════════════════════════
 Fuente única para constantes compartidas (regla 1).
 Centraliza el orden de plataformas, concurrencia y parámetros de servicios
@@ -9,7 +9,7 @@ sin depender de la capa de autenticación ni de la UI.
 from __future__ import annotations
 
 # ── Identidad de versión y repositorio (single source) ───────────────
-APP_VERSION: str = "5.0.0"
+APP_VERSION: str = "4.10.0"
 REPO_URL: str = "https://github.com/Brimx/Melomaniac"
 RELEASES_API_URL: str = "https://api.github.com/repos/Brimx/Melomaniac/releases/latest"
 

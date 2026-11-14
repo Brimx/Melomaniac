@@ -1,6 +1,6 @@
 # Changelog
 
-## 5.0.0 — 2026-11-13 · Bloque 2 de gestión, Flet 1.1.2, arquitectura modular y reconocimiento cruzado
+## 4.10.0 — 2026-11-13 · Bloque 2 de gestión, Flet 1.1.2, arquitectura modular y reconocimiento cruzado
 
 > Consolida el **Bloque 2 — Flujos de gestión** (`2.1`–`2.11`), el pulido UX de Gestión (`3.5`), la actualización a **Flet `1.1.2`**, la modularización de la capa UI/core/services por composición, el panel de cola lateral `D26`, optimizaciones de rendimiento y el reconocimiento cruzado sin descargas duplicadas.
 

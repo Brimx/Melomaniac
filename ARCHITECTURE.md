@@ -1,10 +1,10 @@
-# Melomaniac v5.0.0 — Arquitectura
+# Melomaniac v4.10.0 — Arquitectura
 
 [← README](README.md) · [English](ARCHITECTURE.en.md) · [Diseño](DESIGN.md) · [Cambios](CHANGELOG.md)
 
 Melomaniac separa la interfaz Flet, el estado de la aplicación, los servicios de plataforma y el motor de normalización/matching. La versión actual soporta YouTube Music, Apple Music, Spotify y dos entradas locales: archivo y texto pegado.
 
-La versión de trabajo documentada es `5.0.0` (fuente única: `APP_VERSION` en `core/config.py:12`). Esta versión cierra el Bloque 2 de gestión (selección de biblioteca, fusión, manifiestos locales, exportación/añadido a plataformas, catálogo en Gestión y barra contextual), migra a Flet `1.1.2` y consolida la arquitectura modular por composición. El detalle por versión está en `CHANGELOG.md`.
+La versión de trabajo documentada es `4.10.0` (fuente única: `APP_VERSION` en `core/config.py:12`). Esta versión cierra el Bloque 2 de gestión (selección de biblioteca, fusión, manifiestos locales, exportación/añadido a plataformas, catálogo en Gestión y barra contextual), migra a Flet `1.1.2` y consolida la arquitectura modular por composición. El detalle por versión está en `CHANGELOG.md`.
 
 ## Capas y dependencias
 
