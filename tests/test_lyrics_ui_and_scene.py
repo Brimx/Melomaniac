@@ -161,6 +161,35 @@ class TestLyricsPaneAndSync(unittest.TestCase):
             pane.refresh_track(force_reload=True)
             self.assertEqual(pane._status, "none")
 
+    def test_lyrics_disabled_or_provider_off_skips_fetch(self) -> None:
+        item = _make_playable(4)
+        bar = SimpleNamespace(
+            queue=PlayQueue([item]),
+            subscribe=lambda _cb: None,
+            position_ms=0,
+            duration_ms=180_000,
+            _lyrics_cache={},
+        )
+        fake_svc = SimpleNamespace(get_lyrics=mock.Mock())
+        page = SimpleNamespace(services=[], run_task=lambda *_a, **_k: None)
+        with tempfile.TemporaryDirectory() as tmp:
+            settings_path = Path(tmp) / "settings.json"
+            with (
+                mock.patch.object(settings_store, "SETTINGS_JSON", settings_path),
+                mock.patch.object(settings_store, "ensure_config_dir", lambda: None),
+                mock.patch("ui.player.player_queue._import_lyrics_service", return_value=fake_svc),
+            ):
+                pane = LyricsPane(page, bar, initially_visible=True)
+                settings_store.save_settings({"lyrics_enabled": False})
+                pane.refresh_track(force_reload=True)
+                self.assertEqual(pane._status, "disabled")
+                fake_svc.get_lyrics.assert_not_called()
+
+                settings_store.save_settings({"lyrics_enabled": True, "lyrics_provider": "off"})
+                pane.refresh_track(force_reload=True)
+                self.assertEqual(pane._status, "disabled")
+                fake_svc.get_lyrics.assert_not_called()
+
     def test_async_fetch_connects_to_lyrics_service_contract(self) -> None:
         async def _run() -> None:
             item = _make_playable(3)

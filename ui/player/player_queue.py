@@ -73,6 +73,13 @@ def _is_reduce_motion() -> bool:
     return bool(_read_setting("get_reduce_motion", "reduce_motion", False))
 
 
+def _lyrics_enabled() -> bool:
+    if not bool(_read_setting("get_lyrics_enabled", "lyrics_enabled", True)):
+        return False
+    prov = str(_read_setting("get_lyrics_provider", "lyrics_provider", "lrclib") or "lrclib").lower()
+    return prov not in ("off", "none", "disabled")
+
+
 def _lyrics_allow_network() -> bool:
     prov = str(_read_setting("get_lyrics_provider", "lyrics_provider", "lrclib") or "lrclib").lower()
     return prov not in ("off", "none", "local", "disabled")
@@ -331,6 +338,13 @@ class LyricsPane(ft.Container):
         return (cur.path, tr.id, tr.name, tr.artist)
 
     def refresh_track(self, *, force_reload: bool = False) -> None:
+        if not _lyrics_enabled():
+            self._fetch_gen += 1
+            self._loaded_key = None
+            self._result = None
+            self._render_state("disabled")
+            return
+
         cur = self.player_bar.queue.current
         key = self._track_key(cur)
         if key is None:
@@ -352,9 +366,9 @@ class LyricsPane(ft.Container):
             return
 
         self._loaded_key = key
-        self._start_fetch(cur, key, force_reload=force_reload)
+        self._start_fetch(cur, key)
 
-    def _start_fetch(self, cur: PlayableTrack, key: tuple, *, force_reload: bool = False) -> None:
+    def _start_fetch(self, cur: PlayableTrack, key: tuple) -> None:
         lyrics_svc = _import_lyrics_service()
         if lyrics_svc is None:
             self._result = None
@@ -371,28 +385,16 @@ class LyricsPane(ft.Container):
 
         async def _load() -> None:
             try:
-                if force_reload and hasattr(lyrics_svc, "fetch_lyrics"):
-                    res = await asyncio.to_thread(
-                        lyrics_svc.get_lyrics,
-                        tr,
-                        audio_path=cur.path,
-                        title=tr.name,
-                        artist=tr.artist,
-                        album=tr.album,
-                        duration_ms=dur_ms,
-                        allow_network=allow_net,
-                    )
-                else:
-                    res = await asyncio.to_thread(
-                        lyrics_svc.get_lyrics,
-                        tr,
-                        audio_path=cur.path,
-                        title=tr.name,
-                        artist=tr.artist,
-                        album=tr.album,
-                        duration_ms=dur_ms,
-                        allow_network=allow_net,
-                    )
+                res = await asyncio.to_thread(
+                    lyrics_svc.get_lyrics,
+                    tr,
+                    audio_path=cur.path,
+                    title=tr.name,
+                    artist=tr.artist,
+                    album=tr.album,
+                    duration_ms=dur_ms,
+                    allow_network=allow_net,
+                )
             except Exception as exc:
                 if gen != self._fetch_gen:
                     return
@@ -458,6 +460,9 @@ class LyricsPane(ft.Container):
 
         if kind == "empty":
             icon, title, sub = PIcons.MUSIC_NOTES, "Sin reproducción", "Reproduce una pista para ver su letra."
+            extra = None
+        elif kind == "disabled":
+            icon, title, sub = PIcons.MUSIC_NOTES, "Letras desactivadas", "Actívalas en Configuración → Reproducción."
             extra = None
         elif kind == "loading":
             icon, title, sub = PIcons.ARROWS_CLOCKWISE, "Buscando letra…", "Consultando archivo local y proveedor."

@@ -55,7 +55,9 @@ from ui.theme.tokens import (
     ACCENT,
     ACCENT_DIM,
     ACCENT_HALO,
+    ACCENT_HOVER,
     BG_DEEP,
+    BG_INPUT,
     BG_PANEL,
     BG_SURFACE,
     BORDER_LIGHT,
@@ -67,6 +69,7 @@ from ui.theme.tokens import (
     PLAYER_PROGRESS_H,
     RADIUS_BUTTON,
     RADIUS_DIALOG,
+    SIDEBAR_BG,
     TEXT_DIM,
     TEXT_MUTED,
     TEXT_PRIMARY,
@@ -203,12 +206,12 @@ class _VinylDisc(ft.Stack):
 
         center = size / 2.0
         groove_shapes: list[cv.Shape] = [
-            cv.Circle(center, center, center - 1, ft.Paint(color="#FF050507")),
+            cv.Circle(center, center, center - 1, ft.Paint(color=BG_PANEL)),
             cv.Circle(
                 center,
                 center,
                 center - 1,
-                ft.Paint(color="#FF1D1D26", stroke_width=1.2, style=ft.PaintingStyle.STROKE),
+                ft.Paint(color=BORDER_MUTED, stroke_width=1.2, style=ft.PaintingStyle.STROKE),
             ),
         ]
         # Surcos estáticos: dibujar una sola vez evita moiré al rotar
@@ -216,7 +219,7 @@ class _VinylDisc(ft.Stack):
         ring_idx = 0
         min_r = size * 0.21
         while r > min_r:
-            col = "#FF0D0D14" if ring_idx % 2 == 0 else "#FF15151E"
+            col = SIDEBAR_BG if ring_idx % 2 == 0 else BG_INPUT
             groove_shapes.append(
                 cv.Circle(
                     center,
@@ -230,7 +233,7 @@ class _VinylDisc(ft.Stack):
 
         label_r = size * 0.165
         groove_shapes.extend([
-            cv.Circle(center, center, label_r + 2.0, ft.Paint(color="#FF0B1430")),
+            cv.Circle(center, center, label_r + 2.0, ft.Paint(color=ACCENT_HALO)),
             cv.Circle(center, center, label_r, ft.Paint(color=ACCENT_DIM)),
             cv.Circle(center, center, max(4.0, size * 0.025), ft.Paint(color=BG_DEEP)),
         ])
@@ -241,7 +244,7 @@ class _VinylDisc(ft.Stack):
             width=max(8, int(size * 0.045)),
             height=max(8, int(size * 0.045)),
             border_radius=99,
-            bgcolor="#55F2F6FF",
+            bgcolor=ft.Colors.with_opacity(0.33, TEXT_PRIMARY),
             left=int(center - label_r * 0.58),
             top=int(center - label_r * 0.58),
         )
@@ -252,11 +255,11 @@ class _VinylDisc(ft.Stack):
             gradient=ft.SweepGradient(
                 center=ft.Alignment.CENTER,
                 colors=[
-                    "#00000000",
-                    "#26FFFFFF",
-                    "#00000000",
-                    "#18A0BEFF",
-                    "#00000000",
+                    ft.Colors.TRANSPARENT,
+                    ft.Colors.with_opacity(0.15, TEXT_PRIMARY),
+                    ft.Colors.TRANSPARENT,
+                    ft.Colors.with_opacity(0.10, ACCENT_HOVER),
+                    ft.Colors.TRANSPARENT,
                 ],
                 stops=[0.0, 0.10, 0.22, 0.62, 0.74],
             ),
