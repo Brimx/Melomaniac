@@ -400,6 +400,109 @@ def write_cover(path: str, artwork: bytes) -> bool:
         return False
 
 
+def read_lyrics(path: str) -> dict[str, Any]:
+    """Lee letras embebidas (ID3 SYLT/USLT, Vorbis/FLAC LYRICS/UNSYNCEDLYRICS, MP4 ©lyr)."""
+    audio, id3_cls = _load_mutagen_file(path)
+    if audio is None:
+        return {}
+
+    tags = audio if (id3_cls is not None and isinstance(audio, id3_cls)) else getattr(audio, "tags", None)
+    if tags is None:
+        return {}
+
+    result: dict[str, Any] = {}
+    try:
+        if id3_cls is not None and isinstance(tags, id3_cls):
+            for frame in tags.getall("SYLT"):
+                raw_items = getattr(frame, "text", None) or []
+                if raw_items and getattr(frame, "format", 2) == 2:
+                    synced = [(int(ms), str(txt)) for txt, ms in raw_items if txt is not None]
+                    if synced:
+                        result["synced"] = sorted(synced, key=lambda item: item[0])
+                        break
+            for frame in tags.getall("USLT"):
+                txt = str(getattr(frame, "text", "") or "").strip()
+                if txt:
+                    result["plain"] = txt
+                    break
+            return result
+
+        lrc_val = _tag(tags, "LYRICS", "lyrics", "©lyr")
+        if lrc_val:
+            result["lrc"] = lrc_val
+        unsynced = _tag(tags, "UNSYNCEDLYRICS", "unsyncedlyrics")
+        if unsynced:
+            result["plain"] = unsynced
+    except Exception:
+        return {}
+    return result
+
+
+def write_lyrics(
+    path: str,
+    *,
+    plain_text: str = "",
+    synced_lines: list[tuple[int, str]] | None = None,
+    lrc_text: str = "",
+) -> bool:
+    """Escribe letras embebidas (USLT/SYLT en ID3, LYRICS/UNSYNCEDLYRICS en Vorbis/FLAC, ©lyr en MP4)."""
+    if not path or not os.path.isfile(path):
+        return False
+    if not plain_text and not synced_lines and not lrc_text:
+        return False
+    try:
+        from mutagen import File as MutagenFile
+        from mutagen.id3 import ID3, SYLT, USLT
+        from mutagen.mp4 import MP4
+    except ImportError:
+        return False
+
+    try:
+        try:
+            audio = MutagenFile(path, easy=False)
+        except Exception:
+            audio = None
+        if audio is None and os.path.splitext(path)[1].lower() == ".mp3":
+            audio = ID3(path)
+        if audio is None:
+            return False
+
+        is_id3_file = isinstance(audio, ID3)
+        if not is_id3_file and getattr(audio, "tags", None) is None:
+            audio.add_tags()
+        tags = audio if is_id3_file else audio.tags
+
+        if isinstance(tags, ID3):
+            if plain_text:
+                tags.delall("USLT")
+                tags.add(USLT(encoding=3, lang="eng", desc="", text=plain_text))
+            if synced_lines:
+                tags.delall("SYLT")
+                tags.add(
+                    SYLT(
+                        encoding=3,
+                        lang="eng",
+                        format=2,
+                        type=1,
+                        desc="",
+                        text=[(str(txt), max(0, int(ms))) for ms, txt in synced_lines],
+                    )
+                )
+        elif isinstance(audio, MP4):
+            text = lrc_text or plain_text
+            if text:
+                tags["©lyr"] = [text]
+        else:
+            if lrc_text:
+                tags["LYRICS"] = [lrc_text]
+            if plain_text:
+                tags["UNSYNCEDLYRICS"] = [plain_text]
+        audio.save()
+        return True
+    except Exception:
+        return False
+
+
 def write_track_metadata(track: Any, path: str | None = None, artwork: bytes | None = None) -> bool:
     """Adaptador para escribir los campos de un `Track` en un archivo."""
     target = path or getattr(track, "source_path", "")

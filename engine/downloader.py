@@ -441,6 +441,9 @@ def _attempt_download(
     timeout_s: int,
     artwork_fetcher: Optional[Callable[[Any], bytes | None]] = None,
     pause_event: Optional[Any] = None,
+    lyrics_fetcher: Optional[Callable[[Any], Any]] = None,
+    save_lrc: bool = False,
+    embed_lyrics: bool = False,
 ) -> DownloadResult:
     """Ejecuta un intento de descarga con o sin sesión autenticada.
 
@@ -506,6 +509,13 @@ def _attempt_download(
     # datos originales. Si falla, el archivo ya está guardado y sirve igual.
     _apply_playlist_metadata(track, final_path, artwork)
     _write_sidecar_if_needed(final_path, artwork)
+    _apply_lyrics(
+        track,
+        final_path,
+        lyrics_fetcher,
+        save_lrc=save_lrc,
+        embed_lyrics=embed_lyrics,
+    )
     _cleanup_temp_files(temp_stem)
 
     title = str((info or {}).get("title") or "")
@@ -529,6 +539,9 @@ def download_audio(
     artwork_fetcher: Optional[Callable[[Any], bytes | None]] = None,
     skip_existing: bool = True,
     pause_event: Optional[Any] = None,
+    lyrics_fetcher: Optional[Callable[[Any], Any]] = None,
+    save_lrc: bool = False,
+    embed_lyrics: bool = False,
 ) -> DownloadResult:
     """Descarga el audio de una pista y devuelve la ruta final.
 
@@ -610,6 +623,9 @@ def download_audio(
         timeout_s=timeout_s,
         artwork_fetcher=artwork_fetcher,
         pause_event=pause_event,
+        lyrics_fetcher=lyrics_fetcher,
+        save_lrc=save_lrc,
+        embed_lyrics=embed_lyrics,
     )
     if not result.ok and result.code == DOWNLOAD_PAUSED:
         # Reintentar con cookies reiniciaría la descarga: la pausa manda.
@@ -626,6 +642,9 @@ def download_audio(
             timeout_s=timeout_s,
             artwork_fetcher=artwork_fetcher,
             pause_event=pause_event,
+            lyrics_fetcher=lyrics_fetcher,
+            save_lrc=save_lrc,
+            embed_lyrics=embed_lyrics,
         )
         if retry.ok:
             result = retry
@@ -690,6 +709,66 @@ def _apply_playlist_metadata(track: Any, audio_path: Path, artwork: bytes | None
         return write_audio_metadata(str(audio_path), metadata, artwork=artwork)
     except Exception:
         return False
+
+
+def _format_lrc_pairs(pairs: list[tuple[int, str]]) -> str:
+    lines: list[str] = []
+    for ms, txt in sorted(pairs, key=lambda item: item[0]):
+        ms_val = max(0, int(ms))
+        mins, rem = divmod(ms_val, 60_000)
+        secs, millis = divmod(rem, 1000)
+        lines.append(f"[{mins:02d}:{secs:02d}.{millis // 10:02d}]{txt}")
+    return "\n".join(lines) + ("\n" if lines else "")
+
+
+def _apply_lyrics(
+    track: Any,
+    audio_path: Path,
+    lyrics_fetcher: Optional[Callable[[Any], Any]],
+    *,
+    save_lrc: bool,
+    embed_lyrics: bool,
+) -> None:
+    """Guarda .lrc sidecar y/o tags embebidos sin fallar la descarga si no hay letra."""
+    if not (save_lrc or embed_lyrics) or lyrics_fetcher is None:
+        return
+    try:
+        lyrics = lyrics_fetcher(track)
+    except Exception:
+        return
+    if lyrics is None:
+        return
+
+    raw_lines = getattr(lyrics, "lines", None) or []
+    plain_text = str(getattr(lyrics, "plain_text", "") or "").strip()
+    synced_pairs = [(int(item.time_ms), str(item.text)) for item in raw_lines] if raw_lines else []
+    lrc_text = lyrics.to_lrc() if hasattr(lyrics, "to_lrc") else _format_lrc_pairs(synced_pairs)
+
+    if save_lrc and (lrc_text or plain_text):
+        lrc_path = audio_path.with_suffix(".lrc")
+        tmp_path = lrc_path.with_suffix(".lrc.tmp")
+        try:
+            tmp_path.write_text(lrc_text or plain_text, encoding="utf-8")
+            os.replace(tmp_path, lrc_path)
+        except OSError:
+            try:
+                if tmp_path.exists():
+                    tmp_path.unlink()
+            except OSError:
+                pass
+
+    if embed_lyrics and (plain_text or synced_pairs or lrc_text):
+        try:
+            from engine.audio_metadata import write_lyrics
+
+            write_lyrics(
+                str(audio_path),
+                plain_text=plain_text,
+                synced_lines=synced_pairs or None,
+                lrc_text=lrc_text,
+            )
+        except Exception:
+            pass
 
 
 def _write_sidecar_if_needed(audio_path: Path, artwork: bytes | None) -> None:
