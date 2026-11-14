@@ -1,8 +1,22 @@
 # Changelog
 
+## 4.11.0 — en preparación
+
+> Abierto al cerrar `4.10.0`. Recoge el trabajo que se acumula en `main` sin release; se cerrará con el bloque que corresponda y pasará a una versión estable propia.
+
+### Descargas
+
+- **Ciclo de vida de la cola:** encolar durante la pausa o justo después de cancelar abre una sesión nueva en vez de meterse en la que está cerrando, que marcaba las pistas como «Pausada»/«Cancelada» sin intentarlas y al terminar pisaba el estado y los eventos de la siguiente. La cola nueva hereda la pausa si el usuario había pausado.
+- **Contexto por pista:** formato, carpeta, playlist y plataforma se guardan por pista y se agrupan antes de reencolar, así reanudar y reintentar con playlists mezcladas devuelve cada una a su destino en vez de a la carpeta de la primera.
+- **Duplicados del mismo track:** cuando el detalle se recarga y la misma canción llega como otro objeto `Track`, la descarga compartida ahora propaga `source_path` al duplicado; antes se quedaba sin ruta y sin reproducción.
+- **Manifiesto por playlist:** se escribe una sola vez al cerrar la sesión en lugar de reescribir el archivo por cada pista (E/S síncrona en el hilo de la UI y O(n²)), y se elimina la rama muerta de `_run_downloads` que duplicaba la inicialización de la sesión.
+- **Acciones de lote:** «Reproducir» y «Descargar» de la selección múltiple comprueban el archivo en disco con `os.path.isfile`; la caché `_has_file_by_id` daba por bueno un archivo ya borrado.
+
 ## 4.10.0 — 2026-11-13 · Bloque 2 de gestión, Flet 1.1.2, arquitectura modular y reconocimiento cruzado
 
 > Consolida el **Bloque 2 — Flujos de gestión** (`2.1`–`2.11`), el pulido UX de Gestión (`3.5`), la actualización a **Flet `1.1.2`**, la modularización de la capa UI/core/services por composición, el panel de cola lateral `D26`, optimizaciones de rendimiento y el reconocimiento cruzado sin descargas duplicadas.
+>
+> **Nota de numeración:** el bloque se publicó brevemente como `5.0.0` y se renumeró a `4.10.0` el mismo día; el tag y la release `v5.0.0` se borraron (0 descargas) y se republicaron como `v4.10.0`. Criterio: una versión menor por bloque, sin subversiones ni parches intermedios.
 
 ### Flujos de gestión y workspace (Bloque 2 + 3.5)
 
