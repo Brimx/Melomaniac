@@ -14,18 +14,25 @@ from typing import Any, Callable, Mapping
 
 import flet as ft
 
+from ui.components.widgets import (
+    apply_region_focus,
+    focus_ring_container,
+    set_focus_ring_container,
+)
 from ui.theme.tokens import (
     ACCENT,
     ACCENT_HALO,
     BORDER_MUTED,
+    FOCUS_RING_OFFSET,
+    FOCUS_RING_WIDTH as _TOKEN_FOCUS_RING_WIDTH,
     MOTION_HOVER_MS,
     RADIUS_BUTTON,
 )
 
-# Tokens de foco visible (anillo OLED sobre primary / primary-halo)
+# Tokens de foco visible (anillo 2+2 px a 0 ms en regiones; halo opcional en botones)
 FOCUS_RING_COLOR = ACCENT
 FOCUS_HALO_COLOR = ACCENT_HALO
-FOCUS_RING_WIDTH = 2.0
+FOCUS_RING_WIDTH = float(_TOKEN_FOCUS_RING_WIDTH)
 FOCUS_HALO_ALPHA = 0.65
 
 _KEY_ALIASES: dict[str, str] = {
@@ -51,6 +58,14 @@ _KEY_ALIASES: dict[str, str] = {
     "numpad enter": "enter",
     "slash": "/",
     "/": "/",
+    "home": "home",
+    "end": "end",
+    "delete": "delete",
+    "del": "delete",
+    "backspace": "backspace",
+    "tab": "tab",
+    "bracketleft": "[",
+    "[": "[",
 }
 
 
@@ -102,6 +117,11 @@ class KeyChord:
             "arrow left": "←",
             "arrow right": "→",
             "enter": "Enter",
+            "home": "Inicio",
+            "end": "Fin",
+            "delete": "Supr",
+            "tab": "Tab",
+            "[": "[",
         }.get(key_norm, self.key.upper() if len(self.key) == 1 else self.key)
         parts.append(pretty)
         return "+".join(parts)
@@ -133,7 +153,10 @@ SHORTCUTS: tuple[Shortcut, ...] = (
     Shortcut(
         action="play_pause",
         description="Reproducir o pausar la pista actual",
-        chords=(KeyChord("Space", allow_in_input=False),),
+        chords=(
+            KeyChord("Space", allow_in_input=False),
+            KeyChord("Space", ctrl=True, allow_in_input=True),
+        ),
         category="playback",
     ),
     Shortcut(
@@ -204,6 +227,36 @@ SHORTCUTS: tuple[Shortcut, ...] = (
         description="Activar o reproducir el elemento enfocado",
         chords=(KeyChord("Enter", allow_in_input=False),),
         category="navigation",
+    ),
+    Shortcut(
+        action="toggle_rail",
+        description="Expandir o colapsar el rail de navegación",
+        chords=(KeyChord("[", allow_in_input=False),),
+        category="navigation",
+    ),
+    Shortcut(
+        action="select_all",
+        description="Seleccionar todas las filas visibles",
+        chords=(KeyChord("a", ctrl=True, allow_in_input=False),),
+        category="navigation",
+    ),
+    Shortcut(
+        action="nav_home",
+        description="Saltar al primer elemento de la región enfocada",
+        chords=(KeyChord("Home", allow_in_input=False),),
+        category="navigation",
+    ),
+    Shortcut(
+        action="nav_end",
+        description="Saltar al último elemento de la región enfocada",
+        chords=(KeyChord("End", allow_in_input=False),),
+        category="navigation",
+    ),
+    Shortcut(
+        action="remove_item",
+        description="Quitar el elemento enfocado de la cola o selección",
+        chords=(KeyChord("Delete", allow_in_input=False),),
+        category="playback",
     ),
 )
 
@@ -423,3 +476,214 @@ def focus_button_style(
         },
         shape=ft.RoundedRectangleBorder(radius=radius),
     )
+
+
+# ── Foco por regiones (2+2 px a 0 ms, roving tabindex) ─────────────────
+
+
+@dataclass
+class FocusRegion:
+    """Región navegable por teclado con un único elemento enfocado a la vez."""
+
+    name: str
+    item_count: Callable[[], int]
+    on_focus: Callable[[int | None], None]
+    on_activate: Optional[Callable[[int], None]] = None
+    on_select: Optional[Callable[[int], None]] = None
+    on_delete: Optional[Callable[[int], None]] = None
+    on_select_all: Optional[Callable[[], None]] = None
+    is_active: Optional[Callable[[], bool]] = None
+    horizontal: bool = False
+    wrap: bool = False
+    default_index: Callable[[], int] | None = None
+    focused_index: int | None = None
+
+
+class RegionFocusController:
+    """Coordina el foco por regiones (Tab / Shift+Tab / flechas / Home / End)."""
+
+    def __init__(self) -> None:
+        self._regions: dict[str, FocusRegion] = {}
+        self._order: list[str] = []
+        self.active_region: str | None = None
+        self.keyboard_mode: bool = False
+
+    def register(self, region: FocusRegion) -> None:
+        if region.name not in self._regions:
+            self._order.append(region.name)
+        self._regions[region.name] = region
+
+    def _visible_region_names(self) -> list[str]:
+        names: list[str] = []
+        for name in self._order:
+            reg = self._regions[name]
+            if reg.is_active is not None and not reg.is_active():
+                continue
+            if reg.item_count() <= 0:
+                continue
+            names.append(name)
+        return names
+
+    def _apply_region_index(self, name: str, idx: int | None) -> None:
+        reg = self._regions.get(name)
+        if reg is None:
+            return
+        reg.focused_index = idx
+        reg.on_focus(idx)
+
+    def clear_focus(self) -> None:
+        """Limpia el anillo visible al volver a interacción por puntero."""
+        self.keyboard_mode = False
+        if self.active_region is not None:
+            self._apply_region_index(self.active_region, None)
+        self.active_region = None
+
+    def focus_region(self, name: str, index: int | None = None) -> bool:
+        """Enfoca la región ``name`` y un elemento válido dentro de ella."""
+        reg = self._regions.get(name)
+        if reg is None:
+            return False
+        if reg.is_active is not None and not reg.is_active():
+            return False
+        count = reg.item_count()
+        if count <= 0:
+            return False
+        if self.active_region and self.active_region != name:
+            self._apply_region_index(self.active_region, None)
+        if index is None:
+            if reg.focused_index is not None and 0 <= reg.focused_index < count:
+                target = reg.focused_index
+            elif reg.default_index is not None:
+                target = max(0, min(count - 1, int(reg.default_index())))
+            else:
+                target = 0
+        else:
+            target = max(0, min(count - 1, int(index)))
+        self.keyboard_mode = True
+        self.active_region = name
+        self._apply_region_index(name, target)
+        return True
+
+    def cycle_region(self, *, backward: bool = False) -> bool:
+        """Mueve el foco a la región visible siguiente o anterior (Tab / Shift+Tab)."""
+        names = self._visible_region_names()
+        if not names:
+            return False
+        if self.active_region not in names:
+            target_name = names[-1] if backward else names[0]
+            return self.focus_region(target_name)
+        cur = names.index(self.active_region)
+        step = -1 if backward else 1
+        return self.focus_region(names[(cur + step) % len(names)])
+
+    def handle_event(self, event: Any, *, in_text_input: bool = False) -> bool:
+        """Procesa navegación regional por teclado; devuelve True si consumió la tecla."""
+        key = normalize_key(getattr(event, "key", ""))
+        ctrl = bool(getattr(event, "ctrl", False))
+        shift = bool(getattr(event, "shift", False))
+        alt = bool(getattr(event, "alt", False))
+        meta = bool(getattr(event, "meta", False))
+
+        if in_text_input:
+            return False
+        if key == "tab" and not ctrl and not alt and not meta:
+            return self.cycle_region(backward=shift)
+
+        names = self._visible_region_names()
+        if not names:
+            return False
+
+        # Ctrl+A selecciona todo en la región activa (o primera lista con on_select_all)
+        if key == "a" and ctrl and not alt and not meta:
+            target_reg = self._regions.get(self.active_region) if self.active_region in names else None
+            if target_reg is None or target_reg.on_select_all is None:
+                for n in names:
+                    if self._regions[n].on_select_all is not None:
+                        target_reg = self._regions[n]
+                        break
+            if target_reg is not None and target_reg.on_select_all is not None:
+                target_reg.on_select_all()
+                return True
+            return False
+
+        if key == "escape" and self.active_region is not None:
+            self.clear_focus()
+            return False
+
+        if ctrl or alt or meta:
+            return False
+
+        dx, dy = arrow_delta(event)
+        is_arrow = dx != 0 or dy != 0
+        if is_arrow or key in ("home", "end"):
+            if self.active_region not in names:
+                return self.focus_region(names[0])
+            reg = self._regions[self.active_region]
+            count = reg.item_count()
+            if count <= 0:
+                return False
+            if key == "home":
+                return self.focus_region(reg.name, 0)
+            if key == "end":
+                return self.focus_region(reg.name, count - 1)
+            delta = dx if reg.horizontal else dy
+            if delta == 0:
+                # Si la flecha es perpendicular (ej. ←/→ en lista vertical), cambia si no hay otro uso
+                return False
+            nxt = next_index(reg.focused_index, delta, count, wrap=reg.wrap)
+            if nxt is not None:
+                self._apply_region_index(reg.name, nxt)
+                self.keyboard_mode = True
+                return True
+            return False
+
+        if self.active_region not in names:
+            return False
+        reg = self._regions[self.active_region]
+        idx = reg.focused_index
+        if idx is None:
+            return False
+        if key == "enter" and reg.on_activate is not None:
+            reg.on_activate(idx)
+            return True
+        if key == "space":
+            if reg.on_select is not None:
+                reg.on_select(idx)
+                return True
+            if reg.on_activate is not None:
+                reg.on_activate(idx)
+                return True
+        if key == "delete" and reg.on_delete is not None:
+            reg.on_delete(idx)
+            return True
+        return False
+
+
+__all__ = [
+    "FOCUS_HALO_ALPHA",
+    "FOCUS_HALO_COLOR",
+    "FOCUS_RING_COLOR",
+    "FOCUS_RING_OFFSET",
+    "FOCUS_RING_WIDTH",
+    "FocusRegion",
+    "KeyChord",
+    "RegionFocusController",
+    "SHORTCUTS",
+    "SHORTCUTS_BY_ACTION",
+    "Shortcut",
+    "apply_focus_ring",
+    "apply_region_focus",
+    "arrow_delta",
+    "dispatch_key_event",
+    "focus_border",
+    "focus_button_style",
+    "focus_ring_container",
+    "focus_shadow",
+    "format_shortcut_hint",
+    "is_editable_control",
+    "match_shortcut",
+    "move_focus_index",
+    "next_index",
+    "normalize_key",
+    "set_focus_ring_container",
+]

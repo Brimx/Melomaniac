@@ -74,6 +74,7 @@ from ui.theme.icons import PIcons
 from ui.dialogs.transfer_report import TransferReportDialog
 from ui.components.widgets import (
     app_text_field,
+    apply_region_focus,
     close_dialog,
     notify,
     input_border,
@@ -82,6 +83,7 @@ from ui.components.widgets import (
 
 from ui.theme.tokens import (
     BORDER_LIGHT,
+    BORDER_ROW,
     ACCENT,
     SUCCESS,
     WARNING,
@@ -91,8 +93,17 @@ from ui.theme.tokens import (
 )
 from ui.dialogs.division_dialogs import DivisionController
 from ui.shell.catalog_panel import CatalogController
+from ui.shell.keymap import (
+    FocusRegion,
+    RegionFocusController,
+    dispatch_key_event,
+    is_editable_control,
+    normalize_key,
+)
 from ui.shell.main_actions import ActionsController
 from ui.shell.main_layout import LayoutController, compute_contextual_actions_state
+from ui.shell.nav_rail import HOME_MODULE_IDX
+from ui.views.home_view import HomeView
 
 # Por encima de este número conviene un único update del ListView en vez de
 # publicar una actualización por fila (transferencias masivas, reordenamientos).
@@ -458,8 +469,10 @@ class PlaylistManagerUI:
         self._transfer_start:         float = 0.0
         self._completion_snack_shown: bool  = False
         self._pm_cleared_for_load:    bool  = False
-        self.auth_manager                   = None
+        self._auth_manager                  = None
         self.on_show_welcome                = None  # inyectado por app.py
+        self._focused_track_idx: Optional[int] = None
+        self._focused_queue_idx: Optional[int] = None
         self._prev_dual_mode: str = "lista"
         self._view_shimmer_task: Optional[asyncio.Task] = None
         self._catalog_open: bool = False
@@ -504,6 +517,9 @@ class PlaylistManagerUI:
 
         self._build_nav_rail()
         self._build_modules_and_root()
+        self._mount_home_view()
+        self._inject_config_dependencies()
+        self._setup_keyboard_and_regions()
 
         # ──────────────────────────────────────────────────────────────
         # SUSCRIPCIÓN A EVENTOS
@@ -516,6 +532,14 @@ class PlaylistManagerUI:
         def _on_resize(_):
             self._telemetry.sync_mode()
             try:
+                if hasattr(self, "_sync_rail_breakpoint"):
+                    page_w = float(
+                        getattr(self.page, "width", 0)
+                        or getattr(getattr(self.page, "window", None), "width", 0)
+                        or 0
+                    )
+                    if page_w > 0:
+                        self._sync_rail_breakpoint(page_w)
                 self._sync_skeleton_count()
                 self._sync_dual_view(self.state)
             except Exception:
@@ -530,10 +554,285 @@ class PlaylistManagerUI:
         
         async def _initial_sync():
             await asyncio.sleep(0.15)
+            self._inject_config_dependencies()
+            if (
+                self.on_show_welcome is not None
+                and getattr(self, "_current_module", 0) == 0
+                and self.state.load_state == LoadState.IDLE
+                and not self.state.tracks
+                and hasattr(self, "_select_module")
+                and len(getattr(self, "_module_panels", ())) > HOME_MODULE_IDX
+            ):
+                self._select_module(HOME_MODULE_IDX)
             self._telemetry.sync_mode()
             self.page.update()
 
         page.run_task(_initial_sync)
+
+    @property
+    def auth_manager(self):
+        return self._auth_manager
+
+    @auth_manager.setter
+    def auth_manager(self, value) -> None:
+        self._auth_manager = value
+        self._inject_config_dependencies()
+
+    def _open_wizard_for_platform(self, platform: Optional[str] = None) -> None:
+        am = getattr(self, "_auth_manager", None)
+        if am is None:
+            self.state.log("[ERROR] AuthManager no disponible (wizard).")
+            self._snack("Asistente de credenciales no disponible en este momento.", error=True)
+            return
+        if platform:
+            am.open_wizard(platform)
+        else:
+            am.open_wizard()
+
+    def _inject_config_dependencies(self) -> None:
+        """Inyecta service, auth_manager, library_state y wizard en Config e Inicio."""
+        lib_state = getattr(self, "library_state", None)
+        svc = getattr(self.state, "service", None)
+        cfg = getattr(self, "_panel_config", None)
+        if cfg is not None:
+            changed = False
+            if svc is not None and getattr(cfg, "service", None) is not svc:
+                cfg.service = svc
+                changed = True
+            if self._auth_manager is not None and getattr(cfg, "auth_manager", None) is not self._auth_manager:
+                cfg.auth_manager = self._auth_manager
+                changed = True
+            if lib_state is not None and getattr(cfg, "_library_state", None) is not lib_state:
+                cfg._library_state = lib_state
+                changed = True
+            if getattr(cfg, "_on_open_wizard", None) is None:
+                cfg._on_open_wizard = self._open_wizard_for_platform
+                changed = True
+            if changed and hasattr(cfg, "refresh"):
+                try:
+                    cfg.refresh(update=False)
+                except Exception:
+                    pass
+        home = getattr(self, "_panel_inicio", None)
+        if home is not None:
+            if lib_state is not None and hasattr(home, "set_library_state"):
+                home.set_library_state(lib_state)
+            pb = getattr(self, "player_bar", None)
+            if pb is not None and hasattr(home, "set_player_bar"):
+                home.set_player_bar(pb)
+
+    def _mount_home_view(self) -> None:
+        """Construye HomeView (Inicio 3.1) y lo registra en ``HOME_MODULE_IDX``."""
+        panels = getattr(self, "_module_panels", None)
+        stack = getattr(self, "_module_stack", None)
+        if panels is None or stack is None:
+            return
+        home = HomeView(
+            self.page,
+            self.state,
+            library_state=getattr(self, "library_state", None),
+            player_bar=getattr(self, "player_bar", None),
+            on_navigate=lambda idx: self._select_module(idx) if hasattr(self, "_select_module") else None,
+            on_open_playlist=self._open_playlist_from_home,
+            on_open_wizard=self._open_wizard_for_platform,
+        )
+        home.visible = False
+        self._panel_inicio = home
+        if len(panels) > HOME_MODULE_IDX:
+            panels[HOME_MODULE_IDX] = home
+            if len(stack.controls) > HOME_MODULE_IDX:
+                stack.controls[HOME_MODULE_IDX] = home
+        else:
+            panels.append(home)
+            stack.controls.append(home)
+
+    def _open_playlist_from_home(self, summary) -> None:
+        """Abre una playlist reciente desde Inicio saltando a Biblioteca."""
+        if hasattr(self, "_select_module"):
+            self._select_module(1)
+        lib_panel = getattr(self, "_panel_biblioteca", None)
+        opener = getattr(lib_panel, "_on_open_playlist", None) if lib_panel is not None else None
+        if callable(opener) and summary is not None:
+            opener(summary)
+
+    def _setup_keyboard_and_regions(self) -> None:
+        """Configura foco por regiones (2+2 px a 0 ms) y atajos globales."""
+        self._focus_regions = RegionFocusController()
+        rail_order = (HOME_MODULE_IDX, 0, 1, 2, 3)
+
+        def _rail_default_idx() -> int:
+            cur = getattr(self, "_current_module", 0)
+            return rail_order.index(cur) if cur in rail_order else 0
+
+        def _activate_rail(v_idx: int) -> None:
+            if 0 <= v_idx < len(rail_order) and hasattr(self, "_select_module"):
+                self._select_module(rail_order[v_idx])
+
+        def _focus_track_row(idx: int | None) -> None:
+            lv = getattr(self, "_list_view", None)
+            controls = list(getattr(lv, "controls", ())) if lv is not None else []
+            prev = getattr(self, "_focused_track_idx", None)
+            self._focused_track_idx = idx
+            for target_idx in {prev, idx}:
+                if target_idx is None or not (0 <= target_idx < len(controls)):
+                    continue
+                row = controls[target_idx]
+                focused = target_idx == idx
+                apply_region_focus(
+                    row,
+                    focused,
+                    base_color=ft.Colors.TRANSPARENT,
+                    base_width=1.0,
+                    ring_color=ACCENT,
+                    inset=True,
+                    update=True,
+                )
+
+        def _toggle_track_at(idx: int) -> None:
+            tracks = self.state.display_tracks
+            if 0 <= idx < len(tracks):
+                self.state.toggle_track(tracks[idx].id)
+
+        def _focus_queue_row(idx: int | None) -> None:
+            pq = getattr(self, "player_queue", None)
+            lv = getattr(pq, "_list_view", None) if pq is not None else None
+            controls = list(getattr(lv, "controls", ())) if lv is not None else []
+            prev = getattr(self, "_focused_queue_idx", None)
+            self._focused_queue_idx = idx
+            for target_idx in {prev, idx}:
+                if target_idx is None or not (0 <= target_idx < len(controls)):
+                    continue
+                row = controls[target_idx]
+                if not isinstance(row, ft.Container):
+                    continue
+                apply_region_focus(
+                    row,
+                    target_idx == idx,
+                    base_color=BORDER_ROW,
+                    base_width=0.6,
+                    ring_color=ACCENT,
+                    inset=True,
+                    update=True,
+                )
+
+        self._focus_regions.register(
+            FocusRegion(
+                name="rail",
+                item_count=lambda: len(getattr(self, "_rail_item_refs", ())),
+                on_focus=lambda idx: (
+                    self._set_rail_focus(idx, update=True)
+                    if hasattr(self, "_set_rail_focus")
+                    else None
+                ),
+                on_activate=_activate_rail,
+                is_active=lambda: bool(getattr(self, "_rail_item_refs", None)),
+                default_index=_rail_default_idx,
+                wrap=True,
+            )
+        )
+        self._focus_regions.register(
+            FocusRegion(
+                name="tracks",
+                item_count=lambda: len(self.state.display_tracks),
+                on_focus=_focus_track_row,
+                on_select=_toggle_track_at,
+                on_activate=_toggle_track_at,
+                on_select_all=lambda: self.state.toggle_select_all_scope("visible"),
+                is_active=lambda: (
+                    getattr(self, "_current_module", 0) == 0
+                    and bool(getattr(getattr(self, "_list_view", None), "controls", ()))
+                ),
+            )
+        )
+        self._focus_regions.register(
+            FocusRegion(
+                name="queue",
+                item_count=lambda: len(
+                    getattr(getattr(getattr(self, "player_bar", None), "queue", None), "items", ())
+                ),
+                on_focus=_focus_queue_row,
+                on_activate=lambda idx: (
+                    self.player_bar.select_queue_index(idx)
+                    if getattr(self, "player_bar", None) is not None
+                    else None
+                ),
+                on_delete=lambda idx: (
+                    self.player_bar.remove_queue_index(idx)
+                    if getattr(self, "player_bar", None) is not None
+                    else None
+                ),
+                is_active=lambda: bool(
+                    getattr(getattr(self, "player_queue", None), "is_open", False)
+                ),
+            )
+        )
+
+        def _focus_search() -> None:
+            mod = getattr(self, "_current_module", 0)
+            target = None
+            if mod == 1:
+                lib = getattr(self, "_panel_biblioteca", None)
+                target = getattr(lib, "_search_field", None) or getattr(lib, "_search_input", None)
+            elif mod == 0:
+                target = getattr(self, "_search_field", None)
+            if target is not None and hasattr(target, "focus"):
+                try:
+                    target.focus()
+                except Exception:
+                    pass
+
+        def _close_overlay() -> None:
+            pb = getattr(self, "player_bar", None)
+            if pb is not None and getattr(pb, "_now_playing_scene", None) is not None:
+                close_scene = getattr(pb, "close_now_playing_scene", None)
+                if callable(close_scene):
+                    close_scene()
+                    return
+            pq = getattr(self, "player_queue", None)
+            if pq is not None and getattr(pq, "is_open", False):
+                pq.set_open(False)
+                return
+            self._focus_regions.clear_focus()
+
+        def _toggle_play() -> None:
+            pb = getattr(self, "player_bar", None)
+            if pb is None:
+                return
+            fn = getattr(pb, "toggle_play_pause", None) or getattr(pb, "_on_play_pause_click", None)
+            if callable(fn):
+                fn()
+
+        def _on_keyboard_event(e: ft.KeyboardEvent) -> None:
+            in_input = is_editable_control(getattr(e, "control", None))
+            key_norm = normalize_key(getattr(e, "key", ""))
+            if (
+                bool(getattr(e, "ctrl", False))
+                and not bool(getattr(e, "alt", False))
+                and not bool(getattr(e, "meta", False))
+                and key_norm in {"1", "2", "3", "4", "5"}
+                and hasattr(self, "_select_module")
+            ):
+                target_idx = rail_order[int(key_norm) - 1]
+                self._select_module(target_idx)
+                return
+            if self._focus_regions.handle_event(e, in_text_input=in_input):
+                return
+            pb = getattr(self, "player_bar", None)
+            pq = getattr(self, "player_queue", None)
+            handlers = {
+                "close_overlay": _close_overlay,
+                "play_pause": _toggle_play,
+                "focus_search": _focus_search,
+                "toggle_queue": pq.toggle if pq is not None else lambda: None,
+                "mute": (getattr(pb, "_on_mute_click", None) or (lambda: None)),
+                "prev_track": (getattr(pb, "_on_prev_click", None) or (lambda: None)),
+                "next_track": (getattr(pb, "_on_next_click", None) or (lambda: None)),
+                "toggle_rail": getattr(self, "_toggle_rail", lambda: None),
+            }
+            dispatch_key_event(e, handlers, in_text_input=in_input)
+
+        self._on_keyboard_event = _on_keyboard_event
+        self.page.on_keyboard_event = _on_keyboard_event
 
     # ── Auth helpers ───────────────────────────────────────────────────
 
@@ -637,6 +936,9 @@ class PlaylistManagerUI:
 
     def _on_state_changed(self) -> None:
         s = self.state
+        refresh_badge = getattr(self, "_refresh_rail_downloads_badge", None)
+        if callable(refresh_badge):
+            refresh_badge(update=True)
         if getattr(self, "_current_module", 0) != 0:
             self._gestion_dirty = True
             self._sync_report_dialog(s)

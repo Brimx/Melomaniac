@@ -33,6 +33,7 @@ Fecha: 2026
 from __future__ import annotations
 
 import asyncio
+import math
 from dataclasses import dataclass
 from typing import Any, Callable, Sequence
 
@@ -47,9 +48,13 @@ from ui.theme.icons import app_icon, PIcons
 from ui.theme.tokens import (
     TEXT_PRIMARY, TEXT_MUTED, TEXT_DIM,
     ACCENT, ACCENT_HOVER, ACCENT_DIM, ACCENT_HALO, BG_HOVER,
-    BG_DEEP, BG_SURFACE, BORDER_ROW,
+    BG_DEEP, BG_SURFACE, BORDER_ROW, BORDER_CONTROL,
     SUCCESS, ERROR_COL, WARNING, BORDER_MUTED, BORDER_LIGHT,
     BG_INPUT, BG_PANEL, WARN_BG, WARN_BORDER,
+    ON_ACCENT, PAPER_BG, SHADOW_INK, SHADOW_INK_2,
+    PAPER_LIFT, PAPER_LIFT_SM, PAPER_CANTO_PX,
+    FOCUS_RING_WIDTH, FOCUS_RING_OFFSET, SELECTION_BAR_W,
+    FS_META, RADIUS_SHARP,
     RADIUS_INPUT, RADIUS_BUTTON, RADIUS_DIALOG,
     MOTION_HOVER_MS,
 )
@@ -757,4 +762,260 @@ def open_external(page: ft.Page | None, url: str) -> None:
         webbrowser.open(url)
     except Exception:
         pass
+
+
+# ── Relieve de papel, selección, chips, obi y foco ─────────────────────
+
+
+def paper_shadow(
+    layers: int = 1,
+    lift: float = PAPER_LIFT,
+    *,
+    pressed: bool = False,
+) -> list[ft.BoxShadow]:
+    """Sombra dura con luz única arriba-izquierda (+x, +y) según gramática del demo."""
+    if pressed:
+        return [
+            ft.BoxShadow(
+                blur_radius=0,
+                spread_radius=0,
+                offset=ft.Offset(1, 1),
+                color=SHADOW_INK,
+            )
+        ]
+    shadows = [
+        ft.BoxShadow(
+            blur_radius=0,
+            spread_radius=0,
+            offset=ft.Offset(lift, lift),
+            color=SHADOW_INK,
+        )
+    ]
+    if layers >= 2:
+        shadows.append(
+            ft.BoxShadow(
+                blur_radius=0,
+                spread_radius=0,
+                offset=ft.Offset(lift * 2, lift * 2),
+                color=SHADOW_INK_2,
+            )
+        )
+    return shadows
+
+
+def paper_border(
+    color: str = BORDER_CONTROL,
+    *,
+    canto_color: str = BORDER_LIGHT,
+    side_width: float = 0.8,
+    canto_width: float = PAPER_CANTO_PX,
+) -> ft.Border:
+    """Borde de hoja con filete inferior (canto de 2 px) para tarjetas y platters."""
+    return ft.Border(
+        left=ft.BorderSide(side_width, color),
+        top=ft.BorderSide(side_width, color),
+        right=ft.BorderSide(side_width, color),
+        bottom=ft.BorderSide(canto_width, canto_color),
+    )
+
+
+def apply_paper_relief(
+    control: ft.Container,
+    *,
+    layers: int = 1,
+    lift: float = PAPER_LIFT,
+    border_color: str = BORDER_CONTROL,
+    canto_color: str = BORDER_LIGHT,
+    side_width: float = 0.8,
+    canto: bool = True,
+    pressed: bool = False,
+) -> ft.Container:
+    """Aplica sombra dura (+x, +y) y canto inferior de 2 px a un ``ft.Container``."""
+    control.shadow = paper_shadow(layers=layers, lift=lift, pressed=pressed)
+    if canto:
+        control.border = paper_border(
+            border_color,
+            canto_color=canto_color,
+            side_width=side_width,
+        )
+    return control
+
+
+def selection_border(
+    selected: bool,
+    *,
+    base_color: str = BORDER_ROW,
+    bar_color: str = ACCENT,
+    bar_width: float = SELECTION_BAR_W,
+    bottom_width: float = 0.5,
+) -> ft.Border:
+    """Marca de selección de 2 px a la izquierda sin fondo tintado en filas."""
+    return ft.Border(
+        left=ft.BorderSide(bar_width, bar_color if selected else ft.Colors.TRANSPARENT),
+        bottom=ft.BorderSide(bottom_width, base_color),
+    )
+
+
+def status_chip(
+    label: str,
+    *,
+    kind: str = "neutral",
+    icon: str | None = None,
+) -> ft.Container:
+    """Chip de estado compacto (``ok``/``warn``/``err``/``accent``/``neutral``)."""
+    palette = {
+        "ok": SUCCESS,
+        "warn": WARNING,
+        "err": ERROR_COL,
+        "accent": ACCENT,
+        "neutral": TEXT_MUTED,
+    }
+    fg = palette.get(kind, TEXT_MUTED)
+    border_col = fg if kind != "neutral" else BORDER_LIGHT
+    controls: list[ft.Control] = []
+    if icon:
+        is_glyph = len(icon) == 1 and ord(icon) >= 0xE000
+        controls.append(
+            app_icon(icon, size=12, color=fg)
+            if is_glyph
+            else ft.Icon(icon, size=12, color=fg)
+        )
+    controls.append(
+        ft.Text(
+            label.upper(),
+            size=FS_META,
+            color=fg,
+            font_family=mono_family("regular"),
+            no_wrap=True,
+            style=ft.TextStyle(letter_spacing=1.1),
+        )
+    )
+    return ft.Container(
+        content=ft.Row(
+            controls,
+            spacing=4,
+            tight=True,
+            vertical_alignment=ft.CrossAxisAlignment.CENTER,
+        ),
+        padding=ft.Padding.symmetric(horizontal=6, vertical=3),
+        border=ft.Border.all(0.8, border_col),
+        border_radius=RADIUS_SHARP,
+        bgcolor=ft.Colors.TRANSPARENT,
+    )
+
+
+def obi_strip(
+    label: str,
+    *,
+    height: float | None = None,
+    width: float = 15,
+    bgcolor: str = PAPER_BG,
+    text_color: str = BG_SURFACE,
+) -> ft.Container:
+    """Banda vertical tipo obi japonés para portadas y tarjetas de playlist."""
+    txt = ft.Text(
+        (label or "").strip().upper(),
+        size=FS_META,
+        color=text_color,
+        font_family=mono_family("regular"),
+        no_wrap=True,
+        max_lines=1,
+        overflow=ft.TextOverflow.CLIP,
+        text_align=ft.TextAlign.CENTER,
+        style=ft.TextStyle(letter_spacing=1.6),
+    )
+    rotated = ft.Container(
+        content=txt,
+        rotate=ft.Rotate(-math.pi / 2),
+        alignment=ft.Alignment.CENTER,
+    )
+    return ft.Container(
+        content=rotated,
+        width=width,
+        height=height,
+        bgcolor=bgcolor,
+        alignment=ft.Alignment.CENTER,
+        clip_behavior=ft.ClipBehavior.HARD_EDGE,
+        shadow=[
+            ft.BoxShadow(
+                blur_radius=0,
+                spread_radius=0,
+                offset=ft.Offset(1, 0),
+                color=ft.Colors.with_opacity(0.35, BG_DEEP),
+            )
+        ],
+    )
+
+
+def focus_ring_container(
+    content: ft.Control,
+    *,
+    focused: bool = False,
+    radius: float = RADIUS_SHARP,
+    expand: bool = False,
+    padding: float = FOCUS_RING_OFFSET,
+    ring_width: float = FOCUS_RING_WIDTH,
+    ring_color: str = ACCENT,
+) -> ft.Container:
+    """Envuelve un control con anillo de foco externo 2+2 px a 0 ms."""
+    return ft.Container(
+        content=content,
+        padding=ft.Padding.all(padding),
+        border=ft.Border.all(
+            ring_width,
+            ring_color if focused else ft.Colors.TRANSPARENT,
+        ),
+        border_radius=radius,
+        expand=expand,
+        animate=None,
+    )
+
+
+def set_focus_ring_container(
+    wrapper: ft.Container,
+    focused: bool,
+    *,
+    ring_color: str = ACCENT,
+    ring_width: float = FOCUS_RING_WIDTH,
+    update: bool = False,
+) -> ft.Container:
+    """Actualiza el anillo de foco 2+2 px de ``focus_ring_container`` sin animar."""
+    wrapper.border = ft.Border.all(
+        ring_width,
+        ring_color if focused else ft.Colors.TRANSPARENT,
+    )
+    wrapper.animate = None
+    if update:
+        safe_update(wrapper)
+    return wrapper
+
+
+def apply_region_focus(
+    control: ft.Container,
+    focused: bool,
+    *,
+    base_border: ft.Border | None = None,
+    base_color: str = BORDER_MUTED,
+    base_width: float = 0.8,
+    ring_color: str = ACCENT,
+    ring_width: float = FOCUS_RING_WIDTH,
+    inset: bool = False,
+    update: bool = False,
+) -> ft.Container:
+    """Pinta el anillo de foco visible de región (0 ms, sin halo difuso en filas)."""
+    if focused:
+        control.border = ft.Border.all(ring_width, ring_color)
+    else:
+        control.border = (
+            base_border
+            if base_border is not None
+            else ft.Border.all(base_width, base_color)
+        )
+    if inset:
+        control.shadow = []
+    control.animate = None
+    if update:
+        safe_update(control)
+    return control
+
 

@@ -20,8 +20,18 @@ CHIP_BG      = "#FF1A1A22"  # Chips
 SKELETON_DARK = "#FF0E1016" # Skeletons
 
 # Bordes
-BORDER_LIGHT = "#FF3D4455"
-BORDER_MUTED = "#FF2A3040"
+BORDER_LIGHT   = "#FF3D4455"
+BORDER_MUTED   = "#FF2A3040"
+BORDER_CONTROL = "#FF5A6478"  # >= 3:1 sobre BG_SURFACE (controles interactivos)
+
+# Superficies y pigmentos de papel (demo «Sala de escucha»)
+BG_INSET     = "#FF050608"
+ON_ACCENT    = "#FF06101F"
+SHADOW_INK   = "#FF224799"  # 75% ACCENT_DIM + BG_DEEP (sombra de hoja 1)
+SHADOW_INK_2 = "#FF11244D"  # 50% SHADOW_INK + BG_DEEP (segunda hoja apilada)
+PAPER_BG     = "#FFE9E2D0"  # Banda obi / papel hueso
+SEAL_COLOR   = "#FFD9443B"  # Sello hanko / bermellón
+DISABLED_OPACITY = 0.38
 
 # Acento y estados
 ACCENT       = "#FF4F8BFF"
@@ -48,27 +58,63 @@ WARN_BORDER  = "#30FFA500"
 TEXT_PRIMARY = "#FFF2F6FF"
 TEXT_MUTED   = "#FF848DA1"
 TEXT_DIM     = "#FF3D4455"
+DECOR_LINE   = TEXT_DIM  # Alias semántico: solo adornos, nunca texto legible
 
-# Radios canónicos (reutilizados por botones, inputs, diálogos y rail)
+# Escala de espaciado (§4.3)
+SPACE_1 = 4
+SPACE_2 = 8
+SPACE_3 = 12
+SPACE_4 = 16
+SPACE_5 = 24
+SPACE_6 = 32
+SPACE_7 = 48
+
+# Escala tipográfica (§4.4; suelo funcional 11 px)
+FS_META    = 11
+FS_SM      = 12
+FS_BODY    = 14
+FS_ROW     = 16
+FS_SEC     = 20
+FS_PAGE    = 28
+FS_DISPLAY = 40
+
+# Radios canónicos y geometría de relieve / foco
+RADIUS_SHARP  = 3
+RADIUS_SM     = 6
 RADIUS_INPUT  = 10
 RADIUS_BUTTON = 10
 RADIUS_DIALOG = 14
 RADIUS_RAIL        = RADIUS_DIALOG
 RADIUS_RAIL_ITEM   = RADIUS_BUTTON
 
+PAPER_LIFT        = 3  # Desplazamiento (+x, +y) de hoja flotante estándar
+PAPER_LIFT_SM     = 2  # Desplazamiento (+x, +y) de botón compacto o chip activo
+PAPER_CANTO_PX    = 2  # Filete interior inferior (grosor de la hoja)
+FOCUS_RING_WIDTH  = 2  # Grosor del anillo de foco (2 px)
+FOCUS_RING_OFFSET = 2  # Aire exterior alrededor del elemento enfocado (2 px)
+SELECTION_BAR_W   = 2  # Marca lateral izquierda de selección en filas
+
 # Movimiento — duración por propósito (una sola fuente)
 # Curva por propósito: hover/press usa EASE_OUT; el resto EASE_IN_OUT.
 # Ninguna animación nueva inventa duración: reutiliza el propósito existente
 # o añade uno aquí con su justificación.
-MOTION_HOVER_MS    = 120  # hover, press, cambios de color/borde
-MOTION_ENTER_MS    = 200  # aparición de elemento, progreso, cambio de estado corto
-MOTION_PANEL_MS    = 300  # paneles, rail, transiciones de vista
-MOTION_REVEAL_MS   = 400  # barrido ASCII acotado al activar skeletons
-MOTION_SKELETON_MS = 600  # pulso de carga
+MOTION_PRESS_MS    = 90     # compresión táctil al pulsar
+MOTION_HOVER_MS    = 120    # hover, press, cambios de color/borde
+MOTION_EXIT_MS     = 167    # salida / fundido de cierre
+MOTION_ENTER_MS    = 200    # aparición de elemento, progreso, cambio de estado corto
+MOTION_PANEL_MS    = 300    # paneles, rail, transiciones de vista
+MOTION_REVEAL_MS   = 400    # barrido ASCII acotado al activar skeletons
+MOTION_SKELETON_MS = 600    # pulso de carga
+MOTION_SHIMMER_MS  = 1500   # barrido shimmer de skeleton
+MOTION_AMBIENT_MS  = 24000  # deriva ambiental en escena Reproduciendo
 
-# Medidas del rail de navegación
+# Medidas del rail de navegación e Inicio
 RAIL_W_COLLAPSED = 68
 RAIL_W_EXPANDED  = 220
+RAIL_BRAND_SLOT_SZ = 32
+HOME_HERO_H        = 176
+HOME_CONTINUAR_ART = 132
+HOME_CONN_ROW_H    = 36
 RAIL_MARGIN      = 12
 RAIL_PAD_H       = 12
 RAIL_PAD_V       = 12
