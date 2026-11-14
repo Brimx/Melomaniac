@@ -159,9 +159,15 @@ jobs:
         run: |
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             echo "TARGET_TAG=v${{ github.event.inputs.version }}" >> $GITHUB_ENV
+            echo "VERSION=${{ github.event.inputs.version }}" >> $GITHUB_ENV
           else
             echo "TARGET_TAG=${{ github.ref_name }}" >> $GITHUB_ENV
+            echo "VERSION=${GITHUB_REF_NAME#v}" >> $GITHUB_ENV
           fi
+
+      - name: Build portable source bundle
+        run: |
+          python3 scripts/build_release_bundle.py --version "${{ env.VERSION }}" --out-dir dist-release
 
       - name: Download Linux artifacts
         uses: actions/download-artifact@v4

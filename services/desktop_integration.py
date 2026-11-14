@@ -63,8 +63,13 @@ def get_runtime_environment() -> RuntimeEnvironment:
     """Inspecciona el entorno de ejecución actual."""
     is_frozen = getattr(sys, "frozen", False)
     appimage_raw = os.environ.get("APPIMAGE")
-    is_appimage = bool(appimage_raw) and sys.platform.startswith("linux")
-    appimage_path = Path(appimage_raw).resolve() if is_appimage and appimage_raw else None
+    appimage_candidate = (
+        Path(appimage_raw).expanduser().resolve()
+        if is_frozen and appimage_raw and sys.platform.startswith("linux")
+        else None
+    )
+    is_appimage = bool(appimage_candidate and appimage_candidate.is_file())
+    appimage_path = appimage_candidate if is_appimage else None
 
     if sys.platform.startswith("linux"):
         os_name = "linux"
@@ -129,9 +134,56 @@ def get_linux_icon_path() -> Path:
     return base / "icons" / "hicolor" / "256x256" / "apps" / "melomaniac.png"
 
 
+def _get_windows_desktop_dir() -> Path:
+    """Resuelve la carpeta Escritorio real en Windows (incluyendo redirección OneDrive)."""
+    if sys.platform == "win32":
+        try:
+            import winreg  # type: ignore[import-not-found]
+            with winreg.OpenKey(
+                winreg.HKEY_CURRENT_USER,
+                r"Software\Microsoft\Windows\CurrentVersion\Explorer\User Shell Folders",
+            ) as key:
+                raw_val, _ = winreg.QueryValueEx(key, "Desktop")
+                if raw_val:
+                    expanded = Path(os.path.expandvars(str(raw_val))).expanduser()
+                    if expanded.is_dir():
+                        return expanded
+        except OSError:
+            pass
+    return Path.home() / "Desktop"
+
+
 def get_windows_shortcut_path() -> Path:
     """Ruta al acceso directo en el Escritorio del usuario en Windows."""
-    return Path.home() / "Desktop" / "Melomaniac.lnk"
+    return _get_windows_desktop_dir() / "Melomaniac.lnk"
+
+
+def _ps_quote(value: str | Path) -> str:
+    """Escapa comillas simples para interpolar rutas dentro de PowerShell."""
+    return str(value).replace("'", "''")
+
+
+def _read_windows_shortcut_target(shortcut_file: Path) -> str | None:
+    """Lee TargetPath de un acceso directo .lnk mediante WScript.Shell."""
+    ps_script = (
+        f"$ws = New-Object -ComObject WScript.Shell; "
+        f"$s = $ws.CreateShortcut('{_ps_quote(shortcut_file)}'); "
+        f"Write-Output $s.TargetPath"
+    )
+    try:
+        res = subprocess.run(
+            ["powershell", "-NoProfile", "-NonInteractive", "-Command", ps_script],
+            capture_output=True,
+            text=True,
+            timeout=10,
+            check=False,
+        )
+        if res.returncode == 0:
+            target = res.stdout.strip()
+            return target or None
+    except Exception as exc:
+        logger.warning("No se pudo leer el acceso directo %s: %s", shortcut_file, exc)
+    return None
 
 
 # ── Generación de Icono ───────────────────────────────────────────────────
@@ -146,7 +198,7 @@ def ensure_icon_installed() -> Path | None:
         return None
 
     dest_hicolor = get_linux_icon_path()
-    dest_simple = dest_hicolor.parent.parent.parent.parent / "icons" / "melomaniac.png"
+    dest_simple = dest_hicolor.parents[3] / "melomaniac.png"
 
     source_icon = PROJECT_DIR / "resources" / "icon.png"
     if not source_icon.is_file():
@@ -242,15 +294,59 @@ def get_shortcut_status() -> ShortcutStatus:
                 warning=warning,
             )
 
-        # En Windows portable no leemos COM a menos que sea necesario, pero sabemos que existe
+        target_path = _read_windows_shortcut_target(shortcut_file)
+        if not target_path:
+            return ShortcutStatus(
+                supported=True,
+                installed=True,
+                target_path=None,
+                is_current=False,
+                is_broken=True,
+                location_path=str(shortcut_file),
+                summary="Acceso directo presente pero sin destino válido.",
+                warning=warning,
+            )
+
+        target_exists = Path(target_path).is_file()
+        if not target_exists:
+            return ShortcutStatus(
+                supported=True,
+                installed=True,
+                target_path=target_path,
+                is_current=False,
+                is_broken=True,
+                location_path=str(shortcut_file),
+                summary="Acceso directo roto: apunta a un archivo que ya no existe.",
+                warning=(
+                    f"Apuntaba a: {target_path}. "
+                    "Haz clic en «Actualizar acceso directo» para vincularlo a la versión actual."
+                ),
+            )
+
+        is_current = Path(target_path).resolve() == env.executable_path.resolve()
+        if not is_current:
+            return ShortcutStatus(
+                supported=True,
+                installed=True,
+                target_path=target_path,
+                is_current=False,
+                is_broken=False,
+                location_path=str(shortcut_file),
+                summary="Acceso directo apunta a otra ubicación o versión anterior.",
+                warning=(
+                    f"Apunta a: {target_path}. "
+                    "Haz clic en «Actualizar acceso directo» para sincronizarlo con esta versión."
+                ),
+            )
+
         return ShortcutStatus(
             supported=True,
             installed=True,
-            target_path=str(env.executable_path),
+            target_path=target_path,
             is_current=True,
             is_broken=False,
             location_path=str(shortcut_file),
-            summary="Acceso directo presente en el Escritorio.",
+            summary="Acceso directo instalado y sincronizado con esta versión.",
             warning=warning,
         )
 
@@ -371,9 +467,9 @@ def install_shortcut() -> Tuple[bool, str]:
 
         ps_script = (
             f"$ws = New-Object -ComObject WScript.Shell; "
-            f"$s = $ws.CreateShortcut('{shortcut_file}'); "
-            f"$s.TargetPath = '{target_exe}'; "
-            f"$s.WorkingDirectory = '{work_dir}'; "
+            f"$s = $ws.CreateShortcut('{_ps_quote(shortcut_file)}'); "
+            f"$s.TargetPath = '{_ps_quote(target_exe)}'; "
+            f"$s.WorkingDirectory = '{_ps_quote(work_dir)}'; "
             f"$s.Description = 'Melomaniac Music Manager'; "
             f"$s.Save()"
         )
@@ -398,10 +494,13 @@ def install_shortcut() -> Tuple[bool, str]:
 
     if env.is_appimage and env.appimage_path:
         exec_cmd = f'"{env.appimage_path}"'
+        work_dir = str(env.appimage_path.parent)
     elif env.is_frozen:
         exec_cmd = f'"{env.executable_path}"'
+        work_dir = str(env.executable_path.parent)
     else:
         exec_cmd = f'"{sys.executable}" "{PROJECT_DIR / "app.py"}"'
+        work_dir = str(PROJECT_DIR)
 
     desktop_content = (
         "[Desktop Entry]\n"
@@ -410,8 +509,10 @@ def install_shortcut() -> Tuple[bool, str]:
         "GenericName=Gestor y reproductor musical\n"
         "Comment=Gestor y reproductor de música para plataformas de streaming y biblioteca local\n"
         f"Exec={exec_cmd} %U\n"
+        f"Path={work_dir}\n"
         "Icon=melomaniac\n"
         "Terminal=false\n"
+        "StartupNotify=true\n"
         "Categories=AudioVideo;Audio;Player;\n"
         "StartupWMClass=Melomaniac\n"
     )
