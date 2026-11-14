@@ -32,8 +32,8 @@ from ui.theme.fonts import (
 )
 from ui.theme.icons import PIcons, app_icon, app_icon_button
 from ui.theme.tokens import (
-    ACCENT, BG_LIST, BG_SURFACE, BORDER_MUTED, ERROR_COL, RADIUS_INPUT,
-    SUCCESS, TEXT_DIM, TEXT_MUTED, TEXT_PRIMARY,
+    ACCENT, BG_LIST, BG_PANEL, BG_SURFACE, BORDER_MUTED, BORDER_ROW, ERROR_COL,
+    RADIUS_INPUT, SUCCESS, TEXT_DIM, TEXT_MUTED, TEXT_PRIMARY,
 )
 from ui.dialogs.recovery_panel import (
     AlternativeSearchPanel,
@@ -113,7 +113,10 @@ class DownloadsView(ft.Container):
             [(fmt, fmt.upper()) for fmt in AUDIO_FORMATS],
             settings_store.get_download_format(),
             "Formato",
-            width=140,
+            width=116,
+        )
+        self._format_dd.tooltip = (
+            "Cambiar formato. Las preferencias por defecto están en Config, sección Descargas."
         )
         self._format_dd.on_select = self._on_format_change
         self._dir_text = app_text("", size=11, color=TEXT_PRIMARY, font_family=mono_family("light"),
@@ -147,27 +150,44 @@ class DownloadsView(ft.Container):
             tooltip="Restablecer carpeta por defecto", on_click=self._on_reset_dir, width=32, height=32,
         )
         destination = ft.Container(
-            bgcolor=BG_SURFACE, border=ft.Border.all(0.8, BORDER_MUTED),
-            border_radius=RADIUS_INPUT, padding=ft.Padding.symmetric(horizontal=12, vertical=4),
+            bgcolor=BG_PANEL, border=ft.Border.all(1, BORDER_MUTED),
+            border_radius=RADIUS_INPUT, padding=ft.Padding.symmetric(horizontal=14, vertical=8),
             content=ft.Row(controls=[
-                app_icon(PIcons.FOLDER, size=18, color=TEXT_MUTED),
-                ft.Column(controls=[section_label("DESTINO"), self._dir_text], spacing=1, expand=True),
+                app_icon(PIcons.FOLDER, size=16, color=TEXT_MUTED),
+                app_text("Destino", size=11, color=TEXT_MUTED, font_family=mono_family("light")),
+                self._dir_text,
                 self._open_dir_btn, self._pick_dir_btn, self._reset_dir_btn,
-            ], spacing=8, vertical_alignment=ft.CrossAxisAlignment.CENTER),
+            ], spacing=10, vertical_alignment=ft.CrossAxisAlignment.CENTER),
         )
+        self._dir_text.expand = True
 
-        # progreso global (solo mientras hay cola)
+        # progreso global (tarjeta .press solo mientras hay cola o resultado reciente)
+        self._progress_icon = app_icon(PIcons.DOWNLOAD_SIMPLE, size=22, color=ACCENT)
         self._progress = ft.ProgressBar(
-            value=0, color=ACCENT, bgcolor=BG_SURFACE, height=6, border_radius=3,
+            value=0, color=ACCENT, bgcolor=BORDER_MUTED, height=3, border_radius=2,
         )
-        self._progress_text = app_text("", size=11, color=TEXT_MUTED, font_family=FONT_TEXT)
+        self._progress_text = app_text("", size=11, color=TEXT_MUTED, font_family=mono_family("light"))
         self._current_text = app_text("", size=12, color=TEXT_PRIMARY, font_family=FONT_TEXT,
-                                      max_lines=1, overflow=ft.TextOverflow.ELLIPSIS,
-                                      expand=True)
-        self._progress_area = ft.Column(controls=[
-            self._progress,
-            ft.Row(controls=[self._progress_text, self._current_text], spacing=10),
-        ], spacing=6, visible=False)
+                                      max_lines=1, overflow=ft.TextOverflow.ELLIPSIS)
+        self._progress_area = ft.Container(
+            bgcolor=BG_PANEL,
+            border=ft.Border.all(1, BORDER_MUTED),
+            border_radius=RADIUS_INPUT,
+            padding=ft.Padding.symmetric(horizontal=14, vertical=10),
+            visible=False,
+            content=ft.Row(
+                controls=[
+                    self._progress_icon,
+                    ft.Column(
+                        controls=[self._current_text, self._progress, self._progress_text],
+                        spacing=5,
+                        expand=True,
+                    ),
+                ],
+                spacing=14,
+                vertical_alignment=ft.CrossAxisAlignment.CENTER,
+            ),
+        )
 
         # estado A: cola activa (una fila por pista)
         self._queue_list = ft.ListView(expand=True, spacing=6, padding=0)
@@ -200,20 +220,14 @@ class DownloadsView(ft.Container):
                          text_align=ft.TextAlign.CENTER),
             ], horizontal_alignment=ft.CrossAxisAlignment.CENTER, spacing=8),
         )
-        self._done_col = ft.Column(spacing=6)
-        self._failed_col = ft.Column(spacing=6)
-        self._missing_col = ft.Column(spacing=6)
-        self._result_counts = app_text("", size=11, color=TEXT_MUTED, font_family=FONT_TEXT)
+        self._done_col = ft.Column(spacing=2)
+        self._failed_col = ft.Column(spacing=2)
+        self._missing_col = ft.Column(spacing=2)
         self._results_panel = ft.Column(controls=[
-            ft.Row(controls=[
-                section_label("RESULTADO DE LA ÚLTIMA TANDA"),
-                ft.Container(expand=True),
-                self._result_counts,
-            ], spacing=8, vertical_alignment=ft.CrossAxisAlignment.CENTER),
             self._done_col,
             self._failed_col,
             self._missing_col,
-        ], spacing=6, visible=False)
+        ], spacing=10, visible=False)
         self._history_stack = ft.Stack(
             controls=[self._history_list, self._history_empty], expand=True,
             fit=ft.StackFit.EXPAND,
@@ -229,13 +243,18 @@ class DownloadsView(ft.Container):
             self._history_stack,
         ], spacing=8, expand=True)
 
-        header = ft.Column(controls=[
-            app_text("Descargas", size=18, color=TEXT_PRIMARY, font_family=FONT_HEADLINE_BOLD),
-            app_text(
-                "yt-dlp resuelve cada pista en YouTube y conserva solo el audio.",
-                size=11, color=TEXT_MUTED, font_family=FONT_TEXT,
-            ),
-        ], spacing=2)
+        header = ft.Row(
+            controls=[
+                app_text("Descargas", size=18, color=TEXT_PRIMARY, font_family=FONT_HEADLINE_BOLD),
+                ft.Container(content=self._count_text, expand=True, padding=ft.Padding.only(left=8)),
+                self._format_dd,
+                self._pause_btn,
+                self._cancel_btn,
+                self._start_btn,
+            ],
+            spacing=10,
+            vertical_alignment=ft.CrossAxisAlignment.CENTER,
+        )
 
         # Condición persistente que el usuario debe resolver; no un toast.
         self._ffmpeg_banner = status_banner(
@@ -244,25 +263,16 @@ class DownloadsView(ft.Container):
             kind="warning",
         )
 
-        controls = ft.Row(controls=[
-            self._format_dd,
-            ft.Container(content=self._count_text, expand=True, padding=ft.Padding.only(left=6)),
-            self._pause_btn,
-            self._cancel_btn,
-            self._start_btn,
-        ], spacing=10, vertical_alignment=ft.CrossAxisAlignment.CENTER)
-
         self.content = ft.Container(
             content=ft.Column(controls=[
                 header,
                 ft.Divider(height=1, color=BORDER_MUTED),
                 self._ffmpeg_banner,
-                controls,
                 destination,
                 self._progress_area,
                 self._queue_section,
                 self._history_section,
-            ], spacing=12, expand=True),
+            ], spacing=10, expand=True),
             padding=ft.Padding.all(16), expand=True,
         )
 
@@ -401,13 +411,12 @@ class DownloadsView(ft.Container):
         self._item_widgets = []
         rows: list[ft.Control] = []
         for item in items:
-            bar = ft.ProgressBar(value=0, color=ACCENT, bgcolor=BG_LIST, height=4, border_radius=2)
+            bar = ft.ProgressBar(value=0, color=ACCENT, bgcolor=BORDER_MUTED, height=3, border_radius=2)
             pct = app_text("", size=10, color=TEXT_MUTED, font_family=mono_family("light"))
             icon = app_icon(PIcons.CLOCK, size=18, color=TEXT_DIM)
-            rows.append(ft.Container(
-                bgcolor=BG_SURFACE, border=ft.Border.all(0.8, BORDER_MUTED),
-                border_radius=RADIUS_INPUT,
-                padding=ft.Padding.symmetric(horizontal=12, vertical=8),
+            row = ft.Container(
+                border=ft.Border.only(bottom=ft.BorderSide(1, BORDER_ROW)),
+                padding=ft.Padding.symmetric(horizontal=10, vertical=8),
                 content=ft.Row(controls=[
                     icon,
                     ft.Column(controls=[
@@ -417,7 +426,9 @@ class DownloadsView(ft.Container):
                     ], spacing=6, expand=True),
                     ft.Container(width=48, alignment=ft.Alignment.CENTER_RIGHT, content=pct),
                 ], spacing=10, vertical_alignment=ft.CrossAxisAlignment.CENTER),
-            ))
+            )
+            row._isolated = True
+            rows.append(row)
             self._item_widgets.append((item, bar, pct, icon))
         self._queue_list.controls = rows
 
@@ -525,6 +536,22 @@ class DownloadsView(ft.Container):
         self._progress.value = (progress / total) if total else 0
         self._progress_text.value = f"{progress} / {total}" if total else ""
 
+        if paused:
+            self._progress_icon.value = PIcons.PAUSE
+            self._progress_icon.color = TEXT_MUTED
+        elif running:
+            self._progress_icon.value = PIcons.DOWNLOAD_SIMPLE
+            self._progress_icon.color = ACCENT
+        elif state == TransferState.DONE:
+            self._progress_icon.value = PIcons.CHECK_CIRCLE
+            self._progress_icon.color = SUCCESS
+        elif state == TransferState.ERROR:
+            self._progress_icon.value = PIcons.WARNING_CIRCLE
+            self._progress_icon.color = ERROR_COL
+        else:
+            self._progress_icon.value = PIcons.DOWNLOAD_SIMPLE
+            self._progress_icon.color = TEXT_MUTED
+
         if paused and running:
             # yt-dlp tarda un instante en abortar la pista activa; sin esto el
             # encabezado seguiría diciendo «Descargando» y parecería que la
@@ -611,15 +638,6 @@ class DownloadsView(ft.Container):
         if not self._results_panel.visible:
             return
 
-        counts = [f"{len(done)} descargadas"]
-        if skipped:
-            counts.append(f"{len(skipped)} omitidas")
-        if failed:
-            counts.append(f"{len(failed)} fallidas")
-        if missing:
-            counts.append(f"{len(missing)} faltantes")
-        self._result_counts.value = " · ".join(counts)
-
         # Omitidas primero: son las que el usuario ya tenía y no se tocaron.
         finished = [(d, "skipped") for d in skipped] + [(d, "done") for d in done]
         self._done_col.controls = (
@@ -639,8 +657,20 @@ class DownloadsView(ft.Container):
             for d, kind in finished
         ]
 
+        retry_all_btn = (
+            _ghost_btn(
+                "Reintentar todas",
+                PIcons.ARROWS_CLOCKWISE,
+                lambda _e, entries=list(failed): self._retry(entries),
+                height=28,
+            )
+            if failed
+            else None
+        )
         self._failed_col.controls = (
-            [self._group_label("FALLIDAS", len(failed))] if failed else []
+            [self._group_label("FALLIDAS", len(failed), is_error=True, trailing=retry_all_btn)]
+            if failed
+            else []
         ) + [
             self._result_row(
                 title=_entry_title(f),
@@ -666,11 +696,34 @@ class DownloadsView(ft.Container):
         ]
 
     @staticmethod
-    def _group_label(text: str, count: int) -> ft.Control:
-        return ft.Row(controls=[
+    def _group_label(
+        text: str,
+        count: int,
+        *,
+        is_error: bool = False,
+        trailing: ft.Control | None = None,
+    ) -> ft.Control:
+        controls: list[ft.Control] = [
             section_label(text),
-            app_text(str(count), size=9, color=TEXT_MUTED, font_family=mono_family("light")),
-        ], spacing=6, vertical_alignment=ft.CrossAxisAlignment.CENTER)
+            app_text(
+                str(count),
+                size=11,
+                color=ERROR_COL if is_error else TEXT_MUTED,
+                font_family=mono_family("light"),
+            ),
+            ft.Container(expand=True),
+        ]
+        if trailing is not None:
+            controls.append(trailing)
+        return ft.Container(
+            padding=ft.Padding.only(top=4, bottom=6),
+            border=ft.Border.only(bottom=ft.BorderSide(1, BORDER_MUTED)),
+            content=ft.Row(
+                controls=controls,
+                spacing=8,
+                vertical_alignment=ft.CrossAxisAlignment.CENTER,
+            ),
+        )
 
     def _result_row(
         self,

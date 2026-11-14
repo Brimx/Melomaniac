@@ -32,6 +32,7 @@ from ui.theme.tokens import (
     ACCENT,
     BG_SURFACE,
     BORDER_MUTED,
+    BORDER_ROW,
     ERROR_COL,
     RADIUS_INPUT,
     SUCCESS,
@@ -260,9 +261,9 @@ def build_history_row(
     on_play: Callable[[str], None],
 ) -> ft.Container:
     """Fila del historial de descargas locales en disco."""
-    return ft.Container(
-        padding=ft.Padding.symmetric(horizontal=12, vertical=6),
-        border=ft.Border.only(bottom=ft.BorderSide(0.5, BORDER_MUTED)),
+    row = ft.Container(
+        padding=ft.Padding.symmetric(horizontal=10, vertical=6),
+        border=ft.Border.only(bottom=ft.BorderSide(1, BORDER_ROW)),
         content=ft.Row(
             controls=[
                 app_icon_button(
@@ -313,6 +314,10 @@ def build_history_row(
             vertical_alignment=ft.CrossAxisAlignment.CENTER,
         ),
     )
+    row._isolated = True
+    return row
+    row._isolated = True
+    return row
 
 
 def build_result_row(
@@ -397,11 +402,17 @@ def build_result_row(
                 ],
             )
         )
-    return ft.Container(
-        bgcolor=BG_SURFACE,
-        border=ft.Border.all(0.8, BORDER_MUTED),
-        border_radius=RADIUS_INPUT,
-        padding=ft.Padding.symmetric(horizontal=12, vertical=6),
+    row_border = (
+        ft.Border(
+            left=ft.BorderSide(2, ERROR_COL),
+            bottom=ft.BorderSide(1, BORDER_ROW),
+        )
+        if kind == "failed"
+        else ft.Border.only(bottom=ft.BorderSide(1, BORDER_ROW))
+    )
+    row = ft.Container(
+        border=row_border,
+        padding=ft.Padding.symmetric(horizontal=10, vertical=6),
         content=ft.Row(
             controls=[
                 lead,
@@ -444,6 +455,10 @@ def build_result_row(
             vertical_alignment=ft.CrossAxisAlignment.CENTER,
         ),
     )
+    row._isolated = True
+    return row
+    row._isolated = True
+    return row
 
 
 async def open_youtube_recovery_dialog(
