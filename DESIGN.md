@@ -234,7 +234,7 @@ Regla: inputs y botones usan 10 px; diálogos y rail, 14 px. Las filas y superfi
 
 ## Motion
 
-La duración sale de `ui/tokens.py`, una por propósito; nunca se escribe un número en `ui/`.
+La duración sale de `ui/theme/tokens.py`, una por propósito; nunca se escribe un número en `ui/`.
 
 | Token | Duración | Uso |
 |---|---|---|
@@ -246,7 +246,7 @@ La duración sale de `ui/tokens.py`, una por propósito; nunca se escribe un nú
 
 ## Do's and Don'ts
 
-- **Do:** token único para cada valor; si el color no está en `ui/tokens.py`, se añade ahí.
+- **Do:** token único para cada valor; si el color no está en `ui/theme/tokens.py`, se añade ahí.
 - **Do:** una sola familia tipográfica por script, sin mezclar Stack Sans e IBM Plex en la misma línea.
 - **Do:** jerarquía por espacio y por tono de superficie, no por cajas y sombras.
 - **Do:** un solo elemento memorable por pantalla; el resto se queda quieto.
