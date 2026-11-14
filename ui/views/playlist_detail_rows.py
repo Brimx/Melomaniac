@@ -286,6 +286,7 @@ def build_detail_track_row(
         ),
     )
     view._row_containers[id(track)] = row
+    row._isolated = True
 
     def _on_click(_e) -> None:
         if view._selection_mode:

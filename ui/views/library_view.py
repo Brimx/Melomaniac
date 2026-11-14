@@ -5,6 +5,7 @@ ui/library_view.py — Contenedor Biblioteca: selector plataforma + grid + detai
 from __future__ import annotations
 
 import asyncio
+from datetime import date
 
 import flet as ft
 
@@ -13,7 +14,7 @@ from core.library_models import LibraryLoadState
 from core.models import PlaylistMeta
 from engine.local_manifests import detect_platform_from_url
 from services.library_state import LibraryState
-from ui.theme.fonts import FONT_HEADLINE, FONT_HEADLINE_BOLD, FONT_TEXT
+from ui.theme.fonts import FONT_HEADLINE, FONT_HEADLINE_BOLD, FONT_TEXT, mono_family
 from ui.components.playlist_card import PlaylistCard
 from ui.views.playlist_detail_view import PlaylistDetailView
 from ui.theme.tokens import (
@@ -53,6 +54,14 @@ _SHORT_LABELS = {
 }
 
 
+_FILTER_DEFS = (
+    ("any", "Con canciones"),
+    ("big", "+100 pistas"),
+    ("today", "Sincronizada hoy"),
+)
+_SORT_LABELS = ("Recientes", "A a Z", "Z a A")
+
+
 class LibraryView(ft.Container):
     def __init__(self, page: ft.Page, library_state: LibraryState, service,
                  app_state=None, on_open_downloads=None, on_open_gestion=None,
@@ -70,6 +79,11 @@ class LibraryView(ft.Container):
         self.library_state.set_service(service)
         self._platform: str | None = None
         self._detail = None  # PlaylistDetailView
+        self._search_query: str = ""
+        self._active_filters: set[str] = set()
+        self._sort_mode: int = 0
+        self._local_tab: str = "carpetas"
+        self._recent_opened_ids: list[tuple[str, str]] = []
         self._build()
         self.library_state.subscribe(lambda: self._refresh())
         # inicial: selecciona primera plataforma si hay
@@ -83,18 +97,88 @@ class LibraryView(ft.Container):
         self._platform_row = ft.Row(spacing=8, wrap=False)
         self._rebuild_platform_selector()
 
-        self._status_text = app_text("", size=11, color=TEXT_MUTED, font_family=FONT_TEXT)
-        self._refresh_btn = _ghost_btn("Actualizar", PIcons.ARROWS_CLOCKWISE, lambda e: self._on_refresh(), width=140, height=36)
+        self._status_text = app_text("", size=11, color=TEXT_MUTED, font_family=mono_family("regular"))
+        self._refresh_btn = _ghost_btn("Actualizar", PIcons.ARROWS_CLOCKWISE, lambda e: self._on_refresh(), width=128, height=34)
         self._import_manifest_btn = _ghost_btn(
             "Importar playlist",
             PIcons.PLAYLIST,
             lambda e: self._open_import_dialog(),
-            height=36,
+            height=34,
         )
         self._import_manifest_btn.visible = self._platform == LOCAL_LIBRARY_LABEL
         self._add_folder_btn = _ghost_btn("Añadir carpeta", PIcons.FOLDER_PLUS,
-                                          lambda e: self._page_ref.run_task(self._pick_folder), height=36)
+                                          lambda e: self._page_ref.run_task(self._pick_folder), height=34)
         self._add_folder_btn.visible = self._platform == LOCAL_LIBRARY_LABEL
+
+        # Barra 3.2: sub-pestañas Local (3.3), búsqueda, filtros acumulativos y orden 3 estados
+        self._local_tab_btns: dict[str, ft.Container] = {}
+        for tab_key, tab_lbl in (("carpetas", "Carpetas"), ("playlists", "Playlists")):
+            btn = ft.Container(
+                content=app_text(tab_lbl, size=11, color=TEXT_PRIMARY, font_family=FONT_HEADLINE),
+                padding=ft.Padding.symmetric(horizontal=10, vertical=6),
+                border_radius=RADIUS_BUTTON,
+                bgcolor=ACCENT_HALO if self._local_tab == tab_key else BG_SURFACE,
+                border=ft.Border.all(0.8, ACCENT if self._local_tab == tab_key else BORDER_MUTED),
+                ink=True,
+                on_click=lambda _e, k=tab_key: self._set_local_tab(k),
+            )
+            self._local_tab_btns[tab_key] = btn
+        self._local_seg = ft.Row(
+            controls=list(self._local_tab_btns.values()),
+            spacing=6,
+            visible=self._platform == LOCAL_LIBRARY_LABEL,
+        )
+
+        self._search_field = app_text_field(
+            value=self._search_query,
+            hint_text="Buscar playlist o carpeta...",
+            width=230,
+            height=34,
+            prefix_icon=PIcons.MAGNIFYING_GLASS,
+            on_change=self._on_search_change,
+        )
+
+        self._filter_chip_btns: dict[str, ft.Container] = {}
+        for fkey, flbl in _FILTER_DEFS:
+            active = fkey in self._active_filters
+            chip = ft.Container(
+                content=app_text(flbl, size=11, color=TEXT_PRIMARY if active else TEXT_MUTED, font_family=FONT_HEADLINE),
+                padding=ft.Padding.symmetric(horizontal=10, vertical=6),
+                border_radius=16,
+                bgcolor=ACCENT_HALO if active else BG_SURFACE,
+                border=ft.Border.all(0.8, ACCENT if active else BORDER_MUTED),
+                ink=True,
+                on_click=lambda _e, k=fkey: self._toggle_filter(k),
+            )
+            self._filter_chip_btns[fkey] = chip
+
+        self._result_count_text = app_text("", size=11, color=TEXT_MUTED, font_family=mono_family("regular"))
+        self._sort_btn = _ghost_btn(
+            _SORT_LABELS[self._sort_mode],
+            PIcons.SLIDERS_HORIZONTAL,
+            lambda _e: self._cycle_sort_mode(),
+            height=34,
+        )
+        self._lib_bar = ft.Row(
+            controls=[
+                self._local_seg,
+                self._search_field,
+                *self._filter_chip_btns.values(),
+                ft.Container(expand=True),
+                self._result_count_text,
+                self._sort_btn,
+            ],
+            spacing=8,
+            wrap=True,
+            vertical_alignment=ft.CrossAxisAlignment.CENTER,
+        )
+        self._local_legend = ft.Text(
+            "Descargada: carpeta con playlist.json · Importada: manifiesto sin audio",
+            size=11,
+            color=TEXT_MUTED,
+            font_family=FONT_TEXT,
+            visible=self._platform == LOCAL_LIBRARY_LABEL and self._local_tab == "playlists",
+        )
 
         self._playlists_row = ft.Row(wrap=True, spacing=12, run_spacing=12)
         self._grid_row = ft.Row(wrap=True, spacing=12, run_spacing=12)
@@ -102,6 +186,7 @@ class LibraryView(ft.Container):
             controls=[self._grid_row],
             scroll=ft.ScrollMode.AUTO,
             expand=True,
+            spacing=10,
             horizontal_alignment=ft.CrossAxisAlignment.STRETCH,
             visible=True,
         )
@@ -112,26 +197,50 @@ class LibraryView(ft.Container):
             self._empty_title,
             self._empty_sub,
         ], horizontal_alignment=ft.CrossAxisAlignment.CENTER, spacing=8))
-        self._loading_bar = ft.ProgressBar(visible=False, color=ACCENT, bgcolor=BG_SURFACE)
-
-        self._list_stack = ft.Stack(controls=[self._grid, self._empty], expand=True, fit=ft.StackFit.EXPAND)
-
-        body = ft.Column(controls=[
-            section_label("FUENTE"),
-            self._platform_row,
-            ft.Row(
+        self._filter_empty = ft.Container(
+            expand=True,
+            visible=False,
+            alignment=ft.Alignment.CENTER,
+            content=ft.Column(
                 controls=[
-                    self._status_text,
-                    ft.Container(expand=True),
-                    self._import_manifest_btn,
-                    self._add_folder_btn,
-                    self._refresh_btn,
+                    app_icon(PIcons.MAGNIFYING_GLASS, size=42, color=TEXT_DIM),
+                    app_text("Nada coincide", size=13, color=TEXT_PRIMARY, font_family=FONT_HEADLINE_BOLD),
+                    app_text("Prueba quitando algún filtro.", size=11, color=TEXT_MUTED, font_family=FONT_TEXT),
+                    _ghost_btn("Limpiar filtros", PIcons.X, lambda _e: self._clear_filters(), height=34),
                 ],
+                horizontal_alignment=ft.CrossAxisAlignment.CENTER,
                 spacing=8,
             ),
+        )
+        self._loading_bar = ft.ProgressBar(visible=False, color=ACCENT, bgcolor=BG_SURFACE)
+
+        self._list_stack = ft.Stack(
+            controls=[self._grid, self._empty, self._filter_empty],
+            expand=True,
+            fit=ft.StackFit.EXPAND,
+        )
+
+        header_row = ft.Row(
+            controls=[
+                app_text("Estantes", size=20, color=TEXT_PRIMARY, font_family=FONT_HEADLINE_BOLD),
+                self._status_text,
+                ft.Container(expand=True),
+                self._import_manifest_btn,
+                self._add_folder_btn,
+                self._refresh_btn,
+            ],
+            spacing=10,
+            vertical_alignment=ft.CrossAxisAlignment.CENTER,
+        )
+
+        body = ft.Column(controls=[
+            header_row,
+            self._platform_row,
+            self._lib_bar,
+            self._local_legend,
             self._loading_bar,
             ft.Container(expand=True, content=self._list_stack),
-        ], spacing=10, expand=True)
+        ], spacing=8, expand=True)
 
         self.content = ft.Container(content=body, padding=ft.Padding.all(12), expand=True)
 
@@ -248,7 +357,77 @@ class LibraryView(ft.Container):
         except Exception:
             pass
 
+    def _set_local_tab(self, tab_key: str) -> None:
+        if tab_key not in ("carpetas", "playlists") or self._local_tab == tab_key:
+            return
+        self._local_tab = tab_key
+        for k, btn in self._local_tab_btns.items():
+            active = k == tab_key
+            btn.bgcolor = ACCENT_HALO if active else BG_SURFACE
+            btn.border = ft.Border.all(0.8, ACCENT if active else BORDER_MUTED)
+        self._refresh()
+
+    def _on_search_change(self, e) -> None:
+        self._search_query = str(getattr(e.control, "value", "") or "")
+        self._refresh()
+
+    def _toggle_filter(self, key: str) -> None:
+        if key in self._active_filters:
+            self._active_filters.remove(key)
+        else:
+            self._active_filters.add(key)
+        for k, chip in self._filter_chip_btns.items():
+            active = k in self._active_filters
+            chip.bgcolor = ACCENT_HALO if active else BG_SURFACE
+            chip.border = ft.Border.all(0.8, ACCENT if active else BORDER_MUTED)
+            if isinstance(chip.content, ft.Text):
+                chip.content.color = TEXT_PRIMARY if active else TEXT_MUTED
+        self._refresh()
+
+    def _cycle_sort_mode(self) -> None:
+        self._sort_mode = (self._sort_mode + 1) % len(_SORT_LABELS)
+        from ui.components.widgets import set_button_text
+        set_button_text(self._sort_btn, _SORT_LABELS[self._sort_mode])
+        self._refresh()
+
+    def _clear_filters(self) -> None:
+        self._search_query = ""
+        self._active_filters.clear()
+        if hasattr(self, "_search_field"):
+            self._search_field.value = ""
+        for chip in self._filter_chip_btns.values():
+            chip.bgcolor = BG_SURFACE
+            chip.border = ft.Border.all(0.8, BORDER_MUTED)
+            if isinstance(chip.content, ft.Text):
+                chip.content.color = TEXT_MUTED
+        self._refresh()
+
+    def _filter_and_sort_items(self, items: list, *, is_local: bool) -> list:
+        out = list(items)
+        q = self._search_query.strip().casefold()
+        if q:
+            out = [s for s in out if q in str(getattr(s, "name", "") or "").casefold()]
+        if "any" in self._active_filters:
+            out = [s for s in out if (getattr(s, "track_count", None) or 0) > 0]
+        if "big" in self._active_filters:
+            out = [s for s in out if (getattr(s, "track_count", None) or 0) > 100]
+        if "today" in self._active_filters:
+            today = date.today().isoformat()
+            out = [
+                s for s in out
+                if not is_local and str(getattr(s, "synced_at", "") or "")[:10] == today
+            ]
+        if self._sort_mode == 1:
+            out.sort(key=lambda s: str(getattr(s, "name", "") or "").casefold())
+        elif self._sort_mode == 2:
+            out.sort(key=lambda s: str(getattr(s, "name", "") or "").casefold(), reverse=True)
+        return out
+
     def _on_open_playlist(self, summary) -> None:
+        # registrar en Recientes (máx 6)
+        key = (summary.platform, summary.id)
+        self._recent_opened_ids = [key] + [k for k in self._recent_opened_ids if k != key]
+        self._recent_opened_ids = self._recent_opened_ids[:6]
         # push detail
         is_manifest = bool(
             hasattr(self.library_state, "is_imported_manifest")
@@ -324,11 +503,19 @@ class LibraryView(ft.Container):
         badge_text: str = "",
         badge_bgcolor: str = ACCENT_HALO,
         badge_border: str = ACCENT,
+        obi_label: str | None = None,
+        subtitle_line2: str | None = None,
         on_save_manifest=None,
         on_remove_manifest=None,
     ) -> ft.Container:
         """Envuelve la tarjeta con ancho fijo (160 px) para reflow sin resize."""
-        card = PlaylistCard(summary, state=state, on_tap=self._on_open_playlist)
+        card = PlaylistCard(
+            summary,
+            state=state,
+            on_tap=self._on_open_playlist,
+            obi_label=obi_label,
+            subtitle_line2=subtitle_line2,
+        )
         overlays: list[ft.Control] = []
 
         if badge_text:
@@ -650,7 +837,8 @@ class LibraryView(ft.Container):
             return
         self._add_folder_btn.visible = False
         self._import_manifest_btn.visible = False
-        self._grid.controls = [self._grid_row]
+        self._local_seg.visible = False
+        self._local_legend.visible = False
         self._empty_title.value = "Sin playlists cacheadas"
         self._empty_sub.value = "Elige una fuente para sincronizar"
         snap = self.library_state.get_snapshot(plat)
@@ -671,8 +859,11 @@ class LibraryView(ft.Container):
         else:
             self._loading_bar.visible = False
             self._status_text.value = ""
-        # wrap de ancho fijo (160 px): al empujar la cola lateral las tarjetas
-        # se reacomodan por línea sin recalcular su ancho cuadro a cuadro.
+
+        filtered = self._filter_and_sort_items(snap.items, is_local=False)
+        self._result_count_text.value = (
+            f"{len(filtered)} resultado" if len(filtered) == 1 else f"{len(filtered)} resultados"
+        )
         can_save = hasattr(self.library_state, "import_summary_as_manifest")
         self._grid_row.controls = [
             self._wrap_card(
@@ -680,18 +871,51 @@ class LibraryView(ft.Container):
                 state,
                 on_save_manifest=(lambda _e, s=summ: self._save_remote_as_manifest(s)) if can_save else None,
             )
-            for summ in snap.items
+            for summ in filtered
         ]
-        show_empty = not snap.items and state != LibraryLoadState.LOADING
-        self._grid.visible = not show_empty
+
+        sections: list[ft.Control] = []
+        if (
+            self._recent_opened_ids
+            and not self._search_query.strip()
+            and not self._active_filters
+            and self._sort_mode == 0
+        ):
+            by_id = {(s.platform, s.id): s for s in snap.items}
+            recents = [by_id[k] for k in self._recent_opened_ids if k in by_id]
+            if recents:
+                sections.append(section_label("RECIENTES"))
+                sections.append(
+                    ft.Row(
+                        controls=[
+                            self._wrap_card(
+                                summ,
+                                state,
+                                on_save_manifest=(lambda _e, s=summ: self._save_remote_as_manifest(s)) if can_save else None,
+                            )
+                            for summ in recents
+                        ],
+                        scroll=ft.ScrollMode.AUTO,
+                        spacing=12,
+                    )
+                )
+                sections.append(section_label("TODAS LAS PLAYLISTS"))
+        sections.append(self._grid_row)
+        self._grid.controls = sections
+
+        has_source_items = bool(snap.items)
+        show_empty = not has_source_items and state != LibraryLoadState.LOADING
+        show_filter_empty = has_source_items and not filtered and state != LibraryLoadState.LOADING
+        self._grid.visible = not show_empty and not show_filter_empty
         self._empty.visible = show_empty
+        self._filter_empty.visible = show_filter_empty
         try:
             self.update()
         except Exception:
             pass
 
     def _refresh_local(self) -> None:
-        """Fuente Local: distingue carpetas locales y playlists importadas/descargadas."""
+        """Fuente Local: separa Carpetas (3.3) y Playlists locales (descargadas + importadas)."""
         if hasattr(self.library_state, "local_folder_summaries"):
             folders = self.library_state.local_folder_summaries()
             downloaded = self.library_state.downloaded_playlist_summaries()
@@ -703,7 +927,14 @@ class LibraryView(ft.Container):
 
         self._add_folder_btn.visible = True
         self._import_manifest_btn.visible = True
+        self._local_seg.visible = True
+        self._local_legend.visible = self._local_tab == "playlists"
         self._loading_bar.visible = False
+
+        for k, btn in self._local_tab_btns.items():
+            active = k == self._local_tab
+            btn.bgcolor = ACCENT_HALO if active else BG_SURFACE
+            btn.border = ft.Border.all(0.8, ACCENT if active else BORDER_MUTED)
 
         status_parts: list[str] = []
         if imported:
@@ -717,24 +948,25 @@ class LibraryView(ft.Container):
         self._empty_title.value = "Sin carpetas ni playlists locales"
         self._empty_sub.value = "Añade una carpeta con audio o importa una playlist sin descargar"
 
-        sections: list[ft.Control] = []
+        f_imp = self._filter_and_sort_items(imported, is_local=True)
+        f_dl = self._filter_and_sort_items(downloaded, is_local=True)
+        f_folders = self._filter_and_sort_items(folders, is_local=True)
+
         playlist_cards: list[ft.Control] = [
             self._wrap_card(
                 summ,
                 LibraryLoadState.READY,
-                badge_text="SIN AUDIO",
-                badge_bgcolor=ACCENT_HALO,
-                badge_border=ACCENT,
+                obi_label="IMPORTADA",
+                subtitle_line2="Importada · sin audio",
                 on_remove_manifest=lambda _e, s=summ: self._remove_manifest(s),
             )
-            for summ in imported
+            for summ in f_imp
         ] + [
             self._wrap_card(
                 summ,
                 LibraryLoadState.READY,
-                badge_text="DESCARGADA",
-                badge_bgcolor=BG_PANEL,
-                badge_border=SUCCESS,
+                obi_label="DESCARGADA",
+                subtitle_line2="Descargada",
                 on_remove_manifest=(
                     (lambda _e, s=summ: (
                         self.library_state.remove_downloaded_playlist(s.id)
@@ -744,31 +976,45 @@ class LibraryView(ft.Container):
                     else None
                 ),
             )
-            for summ in downloaded
+            for summ in f_dl
         ]
         self._playlists_row.controls = playlist_cards
-        if playlist_cards:
-            sections.append(section_label("PLAYLISTS IMPORTADAS Y DESCARGADAS"))
-            sections.append(self._playlists_row)
-
         self._grid_row.controls = [
             self._wrap_card(
                 summ,
                 LibraryLoadState.READY,
-                badge_text="CARPETA",
-                badge_bgcolor=BG_PANEL,
-                badge_border=BORDER_LIGHT,
+                obi_label="LOCAL",
+                subtitle_line2="Carpeta local",
             )
-            for summ in folders
+            for summ in f_folders
         ]
-        if folders:
-            sections.append(section_label("CARPETAS LOCALES"))
-            sections.append(self._grid_row)
 
-        self._grid.controls = sections if sections else [self._grid_row]
-        has_any = bool(folders or downloaded or imported)
-        self._grid.visible = has_any
-        self._empty.visible = not has_any
+        if self._local_tab == "playlists":
+            total_src = len(imported) + len(downloaded)
+            total_shown = len(f_imp) + len(f_dl)
+            self._grid.controls = (
+                [section_label("PLAYLISTS LOCALES"), self._playlists_row]
+                if playlist_cards
+                else [self._playlists_row]
+            )
+        else:
+            total_src = len(folders)
+            total_shown = len(f_folders)
+            self._grid.controls = (
+                [section_label("CARPETAS LOCALES"), self._grid_row]
+                if f_folders
+                else [self._grid_row]
+            )
+        self._result_count_text.value = (
+            f"{total_shown} resultado" if total_shown == 1 else f"{total_shown} resultados"
+        )
+
+        has_any_overall = bool(folders or downloaded or imported)
+        show_empty = not has_any_overall or (total_src == 0)
+        show_filter_empty = total_src > 0 and total_shown == 0
+        self._grid.visible = not show_empty and not show_filter_empty
+        self._empty.visible = show_empty
+        self._filter_empty.visible = show_filter_empty
         try:
             self.update()
         except Exception:

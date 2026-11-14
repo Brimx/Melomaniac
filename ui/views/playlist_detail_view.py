@@ -104,16 +104,47 @@ class PlaylistDetailView(ft.Container):
         self._manifest_base_name: str = ""
 
         # header
-        cover_url = summary.cover_urls[0] if summary.cover_urls else ""
-        if cover_url:
-            cover = ft.Container(width=120, height=120, border_radius=10, bgcolor=SKELETON_DARK, clip_behavior=ft.ClipBehavior.ANTI_ALIAS, content=ft.Image(src=cover_url, fit=ft.BoxFit.COVER, error_content=app_icon(PIcons.MUSIC_NOTE, color=TEXT_DIM)))
-        else:
-            cover = ft.Container(width=120, height=120, border_radius=10, bgcolor=SKELETON_DARK, content=app_icon(PIcons.MUSIC_NOTE, color=TEXT_DIM, size=32), alignment=ft.Alignment.CENTER)
+        from ui.components.playlist_card import _build_obi_strip, _obi_label_for, _should_show_obi
 
-        self._title = app_text(summary.name, size=16, color=TEXT_PRIMARY, font_family=FONT_HEADLINE_BOLD)
+        cover_size = 140
+        cover_url = summary.cover_urls[0] if summary.cover_urls else ""
+        cover_box = ft.Container(
+            width=cover_size,
+            height=cover_size,
+            border_radius=8,
+            bgcolor=SKELETON_DARK,
+            border=ft.Border.all(1, BORDER_MUTED),
+            clip_behavior=ft.ClipBehavior.ANTI_ALIAS,
+            alignment=ft.Alignment.CENTER,
+            content=_thumb_content_for(cover_url, box=cover_size, icon_size=32),
+        )
+        cover_layers: list[ft.Control] = [cover_box]
+        obi_text = _obi_label_for(summary.platform)
+        if _should_show_obi() and obi_text:
+            cover_layers.append(_build_obi_strip(obi_text, cover_size=cover_size))
+        cover = ft.Stack(
+            width=cover_size,
+            height=cover_size,
+            clip_behavior=ft.ClipBehavior.HARD_EDGE,
+            controls=cover_layers,
+        )
+
+        kicker = app_text(
+            str(summary.platform or "").upper(),
+            size=10,
+            color=TEXT_MUTED,
+            font_family=mono_family("regular"),
+        )
+        self._title = app_text(summary.name, size=20, color=TEXT_PRIMARY, font_family=FONT_HEADLINE_BOLD)
         self._desc = app_text(summary.description or "", size=11, color=TEXT_MUTED, font_family=FONT_TEXT, max_lines=3, overflow=ft.TextOverflow.ELLIPSIS) if summary.description else ft.Container()
         count_label = f"{summary.track_count} canciones" if summary.track_count is not None else "Conteo al abrir"
-        self._count = app_text(f"{count_label} • {summary.platform}", size=11, color=TEXT_DIM, font_family=mono_family("light"))
+        sync_suffix = f" · sync {summary.synced_at[:10]}" if getattr(summary, "synced_at", "") else ""
+        self._count = app_text(
+            f"{count_label} · {summary.platform}{sync_suffix}",
+            size=11,
+            color=TEXT_MUTED,
+            font_family=mono_family("light"),
+        )
 
         self._open_btn = _ghost_btn("Ver playlist en plataforma", PIcons.ARROW_SQUARE_OUT, lambda e: self._launch(summary.external_url), width=260, height=40) if summary.external_url else ft.Container()
         self._shuffle_btn = _ghost_btn("Aleatorio", PIcons.SHUFFLE, self._on_shuffle_play, height=40)
@@ -178,8 +209,23 @@ class PlaylistDetailView(ft.Container):
         actions_row = ft.Row(controls=actions, spacing=8, wrap=True)
 
         header = ft.Container(
-            bgcolor=BG_SURFACE, border=ft.Border.all(0.8, BORDER_LIGHT), border_radius=12, padding=ft.Padding.all(12),
-            content=ft.Row(controls=[cover, ft.Column(controls=[self._title, self._count, self._desc, actions_row], spacing=6, expand=True, alignment=ft.MainAxisAlignment.CENTER)], spacing=12),
+            bgcolor=BG_SURFACE,
+            border=ft.Border.all(0.8, BORDER_MUTED),
+            border_radius=12,
+            padding=ft.Padding.all(14),
+            content=ft.Row(
+                controls=[
+                    cover,
+                    ft.Column(
+                        controls=[kicker, self._title, self._count, self._desc, actions_row],
+                        spacing=5,
+                        expand=True,
+                        alignment=ft.MainAxisAlignment.CENTER,
+                    ),
+                ],
+                spacing=16,
+                vertical_alignment=ft.CrossAxisAlignment.END,
+            ),
         )
 
         # Barra de acciones por lote (modo selección múltiple)
@@ -257,13 +303,47 @@ class PlaylistDetailView(ft.Container):
             _ghost_btn("Reintentar", PIcons.ARROWS_CLOCKWISE, lambda e: self.reload()),
         ], spacing=8))
 
+        tracks_header = ft.Container(
+            height=30,
+            padding=ft.Padding.symmetric(horizontal=12),
+            border=ft.Border.only(bottom=ft.BorderSide(0.8, BORDER_MUTED)),
+            content=ft.Row(
+                controls=[
+                    ft.Container(
+                        content=app_text("#", size=10, color=TEXT_MUTED, font_family=mono_family("regular")),
+                        width=28,
+                        alignment=ft.Alignment.CENTER,
+                    ),
+                    ft.Container(width=48),
+                    ft.Container(
+                        content=app_text("TÍTULO", size=10, color=TEXT_MUTED, font_family=mono_family("regular")),
+                        expand=3,
+                        alignment=ft.Alignment.CENTER_LEFT,
+                    ),
+                    ft.Container(
+                        content=app_text("ÁLBUM", size=10, color=TEXT_MUTED, font_family=mono_family("regular")),
+                        expand=2,
+                        alignment=ft.Alignment.CENTER_LEFT,
+                    ),
+                    ft.Container(
+                        content=app_text("DUR.", size=10, color=TEXT_MUTED, font_family=mono_family("regular")),
+                        width=48,
+                        alignment=ft.Alignment.CENTER,
+                    ),
+                    ft.Container(width=68),
+                ],
+                spacing=16,
+                vertical_alignment=ft.CrossAxisAlignment.CENTER,
+            ),
+        )
+
         body = ft.Column(controls=[
             ft.Row(controls=[app_icon_button(PIcons.ARROW_LEFT, size=16, icon_color=TEXT_MUTED, on_click=lambda e: on_back(), width=28, height=28), app_text("Volver", size=12, color=TEXT_MUTED)], spacing=4),
             header,
             self._batch_bar,
-            ft.Divider(height=1, color=BORDER_MUTED),
+            tracks_header,
             ft.Stack(controls=[self._skeleton_wrap, self._list_view, self._error_box], expand=True),
-        ], spacing=10, expand=True)
+        ], spacing=8, expand=True)
 
         self.content = ft.Container(content=body, padding=ft.Padding.all(12), expand=True)
         # kick load

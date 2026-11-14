@@ -5,17 +5,19 @@ Reusa tokens OLED, Shimmer opcional, sin controles raros.
 
 from __future__ import annotations
 
+import math
 from typing import Any, Callable, Optional, Sequence
 
 import flet as ft
 
 from core.library_models import LibraryLoadState, PlaylistSummary
-from ui.theme.fonts import FONT_HEADLINE, FONT_HEADLINE_BOLD, FONT_TEXT, font_family_for
+from services import settings_store
+from ui.theme.fonts import FONT_HEADLINE_BOLD, FONT_TEXT, font_family_for, mono_family
 from ui.theme.icons import PIcons
 from ui.components.song_row import _thumb_content_for
 from ui.theme.tokens import (
-    ACCENT, BG_HOVER, BG_LIST, BG_SURFACE, BORDER_LIGHT, BORDER_MUTED,
-    ERROR_COL, SKELETON_DARK, TEXT_DIM, TEXT_MUTED, TEXT_PRIMARY, WARNING,
+    ACCENT, BG_DEEP, BG_HOVER, BG_SURFACE, BORDER_LIGHT, BORDER_MUTED,
+    ERROR_COL, SKELETON_DARK, TEXT_MUTED, TEXT_PRIMARY, WARNING,
     MOTION_HOVER_MS,
 )
 from ui.components.widgets import (
@@ -30,22 +32,92 @@ from ui.components.context_menu import (
 )
 
 
-def _cover_single(url: str, size: int = 140) -> ft.Control:
+_OBI_LABELS = {
+    "YouTube Music": "YOUTUBE",
+    "Apple Music": "APPLE",
+    "Spotify": "SPOTIFY",
+    "Local": "LOCAL",
+}
+
+
+def _should_show_obi() -> bool:
+    getter = getattr(settings_store, "get_show_platform_obi", None)
+    if callable(getter):
+        try:
+            return bool(getter())
+        except Exception:
+            return True
+    try:
+        return bool(settings_store.load_settings().get("show_platform_obi", True))
+    except Exception:
+        return True
+
+
+def _obi_label_for(platform: str, explicit: Optional[str] = None) -> str:
+    if explicit:
+        return explicit.strip().upper()[:12]
+    mapped = _OBI_LABELS.get(platform)
+    if mapped:
+        return mapped
+    return str(platform or "").strip().upper()[:10]
+
+
+def _build_obi_strip(label: str, cover_size: int = 140) -> ft.Control:
+    """Lomo obi vertical sobre el borde izquierdo de la portada (estilo demo)."""
+    strip_len = max(72, int(cover_size * 0.72))
+    strip_w = 15
+    return ft.Container(
+        width=strip_len,
+        height=strip_w,
+        bgcolor=TEXT_PRIMARY,
+        border=ft.Border.only(bottom=ft.BorderSide(1, ft.Colors.with_opacity(0.35, BG_DEEP))),
+        alignment=ft.Alignment.CENTER,
+        rotate=ft.Rotate(-math.pi / 2),
+        left=-(strip_len - strip_w) / 2,
+        top=(cover_size - strip_w) / 2,
+        content=ft.Text(
+            label,
+            size=8,
+            color=BG_SURFACE,
+            font_family=mono_family("regular"),
+            max_lines=1,
+            no_wrap=True,
+        ),
+    )
+
+
+def _cover_single(url: str, size: int = 140) -> ft.Container:
     content = _thumb_content_for(url, box=size, icon_size=28)
-    return ft.Container(width=size, height=size, border_radius=8, bgcolor=SKELETON_DARK, clip_behavior=ft.ClipBehavior.ANTI_ALIAS, alignment=ft.Alignment.CENTER, content=content)
+    return ft.Container(
+        width=size,
+        height=size,
+        border_radius=8,
+        bgcolor=SKELETON_DARK,
+        border=ft.Border.all(1, BORDER_MUTED),
+        clip_behavior=ft.ClipBehavior.ANTI_ALIAS,
+        alignment=ft.Alignment.CENTER,
+        content=content,
+    )
 
 
-def _cover_grid(urls: list[str], size: int = 140) -> ft.Control:
+def _cover_grid(urls: list[str], size: int = 140) -> ft.Container:
     # hasta 4 covers en 2x2
     cells = []
     for i in range(4):
         url = urls[i] if i < len(urls) else ""
         c = _thumb_content_for(url, box=(size - 2) // 2, icon_size=16)
         cells.append(ft.Container(expand=True, bgcolor=SKELETON_DARK, clip_behavior=ft.ClipBehavior.ANTI_ALIAS, border_radius=4, alignment=ft.Alignment.CENTER, content=c))
-    return ft.Container(width=size, height=size, border_radius=8, clip_behavior=ft.ClipBehavior.ANTI_ALIAS, content=ft.Column(controls=[
-        ft.Row(controls=cells[0:2], spacing=2, expand=True),
-        ft.Row(controls=cells[2:4], spacing=2, expand=True),
-    ], spacing=2, expand=True))
+    return ft.Container(
+        width=size,
+        height=size,
+        border_radius=8,
+        border=ft.Border.all(1, BORDER_MUTED),
+        clip_behavior=ft.ClipBehavior.ANTI_ALIAS,
+        content=ft.Column(controls=[
+            ft.Row(controls=cells[0:2], spacing=2, expand=True),
+            ft.Row(controls=cells[2:4], spacing=2, expand=True),
+        ], spacing=2, expand=True),
+    )
 
 
 class PlaylistCard(ft.Container):
@@ -62,6 +134,8 @@ class PlaylistCard(ft.Container):
         on_open_external: Optional[Callable[[PlaylistSummary], Any]] = None,
         on_remove: Optional[Callable[[PlaylistSummary], Any]] = None,
         extra_actions: Optional[Sequence[ContextMenuAction]] = None,
+        obi_label: Optional[str] = None,
+        subtitle_line2: Optional[str] = None,
     ):
         self.summary = summary
         self._on_tap = on_tap
@@ -73,11 +147,11 @@ class PlaylistCard(ft.Container):
         self._on_remove = on_remove
         self._extra_actions = list(extra_actions or ())
 
-        cover: ft.Control
+        cover_size = 140
         if len(summary.cover_urls) >= 2:
-            cover = _cover_grid(summary.cover_urls[:4])
+            self._cover_box = _cover_grid(summary.cover_urls[:4], size=cover_size)
         else:
-            cover = _cover_single(summary.cover_urls[0] if summary.cover_urls else "")
+            self._cover_box = _cover_single(summary.cover_urls[0] if summary.cover_urls else "", size=cover_size)
 
         badge = None
         if state == LibraryLoadState.STALE:
@@ -85,12 +159,52 @@ class PlaylistCard(ft.Container):
         elif state == LibraryLoadState.ERROR:
             badge = ft.Container(content=ft.Text("ERROR", size=8, color=TEXT_PRIMARY, font_family=FONT_HEADLINE_BOLD), bgcolor=ft.Colors.with_opacity(0.85, ERROR_COL), padding=ft.Padding.symmetric(horizontal=6, vertical=2), border_radius=6)
 
-        name = ft.Text(summary.name, size=13, color=TEXT_PRIMARY, font_family=font_family_for(summary.name, "semibold"), max_lines=2, overflow=ft.TextOverflow.ELLIPSIS)
-        count = f"{summary.track_count} canciones" if summary.track_count is not None else "Conteo al abrir"
-        meta = ft.Text(f"{count} • {summary.platform}", size=11, color=TEXT_MUTED, font_family=FONT_TEXT, max_lines=1, overflow=ft.TextOverflow.ELLIPSIS)
+        stack_controls: list[ft.Control] = [self._cover_box]
+        obi_text = _obi_label_for(summary.platform, obi_label)
+        if _should_show_obi() and obi_text:
+            stack_controls.append(_build_obi_strip(obi_text, cover_size=cover_size))
+        if badge is not None:
+            stack_controls.append(ft.Container(content=badge, alignment=ft.Alignment.TOP_RIGHT, padding=ft.Padding.all(6)))
 
-        # stack cover + badge top-right
-        cover_stack = ft.Stack(controls=[cover] + ([ft.Container(content=badge, alignment=ft.Alignment.TOP_RIGHT, padding=ft.Padding.all(6))] if badge else []))
+        cover_stack = ft.Stack(
+            width=cover_size,
+            height=cover_size,
+            clip_behavior=ft.ClipBehavior.HARD_EDGE,
+            controls=stack_controls,
+        )
+
+        name = ft.Text(
+            summary.name,
+            size=13,
+            color=TEXT_PRIMARY,
+            font_family=font_family_for(summary.name, "semibold"),
+            max_lines=1,
+            overflow=ft.TextOverflow.ELLIPSIS,
+        )
+        line1_text = f"{summary.track_count} canciones" if summary.track_count is not None else "Conteo al abrir"
+        line2_default = (
+            f"Sync {summary.synced_at[:10]}"
+            if getattr(summary, "synced_at", "")
+            else summary.platform
+        )
+        line2_val = subtitle_line2 if subtitle_line2 is not None else line2_default
+
+        meta_line1 = ft.Text(
+            line1_text,
+            size=10,
+            color=TEXT_MUTED,
+            font_family=mono_family("regular"),
+            max_lines=1,
+            overflow=ft.TextOverflow.ELLIPSIS,
+        )
+        meta_line2 = ft.Text(
+            line2_val,
+            size=10,
+            color=TEXT_MUTED,
+            font_family=mono_family("regular"),
+            max_lines=1,
+            overflow=ft.TextOverflow.ELLIPSIS,
+        )
 
         actions = self.context_actions()
         self._menu_btn = build_context_menu_button(
@@ -102,9 +216,12 @@ class PlaylistCard(ft.Container):
             visible=bool(actions),
         )
         footer = ft.Row(
-            controls=[ft.Container(content=meta, expand=True), self._menu_btn],
+            controls=[
+                ft.Column(controls=[meta_line1, meta_line2], spacing=1, tight=True, expand=True),
+                self._menu_btn,
+            ],
             spacing=4,
-            vertical_alignment=ft.CrossAxisAlignment.CENTER,
+            vertical_alignment=ft.CrossAxisAlignment.END,
         )
 
         col = ft.Column(controls=[cover_stack, name, footer], spacing=6, tight=True)
@@ -118,7 +235,7 @@ class PlaylistCard(ft.Container):
             content=content,
             width=160,
             bgcolor=BG_SURFACE,
-            border=ft.Border.all(0.8, BORDER_LIGHT),
+            border=ft.Border.all(0.8, BORDER_MUTED),
             border_radius=12,
             padding=ft.Padding.all(10),
             ink=True,
@@ -127,6 +244,7 @@ class PlaylistCard(ft.Container):
             animate_scale=ft.Animation(MOTION_HOVER_MS, ft.AnimationCurve.EASE_OUT),
             on_hover=self._on_hover,
         )
+        self._isolated = True
 
     def context_actions(self) -> list[ContextMenuAction]:
         """Construye las acciones contextuales disponibles para esta tarjeta."""
@@ -203,5 +321,7 @@ class PlaylistCard(ft.Container):
         hovering = e.data == "true" or e.data is True
         self.bgcolor = BG_HOVER if hovering else BG_SURFACE
         self.scale = 1.02 if hovering else 1.0
-        self.border = ft.Border.all(0.8, ACCENT if hovering else BORDER_LIGHT)
+        self.border = ft.Border.all(0.8, ACCENT if hovering else BORDER_MUTED)
+        if hasattr(self, "_cover_box"):
+            self._cover_box.border = ft.Border.all(1, BORDER_LIGHT if hovering else BORDER_MUTED)
         safe_update(self)
