@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import flet as ft
 
-from ui.components.widgets import app_text
+from ui.components.widgets import app_text, safe_update
 from ui.theme.fonts import FONT_HEADLINE_BOLD, FONT_PHOSPHOR, FONT_TEXT, mono_family
 from ui.theme.icons import PIcons, app_icon, app_icon_button
 from ui.theme.tokens import (
@@ -45,6 +45,11 @@ def _build_now_playing_section(bar) -> ft.Container:
         border_radius=RADIUS_INPUT,
         visible=False,
     )
+    def _on_thumb_hover(e: ft.HoverEvent) -> None:
+        is_h = e.data == "true" or e.data is True
+        bar._thumb_box.border = ft.Border.all(0.8, ACCENT if is_h else BORDER_MUTED)
+        safe_update(bar._thumb_box)
+
     bar._thumb_box = ft.Container(
         width=PLAYER_THUMB_SIZE,
         height=PLAYER_THUMB_SIZE,
@@ -52,6 +57,11 @@ def _build_now_playing_section(bar) -> ft.Container:
         border=ft.Border.all(0.8, BORDER_MUTED),
         border_radius=RADIUS_INPUT,
         alignment=ft.Alignment.CENTER,
+        ink=True,
+        tooltip="Abrir escena Reproduciendo",
+        animate=ft.Animation(MOTION_HOVER_MS, ft.AnimationCurve.EASE_OUT),
+        on_click=lambda _e: bar.open_now_playing_scene(),
+        on_hover=_on_thumb_hover,
         content=ft.Stack(controls=[bar._thumb_icon, bar._thumb_img]),
     )
 

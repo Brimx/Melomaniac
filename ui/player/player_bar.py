@@ -115,6 +115,10 @@ class PlayerBar(ft.Container):
         self.app_state = app_state
         self._on_toggle_queue = on_toggle_queue
         self._listeners: list[Callable[[], None]] = []
+        self._pos_listeners: list[Callable[[int, int], None]] = []
+        self._last_notified_pos: tuple[int, int] = (-1, -1)
+        self._lyrics_cache: dict[tuple, object] = {}
+        self._now_playing_scene = None
         self._dbus_mpris = dbus_mpris
         self._mpris = MprisController(self)
 
@@ -213,11 +217,27 @@ class PlayerBar(ft.Container):
             self.app_state.log(msg)
         return count
 
-    # ── suscripción para el panel de cola ──────────────────────────────
+    # ── suscripción para el panel de cola, letras y escena ────────────
+
+    @property
+    def position_ms(self) -> int:
+        return self._position_ms
+
+    @property
+    def duration_ms(self) -> int:
+        return self._duration_ms
+
+    @property
+    def is_playing(self) -> bool:
+        return self._audio_state == fta.AudioState.PLAYING
 
     def subscribe(self, cb: Callable[[], None]) -> None:
         if cb not in self._listeners:
             self._listeners.append(cb)
+
+    def unsubscribe(self, cb: Callable[[], None]) -> None:
+        if cb in self._listeners:
+            self._listeners.remove(cb)
 
     def _notify_listeners(self) -> None:
         for cb in list(self._listeners):
@@ -225,6 +245,70 @@ class PlayerBar(ft.Container):
                 cb()
             except Exception:
                 pass
+
+    def subscribe_position(self, cb: Callable[[int, int], None]) -> None:
+        if cb not in self._pos_listeners:
+            self._pos_listeners.append(cb)
+
+    def unsubscribe_position(self, cb: Callable[[int, int], None]) -> None:
+        if cb in self._pos_listeners:
+            self._pos_listeners.remove(cb)
+
+    def _notify_position_listeners(self, pos_ms: int, dur_ms: int) -> None:
+        sig = (pos_ms, dur_ms)
+        if sig == self._last_notified_pos:
+            return
+        self._last_notified_pos = sig
+        for cb in list(self._pos_listeners):
+            try:
+                cb(pos_ms, dur_ms)
+            except Exception:
+                pass
+
+    def seek_to(self, target_ms: int) -> None:
+        """Salta a ``target_ms`` si hay pista cargada con duración conocida."""
+        if self.queue.current is None or self._duration_ms <= 0:
+            return
+        clamped = max(0, min(int(target_ms), self._duration_ms))
+        self._position_ms = clamped
+        self._call_audio("seek", clamped)
+        self._update_progress_visual(clamped)
+
+    def set_volume_level(self, value: float, *, persist: bool = False) -> None:
+        """Ajusta volumen (0.0..1.0) desde la barra o la escena ampliada."""
+        self._volume = max(0.0, min(1.0, float(value)))
+        if self._volume > 0 and self._muted:
+            self._muted = False
+        self._vol_slider.value = 0.0 if self._muted else self._volume
+        self._apply_volume()
+        self._sync_volume_icon()
+        if persist:
+            set_vol = getattr(settings_store, "set_volume", None)
+            if callable(set_vol):
+                set_vol(self._volume)
+            set_mute = getattr(settings_store, "set_mute", None)
+            if callable(set_mute):
+                set_mute(self._muted)
+        self._notify_listeners()
+
+    def open_now_playing_scene(self) -> None:
+        """Abre la escena Reproduciendo sobre ``page.overlay``."""
+        if self._disposed:
+            return
+        if self._now_playing_scene is None:
+            from ui.player.now_playing_scene import NowPlayingScene
+            self._now_playing_scene = NowPlayingScene(self._page_ref, self)
+        self._now_playing_scene.open()
+
+    def close_now_playing_scene(self) -> None:
+        if self._now_playing_scene is not None:
+            self._now_playing_scene.close()
+
+    def toggle_now_playing_scene(self) -> None:
+        if self._now_playing_scene is not None and self._now_playing_scene.is_open:
+            self._now_playing_scene.close()
+        else:
+            self.open_now_playing_scene()
 
     # ── construcción visual ────────────────────────────────────────────
 
@@ -375,6 +459,11 @@ class PlayerBar(ft.Container):
     def release(self) -> None:
         """Libera el decodificador nativo y detiene el ticker (hard_cleanup)."""
         self._stop_ticker()
+        if self._now_playing_scene is not None:
+            try:
+                self._now_playing_scene.dispose()
+            except Exception:
+                pass
         if self._dbus_mpris is not None:
             self._dbus_mpris.stop()
         audio = self.audio
@@ -471,6 +560,7 @@ class PlayerBar(ft.Container):
         if callable(setter):
             setter(self._muted)
         self._sync_ui()
+        self._notify_listeners()
 
     def _on_volume_change(self, e: ft.ControlEvent) -> None:
         try:
@@ -501,6 +591,7 @@ class PlayerBar(ft.Container):
         set_mute = getattr(settings_store, "set_mute", None)
         if callable(set_mute):
             set_mute(self._muted)
+        self._notify_listeners()
 
     # ── barra de progreso animada y seek/scrub ─────────────────────────
 
@@ -709,6 +800,7 @@ class PlayerBar(ft.Container):
             self._time_txt.update()
         except Exception:
             pass
+        self._notify_position_listeners(pos_ms, dur)
 
     def _sync_volume_icon(self) -> None:
         if self._muted or self._volume <= 0.0:
