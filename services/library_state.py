@@ -5,6 +5,7 @@ Independiente de AppState, no contamina transfer. Observer simple.
 
 from __future__ import annotations
 
+import asyncio
 import time
 from pathlib import Path
 from typing import Callable, Dict, Optional
@@ -111,7 +112,7 @@ class LibraryState:
             desc_parts.append(f"Por {manifest.owner}")
         if manifest.description:
             desc_parts.append(manifest.description)
-        covers = list(manifest.cover_urls or ([manifest.img_url] if manifest.img_url else []))
+        covers = manifest.resolved_cover_sources()
         return PlaylistSummary(
             platform=LOCAL_LIBRARY_LABEL,
             id=manifest.path or manifest.manifest_id,
@@ -177,6 +178,39 @@ class LibraryState:
             self.notify()
         return removed
 
+    @staticmethod
+    def _download_manifest_covers(
+        urls: list[str],
+        covers_dir: Path,
+        manifest_id: str,
+        manifests_dir: Path,
+    ) -> list[str]:
+        """Descarga hasta 4 portadas en ``covers_dir`` y devuelve rutas relativas a ``manifests_dir``."""
+        if not urls:
+            return []
+        import requests
+
+        from services.cover_cache import download_image_to
+
+        rel_paths: list[str] = []
+        sess = requests.Session()
+        try:
+            for idx, url in enumerate(urls[:4]):
+                if not url:
+                    continue
+                saved = download_image_to(url, covers_dir, f"{manifest_id}_{idx}", session=sess)
+                if saved is not None and saved.is_file():
+                    try:
+                        rel_paths.append(saved.relative_to(manifests_dir).as_posix())
+                    except ValueError:
+                        rel_paths.append(f"covers/{saved.name}")
+        finally:
+            try:
+                sess.close()
+            except Exception:
+                pass
+        return rel_paths
+
     async def import_playlist_manifest(
         self,
         platform: str,
@@ -189,7 +223,7 @@ class LibraryState:
         external_url: str = "",
     ):
         """Importa una playlist remota como manifiesto local sin descargar audio."""
-        from engine.local_manifests import save_local_manifest
+        from engine.local_manifests import get_local_manifests_dir, manifest_key, save_local_manifest
         from engine.normalizer import normalize_playlist_id
 
         if self.service is None:
@@ -240,6 +274,16 @@ class LibraryState:
         if resolved_covers and not resolved_img:
             resolved_img = resolved_covers[0]
 
+        key = manifest_key(platform, pid, resolved_name)
+        manifests_dir = get_local_manifests_dir()
+        cover_files = await asyncio.to_thread(
+            self._download_manifest_covers,
+            resolved_covers[:4],
+            manifests_dir / "covers",
+            key,
+            manifests_dir,
+        )
+
         manifest = save_local_manifest(
             platform=platform,
             playlist_id=pid,
@@ -248,8 +292,10 @@ class LibraryState:
             description=meta_desc,
             img_url=resolved_img,
             cover_urls=resolved_covers,
+            cover_files=cover_files,
             external_url=external_url,
             tracks=tracks,
+            manifest_id=key,
         )
         self.notify()
         return manifest

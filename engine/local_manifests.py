@@ -183,14 +183,46 @@ class LocalPlaylistManifest:
     description: str = ""
     img_url: str = ""
     cover_urls: list[str] = field(default_factory=list)
+    cover_files: list[str] = field(default_factory=list)
     external_url: str = ""
     tracks: list[Track] = field(default_factory=list)
     created_at: str = ""
     manifest_id: str = ""
     path: str = ""
 
+    def resolved_cover_sources(self, manifests_dir: Path | str | None = None) -> list[str]:
+        """Resuelve portadas locales en disco y cae a URLs remotas si faltan."""
+        base = (
+            Path(self.path).parent.resolve()
+            if self.path
+            else get_local_manifests_dir(manifests_dir).resolve()
+        )
+        local_sources: list[str] = []
+        seen: set[str] = set()
+        for rel in self.cover_files:
+            rel_str = str(rel or "").strip()
+            if not rel_str or Path(rel_str).is_absolute():
+                continue
+            try:
+                candidate = (base / rel_str).resolve()
+                candidate.relative_to(base)
+            except (OSError, ValueError):
+                continue
+            if candidate.is_file():
+                resolved = str(candidate)
+                if resolved not in seen:
+                    seen.add(resolved)
+                    local_sources.append(resolved)
+        if local_sources:
+            return local_sources
+        remote = [str(u) for u in self.cover_urls if str(u or "").strip()]
+        if not remote and self.img_url:
+            remote = [str(self.img_url)]
+        return remote
+
     def to_dict(self) -> dict[str, Any]:
         covers = [str(u) for u in self.cover_urls if u]
+        cover_files = [str(f) for f in self.cover_files if f]
         primary_img = self.img_url or (covers[0] if covers else "")
         if primary_img and not covers:
             covers = [primary_img]
@@ -204,6 +236,7 @@ class LocalPlaylistManifest:
             "description": self.description,
             "img_url": primary_img,
             "cover_urls": covers,
+            "cover_files": cover_files,
             "external_url": self.external_url,
             "created_at": self.created_at,
             "count": len(self.tracks),
@@ -217,6 +250,12 @@ class LocalPlaylistManifest:
         name = str(data.get("name") or "Playlist")
         raw_covers = data.get("cover_urls")
         covers = [str(u) for u in raw_covers if u] if isinstance(raw_covers, list) else []
+        raw_cover_files = data.get("cover_files")
+        cover_files = (
+            [str(f).strip() for f in raw_cover_files if isinstance(f, str) and f.strip()]
+            if isinstance(raw_cover_files, list)
+            else []
+        )
         img_url = str(data.get("img_url") or "") or (covers[0] if covers else "")
         if img_url and not covers:
             covers = [img_url]
@@ -239,6 +278,7 @@ class LocalPlaylistManifest:
             description=str(data.get("description") or ""),
             img_url=img_url,
             cover_urls=covers,
+            cover_files=cover_files,
             external_url=str(data.get("external_url") or ""),
             tracks=tracks,
             created_at=str(data.get("created_at") or ""),
@@ -305,6 +345,7 @@ def save_local_manifest(
     description: str = "",
     img_url: str = "",
     cover_urls: Iterable[str] | None = None,
+    cover_files: Iterable[str] | None = None,
     external_url: str = "",
     tracks: Iterable[Track | dict[str, Any]] = (),
     created_at: str = "",
@@ -330,6 +371,7 @@ def save_local_manifest(
         primary_img = img_url or (covers[0] if covers else "")
         if primary_img and not covers:
             covers = [primary_img]
+        resolved_cover_files = [str(f).strip() for f in (cover_files or ()) if str(f or "").strip()]
         ext_url = external_url or (playlist_url(platform, norm_id) if platform and norm_id else "")
         ts = created_at or time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
         key = manifest_id or manifest_key(platform, norm_id, name)
@@ -341,12 +383,15 @@ def save_local_manifest(
             description=description,
             img_url=primary_img,
             cover_urls=covers,
+            cover_files=resolved_cover_files,
             external_url=ext_url,
             tracks=resolved_tracks,
             created_at=ts,
             manifest_id=key,
         )
     else:
+        if cover_files is not None:
+            manifest.cover_files = [str(f).strip() for f in cover_files if str(f or "").strip()]
         if not manifest.created_at:
             manifest.created_at = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
         if not manifest.manifest_id:
@@ -413,20 +458,60 @@ def list_local_manifests(
     return items
 
 
+def _cleanup_manifest_covers(target: Path, data: Any) -> None:
+    """Elimina las portadas cacheadas asociadas a ``target`` dentro de ``covers/``."""
+    base = target.parent.resolve()
+    covers_dir = (base / "covers").resolve()
+    if not covers_dir.is_dir():
+        return
+
+    candidates: list[Path] = []
+    if isinstance(data, dict) and isinstance(data.get("cover_files"), list):
+        for rel in data["cover_files"]:
+            rel_str = str(rel or "").strip()
+            if not rel_str or Path(rel_str).is_absolute():
+                continue
+            candidates.append(base / rel_str)
+    candidates.extend(covers_dir.glob(f"{target.stem}_*"))
+
+    for raw_cand in candidates:
+        try:
+            cand = raw_cand.resolve()
+            cand.relative_to(covers_dir)
+        except (OSError, ValueError):
+            continue
+        if cand != covers_dir and cand.is_file():
+            try:
+                cand.unlink(missing_ok=True)
+            except OSError:
+                pass
+
+    try:
+        if not any(covers_dir.iterdir()):
+            covers_dir.rmdir()
+    except OSError:
+        pass
+
+
 def remove_local_manifest(
     identifier: str | Path,
     *,
     manifests_dir: Path | str | None = None,
 ) -> bool:
-    """Elimina el archivo JSON de un manifiesto local. Devuelve False si no existía."""
+    """Elimina el archivo JSON de un manifiesto local y sus portadas cacheadas."""
     target = _resolve_target_path(identifier, manifests_dir=manifests_dir)
     if target is None or not target.is_file():
         return False
     try:
+        data = json.loads(target.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        data = None
+    try:
         target.unlink()
-        return True
     except OSError:
         return False
+    _cleanup_manifest_covers(target, data)
+    return True
 
 
 def update_manifest_track_paths(

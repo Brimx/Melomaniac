@@ -125,30 +125,34 @@ def set_album_cover(album_key: str, local_path: Path | str, *, source: str = "")
     _index_save(idx)
 
 
-def ensure_cached(url: str, session: Optional[requests.Session] = None) -> Optional[Path]:
-    """Descarga si no existe, retorna path local o None si falla/límite (fallback remoto)."""
-    if not url or not url.startswith("http"):
+def download_image_to(
+    url: str,
+    dest_dir: Path | str,
+    stem: str,
+    session: Optional[requests.Session] = None,
+) -> Optional[Path]:
+    """Descarga una imagen HTTP(S) de forma atómica en ``dest_dir / <stem><ext>``.
+
+    Devuelve la ruta final o ``None`` si la URL es inválida, falla la descarga,
+    supera ``MAX_BYTES`` o está vacía. No modifica ``INDEX_JSON``.
+    """
+    if not url or not url.startswith(("http://", "https://")):
         return None
-    h = _hash_url(url)
-    # dedup: ya cacheado
-    existing = cached_path_for_url(url)
-    if existing and existing.exists():
-        return existing
-    CACHE_DIR.mkdir(parents=True, exist_ok=True)
-    # descarga temporal
+    target_dir = Path(dest_dir)
+    target_dir.mkdir(parents=True, exist_ok=True)
     sess = session or requests.Session()
+    tmp_path: Optional[Path] = None
     try:
         resp = sess.get(url, timeout=TIMEOUT, stream=True)
         if resp.status_code != 200:
             return None
         ctype = (resp.headers.get("Content-Type") or "").split(";")[0].strip().lower()
         ext = MIME_EXT.get(ctype) or mimetypes.guess_extension(ctype) or ".jpg"
-        # tamaño límite vía header
         clen = resp.headers.get("Content-Length")
         if clen and clen.isdigit() and int(clen) > MAX_BYTES:
             return None
-        tmp_path = CACHE_DIR / f".tmp_{h}{ext}"
-        final_path = CACHE_DIR / f"{h}{ext}"
+        tmp_path = target_dir / f".tmp_{stem}{ext}"
+        final_path = target_dir / f"{stem}{ext}"
         total = 0
         with open(tmp_path, "wb") as f:
             for chunk in resp.iter_content(8192):
@@ -156,40 +160,60 @@ def ensure_cached(url: str, session: Optional[requests.Session] = None) -> Optio
                     continue
                 total += len(chunk)
                 if total > MAX_BYTES:
-                    f.close()
-                    try:
-                        tmp_path.unlink()
-                    except Exception:
-                        pass
                     return None
                 f.write(chunk)
-        # tamaño real
         try:
             sz = tmp_path.stat().st_size
             if sz == 0 or sz > MAX_BYTES:
                 tmp_path.unlink(missing_ok=True)
                 return None
-        except Exception:
-            pass
+        except OSError:
+            return None
         os.replace(tmp_path, final_path)
-        # actualiza índice. Solo se escribe la clave hash: `cached_path_for_url`
-        # sigue aceptando la clave-URL de índices legacy, pero duplicar cada
-        # entrada al escribir duplicaba el tamaño del índice sin ganar lookup.
-        idx = _index_load()
-        idx[h] = {
-            "url": url,
-            "local_path": str(final_path),
-            "mime": ctype or "image/jpeg",
-            "size": total,
-            "cached_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-        }
-        _index_save(idx)
+        tmp_path = None
         return final_path
     except Exception:
         return None
     finally:
+        if tmp_path is not None:
+            try:
+                tmp_path.unlink(missing_ok=True)
+            except OSError:
+                pass
         if session is None:
             try:
                 sess.close()
             except Exception:
                 pass
+
+
+def ensure_cached(url: str, session: Optional[requests.Session] = None) -> Optional[Path]:
+    """Descarga si no existe, retorna path local o None si falla/límite (fallback remoto)."""
+    if not url or not url.startswith(("http://", "https://")):
+        return None
+    h = _hash_url(url)
+    # dedup: ya cacheado
+    existing = cached_path_for_url(url)
+    if existing and existing.exists():
+        return existing
+    final_path = download_image_to(url, CACHE_DIR, h, session=session)
+    if final_path is None:
+        return None
+    try:
+        total = final_path.stat().st_size
+    except OSError:
+        total = 0
+    mime = mimetypes.guess_type(final_path.name)[0] or "image/jpeg"
+    # actualiza índice. Solo se escribe la clave hash: `cached_path_for_url`
+    # sigue aceptando la clave-URL de índices legacy, pero duplicar cada
+    # entrada al escribir duplicaba el tamaño del índice sin ganar lookup.
+    idx = _index_load()
+    idx[h] = {
+        "url": url,
+        "local_path": str(final_path),
+        "mime": mime,
+        "size": total,
+        "cached_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+    }
+    _index_save(idx)
+    return final_path

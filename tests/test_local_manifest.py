@@ -508,6 +508,149 @@ class TestLibraryViewManifestUI(unittest.TestCase):
                 self.assertEqual(manifest.cover_urls, ["https://img.example/exact_playlist_cover.jpg"])
                 self.assertEqual(manifest.img_url, "https://img.example/exact_playlist_cover.jpg")
 
+    def test_manifest_cover_files_resolution_fallback_and_cleanup(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            cfg_dir = Path(tmp) / "cfg"
+            with mock.patch.object(authentication, "CONFIG_DIR", cfg_dir):
+                manifests_dir = local_manifests.get_local_manifests_dir()
+                covers_dir = manifests_dir / "covers"
+                covers_dir.mkdir(parents=True)
+
+                key_a = local_manifests.manifest_key("Apple Music", "pl.u-123", "Apple Mix")
+                cover_a = covers_dir / f"{key_a}_0.jpg"
+                cover_a.write_bytes(b"jpeg-bytes")
+
+                key_b = local_manifests.manifest_key("Spotify", "sp_keep", "Keep Mix")
+                cover_b = covers_dir / f"{key_b}_0.jpg"
+                cover_b.write_bytes(b"keep-bytes")
+
+                # Ruta de traversal debe ser ignorada por resolved_cover_sources
+                secret = manifests_dir / "secret.txt"
+                secret.write_text("nope", encoding="utf-8")
+
+                saved_a = local_manifests.save_local_manifest(
+                    platform="Apple Music",
+                    playlist_id="pl.u-123",
+                    name="Apple Mix",
+                    img_url="https://is1-ssl.mzstatic.com/expired.jpg",
+                    cover_urls=["https://is1-ssl.mzstatic.com/expired.jpg"],
+                    cover_files=["../secret.txt", f"covers/{key_a}_0.jpg"],
+                    manifest_id=key_a,
+                )
+                saved_b = local_manifests.save_local_manifest(
+                    platform="Spotify",
+                    playlist_id="sp_keep",
+                    name="Keep Mix",
+                    img_url="https://img.example/keep.jpg",
+                    cover_files=[f"covers/{key_b}_0.jpg"],
+                    manifest_id=key_b,
+                )
+
+                reloaded_a = local_manifests.load_local_manifest(key_a)
+                self.assertIsNotNone(reloaded_a)
+                assert reloaded_a is not None
+                self.assertEqual(reloaded_a.resolved_cover_sources(), [str(cover_a.resolve())])
+
+                # Si falta el archivo en disco, cae a URL remota
+                cover_a.unlink()
+                self.assertEqual(
+                    reloaded_a.resolved_cover_sources(),
+                    ["https://is1-ssl.mzstatic.com/expired.jpg"],
+                )
+
+                # Recrear cover_a para verificar limpieza al borrar manifiesto
+                cover_a.write_bytes(b"jpeg-bytes")
+                self.assertTrue(local_manifests.remove_local_manifest(saved_a.manifest_id))
+                self.assertFalse(cover_a.exists())
+                # La portada de otro manifiesto no se borra
+                self.assertTrue(cover_b.exists())
+
+                # Al borrar el último manifiesto con portada, covers/ vacío se elimina
+                self.assertTrue(local_manifests.remove_local_manifest(saved_b.manifest_id))
+                self.assertFalse(cover_b.exists())
+                self.assertFalse(covers_dir.exists())
+
+    def test_import_manifest_caches_covers_and_falls_back_when_offline(self) -> None:
+        import asyncio
+        from unittest.mock import AsyncMock, MagicMock, patch
+
+        with tempfile.TemporaryDirectory() as tmp:
+            cfg = Path(tmp) / "cfg"
+            cfg.mkdir()
+
+            def _fake_download(url: str, dest_dir: Path | str, stem: str, session=None):
+                if "fail" in url:
+                    return None
+                d = Path(dest_dir)
+                d.mkdir(parents=True, exist_ok=True)
+                out = d / f"{stem}.jpg"
+                out.write_bytes(b"img")
+                return out
+
+            with patch.object(authentication, "CONFIG_DIR", cfg), \
+                 patch("services.library_state.load_library", return_value={}), \
+                 patch("services.cover_cache.download_image_to", side_effect=_fake_download):
+                state = LibraryState()
+                service = MagicMock()
+                service.fetch_playlist = AsyncMock(
+                    return_value=(
+                        PlaylistMeta(name="Apple Mix", description="desc"),
+                        [
+                            Track(
+                                id="am1",
+                                name="Song",
+                                artist="Artist",
+                                album="Alb",
+                                duration="3:00",
+                                img_url="https://is1-ssl.mzstatic.com/ok.jpg",
+                                platform="Apple Music",
+                            )
+                        ],
+                    )
+                )
+                state.set_service(service)
+
+                manifest = asyncio.run(
+                    state.import_playlist_manifest(
+                        "Apple Music",
+                        "https://music.apple.com/us/playlist/mix/pl.u-apple1",
+                    )
+                )
+                self.assertEqual(len(manifest.cover_files), 1)
+                self.assertTrue(manifest.cover_files[0].startswith("covers/"))
+                summaries = state.imported_manifest_summaries()
+                self.assertEqual(len(summaries), 1)
+                self.assertTrue(Path(summaries[0].cover_urls[0]).is_file())
+
+                # Offline / fallo de descarga: no aborta y conserva URL remota como fallback
+                service.fetch_playlist = AsyncMock(
+                    return_value=(
+                        PlaylistMeta(name="Offline Mix", description="desc"),
+                        [
+                            Track(
+                                id="am2",
+                                name="Song 2",
+                                artist="Artist",
+                                album="Alb",
+                                duration="3:00",
+                                img_url="https://is1-ssl.mzstatic.com/fail.jpg",
+                                platform="Apple Music",
+                            )
+                        ],
+                    )
+                )
+                manifest_off = asyncio.run(
+                    state.import_playlist_manifest(
+                        "Apple Music",
+                        "https://music.apple.com/us/playlist/mix/pl.u-apple2",
+                    )
+                )
+                self.assertEqual(manifest_off.cover_files, [])
+                self.assertEqual(
+                    manifest_off.resolved_cover_sources(),
+                    ["https://is1-ssl.mzstatic.com/fail.jpg"],
+                )
+
 
 if __name__ == "__main__":
     unittest.main()

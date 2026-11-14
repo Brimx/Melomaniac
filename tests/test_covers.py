@@ -103,5 +103,43 @@ class AcceptableCoverTest(unittest.TestCase):
         self.assertFalse(is_acceptable_cover(None))
 
 
+class DownloadImageToTest(unittest.TestCase):
+    def test_downloads_atomically_with_mime_extension(self) -> None:
+        import tempfile
+        from unittest import mock
+        from services.cover_cache import download_image_to
+
+        resp = mock.MagicMock()
+        resp.status_code = 200
+        resp.headers = {"Content-Type": "image/png", "Content-Length": "4"}
+        resp.iter_content.return_value = [b"\x89PNG"]
+        sess = mock.MagicMock()
+        sess.get.return_value = resp
+
+        with tempfile.TemporaryDirectory() as tmp:
+            dest = Path(tmp) / "covers"
+            out = download_image_to("https://img.example/a.png", dest, "pl_0", session=sess)
+            self.assertEqual(out, dest / "pl_0.png")
+            self.assertTrue(out.is_file())
+            self.assertEqual(out.read_bytes(), b"\x89PNG")
+            self.assertEqual(list(dest.glob(".tmp_*")), [])
+
+    def test_rejects_http_error_and_invalid_url(self) -> None:
+        import tempfile
+        from unittest import mock
+        from services.cover_cache import download_image_to
+
+        resp = mock.MagicMock()
+        resp.status_code = 404
+        sess = mock.MagicMock()
+        sess.get.return_value = resp
+
+        with tempfile.TemporaryDirectory() as tmp:
+            dest = Path(tmp) / "covers"
+            self.assertIsNone(download_image_to("https://img.example/missing.jpg", dest, "pl_0", session=sess))
+            self.assertIsNone(download_image_to("file:///etc/passwd", dest, "pl_0", session=sess))
+            self.assertEqual(list(dest.glob("*")), [])
+
+
 if __name__ == "__main__":
     unittest.main()
