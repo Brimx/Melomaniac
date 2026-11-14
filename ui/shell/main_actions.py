@@ -56,9 +56,7 @@ class ActionsController:
 
     def _on_row_download(self, track_id: str) -> None:
         ui = self._ui
-        if ui.state.download_state == TransferState.RUNNING:
-            ui._snack("Descarga en curso", error=True)
-            return
+        was_running = getattr(ui.state, "download_state", None) == TransferState.RUNNING
         target = next((t for t in ui.state.tracks if t.id == track_id), None)
         if target is None:
             target = next((t for t in ui.state.source_tracks if t.id == track_id), None)
@@ -70,17 +68,19 @@ class ActionsController:
                 [target],
                 **self._playlist_download_context([target]),
             )
-            ui._snack(f"Descargando: {target.artist} — {target.name}")
+            ui._snack(
+                f"En cola de descargas: {target.artist} — {target.name}"
+                if was_running
+                else f"Descargando: {target.artist} — {target.name}"
+            )
         except Exception as exc:  # noqa: BLE001
             ui._auto_play_download_ids.discard(target.id)
             ui._snack(f"No se pudo iniciar la descarga: {exc}", error=True)
 
     def _on_batch_download(self) -> None:
-        """Descarga en lote las pistas seleccionadas que no sean archivos locales."""
+        """Descarga o encola en lote las pistas seleccionadas que no sean archivos locales."""
         ui = self._ui
-        if ui.state.download_state == TransferState.RUNNING:
-            ui._snack("Descarga en curso", error=True)
-            return
+        was_running = getattr(ui.state, "download_state", None) == TransferState.RUNNING
         selected = [t for t in ui.state.tracks if t.selected]
         if not selected:
             ui._snack("Selecciona al menos una canción", error=True)
@@ -94,7 +94,11 @@ class ActionsController:
                 to_download,
                 **self._playlist_download_context(to_download),
             )
-            ui._snack(f"Descargando {len(to_download)} canciones…")
+            ui._snack(
+                f"Añadidas {len(to_download)} canciones a la cola de descargas"
+                if was_running
+                else f"Descargando {len(to_download)} canciones…"
+            )
         except Exception as exc:  # noqa: BLE001
             ui._snack(f"No se pudo iniciar la descarga: {exc}", error=True)
 

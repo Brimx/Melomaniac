@@ -214,5 +214,62 @@ class CrossDownloadManifestTest(unittest.TestCase):
             self.assertEqual(by_id["own_1"]["path"], str(own_file))
 
 
+class DynamicDownloadQueueTest(unittest.TestCase):
+    def test_enqueues_tracks_while_running_and_completes_per_batch(self) -> None:
+        import asyncio
+        import tempfile
+        import time
+        from types import SimpleNamespace
+        from core.models import TransferState
+
+        async def _run() -> None:
+            with tempfile.TemporaryDirectory() as tmp:
+                st = _state()
+                t1 = Track(id="t1", name="Song 1", artist="Art 1", album="", duration="3:00", img_url="", platform="Spotify")
+                t2 = Track(id="t2", name="Song 2", artist="Art 2", album="", duration="3:00", img_url="", platform="Spotify")
+                t3 = Track(id="t3", name="Song 3", artist="Art 3", album="", duration="3:00", img_url="", platform="Spotify")
+
+                active_now = 0
+                max_parallel = 0
+
+                def _fake_download_audio(track, destination_dir=None, audio_format="mp3", **_kw):
+                    nonlocal active_now, max_parallel
+                    active_now += 1
+                    max_parallel = max(max_parallel, active_now)
+                    try:
+                        # t1 termina rápido, t2 y t3 tardan un poco más
+                        time.sleep(0.03 if track.id == "t1" else 0.08)
+                        out = Path(destination_dir) / f"{track.id}.{audio_format}"
+                        out.write_bytes(b"audio")
+                        return SimpleNamespace(ok=True, path=str(out), video_id=f"vid_{track.id}", skipped=False, code="", error="")
+                    finally:
+                        active_now -= 1
+
+                with mock.patch("engine.downloader.ffmpeg_available", return_value=True), \
+                     mock.patch("engine.downloader.download_audio", side_effect=_fake_download_audio), \
+                     mock.patch("services.settings_store.get_covers_online", return_value=False):
+                    task1 = st.download_tracks([t1], destination_dir=tmp, playlist_name="Lista", platform="Spotify")
+                    await asyncio.sleep(0.005)
+                    # Mientras t1 está corriendo, encolamos t2 y t3 individualmente
+                    self.assertEqual(st.download_state, TransferState.RUNNING)
+                    task2 = st.download_tracks([t2], destination_dir=tmp, playlist_name="Lista", platform="Spotify")
+                    task3 = st.download_tracks([t3], destination_dir=tmp, playlist_name="Lista", platform="Spotify")
+                    # Duplicado en caliente reutiliza el mismo future sin inflar download_total
+                    task2_dup = st.download_tracks([t2], destination_dir=tmp, playlist_name="Lista", platform="Spotify")
+                    self.assertEqual(st.download_total, 3)
+
+                    await task1
+                    # Cuando task1 retorna, t1 ya tiene archivo en disco aunque t3 siga en curso
+                    self.assertTrue(bool(t1.source_path and Path(t1.source_path).is_file()))
+
+                    await asyncio.gather(task2, task3, task2_dup)
+                    self.assertEqual(st.download_state, TransferState.DONE)
+                    self.assertEqual(len(st.download_done), 3)
+                    self.assertGreaterEqual(max_parallel, 2)
+                    self.assertLessEqual(max_parallel, 2)
+
+        asyncio.run(_run())
+
+
 if __name__ == "__main__":
     unittest.main()

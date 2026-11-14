@@ -209,7 +209,7 @@ class DivisionController:
         # estado local mutable — §7 División activa vs seleccionadas para transferir
         selected: set[str] = set(s.active_segment_keys) if s.active_segment_keys is not None else set(s.segments.keys())
 
-        search_field = app_text_field(hint_text="Buscar división…", prefix_icon=PIcons.MAGNIFYING_GLASS, expand=True, height=36, content_padding=ft.Padding.symmetric(horizontal=10, vertical=6))
+        search_field = app_text_field(hint_text="Buscar división…", prefix_icon=PIcons.MAGNIFYING_GLASS, height=36, content_padding=ft.Padding.symmetric(horizontal=10, vertical=6))
         list_view = ft.ListView(spacing=4, padding=ft.Padding.all(4), expand=True)
 
         def _rebuild(filter_q: str = ""):
@@ -301,7 +301,7 @@ class DivisionController:
         src_tracks = getattr(s, "source_tracks", s.tracks) or s.tracks
         div_tracks = s.segments.get(active, [])
         # nombre editable de la división (playlist derivada)
-        name_field = app_text_field(value=active, label="Nombre división", hint_text=active, expand=True, height=36, content_padding=ft.Padding.symmetric(horizontal=8, vertical=4))
+        name_field = app_text_field(value=active, label="Nombre división", hint_text=active, height=36, content_padding=ft.Padding.symmetric(horizontal=8, vertical=4))
         def _on_name(e):
             nonlocal active
             new = (e.control.value or "").strip()

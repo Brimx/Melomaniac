@@ -40,6 +40,7 @@ from ui.components.widgets import (
     close_dialog,
     dialog_action,
     app_dialog,
+    set_button_text,
 )
 
 CONTENT_W = 420
@@ -246,11 +247,7 @@ class PlaylistMetaDialog:
                 return
             all_seen = len(self._visited) >= len(self._divisions)
             label = "Crear y transferir" if all_seen else "Siguiente"
-            # dialog_action returns TextButton with text attr
-            try:
-                self._primary_btn.text = label  # type: ignore
-            except Exception:
-                pass
+            set_button_text(self._primary_btn, label)
             try:
                 self._primary_btn.update()
             except Exception:

@@ -683,9 +683,7 @@ class CatalogController:
 
     def _download_catalog_tracks(self, tracks: list[Track], title: str) -> None:
         ui = self._ui
-        if ui.state.download_state == TransferState.RUNNING:
-            ui._snack("Descarga en curso", error=True)
-            return
+        was_running = getattr(ui.state, "download_state", None) == TransferState.RUNNING
         from services import settings_store
 
         platforms = {t.platform for t in tracks if getattr(t, "platform", "")}
@@ -695,4 +693,8 @@ class CatalogController:
             playlist_name=title or "",
             platform=platforms.pop() if len(platforms) == 1 else "",
         )
-        ui._snack(f"Descargando {len(tracks)} canciones…")
+        ui._snack(
+            f"Añadidas {len(tracks)} canciones a la cola de descargas"
+            if was_running
+            else f"Descargando {len(tracks)} canciones…"
+        )

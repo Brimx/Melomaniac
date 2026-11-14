@@ -702,6 +702,10 @@ class TestPlaylistDetailViewFeatures(unittest.TestCase):
                         self.assertTrue(detail._has_file_by_id.get(id(t3), False))
                         self.assertTrue(detail._has_file_by_id.get(id(t4), False))
                         self.assertEqual(detail._playlist_download_identity(), ("Mi Manifiesto", "Apple Music"))
+                        # Regresión: _batch_bar no debe usar wrap=True con Container(expand=True)
+                        self.assertFalse(bool(getattr(detail._batch_bar.content, "wrap", False)))
+                        # Regresión: set_button_text actualiza el texto dentro de ft.Row
+                        self.assertEqual(detail._play_all_btn.content.controls[-1].value, "Reproducir (3)")
 
                         # Lote: solo pide la pista faltante hacia su subcarpeta de playlist
                         detail._on_download()
@@ -712,8 +716,9 @@ class TestPlaylistDetailViewFeatures(unittest.TestCase):
                         await asyncio.sleep(0.05)
                         self.assertTrue(detail._has_file_by_id.get(id(t1), False))
 
-                        # Descarga individual: también enruta a la carpeta de la playlist
+                        # Descarga individual: permite encolar aun con RUNNING activo
                         app_state.download_tracks.reset_mock()
+                        app_state.download_state = TransferState.RUNNING
                         t_single = Track(id="id_5", name="Track 5", artist="Artist 5", album="Alb 5", duration="3:00", img_url="", platform="Apple Music")
                         detail._download_single_track(t_single, ft.Container())
                         await asyncio.sleep(0.05)

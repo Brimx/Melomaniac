@@ -17,6 +17,234 @@ class DownloadRunner:
 
     def __init__(self, state) -> None:
         self._state = state
+        self._active_session: dict | None = None
+
+    def _resolve_fmt_and_dir(
+        self,
+        audio_format: str,
+        destination_dir: str,
+        playlist_name: str,
+        platform: str,
+    ):
+        from core.config import AUDIO_BITRATES, DEFAULT_AUDIO_FORMAT
+        from engine.downloader import resolve_download_dir, resolve_playlist_dir
+
+        fmt = (audio_format or DEFAULT_AUDIO_FORMAT).lower().lstrip(".")
+        if fmt not in AUDIO_BITRATES:
+            fmt = DEFAULT_AUDIO_FORMAT
+        if playlist_name:
+            target_dir = resolve_playlist_dir(
+                destination_dir or None, playlist_name, platform
+            )
+        else:
+            target_dir = resolve_download_dir(destination_dir or None)
+        return fmt, target_dir
+
+    def _enqueue_into_session(
+        self,
+        session: dict,
+        tracks: list[Track],
+        *,
+        audio_format: str = "",
+        destination_dir: str = "",
+        playlist_name: str = "",
+        platform: str = "",
+        pinned_video_id: str = "",
+        is_initial: bool = False,
+    ) -> list[asyncio.Future]:
+        loop = asyncio.get_running_loop()
+        fmt, target_dir = self._resolve_fmt_and_dir(
+            audio_format, destination_dir, playlist_name, platform
+        )
+        batch_futures: list[asyncio.Future] = []
+        added_count = 0
+        for t in tracks:
+            tid = id(t)
+            existing_fut = session["track_futures"].get(tid)
+            existing_item = session["items"].get(tid)
+            if (
+                existing_fut is not None
+                and not existing_fut.done()
+                and existing_item is not None
+                and existing_item.get("status") in ("queued", "running")
+            ):
+                batch_futures.append(existing_fut)
+                continue
+            if not pinned_video_id:
+                t_key = (
+                    str(t.id or "").strip(),
+                    str(t.name or "").strip().lower(),
+                    str(t.artist or "").strip().lower(),
+                )
+                dup_tid = session["active_keys"].get(t_key) if any(t_key) else None
+                if dup_tid is not None:
+                    dup_fut = session["track_futures"].get(dup_tid)
+                    dup_item = session["items"].get(dup_tid)
+                    if (
+                        dup_fut is not None
+                        and not dup_fut.done()
+                        and dup_item is not None
+                        and dup_item.get("status") in ("queued", "running")
+                    ):
+                        batch_futures.append(dup_fut)
+                        continue
+                if any(t_key):
+                    session["active_keys"][t_key] = tid
+
+            fut = loop.create_future()
+            session["track_futures"][tid] = fut
+            item = {
+                "id": t.id,
+                "title": f"{t.artist} — {t.name}",
+                "status": "queued",
+                "percent": 0.0,
+                "error": "",
+            }
+            session["items"][tid] = item
+            self._state.download_items.append(item)
+            session["queued"].append(t)
+            if playlist_name:
+                grp_key = (str(target_dir), playlist_name, platform)
+                session["manifest_groups"].setdefault(grp_key, (target_dir, []))[1].append(t)
+            self._state.download_total += 1
+            session["pending_jobs"].append(
+                (t, target_dir, fmt, playlist_name, platform, pinned_video_id, destination_dir)
+            )
+            batch_futures.append(fut)
+            added_count += 1
+
+        if not is_initial and added_count > 0:
+            self._state._log(
+                f"[INFO] Cola de descargas · +{added_count} pista(s) encolada(s) "
+                f"(total: {self._state.download_total})"
+            )
+            session["wake_event"].set()
+            self._state.notify()
+        return batch_futures
+
+    def _start_or_enqueue(
+        self,
+        tracks: list[Track],
+        *,
+        audio_format: str = "",
+        destination_dir: str = "",
+        playlist_name: str = "",
+        platform: str = "",
+        pinned_video_id: str = "",
+    ) -> asyncio.Task:
+        selected = list(tracks or [])
+        if not selected:
+            if self._state._download_task is not None and not self._state._download_task.done():
+                return self._state._download_task
+            self._state._download_task = asyncio.create_task(
+                self._run_downloads(
+                    [],
+                    audio_format=audio_format,
+                    destination_dir=destination_dir,
+                    playlist_name=playlist_name,
+                    platform=platform,
+                    pinned_video_id=pinned_video_id,
+                )
+            )
+            return self._state._download_task
+
+        if (
+            self._state._download_task is not None
+            and not self._state._download_task.done()
+            and self._active_session is not None
+            and not self._state.download_paused
+        ):
+            session = self._active_session
+            batch_futures = self._enqueue_into_session(
+                session,
+                selected,
+                audio_format=audio_format or self._state.audio_format,
+                destination_dir=destination_dir,
+                playlist_name=playlist_name,
+                platform=platform,
+                pinned_video_id=pinned_video_id,
+                is_initial=False,
+            )
+            return self._build_batch_wait_task(session, batch_futures)
+
+        fmt, target_dir = self._resolve_fmt_and_dir(
+            audio_format, destination_dir, playlist_name, platform
+        )
+        self._state.audio_format      = fmt
+        self._state.download_dir      = str(target_dir)
+        self._state.download_state    = TransferState.RUNNING
+        self._state.download_progress = 0
+        self._state.download_total    = 0
+        self._state.download_current  = ""
+        self._state.download_done     = []
+        self._state.download_skipped  = []
+        self._state.download_failed   = []
+        self._state.download_missing  = []
+        self._state.download_items    = []
+        self._state._download_cancel  = asyncio.Event()
+        self._state._download_pause   = asyncio.Event()
+        self._state.download_paused   = False
+        self._state._download_pending_tracks = []
+        self._state._download_resume_ctx = {
+            "format": fmt,
+            "destination_dir": str(destination_dir or ""),
+            "playlist_name": playlist_name,
+            "platform": platform,
+        }
+        session = {
+            "items": {},
+            "track_futures": {},
+            "active_keys": {},
+            "queued": [],
+            "pending_jobs": [],
+            "manifest_groups": {},
+            "wake_event": asyncio.Event(),
+            "cancel": self._state._download_cancel,
+            "pause": self._state._download_pause,
+            "initial_fmt": fmt,
+            "initial_target_dir": target_dir,
+        }
+        self._active_session = session
+        batch_futures = self._enqueue_into_session(
+            session,
+            selected,
+            audio_format=fmt,
+            destination_dir=destination_dir,
+            playlist_name=playlist_name,
+            platform=platform,
+            pinned_video_id=pinned_video_id,
+            is_initial=True,
+        )
+        self._state._download_task = asyncio.create_task(
+            self._run_downloads(
+                selected,
+                audio_format=fmt,
+                destination_dir=destination_dir,
+                playlist_name=playlist_name,
+                platform=platform,
+                pinned_video_id=pinned_video_id,
+                _session=session,
+            )
+        )
+        return self._build_batch_wait_task(session, batch_futures)
+
+    def _build_batch_wait_task(
+        self, session: dict, batch_futures: list[asyncio.Future]
+    ) -> asyncio.Task:
+        async def _wait_batch() -> None:
+            if batch_futures:
+                await asyncio.gather(*batch_futures, return_exceptions=True)
+            if not session["pending_jobs"] and all(
+                f.done() for f in session["track_futures"].values()
+            ):
+                dl_task = self._state._download_task
+                if dl_task is not None and not dl_task.done():
+                    try:
+                        await dl_task
+                    except Exception:
+                        pass
+
+        return asyncio.create_task(_wait_batch())
 
     def download_selected(
         self,
@@ -62,29 +290,19 @@ class DownloadRunner:
         playlist_name: str = "",
         platform: str = "",
     ) -> asyncio.Task:
-        """Lanza la descarga de una lista arbitraria de pistas.
+        """Lanza o encola la descarga de una lista arbitraria de pistas.
 
-        Reutiliza la misma cola que ``download_selected``; Biblioteca la usa
-        para bajar una playlist completa sin cargarla en Gestión.
-
-        Args:
-            playlist_name: Si se indica, las pistas van a una subcarpeta con
-                ese nombre dentro de ``destination_dir`` y se escribe
-                ``playlist.json`` con el orden original.
-            platform: Plataforma de origen, para nombrar la subcarpeta.
-
-        Returns:
-            La tarea creada, o la en curso si ya hay una descarga activa.
+        Si ya hay una sesión de descarga activa, encola las pistas nuevas en
+        caliente sobre el mismo semáforo de concurrencia (``DOWNLOAD_CONCURRENCY``)
+        y devuelve una tarea que se completa en cuanto este lote termina.
         """
-        if self._state._download_task is not None and not self._state._download_task.done():
-            return self._state._download_task
-        self._state._download_task = asyncio.create_task(
-            self._run_downloads(
-                list(tracks), audio_format=audio_format, destination_dir=destination_dir,
-                playlist_name=playlist_name, platform=platform,
-            )
+        return self._start_or_enqueue(
+            list(tracks),
+            audio_format=audio_format,
+            destination_dir=destination_dir,
+            playlist_name=playlist_name,
+            platform=platform,
         )
-        return self._state._download_task
 
     def cancel_downloads(self) -> None:
         """Marca la descarga en curso para que se detenga en la próxima pista."""
@@ -155,17 +373,9 @@ class DownloadRunner:
     async def _run_downloads(
         self, selected: list[Track], *, audio_format: str = "", destination_dir: str = "",
         playlist_name: str = "", platform: str = "", pinned_video_id: str = "",
+        _session: dict | None = None,
     ) -> None:
-        """Ejecuta la cola de descargas con concurrencia acotada.
-
-        Implementa la fase 1 del pendiente de Descargas: módulo de descarga
-        con ``yt_dlp`` como librería, caché en disco y cancelación. El
-        progreso se publica por pista para que la UI muestre avance real.
-
-        Con ``playlist_name`` las pistas van a una subcarpeta propia y se deja
-        un manifiesto con el orden original: una carpeta plana mezclaba listas
-        distintas y todos los ``cover.jpg`` acababan en el mismo sitio.
-        """
+        """Ejecuta la cola de descargas con concurrencia acotada y encolado dinámico."""
         from core.config import (
             AUDIO_BITRATES,
             DEFAULT_AUDIO_FORMAT,
@@ -176,49 +386,74 @@ class DownloadRunner:
             resolve_download_dir, resolve_playlist_dir, write_playlist_manifest,
         )
 
-        if not selected:
+        if not selected and (_session is None or not _session.get("queued")):
             return
 
-        fmt = (audio_format or DEFAULT_AUDIO_FORMAT).lower().lstrip(".")
-        if fmt not in AUDIO_BITRATES:
-            fmt = DEFAULT_AUDIO_FORMAT
-        if playlist_name:
-            target_dir = resolve_playlist_dir(
-                destination_dir or None, playlist_name, platform
+        if _session is None:
+            fmt = (audio_format or DEFAULT_AUDIO_FORMAT).lower().lstrip(".")
+            if fmt not in AUDIO_BITRATES:
+                fmt = DEFAULT_AUDIO_FORMAT
+            if playlist_name:
+                target_dir = resolve_playlist_dir(
+                    destination_dir or None, playlist_name, platform
+                )
+            else:
+                target_dir = resolve_download_dir(destination_dir or None)
+
+            self._state.audio_format      = fmt
+            self._state.download_dir      = str(target_dir)
+            self._state.download_state    = TransferState.RUNNING
+            self._state.download_progress = 0
+            self._state.download_total    = 0
+            self._state.download_current  = ""
+            self._state.download_done     = []
+            self._state.download_skipped  = []
+            self._state.download_failed   = []
+            self._state.download_missing  = []
+            self._state.download_items    = []
+            self._state._download_cancel  = asyncio.Event()
+            self._state._download_pause   = asyncio.Event()
+            self._state.download_paused   = False
+            self._state._download_pending_tracks = []
+            self._state._download_resume_ctx = {
+                "format": fmt,
+                "destination_dir": str(destination_dir or ""),
+                "playlist_name": playlist_name,
+                "platform": platform,
+            }
+            session = {
+                "items": {},
+                "track_futures": {},
+                "active_keys": {},
+                "queued": [],
+                "pending_jobs": [],
+                "manifest_groups": {},
+                "wake_event": asyncio.Event(),
+                "cancel": self._state._download_cancel,
+                "pause": self._state._download_pause,
+                "initial_fmt": fmt,
+                "initial_target_dir": target_dir,
+            }
+            self._active_session = session
+            self._enqueue_into_session(
+                session,
+                selected,
+                audio_format=fmt,
+                destination_dir=destination_dir,
+                playlist_name=playlist_name,
+                platform=platform,
+                pinned_video_id=pinned_video_id,
+                is_initial=True,
             )
         else:
-            target_dir = resolve_download_dir(destination_dir or None)
+            session = _session
+            fmt = session["initial_fmt"]
+            target_dir = session["initial_target_dir"]
 
-        self._state.audio_format      = fmt
-        self._state.download_dir      = str(target_dir)
-        self._state.download_state    = TransferState.RUNNING
-        self._state.download_progress = 0
-        self._state.download_total    = len(selected)
-        self._state.download_current  = ""
-        self._state.download_done     = []
-        self._state.download_skipped  = []
-        self._state.download_failed   = []
-        self._state.download_missing  = []
-        items = {
-            id(t): {"id": t.id, "title": f"{t.artist} — {t.name}", "status": "queued",
-                    "percent": 0.0, "error": ""}
-            for t in selected
-        }
-        self._state.download_items    = list(items.values())
-        self._state._download_cancel  = asyncio.Event()
-        self._state._download_pause   = asyncio.Event()
-        cancel = self._state._download_cancel
-        pause = self._state._download_pause
-        # Contexto para reanudar exactamente esta cola, no otra.
-        self._state.download_paused = False
-        self._state._download_pending_tracks = []
-        self._state._download_resume_ctx = {
-            "format": fmt,
-            "destination_dir": str(destination_dir or ""),
-            "playlist_name": playlist_name,
-            "platform": platform,
-        }
-        queued = list(selected)
+        items = session["items"]
+        queued = session["queued"]
+        cancel = session["cancel"]
+        pause = session["pause"]
 
         # Sin FFmpeg toda la cola fallaría igual pista por pista. Se marca de
         # una vez para que la UI muestre un solo diagnóstico accionable.
@@ -227,8 +462,6 @@ class DownloadRunner:
             for item in self._state.download_items:
                 item["status"] = "failed"
                 item["error"] = message
-            # Misma forma que una falla real para que el panel de resultados
-            # pueda renderizarlas y reintentarlas sin un caso especial.
             self._state.download_failed = [
                 {
                     "id": t.id, "name": t.name, "artist": t.artist,
@@ -236,22 +469,24 @@ class DownloadRunner:
                     "duration_ms": t.duration_ms, "isrc": t.isrc,
                     "error": message, "format": fmt, "_track": t,
                 }
-                for t in selected
+                for t in queued
             ]
             self._state.download_progress = self._state.download_total
             self._state.download_state    = TransferState.DONE
             self._state._log(f"[ERROR] Descargas canceladas · {message}")
+            for fut in session["track_futures"].values():
+                if not fut.done():
+                    fut.set_result(False)
+            if self._active_session is session:
+                self._active_session = None
             self._state.notify()
             return
 
         self._state._log(
-            f"[INFO] Descargas · {len(selected)} pistas → {fmt.upper()} en {target_dir}"
+            f"[INFO] Descargas · {len(queued)} pistas → {fmt.upper()} en {target_dir}"
         )
         self._state.notify()
 
-        # Un único resolver por cola: su memo por álbum evita repetir la
-        # consulta para cada pista del mismo disco. ``engine`` no puede
-        # importar ``services``, así que la cadena se inyecta aquí.
         cover_resolver = None
         artwork_fetcher = None
         try:
@@ -265,26 +500,12 @@ class DownloadRunner:
         except Exception as exc:  # noqa: BLE001 - portadas nunca bloquean la cola
             self._state._log(f"[WARN] Portadas online no disponibles: {exc}")
 
-        dl_dir_arg = destination_dir
         local_folders_arg: tuple[str, ...] = ()
-        if not pinned_video_id:
-            try:
-                from services import settings_store
-                from services.local_index import match_tracks_against_library
-
-                if not dl_dir_arg:
-                    dl_dir_arg = settings_store.get_download_dir()
-                local_folders_arg = tuple(settings_store.get_local_folders())
-                await asyncio.to_thread(
-                    match_tracks_against_library,
-                    selected,
-                    download_dir=dl_dir_arg,
-                    local_folders=local_folders_arg,
-                    playlist_name=playlist_name,
-                    platform=platform,
-                )
-            except Exception:
-                pass
+        try:
+            from services import settings_store
+            local_folders_arg = tuple(settings_store.get_local_folders())
+        except Exception:
+            pass
 
         semaphore = asyncio.Semaphore(max(1, DOWNLOAD_CONCURRENCY))
         lock = asyncio.Lock()
@@ -298,12 +519,19 @@ class DownloadRunner:
                 last_push[0] = now
                 self._state.notify()
 
-        async def _one(track: Track) -> None:
+        async def _one(
+            track: Track,
+            job_target_dir,
+            job_fmt: str,
+            job_playlist_name: str,
+            job_platform: str,
+            job_pinned_video_id: str,
+            job_dl_dir_arg: str,
+        ) -> None:
             item = items[id(track)]
+            fut = session["track_futures"].get(id(track))
 
             def _hook(info: dict) -> None:
-                # Corre en el hilo de yt-dlp: solo muta valores simples y
-                # pide el notify al loop de la UI (limitado a 4/s).
                 if info.get("status") != "downloading":
                     return
                 total = info.get("total_bytes") or info.get("total_bytes_estimate") or 0
@@ -311,140 +539,158 @@ class DownloadRunner:
                     item["percent"] = min(95.0, 100.0 * (info.get("downloaded_bytes") or 0) / total)
                     loop.call_soon_threadsafe(_push)
 
-            async with semaphore:
-                if cancel.is_set():
-                    item["status"] = "failed"
-                    item["error"] = "Cancelada"
-                    return
-                # La pausa puede haberse pedido mientras la pista esperaba
-                # turno: nunca debe arrancar una descarga nueva, pero tampoco
-                # perderse de la lista de pendientes.
-                if pause.is_set():
-                    item["status"] = "paused"
-                    item["error"] = "Pausada"
-                    if track not in self._state._download_pending_tracks:
-                        self._state._download_pending_tracks.append(track)
-                    return
-                if not pinned_video_id and not (track.source_path and os.path.isfile(track.source_path)):
-                    try:
-                        from services import settings_store
-                        from services.local_index import match_tracks_against_library
-
-                        await asyncio.to_thread(
-                            match_tracks_against_library,
-                            [track],
-                            download_dir=dl_dir_arg or settings_store.get_download_dir(),
-                            local_folders=local_folders_arg or settings_store.get_local_folders(),
-                            playlist_name=playlist_name,
-                            platform=platform,
-                        )
-                    except Exception:
-                        pass
-                if not pinned_video_id and track.source_path and os.path.isfile(track.source_path):
-                    async with lock:
-                        item["status"], item["percent"] = "skipped", 100.0
-                        self._state.download_skipped.append(
-                            {
-                                "id": track.id,
-                                "name": track.name,
-                                "artist": track.artist,
-                                "path": track.source_path,
-                                "video_id": "",
-                                "format": fmt,
-                                "duration_ms": track.duration_ms,
-                            }
-                        )
-                        self._state.download_progress += 1
-                        self._state.notify()
-                    return
-                async with lock:
-                    item["status"] = "running"
-                    self._state.download_current = f"{track.artist} — {track.name}"[:80]
-                    self._state.notify()
-                try:
-                    result = await asyncio.to_thread(
-                        download_audio,
-                        track,
-                        destination_dir=target_dir,
-                        audio_format=fmt,
-                        progress_hook=_hook,
-                        artwork_fetcher=artwork_fetcher,
-                        skip_existing=True,
-                        pause_event=pause,
-                        video_id=pinned_video_id,
-                    )
-                except Exception as exc:  # noqa: BLE001 - nunca debe tumbar la cola
-                    result = None
-                    error = str(exc)
-                else:
-                    error = getattr(result, "error", "") or ""
-
-                from engine.downloader import DOWNLOAD_PAUSED as _PAUSED_CODE
-
-                if result is not None and result.code == _PAUSED_CODE:
-                    # La pista quedó a medias: se conserva para reanudarla y
-                    # el ``.part`` se queda en disco.
-                    async with lock:
+            try:
+                async with semaphore:
+                    if cancel.is_set():
+                        item["status"] = "failed"
+                        item["error"] = "Cancelada"
+                        return
+                    if pause.is_set():
                         item["status"] = "paused"
                         item["error"] = "Pausada"
                         if track not in self._state._download_pending_tracks:
                             self._state._download_pending_tracks.append(track)
-                        self._state.download_progress += 1
-                        self._state.notify()
-                    return
+                        return
+                    if not job_pinned_video_id and not (track.source_path and os.path.isfile(track.source_path)):
+                        try:
+                            from services import settings_store
+                            from services.local_index import match_tracks_against_library
 
-                async with lock:
-                    if result is not None and result.ok:
-                        track.source_path = result.path
-                        entry = {
-                            "id": track.id,
-                            "name": track.name,
-                            "artist": track.artist,
-                            "path": result.path,
-                            "video_id": result.video_id,
-                            "format": fmt,
-                            "duration_ms": track.duration_ms,
-                        }
-                        if getattr(result, "skipped", False):
-                            # Ya existía: no se descargó ni se reescribió. Se
-                            # cuenta aparte para que «Completado» no mienta.
+                            await asyncio.to_thread(
+                                match_tracks_against_library,
+                                [track],
+                                download_dir=job_dl_dir_arg or settings_store.get_download_dir(),
+                                local_folders=local_folders_arg or settings_store.get_local_folders(),
+                                playlist_name=job_playlist_name,
+                                platform=job_platform,
+                            )
+                        except Exception:
+                            pass
+                    if not job_pinned_video_id and track.source_path and os.path.isfile(track.source_path):
+                        async with lock:
                             item["status"], item["percent"] = "skipped", 100.0
-                            self._state.download_skipped.append(entry)
-                        else:
-                            item["status"], item["percent"] = "done", 100.0
-                            self._state.download_done.append(entry)
+                            self._state.download_skipped.append(
+                                {
+                                    "id": track.id,
+                                    "name": track.name,
+                                    "artist": track.artist,
+                                    "path": track.source_path,
+                                    "video_id": "",
+                                    "format": job_fmt,
+                                    "duration_ms": track.duration_ms,
+                                }
+                            )
+                            self._state.download_progress += 1
+                            if job_playlist_name:
+                                self._write_download_manifest(
+                                    job_target_dir, job_playlist_name, job_platform,
+                                    [track], write_playlist_manifest, read_playlist_manifest,
+                                )
+                            self._state.notify()
+                        return
+                    async with lock:
+                        item["status"] = "running"
+                        self._state.download_current = f"{track.artist} — {track.name}"[:80]
+                        self._state.notify()
+                    try:
+                        result = await asyncio.to_thread(
+                            download_audio,
+                            track,
+                            destination_dir=job_target_dir,
+                            audio_format=job_fmt,
+                            progress_hook=_hook,
+                            artwork_fetcher=artwork_fetcher,
+                            skip_existing=True,
+                            pause_event=pause,
+                            video_id=job_pinned_video_id,
+                        )
+                    except Exception as exc:  # noqa: BLE001 - nunca debe tumbar la cola
+                        result = None
+                        error = str(exc)
                     else:
-                        item["status"], item["error"] = "failed", error or "Error desconocido"
-                        self._state.download_failed.append(
-                            {
+                        error = getattr(result, "error", "") or ""
+
+                    from engine.downloader import DOWNLOAD_PAUSED as _PAUSED_CODE
+
+                    if result is not None and result.code == _PAUSED_CODE:
+                        async with lock:
+                            item["status"] = "paused"
+                            item["error"] = "Pausada"
+                            if track not in self._state._download_pending_tracks:
+                                self._state._download_pending_tracks.append(track)
+                            self._state.download_progress += 1
+                            self._state.notify()
+                        return
+
+                    async with lock:
+                        if result is not None and result.ok:
+                            track.source_path = result.path
+                            entry = {
                                 "id": track.id,
                                 "name": track.name,
                                 "artist": track.artist,
-                                "album": track.album,
-                                "platform": track.platform,
+                                "path": result.path,
+                                "video_id": result.video_id,
+                                "format": job_fmt,
                                 "duration_ms": track.duration_ms,
-                                "isrc": track.isrc,
-                                "error": error or "Error desconocido",
-                                "format": fmt,
-                                # Vídeo que falló: el panel lo marca para no
-                                # ofrecer otra vez el mismo candidato.
-                                "video_id": str(getattr(result, "video_id", "") or ""),
-                                "_track": track,
                             }
-                        )
-                        self._state._log(
-                            f"[ERROR] ✗ Descarga · {track.name[:42]}: {error[:90]}"
-                        )
-                    self._state.download_progress += 1
-                    self._state.notify()
+                            if getattr(result, "skipped", False):
+                                item["status"], item["percent"] = "skipped", 100.0
+                                self._state.download_skipped.append(entry)
+                            else:
+                                item["status"], item["percent"] = "done", 100.0
+                                self._state.download_done.append(entry)
+                            if job_playlist_name:
+                                self._write_download_manifest(
+                                    job_target_dir, job_playlist_name, job_platform,
+                                    [track], write_playlist_manifest, read_playlist_manifest,
+                                )
+                        else:
+                            item["status"], item["error"] = "failed", error or "Error desconocido"
+                            self._state.download_failed.append(
+                                {
+                                    "id": track.id,
+                                    "name": track.name,
+                                    "artist": track.artist,
+                                    "album": track.album,
+                                    "platform": track.platform,
+                                    "duration_ms": track.duration_ms,
+                                    "isrc": track.isrc,
+                                    "error": error or "Error desconocido",
+                                    "format": job_fmt,
+                                    "video_id": str(getattr(result, "video_id", "") or ""),
+                                    "_track": track,
+                                }
+                            )
+                            self._state._log(
+                                f"[ERROR] ✗ Descarga · {track.name[:42]}: {error[:90]}"
+                            )
+                        self._state.download_progress += 1
+                        self._state.notify()
+            finally:
+                if fut is not None and not fut.done():
+                    fut.set_result(True)
 
         try:
-            await asyncio.gather(*(_one(t) for t in selected))
+            in_flight: set[asyncio.Task] = set()
+            while session["pending_jobs"] or in_flight:
+                while session["pending_jobs"]:
+                    job = session["pending_jobs"].pop(0)
+                    t_task = asyncio.create_task(_one(*job))
+                    in_flight.add(t_task)
+                    t_task.add_done_callback(in_flight.discard)
+                if in_flight:
+                    wake_task = asyncio.create_task(session["wake_event"].wait())
+                    await asyncio.wait(
+                        [*in_flight, wake_task],
+                        return_when=asyncio.FIRST_COMPLETED,
+                    )
+                    if not wake_task.done():
+                        wake_task.cancel()
+                    session["wake_event"].clear()
+
             cancelled = cancel.is_set()
             if pause.is_set():
-                # Las pistas que el semáforo nunca dejó arrancar también
-                # cuentan como pendientes: no se descargaron. Las que sí
-                # terminaron (o ya existían) no se repiten al reanudar.
                 finished = {
                     str(e.get("id")) for e in (*self._state.download_done, *self._state.download_skipped)
                     if isinstance(e, dict)
@@ -458,7 +704,7 @@ class DownloadRunner:
                     f"[INFO] Descargas pausadas · {len(self._state._download_pending_tracks)} pendientes"
                 )
             self._state.download_state = TransferState.DONE
-            self._collect_download_missing(selected)
+            self._collect_download_missing(queued)
             skipped = len(self._state.download_skipped)
             missing = len(self._state.download_missing)
             summary = (
@@ -468,19 +714,23 @@ class DownloadRunner:
                 + (f" · Faltantes: {missing}" if missing else "")
             )
             self._state._log(f"[INFO] {summary}")
-            if playlist_name:
-                self._write_download_manifest(
-                    target_dir, playlist_name, platform, selected,
-                    write_playlist_manifest, read_playlist_manifest,
-                )
+            for (_, grp_pl_name, grp_plat), (grp_dir, grp_tracks) in session["manifest_groups"].items():
+                if grp_pl_name and grp_tracks:
+                    self._write_download_manifest(
+                        grp_dir, grp_pl_name, grp_plat, grp_tracks,
+                        write_playlist_manifest, read_playlist_manifest,
+                    )
         except Exception as exc:  # noqa: BLE001
             self._state.download_state = TransferState.ERROR
             self._state._log(f"[ERROR] Descargas interrumpidas: {exc}")
         finally:
+            if self._active_session is session:
+                self._active_session = None
+            for fut in session["track_futures"].values():
+                if not fut.done():
+                    fut.set_result(False)
             self._state.download_current = ""
             self._state._download_cancel = None
-            # ``_download_pause`` se conserva si la cola quedó pausada: la
-            # siguiente ejecución arranca con un evento nuevo.
             self._state._download_pause = None
             self._state.notify()
 
@@ -616,20 +866,15 @@ class DownloadRunner:
     def _download_video_task(
         self, track: Track, video_id: str, fmt: str, ctx: dict,
     ) -> asyncio.Task | None:
-        """Cola de una sola pista con ``video_id`` ya resuelto."""
-        if self._state._download_task is not None and not self._state._download_task.done():
-            return self._state._download_task
-        self._state._download_task = asyncio.create_task(
-            self._run_downloads(
-                [track],
-                audio_format=fmt,
-                destination_dir=ctx.get("destination_dir", ""),
-                playlist_name=ctx.get("playlist_name", ""),
-                platform=ctx.get("platform", ""),
-                pinned_video_id=video_id,
-            )
+        """Cola o encolado en caliente de una pista con ``video_id`` ya resuelto."""
+        return self._start_or_enqueue(
+            [track],
+            audio_format=fmt,
+            destination_dir=ctx.get("destination_dir", ""),
+            playlist_name=ctx.get("playlist_name", ""),
+            platform=ctx.get("platform", ""),
+            pinned_video_id=video_id,
         )
-        return self._state._download_task
 
     def _write_download_manifest(
         self, target_dir, playlist_name: str, platform: str,

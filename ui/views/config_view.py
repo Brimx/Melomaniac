@@ -39,6 +39,7 @@ from ui.components.widgets import (
     open_external,
     organize_dropdown,
     section_label,
+    set_button_text,
 )
 
 
@@ -556,7 +557,7 @@ class ConfigView(ft.Container):
             pass
 
     async def _on_check_updates(self, e=None) -> None:
-        self._update_check_btn.text = "Buscando…"
+        set_button_text(self._update_check_btn, "Buscando…")
         self._update_check_btn.disabled = True
         try:
             self._update_check_btn.update()
@@ -567,7 +568,7 @@ class ConfigView(ft.Container):
             info = await update_checker.check_for_updates()
             self._render_update_result(info)
         finally:
-            self._update_check_btn.text = "Comprobar"
+            set_button_text(self._update_check_btn, "Comprobar")
             self._update_check_btn.disabled = False
             try:
                 self._update_check_btn.update()

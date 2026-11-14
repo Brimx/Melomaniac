@@ -189,12 +189,17 @@ def build_detail_track_row(
     )
     view._row_checkboxes[id(track)] = chk
 
+    is_downloading = id(track) in getattr(view, "_downloading_track_ids", set())
     action_icon = ft.Container(
-        content=app_icon(
-            PIcons.PLAY if has_file else PIcons.DOWNLOAD_SIMPLE,
-            size=16,
-            color=ACCENT if has_file else TEXT_MUTED,
-            fill=has_file,
+        content=(
+            ft.ProgressRing(width=16, height=16, stroke_width=2, color=ACCENT)
+            if is_downloading
+            else app_icon(
+                PIcons.PLAY if has_file else PIcons.DOWNLOAD_SIMPLE,
+                size=16,
+                color=ACCENT if has_file else TEXT_MUTED,
+                fill=has_file,
+            )
         ),
         width=32,
         height=32,

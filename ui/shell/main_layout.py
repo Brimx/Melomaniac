@@ -84,9 +84,9 @@ def compute_contextual_actions_state(
         },
         "download": {
             "visible": is_ready and not all_local_audio,
-            "disabled": (not is_ready) or all_local_audio or download_busy,
+            "disabled": (not is_ready) or all_local_audio,
             "tooltip": (
-                "Descarga en curso"
+                "Añadir pistas seleccionadas a la cola de descargas"
                 if download_busy
                 else "Descargar pistas seleccionadas con yt-dlp"
             ),

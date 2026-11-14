@@ -61,6 +61,7 @@ from ui.components.widgets import (
     notify,
     organize_dropdown,
     section_label,
+    set_button_text,
     status_banner,
 )
 
@@ -374,10 +375,9 @@ class DownloadsView(ft.Container):
         if folder != self._dir:
             return  # el usuario cambió de carpeta mientras se escaneaba
         self._history_paths = [r[0] for r in rows]
-        self._play_all_btn.content = ft.Text(
+        set_button_text(
+            self._play_all_btn,
             f"Reproducir descargadas ({len(self._history_paths)})",
-            opacity=1.0,
-            font_family=FONT_HEADLINE,
         )
         self._play_all_btn.disabled = not self._history_paths
         self._history_list.controls = [self._history_row(*r) for r in rows]

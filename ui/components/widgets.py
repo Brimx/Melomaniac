@@ -656,6 +656,28 @@ def _ghost_btn(text: str, icon: str | None, on_click, width=None, height=None, d
     )
 
 
+def set_button_text(btn: ft.Control | None, text: str, *, icon: str | None = None) -> None:
+    """Actualiza el texto (y opcionalmente el glifo) de un botón creado con ``_primary_btn``, ``_ghost_btn`` o ``dialog_action``."""
+    if btn is None:
+        return
+    content = getattr(btn, "content", None)
+    if isinstance(content, ft.Row) and content.controls:
+        if icon is not None and len(content.controls) >= 2 and hasattr(content.controls[0], "value"):
+            content.controls[0].value = icon
+        last = content.controls[-1]
+        if hasattr(last, "value"):
+            last.value = text
+            return
+    if hasattr(content, "value"):
+        content.value = text
+        return
+    try:
+        btn.text = text  # type: ignore[attr-defined]
+    except Exception:
+        pass
+
+
+
 def _status_icon(status: str) -> ft.Control:
     """
     Retorna un icono de estado para tracking visual de transferencias.

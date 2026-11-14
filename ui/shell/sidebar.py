@@ -16,6 +16,7 @@ from ui.components.widgets import (
     app_text,
     app_text_field,
     input_border,
+    set_button_text,
 )
 from ui.theme.fonts import FONT_HEADLINE, FONT_TEXT, brand_family, mono_family
 from ui.theme.icons import PIcons, app_icon, app_icon_button
@@ -122,19 +123,15 @@ def build_sidebar(ui) -> None:
         val = e.control.value
         s.set_destination(val)
         if val == EXPORT_DEST_LABEL:
-            if isinstance(ui._transfer_btn.content, ft.Row) and len(ui._transfer_btn.content.controls) >= 2:
-                ui._transfer_btn.content.controls[0].value = PIcons.EXPORT
-                ui._transfer_btn.content.controls[1].value = "Exportar"
-            elif hasattr(ui._transfer_btn.content, "value"):
-                ui._transfer_btn.content.value = "Exportar"
-            ui._transfer_btn.update()
+            set_button_text(ui._transfer_btn, "Exportar", icon=PIcons.EXPORT)
+            try:
+                ui._transfer_btn.update()
+            except Exception:
+                pass
             return
+        set_button_text(ui._transfer_btn, "Transferir", icon=PIcons.ARROWS_LEFT_RIGHT)
         try:
-            if isinstance(ui._transfer_btn.content, ft.Row) and len(ui._transfer_btn.content.controls) >= 2:
-                ui._transfer_btn.content.controls[0].value = PIcons.ARROWS_LEFT_RIGHT
-                ui._transfer_btn.content.controls[1].value = "Transferir"
-            elif hasattr(ui._transfer_btn.content, "value"):
-                ui._transfer_btn.content.value = "Transferir"
+            ui._transfer_btn.update()
         except Exception:
             pass
         if val in AppState.PLATFORMS:

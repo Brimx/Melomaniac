@@ -55,6 +55,7 @@ from ui.components.widgets import (
     open_external,
     organize_dropdown,
     safe_update,
+    set_button_text,
 )
 from ui.components.context_menu import (
     ContextMenuAction,
@@ -99,6 +100,7 @@ class PlaylistDetailView(ft.Container):
         self._row_checkboxes: dict[int, ft.Checkbox] = {}
         self._row_containers: dict[int, ft.Container] = {}
         self._action_containers: dict[int, ft.Control] = {}
+        self._downloading_track_ids: set[int] = set()
         self._manifest_base_name: str = ""
 
         # header
@@ -226,7 +228,6 @@ class PlaylistDetailView(ft.Container):
                 ],
                 spacing=8,
                 vertical_alignment=ft.CrossAxisAlignment.CENTER,
-                wrap=True,
             ),
         )
 
@@ -321,17 +322,31 @@ class PlaylistDetailView(ft.Container):
         except Exception:
             pass
 
+    def _mark_tracks_downloading(self, tracks: list[Track]) -> None:
+        for tr in tracks:
+            tid = id(tr)
+            self._downloading_track_ids.add(tid)
+            ic = self._action_containers.get(tid)
+            if ic is not None:
+                ic.content = ft.ProgressRing(width=16, height=16, stroke_width=2, color=ACCENT)
+                safe_update(ic)
+
     def _apply_downloaded_tracks(self, downloaded_tracks: list[Track]) -> None:
         """Sincroniza filas y cabecera tras terminar una descarga de lote o playlist."""
         updated: list[Track] = []
         for tr in downloaded_tracks:
+            tid = id(tr)
+            self._downloading_track_ids.discard(tid)
+            ic = self._action_containers.get(tid)
             if tr.source_path and os.path.isfile(tr.source_path):
-                self._has_file_by_id[id(tr)] = True
+                self._has_file_by_id[tid] = True
                 updated.append(tr)
-                ic = self._action_containers.get(id(tr))
                 if ic is not None:
                     ic.content = app_icon(PIcons.PLAY, size=16, color=ACCENT, fill=True)
                     safe_update(ic)
+            elif ic is not None:
+                ic.content = app_icon(PIcons.DOWNLOAD_SIMPLE, size=16, color=TEXT_MUTED)
+                safe_update(ic)
         if updated:
             self._persist_manifest_downloads(updated)
             self._update_header_play_count()
@@ -344,6 +359,8 @@ class PlaylistDetailView(ft.Container):
             try:
                 await task
             except Exception:
+                for tr in target_tracks:
+                    self._downloading_track_ids.discard(id(tr))
                 return
             if not self._unmounted:
                 self._apply_downloaded_tracks(target_tracks)
@@ -370,9 +387,7 @@ class PlaylistDetailView(ft.Container):
         st = self.app_state
         if st is None or not self._tracks:
             return
-        if st.download_state == TransferState.RUNNING:
-            notify(self._page_ref, "Ya hay una descarga en curso", kind="error")
-            return
+        was_running = getattr(st, "download_state", None) == TransferState.RUNNING
         self._match_local_files()
         missing = [
             t for t in self._tracks
@@ -384,19 +399,27 @@ class PlaylistDetailView(ft.Container):
             safe_update(self._shuffle_btn)
             notify(self._page_ref, "Todas las canciones ya están descargadas en disco")
             return
+        self._mark_tracks_downloading(missing)
         try:
             task = st.download_tracks(
                 missing,
                 **self._download_context(),
             )
         except Exception as exc:  # noqa: BLE001
+            for tr in missing:
+                self._downloading_track_ids.discard(id(tr))
             notify(self._page_ref, f"No se pudo iniciar la descarga: {exc}", kind="error")
             return
         if task is not None:
             self._watch_download_task(task, list(missing))
         cb = self._on_open_downloads
+        msg = (
+            f"Añadidas {len(missing)} pistas a la cola de descargas"
+            if was_running
+            else f"Descargando {len(missing)} pistas"
+        )
         notify(
-            self._page_ref, f"Descargando {len(missing)} pistas",
+            self._page_ref, msg,
             action="Ver" if cb else None,
             on_action=(lambda e: cb()) if cb else None,
         )
@@ -703,10 +726,7 @@ class PlaylistDetailView(ft.Container):
                     if (downloaded == total or (self._is_local and not self._is_manifest))
                     else f"Reproducir ({downloaded})"
                 )
-                if hasattr(self._play_all_btn.content, "value"):
-                    self._play_all_btn.content.value = txt
-                elif hasattr(self._play_all_btn, "text"):
-                    self._play_all_btn.text = txt
+                set_button_text(self._play_all_btn, txt)
             except Exception:
                 pass
         else:
@@ -734,9 +754,6 @@ class PlaylistDetailView(ft.Container):
         st = self.app_state
         if st is None:
             notify(self._page_ref, "Estado de aplicación no disponible", kind="error")
-            return
-        if st.download_state == TransferState.RUNNING:
-            notify(self._page_ref, "Ya hay una descarga en curso", kind="error")
             return
         if dlg is not None:
             close_dialog(self._page_ref, dlg)
@@ -855,60 +872,72 @@ class PlaylistDetailView(ft.Container):
         return panel
 
     def _download_single_track(self, track: Track, action_container: ft.Control) -> None:
-        """Descarga una pista individual y al completarse habilita su reproducción inmediata."""
+        """Descarga o encola una pista individual y al completarse habilita su reproducción inmediata."""
         st = self.app_state
         if st is None:
             notify(self._page_ref, "Estado de aplicación no disponible", kind="error")
             return
-        if st.download_state == TransferState.RUNNING:
-            notify(self._page_ref, "Ya hay una descarga en curso", kind="error")
+        tid = id(track)
+        if tid in self._downloading_track_ids:
+            notify(self._page_ref, f"«{track.name}» ya está en la cola de descargas")
             return
+        was_running = getattr(st, "download_state", None) == TransferState.RUNNING
+        self._downloading_track_ids.add(tid)
 
         async def _do_download() -> None:
-            action_container.content = ft.ProgressRing(width=16, height=16, stroke_width=2, color=ACCENT)
             try:
-                action_container.update()
-            except Exception:
-                pass
-
-            notify(self._page_ref, f"Descargando «{track.name}»...")
-            try:
-                task = st.download_tracks(
-                    [track],
-                    audio_format=settings_store.get_download_format(),
-                    **self._download_context(),
-                )
-                await task
-            except Exception as exc:  # noqa: BLE001
-                notify(self._page_ref, f"Error al descargar: {exc}", kind="error")
-                action_container.content = app_icon(PIcons.DOWNLOAD_SIMPLE, size=16, color=TEXT_MUTED)
+                action_container.content = ft.ProgressRing(width=16, height=16, stroke_width=2, color=ACCENT)
                 try:
                     action_container.update()
                 except Exception:
                     pass
-                return
 
-            if track.source_path and os.path.isfile(track.source_path):
-                self._has_file_by_id[id(track)] = True
-                self._persist_manifest_downloads([track])
                 notify(
                     self._page_ref,
-                    f"Descarga lista: {track.artist} — {track.name}",
-                    action="Reproducir",
-                    on_action=lambda e: self._play_single_track(track, 1),
+                    f"En cola de descargas: «{track.name}»"
+                    if was_running
+                    else f"Descargando «{track.name}»...",
                 )
-                action_container.content = app_icon(PIcons.PLAY, size=16, color=ACCENT, fill=True)
-                safe_update(action_container)
-                self._update_header_play_count()
-                safe_update(self._play_all_btn)
-                safe_update(self._shuffle_btn)
-            else:
-                notify(self._page_ref, f"No se pudo descargar «{track.name}»", kind="error")
-                action_container.content = app_icon(PIcons.DOWNLOAD_SIMPLE, size=16, color=TEXT_MUTED)
                 try:
-                    action_container.update()
-                except Exception:
-                    pass
+                    task = st.download_tracks(
+                        [track],
+                        audio_format=settings_store.get_download_format(),
+                        **self._download_context(),
+                    )
+                    if task is not None:
+                        await task
+                except Exception as exc:  # noqa: BLE001
+                    notify(self._page_ref, f"Error al descargar: {exc}", kind="error")
+                    action_container.content = app_icon(PIcons.DOWNLOAD_SIMPLE, size=16, color=TEXT_MUTED)
+                    try:
+                        action_container.update()
+                    except Exception:
+                        pass
+                    return
+
+                if track.source_path and os.path.isfile(track.source_path):
+                    self._has_file_by_id[tid] = True
+                    self._persist_manifest_downloads([track])
+                    notify(
+                        self._page_ref,
+                        f"Descarga lista: {track.artist} — {track.name}",
+                        action="Reproducir",
+                        on_action=lambda e: self._play_single_track(track, 1),
+                    )
+                    action_container.content = app_icon(PIcons.PLAY, size=16, color=ACCENT, fill=True)
+                    safe_update(action_container)
+                    self._update_header_play_count()
+                    safe_update(self._play_all_btn)
+                    safe_update(self._shuffle_btn)
+                else:
+                    notify(self._page_ref, f"No se pudo descargar «{track.name}»", kind="error")
+                    action_container.content = app_icon(PIcons.DOWNLOAD_SIMPLE, size=16, color=TEXT_MUTED)
+                    try:
+                        action_container.update()
+                    except Exception:
+                        pass
+            finally:
+                self._downloading_track_ids.discard(tid)
 
         try:
             self._page_ref.run_task(_do_download)
@@ -916,7 +945,7 @@ class PlaylistDetailView(ft.Container):
             try:
                 asyncio.create_task(_do_download())
             except Exception:
-                pass
+                self._downloading_track_ids.discard(tid)
 
     def _on_play_all(self, _e=None) -> None:
         """Reproduce todas las pistas locales disponibles en el reproductor."""
@@ -987,6 +1016,7 @@ class PlaylistDetailView(ft.Container):
         self._row_checkboxes.clear()
         self._row_containers.clear()
         self._action_containers.clear()
+        self._downloading_track_ids.clear()
         if hasattr(self, "_batch_bar"):
             self._batch_bar.visible = False
         if hasattr(self, "_select_all_chk"):
@@ -1023,6 +1053,7 @@ class PlaylistDetailView(ft.Container):
                 ctrl.update()
             except Exception:
                 pass
+        safe_update(self)
 
     def _toggle_selection_mode(self) -> None:
         self.set_selection_mode(not self._selection_mode)
@@ -1090,7 +1121,9 @@ class PlaylistDetailView(ft.Container):
         )
         self._select_all_chk.value = total > 0 and count == total
         has_playable = any(
-            t.source_path and os.path.isfile(t.source_path) for t in selected
+            self._has_file_by_id.get(id(t), False)
+            or bool(t.source_path and os.path.isfile(t.source_path))
+            for t in selected
         )
         self._batch_play_btn.disabled = not has_playable
         self._batch_queue_btn.disabled = not has_playable
@@ -1105,7 +1138,7 @@ class PlaylistDetailView(ft.Container):
         items = [
             (t.source_path, t)
             for t in self.selected_tracks()
-            if t.source_path and os.path.isfile(t.source_path)
+            if t.source_path and (self._has_file_by_id.get(id(t), False) or os.path.isfile(t.source_path))
         ]
         if not items:
             notify(self._page_ref, "Las pistas seleccionadas no están en disco", kind="error")
@@ -1120,7 +1153,7 @@ class PlaylistDetailView(ft.Container):
         items = [
             (t.source_path, t)
             for t in self.selected_tracks()
-            if t.source_path and os.path.isfile(t.source_path)
+            if t.source_path and (self._has_file_by_id.get(id(t), False) or os.path.isfile(t.source_path))
         ]
         if not items:
             notify(self._page_ref, "Las pistas seleccionadas no están en disco", kind="error")
@@ -1140,10 +1173,9 @@ class PlaylistDetailView(ft.Container):
         selected = self.selected_tracks()
         if st is None or not selected:
             return
-        if st.download_state == TransferState.RUNNING:
-            notify(self._page_ref, "Ya hay una descarga en curso", kind="error")
-            return
+        was_running = getattr(st, "download_state", None) == TransferState.RUNNING
         pl_name, pl_plat = self._playlist_download_identity()
+        self._mark_tracks_downloading(selected)
         try:
             task = st.download_tracks(
                 selected,
@@ -1152,14 +1184,21 @@ class PlaylistDetailView(ft.Container):
                 platform=pl_plat,
             )
         except Exception as exc:  # noqa: BLE001
+            for tr in selected:
+                self._downloading_track_ids.discard(id(tr))
             notify(self._page_ref, f"No se pudo iniciar la descarga: {exc}", kind="error")
             return
         if task is not None:
             self._watch_download_task(task, list(selected))
         cb = self._on_open_downloads
+        msg = (
+            f"Añadidas {len(selected)} pistas seleccionadas a la cola"
+            if was_running
+            else f"Descargando {len(selected)} pistas seleccionadas"
+        )
         notify(
             self._page_ref,
-            f"Descargando {len(selected)} pistas seleccionadas",
+            msg,
             action="Ver" if cb else None,
             on_action=(lambda _e: cb()) if cb else None,
         )
