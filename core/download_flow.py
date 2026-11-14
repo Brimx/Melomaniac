@@ -484,79 +484,23 @@ class DownloadRunner:
         _session: dict | None = None,
     ) -> None:
         """Ejecuta la cola de descargas con concurrencia acotada y encolado dinámico."""
-        from core.config import (
-            AUDIO_BITRATES,
-            DEFAULT_AUDIO_FORMAT,
-            DOWNLOAD_CONCURRENCY,
-        )
+        from core.config import DOWNLOAD_CONCURRENCY
         from engine.downloader import (
             download_audio, ffmpeg_available, read_playlist_manifest,
-            resolve_download_dir, resolve_playlist_dir, write_playlist_manifest,
+            write_playlist_manifest,
         )
 
         if not selected and (_session is None or not _session.get("queued")):
             return
 
+        # ``_start_or_enqueue`` siempre entrega la sesión ya creada y con su
+        # estado inicial escrito. Reconstruirlo aquí duplicaba esa lógica y
+        # nunca se ejecutaba.
         if _session is None:
-            fmt = (audio_format or DEFAULT_AUDIO_FORMAT).lower().lstrip(".")
-            if fmt not in AUDIO_BITRATES:
-                fmt = DEFAULT_AUDIO_FORMAT
-            if playlist_name:
-                target_dir = resolve_playlist_dir(
-                    destination_dir or None, playlist_name, platform
-                )
-            else:
-                target_dir = resolve_download_dir(destination_dir or None)
-
-            self._state.audio_format      = fmt
-            self._state.download_dir      = str(target_dir)
-            self._state.download_state    = TransferState.RUNNING
-            self._state.download_progress = 0
-            self._state.download_total    = 0
-            self._state.download_current  = ""
-            self._state.download_done     = []
-            self._state.download_skipped  = []
-            self._state.download_failed   = []
-            self._state.download_missing  = []
-            self._state.download_items    = []
-            self._state._download_cancel  = asyncio.Event()
-            self._state._download_pause   = asyncio.Event()
-            self._state.download_paused   = False
-            self._state._download_pending_tracks = []
-            self._state._download_resume_ctx = {
-                "format": fmt,
-                "destination_dir": str(destination_dir or ""),
-                "playlist_name": playlist_name,
-                "platform": platform,
-            }
-            session = {
-                "items": {},
-                "track_futures": {},
-                "active_keys": {},
-                "queued": [],
-                "pending_jobs": [],
-                "manifest_groups": {},
-                "wake_event": asyncio.Event(),
-                "cancel": self._state._download_cancel,
-                "pause": self._state._download_pause,
-                "initial_fmt": fmt,
-                "initial_target_dir": target_dir,
-            }
-            self._active_session = session
-            self._enqueue_into_session(
-                session,
-                selected,
-                audio_format=fmt,
-                destination_dir=destination_dir,
-                playlist_name=playlist_name,
-                platform=platform,
-                pinned_video_id=pinned_video_id,
-                is_initial=True,
-            )
-        else:
-            session = _session
-            fmt = session["initial_fmt"]
-            target_dir = session["initial_target_dir"]
+            return
+        session = _session
+        fmt = session["initial_fmt"]
+        target_dir = session["initial_target_dir"]
 
         items = session["items"]
         queued = session["queued"]
@@ -689,11 +633,6 @@ class DownloadRunner:
                                 }
                             )
                             self._state.download_progress += 1
-                            if job_playlist_name:
-                                self._write_download_manifest(
-                                    job_target_dir, job_playlist_name, job_platform,
-                                    [track], write_playlist_manifest, read_playlist_manifest,
-                                )
                             self._state.notify()
                         return
                     async with lock:
@@ -748,11 +687,6 @@ class DownloadRunner:
                             else:
                                 item["status"], item["percent"] = "done", 100.0
                                 self._state.download_done.append(entry)
-                            if job_playlist_name:
-                                self._write_download_manifest(
-                                    job_target_dir, job_playlist_name, job_platform,
-                                    [track], write_playlist_manifest, read_playlist_manifest,
-                                )
                             # Otros objetos ``Track`` de la misma canción (el
                             # detalle recargado) reciben también el archivo.
                             for alias in session["alias_tracks"].get(id(track), ()):
@@ -827,6 +761,9 @@ class DownloadRunner:
                 + (f" · Faltantes: {missing}" if missing else "")
             )
             self._state._log(f"[INFO] {summary}")
+            # El manifiesto se escribe una vez por playlist al cerrar la
+            # sesión: hacerlo por pista era E/S síncrona en el hilo de la UI
+            # y O(n²) sobre el mismo archivo.
             for (_, grp_pl_name, grp_plat), (grp_dir, grp_tracks) in session["manifest_groups"].items():
                 if grp_pl_name and grp_tracks:
                     self._write_download_manifest(
