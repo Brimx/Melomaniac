@@ -33,6 +33,7 @@ from ui.theme.tokens import (
 )
 from ui.theme.icons import PIcons, app_icon
 from ui.components.widgets import (
+    track_input_focus,
     dialog_action,
     app_dialog,
     close_dialog,
@@ -307,16 +308,16 @@ def show_group_dialog(page: ft.Page, state) -> None:
     def _build_division_panel(div_key: str):
         st = divisions_state[div_key]
         # nombre editable
-        name_tf = ft.TextField(value=st["name"], label=f"Nombre {div_key}", width=360, height=36, bgcolor=BG_INPUT, border=input_border(), text_style=ft.TextStyle(size=11, color=TEXT_PRIMARY), label_style=ft.TextStyle(size=9, color=TEXT_MUTED))
+        name_tf = track_input_focus(ft.TextField(value=st["name"], label=f"Nombre {div_key}", width=360, height=36, bgcolor=BG_INPUT, border=input_border(), text_style=ft.TextStyle(size=11, color=TEXT_PRIMARY), label_style=ft.TextStyle(size=9, color=TEXT_MUTED)))
         def _on_name(e, _k=div_key):
             divisions_state[_k]["name"] = (e.control.value or _k).strip() or _k
         name_tf.on_change = _on_name
         name_fields[div_key] = name_tf
 
         # buscadores + listas por tipo
-        art_search = ft.TextField(hint_text="Buscar artista…", prefix=app_icon(PIcons.MAGNIFYING_GLASS, size=14, color=TEXT_DIM), width=360, height=32, bgcolor=BG_INPUT, border=input_border(), dense=True, content_padding=ft.Padding.symmetric(horizontal=8, vertical=4), text_style=ft.TextStyle(size=11))
-        alb_search = ft.TextField(hint_text="Buscar álbum…", prefix=app_icon(PIcons.MAGNIFYING_GLASS, size=14, color=TEXT_DIM), width=360, height=32, bgcolor=BG_INPUT, border=input_border(), dense=True, content_padding=ft.Padding.symmetric(horizontal=8, vertical=4), text_style=ft.TextStyle(size=11))
-        song_search = ft.TextField(hint_text="Buscar canción…", prefix=app_icon(PIcons.MAGNIFYING_GLASS, size=14, color=TEXT_DIM), width=360, height=36, bgcolor=BG_INPUT, border=input_border(), dense=True, content_padding=ft.Padding.symmetric(horizontal=8, vertical=4), text_style=ft.TextStyle(size=11))
+        art_search = track_input_focus(ft.TextField(hint_text="Buscar artista…", prefix=app_icon(PIcons.MAGNIFYING_GLASS, size=14, color=TEXT_DIM), width=360, height=32, bgcolor=BG_INPUT, border=input_border(), dense=True, content_padding=ft.Padding.symmetric(horizontal=8, vertical=4), text_style=ft.TextStyle(size=11)))
+        alb_search = track_input_focus(ft.TextField(hint_text="Buscar álbum…", prefix=app_icon(PIcons.MAGNIFYING_GLASS, size=14, color=TEXT_DIM), width=360, height=32, bgcolor=BG_INPUT, border=input_border(), dense=True, content_padding=ft.Padding.symmetric(horizontal=8, vertical=4), text_style=ft.TextStyle(size=11)))
+        song_search = track_input_focus(ft.TextField(hint_text="Buscar canción…", prefix=app_icon(PIcons.MAGNIFYING_GLASS, size=14, color=TEXT_DIM), width=360, height=36, bgcolor=BG_INPUT, border=input_border(), dense=True, content_padding=ft.Padding.symmetric(horizontal=8, vertical=4), text_style=ft.TextStyle(size=11)))
         art_limit = ft.Text("", size=9, color=TEXT_DIM, font_family="IBM Plex Sans")
         alb_limit = ft.Text("", size=9, color=TEXT_DIM, font_family="IBM Plex Sans")
         song_limit = ft.Text("", size=9, color=TEXT_DIM, font_family="IBM Plex Sans")

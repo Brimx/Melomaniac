@@ -54,7 +54,13 @@ from ui.components.context_menu import (
     wrap_with_context_menu,
 )
 from ui.components.skeletons import ITEM_H
-from ui.components.widgets import _status_icon, control_page, input_border, open_external
+from ui.components.widgets import (
+    _status_icon,
+    control_page,
+    input_border,
+    open_external,
+    track_input_focus,
+)
 
 
 
@@ -315,7 +321,7 @@ class SongRow(ft.Container):
                     e.control.update()
                 except Exception:
                     pass
-            num_label = ft.TextField(
+            num_label = track_input_focus(ft.TextField(
                 value=str(index), width=32, height=28,
                 text_align=ft.TextAlign.CENTER,
                 text_style=ft.TextStyle(size=11, color=TEXT_MUTED, font_family=mono_family("light")),
@@ -324,7 +330,7 @@ class SongRow(ft.Container):
                 dense=True,
                 on_submit=_on_num_submit,
                 on_blur=_on_num_submit,
-            )
+            ))
         else:
             num_label = ft.Text(
                 str(index), size=11, color=TEXT_MUTED,

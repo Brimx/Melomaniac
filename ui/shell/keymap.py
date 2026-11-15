@@ -17,6 +17,7 @@ import flet as ft
 from ui.components.widgets import (
     apply_region_focus,
     focus_ring_container,
+    focused_input,
     set_focus_ring_container,
 )
 from ui.theme.tokens import (
@@ -275,7 +276,13 @@ def normalize_key(key: str | None) -> str:
 
 
 def is_editable_control(control: Any) -> bool:
-    """Indica si ``control`` es un campo de texto editable activo."""
+    """Indica si ``control`` es un campo de texto editable activo.
+
+    Si ``control`` no es un ``TextField`` (en Flet 1.1.2 el evento de teclado
+    trae la ``Page``), se consulta el campo con foco rastreado.
+    """
+    if not isinstance(control, ft.TextField):
+        control = focused_input()
     if control is None:
         return False
     if isinstance(control, ft.TextField):

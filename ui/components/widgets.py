@@ -213,6 +213,39 @@ def build_input_decoration_theme() -> ft.InputDecorationTheme:
     )
 
 
+_FOCUSED_INPUT: ft.TextField | None = None
+
+
+def track_input_focus(field: ft.TextField) -> ft.TextField:
+    """Registra foco/desenfoque del campo.
+
+    En Flet 1.1.2 ``KeyboardEvent.control`` siempre es la ``Page``, por lo que
+    el foco de entrada se rastrea con ``on_focus``/``on_blur`` de cada campo.
+    """
+    prev_focus, prev_blur = field.on_focus, field.on_blur
+
+    def _focus(e):
+        global _FOCUSED_INPUT
+        _FOCUSED_INPUT = field
+        if prev_focus is not None:
+            return prev_focus(e)
+
+    def _blur(e):
+        global _FOCUSED_INPUT
+        if _FOCUSED_INPUT is field:
+            _FOCUSED_INPUT = None
+        if prev_blur is not None:
+            return prev_blur(e)
+
+    field.on_focus, field.on_blur = _focus, _blur
+    return field
+
+
+def focused_input() -> ft.TextField | None:
+    """Campo de texto con foco actual (o ``None``)."""
+    return _FOCUSED_INPUT
+
+
 def app_text_field(
     label: str | None = None,
     hint_text: str | None = None,
@@ -254,7 +287,7 @@ def app_text_field(
     suffix_icon = kwargs.pop("suffix_icon", None)
     if suffix_icon:
         kwargs["suffix_icon"] = _as_icon(suffix_icon, _icon_h)
-    return ft.TextField(
+    return track_input_focus(ft.TextField(
         label=label,
         hint_text=hint_text,
         value=value,
@@ -281,7 +314,8 @@ def app_text_field(
         dense=kwargs.pop("dense", True),
         content_padding=content_padding or ft.Padding.symmetric(horizontal=12, vertical=8),
         **kwargs,
-    )
+    ))
+
 
 
 def dialog_action(
