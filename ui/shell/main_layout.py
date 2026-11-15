@@ -1442,7 +1442,7 @@ class LayoutController:
             )
 
         ui._auto_play_download_ids = set()
-        from services.mpris_service import MPRISService
+        from services import settings_store
         from ui.player.player_bar import PlayerBar
         from ui.player.player_queue import PlayerQueuePanel
 
@@ -1451,7 +1451,10 @@ class LayoutController:
             ui.state,
             on_toggle_queue=lambda: ui.player_queue.toggle(),
         )
-        ui.player_bar.attach_mpris(MPRISService())
+        if settings_store.get_mpris_enabled():
+            from services.mpris_service import MPRISService
+
+            ui.player_bar.attach_mpris(MPRISService())
         ui.player_queue = PlayerQueuePanel(
             ui.page,
             ui.player_bar,

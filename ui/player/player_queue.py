@@ -403,15 +403,17 @@ class LyricsPane(ft.Container):
                 "duration_ms": dur_ms,
                 "allow_network": allow_net,
             }
+            try:
+                sig = inspect.signature(lyrics_svc.get_lyrics)
+                params = sig.parameters
+            except (TypeError, ValueError):
+                params = {}
+            if "raise_on_error" in params:
+                kwargs["raise_on_error"] = True
             if force_reload:
-                try:
-                    sig = inspect.signature(lyrics_svc.get_lyrics)
-                    params = sig.parameters
-                    accepts_use_cache = "use_cache" in params or any(
-                        p.kind == inspect.Parameter.VAR_KEYWORD for p in params.values()
-                    )
-                except (TypeError, ValueError):
-                    accepts_use_cache = False
+                accepts_use_cache = "use_cache" in params or any(
+                    p.kind == inspect.Parameter.VAR_KEYWORD for p in params.values()
+                )
                 if accepts_use_cache:
                     return lyrics_svc.get_lyrics(tr, use_cache=False, **kwargs)
                 load_local = getattr(lyrics_svc, "load_local_lyrics", None)

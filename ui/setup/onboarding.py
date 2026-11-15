@@ -337,12 +337,25 @@ class OnboardingView(ft.Container):
         page: Página Flet.
         on_connect: Abre el asistente de credenciales.
         on_close: Se invoca tras el fundido de salida (quitar el overlay).
-        bg_mode: Fondo animado (``"constellation"`` por defecto, ``"disco"``/``"vinyl"`` o ``"none"``).
+        bg_mode: Fondo animado (``"disco"`` por defecto o lectura de ``settings_store.get_bg_mode()``,
+            ``"constellation"``, ``"vinyl"`` o ``"none"``).
     """
+
+    @staticmethod
+    def _resolve_bg_mode(bg_mode: str | None) -> str:
+        raw = bg_mode
+        if raw is None and hasattr(settings_store, "get_bg_mode"):
+            try:
+                raw = settings_store.get_bg_mode()
+            except Exception:
+                raw = None
+        if raw is None:
+            raw = "disco"
+        return raw if raw in ONBOARDING_BG_MODES else "disco"
 
     def __init__(self, page: ft.Page, on_connect: Callable[[], None] | None = None,
                  on_close: Callable[[], None] | None = None,
-                 bg_mode: str = "constellation") -> None:
+                 bg_mode: str | None = None) -> None:
         super().__init__(
             expand=True, bgcolor=BG_DEEP, opacity=1,
             animate_opacity=ft.Animation(MOTION_PANEL_MS, ft.AnimationCurve.EASE_IN_OUT),
@@ -359,7 +372,7 @@ class OnboardingView(ft.Container):
         self.dir_text: ft.Text | None = None
         self._picker = ft.FilePicker()
         page.services.append(self._picker)
-        self._bg_mode = bg_mode if bg_mode in ONBOARDING_BG_MODES else "constellation"
+        self._bg_mode = self._resolve_bg_mode(bg_mode)
         self._bg = self._create_background(self._bg_mode, self._reduced_motion)
 
         self._fill = ft.Container(

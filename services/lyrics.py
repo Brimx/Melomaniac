@@ -13,6 +13,7 @@ import json
 import os
 from pathlib import Path
 import re
+import threading
 import time
 from typing import Any, Sequence
 
@@ -29,6 +30,21 @@ _DEFAULT_RETRY_AFTER_S = 60.0
 
 _TS_RE = re.compile(r"\[(\d{1,3}):(\d{2})(?:[.:](\d{1,3}))?\]")
 _retry_after_until: float = 0.0
+_retry_lock = threading.Lock()
+_last_error_local = threading.local()
+
+
+class LyricsFetchError(RuntimeError):
+    """Error transitorio o de red/servidor al consultar el proveedor de letras."""
+
+
+def _set_last_error(msg: str) -> None:
+    _last_error_local.error = msg
+
+
+def get_last_error() -> str:
+    """Devuelve el último error de red/proveedor en el hilo actual (vacío si fue 404 o éxito)."""
+    return str(getattr(_last_error_local, "error", "") or "")
 
 
 @dataclass(frozen=True)
@@ -287,7 +303,8 @@ def _parse_retry_after(header_value: str | None) -> float:
 def reset_rate_limit() -> None:
     """Limpia el cooldown de Retry-After (útil en tests)."""
     global _retry_after_until
-    _retry_after_until = 0.0
+    with _retry_lock:
+        _retry_after_until = 0.0
 
 
 def fetch_lyrics(
@@ -300,9 +317,11 @@ def fetch_lyrics(
     use_cache: bool = True,
     allow_network: bool = True,
     timeout_s: float = 10.0,
+    raise_on_error: bool = False,
 ) -> LyricsResult | None:
     """Consulta caché en ``config/lyrics/`` y luego LRCLIB respetando ``Retry-After``."""
     global _retry_after_until
+    _set_last_error("")
     q_title, q_artist, q_album, q_duration_ms = _extract_query(
         track, title, artist, album, duration_ms
     )
@@ -318,7 +337,13 @@ def fetch_lyrics(
     if not allow_network:
         return None
 
-    if time.monotonic() < _retry_after_until:
+    with _retry_lock:
+        cooldown_until = _retry_after_until
+    if time.monotonic() < cooldown_until:
+        msg = "Proveedor de letras en espera por límite de peticiones."
+        _set_last_error(msg)
+        if raise_on_error:
+            raise LyricsFetchError(msg)
         return None
 
     params: dict[str, Any] = {
@@ -337,12 +362,21 @@ def fetch_lyrics(
             headers={"User-Agent": _USER_AGENT},
             timeout=timeout_s,
         )
-    except requests.RequestException:
+    except requests.RequestException as exc:
+        msg = f"Error de red al consultar letras: {exc}"
+        _set_last_error(msg)
+        if raise_on_error:
+            raise LyricsFetchError(msg) from exc
         return None
 
     if resp.status_code in (429, 503):
         delay = _parse_retry_after(resp.headers.get("Retry-After"))
-        _retry_after_until = time.monotonic() + delay
+        with _retry_lock:
+            _retry_after_until = time.monotonic() + delay
+        msg = f"Proveedor de letras saturado (HTTP {resp.status_code})."
+        _set_last_error(msg)
+        if raise_on_error:
+            raise LyricsFetchError(msg)
         return None
 
     if resp.status_code == 404:
@@ -351,11 +385,19 @@ def fetch_lyrics(
         return None
 
     if resp.status_code != 200:
+        msg = f"Error HTTP {resp.status_code} al consultar letras."
+        _set_last_error(msg)
+        if raise_on_error:
+            raise LyricsFetchError(msg)
         return None
 
     try:
         body = resp.json()
-    except ValueError:
+    except ValueError as exc:
+        msg = "Respuesta inválida del proveedor de letras."
+        _set_last_error(msg)
+        if raise_on_error:
+            raise LyricsFetchError(msg) from exc
         return None
     if not isinstance(body, dict):
         return None
@@ -399,9 +441,12 @@ def get_lyrics(
     artist: str = "",
     album: str = "",
     duration_ms: int = 0,
+    use_cache: bool = True,
     allow_network: bool = True,
+    raise_on_error: bool = False,
 ) -> LyricsResult | None:
     """Orden: ``.lrc`` local -> tags embebidos -> caché ``config/lyrics/`` -> LRCLIB."""
+    _set_last_error("")
     if audio_path:
         local = load_local_lyrics(audio_path)
         if local is not None:
@@ -412,5 +457,7 @@ def get_lyrics(
         artist=artist,
         album=album,
         duration_ms=duration_ms,
+        use_cache=use_cache,
         allow_network=allow_network,
+        raise_on_error=raise_on_error,
     )

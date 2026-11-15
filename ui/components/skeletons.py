@@ -53,6 +53,13 @@ def is_reduced_motion(page: ft.Page | None = None, *, reduced_motion: bool | Non
         media = getattr(page, "media", None)
         if media is not None and getattr(media, "disable_animations", False):
             return True
+    try:
+        from services.settings_store import get_reduce_motion
+
+        if get_reduce_motion():
+            return True
+    except Exception:
+        pass
     return False
 
 

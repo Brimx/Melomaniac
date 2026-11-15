@@ -19,8 +19,14 @@ class MprisController:
         self._player = player
 
     def attach(self, service: MPRISService) -> None:
-        """Enlaza el servicio MPRIS y arranca su registro en el bus de sesión."""
+        """Enlaza el servicio MPRIS y arranca su registro en el bus de sesión si está habilitado."""
         p = self._player
+        try:
+            if not settings_store.get_mpris_enabled():
+                p._dbus_mpris = None
+                return
+        except Exception:  # noqa: BLE001
+            pass
         p._dbus_mpris = service
 
         def _on_ready() -> None:

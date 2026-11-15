@@ -837,7 +837,10 @@ class ConfigView(ft.Container):
         for tid, tile in self._theme_tiles.items():
             tile.border = ft.Border.all(0.8, ACCENT if tid == val else BORDER_MUTED)
         safe_update(self._theme_group)
-        notify(self._page_ref, "Tema guardado · reinicia para aplicarlo en toda la app")
+        if val == "sala":
+            notify(self._page_ref, "Tema «Sala de escucha» activo")
+        else:
+            notify(self._page_ref, "Tema guardado · disponible próximamente")
         self._changed()
 
     # ── Biblioteca handlers (carpetas con confirmación, caché, portadas)

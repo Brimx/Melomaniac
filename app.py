@@ -202,8 +202,15 @@ async def main(page: ft.Page) -> None:
                     root_stack.controls.remove(overlay)
                     page.update()
 
+            bg_mode = "disco"
+            if hasattr(settings_store, "get_bg_mode"):
+                try:
+                    bg_mode = settings_store.get_bg_mode()
+                except Exception:
+                    bg_mode = "disco"
             overlay = OnboardingView(
                 page, on_connect=auth_manager.open_wizard, on_close=_close,
+                bg_mode=bg_mode,
             )
             root_stack.controls.append(overlay)
             page.update()
