@@ -289,9 +289,16 @@ class TestHomeViewAndMainUIIntegration(unittest.TestCase):
 
         self.assertEqual(ui._current_module, 0)
         self.assertIsNotNone(getattr(ui, "_panel_inicio", None))
+        self.assertEqual(len(ui._module_panels), 5)
+        self.assertEqual(len(ui._module_stack.controls), 5)
         self.assertIs(ui._module_panels[HOME_MODULE_IDX], ui._panel_inicio)
         self.assertIs(ui._panel_config.service, dummy_service)
         self.assertIsNotNone(ui._panel_config._on_open_wizard)
+
+        ui._select_module(HOME_MODULE_IDX)
+        self.assertTrue(ui._panel_inicio.visible)
+        ui._select_module(0)
+        self.assertFalse(ui._panel_inicio.visible)
 
         auth_mgr = MagicMock()
         ui.auth_manager = auth_mgr

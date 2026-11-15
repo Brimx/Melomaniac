@@ -656,7 +656,8 @@ class PlaylistManagerUI:
                 stack.controls[HOME_MODULE_IDX] = home
         else:
             panels.append(home)
-            stack.controls.append(home)
+            if home not in stack.controls:
+                stack.controls.append(home)
         if (
             self.on_show_welcome is not None
             and getattr(self, "_current_module", 0) == 0
