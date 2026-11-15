@@ -9,7 +9,7 @@ import flet as ft
 from core.config import EXPORT_DEST_LABEL
 from core.models import Track
 from core.state import AppState
-from ui.components.widgets import _ghost_btn, safe_update
+from ui.components.widgets import _ghost_btn, paper_shadow, safe_update
 from ui.theme.fonts import FONT_TEXT
 from ui.theme.icons import PIcons, app_icon
 from ui.theme.tokens import (
@@ -138,8 +138,9 @@ def make_preflight_status_row(host, on_status_change=None):
     )
     banner = ft.Container(
         bgcolor=CHIP_BG,
-        border=ft.Border.all(0.8, BORDER_LIGHT),
+        border=ft.Border.all(1, BORDER_LIGHT),
         border_radius=RADIUS_SHARP,
+        shadow=paper_shadow(),
         padding=ft.Padding.symmetric(horizontal=10, vertical=8),
         content=ft.Row(
             [icon_ctrl, status_txt, config_btn, recheck_btn],

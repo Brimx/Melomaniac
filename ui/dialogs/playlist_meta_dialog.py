@@ -35,11 +35,12 @@ from ui.theme.tokens import (
 )
 from ui.theme.icons import PIcons
 from ui.components.widgets import (
-    _section_label,
+    _ghost_btn,
+    _primary_btn,
+    app_dialog,
     app_text_field,
     close_dialog,
-    dialog_action,
-    app_dialog,
+    kicker,
     set_button_text,
 )
 
@@ -81,7 +82,7 @@ class PlaylistMetaDialog:
         self._delete_chk: ft.Checkbox | None = None
         self._div_switch: ft.Dropdown | None = None
         self._dest_dd: ft.Dropdown | None = None
-        self._primary_btn: ft.TextButton | None = None
+        self._primary_btn: ft.Control | None = None
 
     # ── API pública ──────────────────────────────────────────────
 
@@ -193,21 +194,26 @@ class PlaylistMetaDialog:
             self._div_switch.on_select = _on_div_change  # type: ignore
             self._dest_dd.on_select = _on_dest_change  # type: ignore
             controls += [
-                _section_label("DIVISIÓN"),
+                kicker("DIVISIÓN"),
                 self._div_switch,
                 self._dest_dd,
                 ft.Text("Mantener = usa destino global elegido fuera; otras opciones son las dos plataformas restantes.", size=FS_META, color=TEXT_MUTED, font_family="IBM Plex Sans"),
             ]
         controls += [
-            _section_label("NOMBRE"),
+            kicker("NOMBRE"),
             self._title_field,
-            _section_label("DESCRIPCIÓN"),
+            kicker("DESCRIPCIÓN"),
             self._desc_field,
             self._delete_chk,
             ft.Text("Desmarcado por defecto — crea nueva sin borrar original.", size=FS_META, color=TEXT_MUTED, font_family="IBM Plex Sans"),
         ]
         # Botón Guardar + primario Siguiente/Crear
-        self._primary_btn = dialog_action("Siguiente" if self._divisions and len(self._divisions) > 1 else "Crear y transferir", self._on_next_or_confirm, kind="primary", icon=PIcons.ARROWS_LEFT_RIGHT)
+        self._primary_btn = _primary_btn(
+            "Siguiente" if self._divisions and len(self._divisions) > 1 else "Crear y transferir",
+            PIcons.ARROWS_LEFT_RIGHT,
+            self._on_next_or_confirm,
+            height=36,
+        )
         self._dlg = app_dialog(
             "Personalizar playlist",
             ft.Column(
@@ -219,8 +225,8 @@ class PlaylistMetaDialog:
             ),
             [
                 self._primary_btn,
-                dialog_action("Guardar", self._on_save, kind="muted"),
-                dialog_action("Cancelar", self._on_cancel, kind="muted"),
+                _ghost_btn("Guardar", None, self._on_save, height=36),
+                _ghost_btn("Cancelar", None, self._on_cancel, height=36),
             ],
             width=CONTENT_W,
             icon=PIcons.PENCIL_SIMPLE,

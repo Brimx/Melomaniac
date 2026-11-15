@@ -12,11 +12,12 @@ from engine.parsers import build_local_tracks, parse_local_playlist_with_paths
 from services.local_index import scan_folder_async
 from ui.components.widgets import (
     _ghost_btn,
+    _primary_btn,
     app_dialog,
     app_text_field,
     debounce,
-    dialog_action,
     limit_label,
+    paper_shadow,
     safe_update,
 )
 from ui.dialogs.transfer_helpers import get_synced_playlists_for
@@ -258,8 +259,9 @@ def open_merge_dialog(host) -> None:
                 ft.Container(
                     content=lv,
                     bgcolor=CHIP_BG,
-                    border=ft.Border.all(0.8, BORDER_LIGHT),
+                    border=ft.Border.all(1, BORDER_LIGHT),
                     border_radius=RADIUS_SHARP,
+                    shadow=paper_shadow(),
                     padding=ft.Padding.all(SPACE_2),
                 ),
                 dedup_chk,
@@ -268,12 +270,12 @@ def open_merge_dialog(host) -> None:
             tight=True,
         ),
         [
-            dialog_action("Cancelar", lambda _: host._close_dlg(dlg), kind="muted"),
-            dialog_action(
+            _ghost_btn("Cancelar", None, lambda _: host._close_dlg(dlg), height=36),
+            _primary_btn(
                 "Fusionar",
+                PIcons.QUEUE,
                 lambda e: asyncio.create_task(_execute_merge(e)),
-                kind="primary",
-                icon=PIcons.QUEUE,
+                height=36,
             ),
         ],
         width=540,

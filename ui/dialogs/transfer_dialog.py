@@ -9,10 +9,11 @@ import flet as ft
 from core.config import EXPORT_DEST_LABEL
 from core.state import AppState
 from ui.components.widgets import (
-    _section_label,
+    _ghost_btn,
+    _primary_btn,
     app_dialog,
     app_text_field,
-    dialog_action,
+    kicker,
     organize_dropdown,
     safe_update,
 )
@@ -177,11 +178,11 @@ async def open_transfer_dialog(host, *, has_divisions: bool = False) -> None:
     new_box = ft.Column([title_field, desc_field, delete_chk], spacing=SPACE_2, tight=True)
     existing_box = ft.Column([existing_dd, existing_help], spacing=SPACE_2, tight=True, visible=False)
 
-    confirm_btn = dialog_action(
+    confirm_btn = _primary_btn(
         "Transferir",
+        PIcons.ARROWS_LEFT_RIGHT,
         lambda _: None,
-        kind="primary",
-        icon=PIcons.ARROWS_LEFT_RIGHT,
+        height=36,
     )
 
     def _on_preflight_status(ok: bool | None) -> None:
@@ -352,7 +353,7 @@ async def open_transfer_dialog(host, *, has_divisions: bool = False) -> None:
         "Transferir playlist",
         ft.Column(
             [
-                _section_label("DESTINO Y SESIÓN"),
+                kicker("DESTINO Y SESIÓN"),
                 dest_dd,
                 preflight_banner,
                 mode_row,
@@ -363,7 +364,7 @@ async def open_transfer_dialog(host, *, has_divisions: bool = False) -> None:
             tight=True,
         ),
         [
-            dialog_action("Cancelar", lambda _: host._close_dlg(dlg), kind="muted"),
+            _ghost_btn("Cancelar", None, lambda _: host._close_dlg(dlg), height=36),
             confirm_btn,
         ],
         width=500,
