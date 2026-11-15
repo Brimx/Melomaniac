@@ -62,6 +62,7 @@ from ui.theme.tokens import (
     BG_INSET,
     BG_PANEL,
     BG_SURFACE,
+    BORDER_LIGHT,
     BORDER_CONTROL,
     BORDER_ROW,
     ERROR_COL,
