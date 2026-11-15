@@ -1,4 +1,4 @@
-"""ui/shell/sidebar.py — Barra lateral de origen, selector de playlist y telemetría."""
+"""ui/shell/sidebar.py — Panel de fuente y carga de Gestión (estilo Sala de escucha)."""
 
 from __future__ import annotations
 
@@ -6,34 +6,34 @@ import asyncio
 
 import flet as ft
 
-from core.config import APP_VERSION, EXPORT_DEST_LABEL
+from core.config import EXPORT_DEST_LABEL
 from core.state import AppState
-from ui.components.telemetry import TelemetryDrawer
 from ui.components.widgets import (
-    _ghost_btn,
     _primary_btn,
-    _section_label,
     app_text,
     app_text_field,
     input_border,
+    kicker,
+    platform_select,
+    safe_update,
     set_button_text,
 )
-from ui.theme.fonts import FONT_HEADLINE, FONT_TEXT, brand_family, mono_family
+from ui.theme.fonts import FONT_HEADLINE, FONT_TEXT, mono_family
 from ui.theme.icons import PIcons, app_icon, app_icon_button
 from ui.theme.tokens import (
     ACCENT,
-    ACCENT_HALO,
     BG_INSET,
     BG_INPUT,
+    BG_PANEL,
     BG_SURFACE,
     BORDER_CONTROL,
-    BORDER_MUTED,
+    BORDER_ROW,
     DECOR_LINE,
     ERROR_COL,
     FS_META,
+    FS_SM,
+    RADIUS_NONE,
     RADIUS_SHARP,
-    RADIUS_SM,
-    SIDEBAR_BG,
     SPACE_0,
     SPACE_1,
     SPACE_2,
@@ -45,80 +45,62 @@ from ui.theme.tokens import (
     WARNING,
 )
 
+SOURCE_PLATFORM_OPTIONS: list[tuple[str, str, str]] = [
+    ("YouTube Music", "YouTube Music", PIcons.YOUTUBE_LOGO),
+    ("Apple Music", "Apple Music", PIcons.APPLE_LOGO),
+    ("Spotify", "Spotify", PIcons.SPOTIFY_LOGO),
+    ("Archivo Local", "Archivo Local", PIcons.FOLDER),
+    ("Pegar Texto", "Pegar Texto", PIcons.LIST_BULLETS),
+]
+
+
+def _make_source_selector(ui, current: str, on_select) -> ft.Container:
+    """Construye el selector de plataforma origen con ``platform_select``."""
+    holder = ft.Container()
+
+    def _rebuild(val: str) -> None:
+        holder.content = platform_select(
+            SOURCE_PLATFORM_OPTIONS,
+            val,
+            on_select,
+            label="ORIGEN",
+        )
+
+    _rebuild(current)
+    ui._rebuild_src_selector = _rebuild
+    return holder
+
 
 def build_sidebar(ui) -> None:
-    """Construye la barra lateral izquierda de Gestión sobre ``ui``."""
+    """Construye el panel izquierdo de fuente y carga sobre ``ui``."""
     s = ui.state
 
     ui.btn_wizard = app_icon_button(
         PIcons.GEAR,
-        icon_color=DECOR_LINE,
+        icon_color=TEXT_MUTED,
         hover_color_icon=TEXT_PRIMARY,
         size=16,
-        tooltip="Configurar credenciales",
+        tooltip="Configurar credenciales y sesiones",
         on_click=ui._on_open_wizard,
         width=28,
         height=28,
-    )
-    logo = ft.Column(
-        [
-            ft.Row(
-                [
-                    ft.Container(
-                        content=app_icon(PIcons.MUSIC_NOTES, color=ACCENT, size=20, fill=True),
-                        bgcolor=ACCENT_HALO,
-                        border_radius=RADIUS_SM,
-                        padding=ft.Padding.all(6),
-                    ),
-                    ft.Column(
-                        [
-                            ft.Text(
-                                spans=[
-                                    ft.TextSpan(
-                                        "Melomaniac",
-                                        ft.TextStyle(
-                                            size=20,
-                                            color=TEXT_PRIMARY,
-                                            font_family=brand_family("bold"),
-                                        ),
-                                    ),
-                                ],
-                                opacity=1.0,
-                            ),
-                            ft.Text(
-                                f"v{APP_VERSION}",
-                                size=FS_META,
-                                color=TEXT_MUTED,
-                                font_family=FONT_TEXT,
-                                style=ft.TextStyle(letter_spacing=0.8),
-                                opacity=1.0,
-                            ),
-                        ],
-                        spacing=SPACE_0,
-                        tight=True,
-                        expand=True,
-                    ),
-                    ui.btn_wizard,
-                ],
-                spacing=SPACE_3,
-                vertical_alignment=ft.CrossAxisAlignment.CENTER,
-            ),
-        ],
-        spacing=SPACE_0,
     )
 
     _dd_style = dict(
         bgcolor=BG_INPUT,
         border=input_border(),
         label_style=ft.TextStyle(color=TEXT_MUTED, size=FS_META, font_family=FONT_HEADLINE),
-        text_style=ft.TextStyle(color=TEXT_PRIMARY, size=11, font_family=FONT_TEXT),
-        content_padding=ft.Padding.symmetric(horizontal=8, vertical=0),
+        text_style=ft.TextStyle(color=TEXT_PRIMARY, size=FS_SM, font_family=FONT_TEXT),
+        content_padding=ft.Padding.symmetric(horizontal=SPACE_2, vertical=0),
         expand=True,
     )
 
-    def _on_src_select(e) -> None:
-        val = e.control.value
+    def _apply_source_change(val: str) -> None:
         s.set_source(val)
+        ui._src_dd.value = val
+        if hasattr(ui, "_rebuild_src_selector"):
+            ui._rebuild_src_selector(val)
+            safe_update(ui._src_selector_wrap)
         if val == "Archivo Local":
             asyncio.create_task(ui._do_local_pick())
         elif val == "Pegar Texto":
@@ -127,21 +109,18 @@ def build_sidebar(ui) -> None:
             asyncio.create_task(ui._refresh_auth_live(val))
             ui._refresh_playlist_picker(val)
 
+    def _on_src_select(e) -> None:
+        _apply_source_change(e.control.value)
+
     def _on_dst_select(e) -> None:
         val = e.control.value
         s.set_destination(val)
         if val == EXPORT_DEST_LABEL:
             set_button_text(ui._transfer_btn, "Exportar", icon=PIcons.EXPORT)
-            try:
-                ui._transfer_btn.update()
-            except Exception:
-                pass
+            safe_update(ui._transfer_btn)
             return
         set_button_text(ui._transfer_btn, "Transferir", icon=PIcons.ARROWS_LEFT_RIGHT)
-        try:
-            ui._transfer_btn.update()
-        except Exception:
-            pass
+        safe_update(ui._transfer_btn)
         if val in AppState.PLATFORMS:
             asyncio.create_task(ui._refresh_auth_live(val))
 
@@ -150,6 +129,7 @@ def build_sidebar(ui) -> None:
         value=s.source,
         options=[ft.dropdown.Option(key=p, text=p) for p in AppState.SOURCE_OPTIONS],
         on_select=_on_src_select,
+        visible=False,
         **_dd_style,
     )
     _dst_opts = [*AppState.PLATFORMS, EXPORT_DEST_LABEL]
@@ -161,13 +141,44 @@ def build_sidebar(ui) -> None:
         visible=False,
         **_dd_style,
     )
-    ui._status_badge = ft.Text("", size=FS_META, color=SUCCESS, font_family=mono_family(), opacity=1.0)
-    ui._dest_session_warn = ft.Text("", size=FS_META, color=ERROR_COL, font_family=FONT_TEXT, visible=False)
+    ui._src_selector_wrap = _make_source_selector(ui, s.source, _apply_source_change)
+    ui._set_source_display = lambda val: (
+        setattr(ui._src_dd, "value", val),
+        ui._rebuild_src_selector(val) if hasattr(ui, "_rebuild_src_selector") else None,
+        safe_update(ui._src_selector_wrap),
+    )
+
+    ui._status_badge = ft.Text(
+        "",
+        size=FS_META,
+        color=SUCCESS,
+        font_family=mono_family(),
+        opacity=1.0,
+    )
+    ui._dest_session_warn = ft.Text(
+        "",
+        size=FS_META,
+        color=ERROR_COL,
+        font_family=FONT_TEXT,
+        visible=False,
+    )
+
+    header_row = ft.Row(
+        controls=[
+            kicker("FUENTE"),
+            ft.Container(expand=True),
+            ui.btn_wizard,
+        ],
+        spacing=SPACE_2,
+        vertical_alignment=ft.CrossAxisAlignment.CENTER,
+    )
 
     platform_section = ft.Column(
         [
-            _section_label("PLATAFORMAS"),
-            ft.Row([ui._src_dd, ui._dst_dd], spacing=SPACE_2),
+            header_row,
+            ui._src_selector_wrap,
+            ui._src_dd,
+            ui._dst_dd,
             ui._status_badge,
             ui._dest_session_warn,
         ],
@@ -188,10 +199,10 @@ def build_sidebar(ui) -> None:
 
     def _on_id_change(_):
         ui._id_clear_btn.visible = bool(ui._id_field.value)
-        ui._id_clear_btn.update()
+        safe_update(ui._id_clear_btn)
 
     ui._id_field = app_text_field(
-        label="ID o URL de la Playlist",
+        label="ID o URL de la playlist",
         hint_text="pl.xxxx  /  PLxxxx  /  URL",
         suffix=ui._id_clear_btn,
         on_change=_on_id_change,
@@ -231,12 +242,12 @@ def build_sidebar(ui) -> None:
     ui._url_mode = False
 
     ui._load_btn = _primary_btn(
-        "Cargar", PIcons.DOWNLOAD_SIMPLE, ui._on_load, width=264, height=44
+        "Cargar", PIcons.DOWNLOAD_SIMPLE, ui._on_load, width=236, height=40
     )
 
     ui._playlist_section = ft.Column(
         [
-            _section_label("PLAYLIST"),
+            kicker("PLAYLIST"),
             ui._playlist_pick,
             ui._playlist_help,
             ui._id_field,
@@ -248,13 +259,12 @@ def build_sidebar(ui) -> None:
     )
     ui._id_field.visible = False
     ui._playlist_help.value = (
-        "Sin playlists sincronizadas: usa «Avanzado» o sincroniza "
-        "la plataforma en Biblioteca."
+        "Sin playlists sincronizadas: usa «Avanzado» o sincroniza en Biblioteca."
     )
     ui._playlist_help.visible = True
     ui._playlist_divider = ft.Divider(
         height=1,
-        color=BORDER_MUTED,
+        color=BORDER_ROW,
         thickness=0.5,
         visible=(s.source not in AppState.LOCAL_SOURCES),
     )
@@ -263,24 +273,40 @@ def build_sidebar(ui) -> None:
         content=ft.Row(
             [
                 app_icon(PIcons.CLOCK, color=WARNING, size=14),
-                ft.Text("", size=FS_META, color=WARNING, font_family=mono_family("light"), opacity=1.0),
+                ft.Text(
+                    "",
+                    size=FS_META,
+                    color=WARNING,
+                    font_family=mono_family("light"),
+                    opacity=1.0,
+                ),
             ],
             spacing=SPACE_1,
         ),
         bgcolor=BG_INSET,
         border=ft.Border.all(0.8, WARNING),
         border_radius=RADIUS_SHARP,
-        padding=ft.Padding.symmetric(horizontal=SPACE_2, vertical=6),
+        padding=ft.Padding.symmetric(horizontal=SPACE_2, vertical=SPACE_1),
         visible=False,
     )
 
-    ui._progress_bar = ft.ProgressBar(value=0, bgcolor=BG_SURFACE, color=ACCENT, border_radius=RADIUS_SHARP)
+    ui._progress_bar = ft.ProgressBar(
+        value=0, bgcolor=BG_SURFACE, color=ACCENT, border_radius=RADIUS_SHARP
+    )
     ui._progress_row = ft.Container(
         content=ft.Column(
             [
                 ui._progress_bar,
                 ft.Row(
-                    [ft.Text("", size=FS_META, color=TEXT_MUTED, font_family=mono_family("light"), opacity=1.0)],
+                    [
+                        ft.Text(
+                            "",
+                            size=FS_META,
+                            color=TEXT_MUTED,
+                            font_family=mono_family("light"),
+                            opacity=1.0,
+                        )
+                    ],
                     alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
                 ),
             ],
@@ -290,39 +316,26 @@ def build_sidebar(ui) -> None:
         bgcolor=BG_INSET,
         border=ft.Border.all(0.8, BORDER_CONTROL),
         border_radius=RADIUS_SHARP,
-        padding=ft.Padding.symmetric(horizontal=SPACE_2, vertical=6),
+        padding=ft.Padding.symmetric(horizontal=SPACE_2, vertical=SPACE_1),
     )
 
-    ui._telemetry = TelemetryDrawer(ui.page, sidebar_width=300)
-
-    fixed_top = ft.Column(
+    sidebar_col = ft.Column(
         controls=[
-            logo,
-            ft.Divider(height=1, color=BORDER_MUTED, thickness=0.5),
             platform_section,
-            ft.Divider(height=1, color=BORDER_MUTED, thickness=0.5),
-            ui._playlist_section,
             ui._playlist_divider,
+            ui._playlist_section,
+            ui._rl_banner,
         ],
-        spacing=SPACE_3,
-    )
-
-    scrollable_bottom = ft.Column(
-        controls=[ui._rl_banner, ui._telemetry.container],
         spacing=SPACE_3,
         scroll=ft.ScrollMode.ADAPTIVE,
         expand=True,
     )
 
-    sidebar_col = ft.Column(controls=[fixed_top, scrollable_bottom], spacing=SPACE_3, expand=True)
-    sidebar_stack = ft.Stack(controls=[sidebar_col, ui._telemetry.handle], expand=True)
-
     ui._sidebar = ft.Container(
-        width=300,
+        width=268,
         padding=ft.Padding.all(SPACE_4),
-        bgcolor=SIDEBAR_BG,
-        clip_behavior=ft.ClipBehavior.ANTI_ALIAS,
-        border_radius=ft.BorderRadius.only(top_right=RADIUS_SM, bottom_right=RADIUS_SM),
-        border=ft.Border.only(right=ft.BorderSide(1, BORDER_CONTROL)),
-        content=sidebar_stack,
+        bgcolor=BG_PANEL,
+        border_radius=RADIUS_NONE,
+        border=ft.Border.only(right=ft.BorderSide(1, BORDER_ROW)),
+        content=sidebar_col,
     )

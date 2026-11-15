@@ -234,7 +234,7 @@ class CatalogController:
             ui._list_area.visible = not target
         if hasattr(ui, "_footer_bar"):
             ui._footer_bar.visible = not target
-        if hasattr(ui, "_mode_bar"):
+        if getattr(ui, "_mode_bar", None) is not None:
             has_transform = bool(
                 getattr(ui.state, "segments", {})
                 or getattr(ui.state, "show_dual", False)
