@@ -34,7 +34,7 @@ from ui.theme.fonts import (
 from ui.theme.icons import PIcons, app_icon, app_icon_button
 from ui.theme.tokens import (
     ACCENT, BG_LIST, BG_PANEL, BG_SURFACE, BORDER_MUTED, BORDER_ROW, ERROR_COL,
-    FS_META, RADIUS_SHARP, SPACE_0, SPACE_1, SPACE_2, SPACE_3, SPACE_4,
+    FS_META, FS_PAGE, RADIUS_SHARP, SPACE_0, SPACE_1, SPACE_2, SPACE_3, SPACE_4,
     SUCCESS, TEXT_MUTED, TEXT_PRIMARY,
 )
 from ui.dialogs.recovery_panel import (
@@ -97,6 +97,7 @@ class DownloadsView(ft.Container):
         self._history_dir = ""
         self._history_paths: list[str] = []
         self._results_sig: tuple | None = None
+        self._collapsed_groups: set[str] = set()
         try:
             self._default_dir = str(resolve_download_dir(create=False))
         except Exception:
@@ -156,32 +157,44 @@ class DownloadsView(ft.Container):
             PIcons.ARROWS_CLOCKWISE, icon_color=TEXT_MUTED, hover_color_icon=TEXT_PRIMARY, size=18,
             tooltip="Restablecer carpeta por defecto", on_click=self._on_reset_dir, width=32, height=32,
         )
-        destination = ft.Container(
-            bgcolor=BG_PANEL, border=ft.Border.all(1, BORDER_MUTED),
-            border_radius=RADIUS_SHARP, padding=ft.Padding.symmetric(horizontal=14, vertical=8),
-            content=ft.Row(controls=[
-                app_icon(PIcons.FOLDER, size=16, color=TEXT_MUTED),
-                app_text("Destino", size=11, color=TEXT_MUTED, font_family=mono_family("light")),
-                self._dir_text,
-                self._open_dir_btn, self._pick_dir_btn, self._reset_dir_btn,
-            ], spacing=SPACE_3, vertical_alignment=ft.CrossAxisAlignment.CENTER),
-        )
         self._dir_text.expand = True
-
-        # progreso global (resumen en una línea + barra de progreso)
-        self._progress_icon = app_icon(PIcons.DOWNLOAD_SIMPLE, size=20, color=ACCENT)
-        self._progress = ft.ProgressBar(
-            value=0, color=ACCENT, bgcolor=BORDER_MUTED, height=3, border_radius=RADIUS_SHARP,
+        config_strip = ft.Container(
+            bgcolor=BG_PANEL,
+            border=ft.Border.all(1, BORDER_MUTED),
+            border_radius=RADIUS_SHARP,
+            padding=ft.Padding.symmetric(horizontal=14, vertical=8),
+            content=ft.Row(
+                controls=[
+                    kicker("FORMATO"),
+                    self._format_dd,
+                    ft.Container(width=SPACE_2),
+                    kicker("DESTINO"),
+                    self._dir_text,
+                    self._open_dir_btn,
+                    self._pick_dir_btn,
+                    self._reset_dir_btn,
+                ],
+                spacing=SPACE_3,
+                vertical_alignment=ft.CrossAxisAlignment.CENTER,
+            ),
         )
-        self._progress_text = app_text("", size=FS_META, color=TEXT_MUTED, font_family=mono_family("light"))
-        self._current_text = app_text("", size=12, color=TEXT_PRIMARY, font_family=FONT_TEXT,
+
+        # tarjeta de descarga activa
+        self._progress_icon = app_icon(PIcons.DOWNLOAD_SIMPLE, size=20, color=TEXT_MUTED)
+        self._progress = ft.ProgressBar(
+            value=0, color=ACCENT, bgcolor=BORDER_MUTED, height=4, border_radius=RADIUS_SHARP,
+            expand=True,
+        )
+        self._progress_pct_text = app_text("", size=FS_META, color=TEXT_MUTED, font_family=mono_family("regular"))
+        self._progress_text = app_text("", size=FS_META, color=TEXT_MUTED, font_family=mono_family("regular"))
+        self._current_text = app_text("", size=14, color=TEXT_PRIMARY, font_family=FONT_HEADLINE_BOLD,
                                       max_lines=1, overflow=ft.TextOverflow.ELLIPSIS, expand=True)
         self._status_chip_slot = ft.Container(visible=False)
         self._progress_area = ft.Container(
             bgcolor=BG_PANEL,
             border=ft.Border.all(1, BORDER_MUTED),
             border_radius=RADIUS_SHARP,
-            padding=ft.Padding.symmetric(horizontal=14, vertical=10),
+            padding=ft.Padding.symmetric(horizontal=16, vertical=12),
             visible=False,
             content=ft.Row(
                 controls=[
@@ -189,25 +202,49 @@ class DownloadsView(ft.Container):
                     ft.Column(
                         controls=[
                             ft.Row(
-                                controls=[self._status_chip_slot, self._current_text, self._progress_text],
+                                controls=[self._current_text, self._status_chip_slot],
                                 spacing=SPACE_2,
                                 vertical_alignment=ft.CrossAxisAlignment.CENTER,
                             ),
-                            self._progress,
+                            ft.Row(
+                                controls=[self._progress, self._progress_pct_text],
+                                spacing=SPACE_2,
+                                vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                            ),
+                            self._progress_text,
                         ],
-                        spacing=SPACE_2,
+                        spacing=SPACE_1,
                         expand=True,
                     ),
+                    self._pause_btn,
+                    self._cancel_btn,
                 ],
                 spacing=SPACE_3,
                 vertical_alignment=ft.CrossAxisAlignment.CENTER,
             ),
         )
 
-        # estado A: cola activa (una fila por pista)
-        self._queue_list = ft.ListView(expand=True, spacing=SPACE_2, padding=SPACE_0)
+        # estado A: cola activa colapsable ("Siguientes")
+        self._queue_list = ft.ListView(expand=True, spacing=SPACE_0, padding=SPACE_0)
+        self._queue_count_text = app_text("0", size=FS_META, color=TEXT_MUTED, font_family=mono_family("regular"))
+        self._queue_caret = app_icon(PIcons.CARET_DOWN, size=14, color=TEXT_PRIMARY)
+        self._queue_header = ft.Container(
+            ink=True,
+            padding=ft.Padding.symmetric(vertical=SPACE_1),
+            on_click=lambda _e: self._toggle_group("queue"),
+            content=ft.Row(
+                controls=[
+                    self._queue_caret,
+                    app_text("Siguientes", size=14, color=TEXT_PRIMARY, font_family=FONT_HEADLINE_BOLD),
+                    self._queue_count_text,
+                ],
+                spacing=SPACE_2,
+                vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                tight=True,
+            ),
+        )
         self._queue_section = ft.Column(
-            controls=[kicker("EN PROCESO"), self._queue_list],
+            controls=[self._queue_header, self._queue_list],
             spacing=SPACE_2, expand=True, visible=False,
         )
 
@@ -234,17 +271,18 @@ class DownloadsView(ft.Container):
                 "Selecciona pistas en Gestión o descarga una playlist desde Biblioteca",
             ),
         )
-        self._done_col = ft.Column(spacing=SPACE_1)
-        self._failed_col = ft.Column(spacing=SPACE_1)
-        self._missing_col = ft.Column(spacing=SPACE_1)
+        self._done_col = ft.Column(spacing=SPACE_0)
+        self._failed_col = ft.Column(spacing=SPACE_0)
+        self._missing_col = ft.Column(spacing=SPACE_0)
         self._results_panel = ft.Column(controls=[
             self._done_col,
             self._failed_col,
             self._missing_col,
         ], spacing=SPACE_3, visible=False)
-        self._history_stack = ft.Stack(
-            controls=[self._history_list, self._history_empty], expand=True,
-            fit=ft.StackFit.EXPAND,
+        self._history_stack = ft.Column(
+            controls=[self._history_list, self._history_empty],
+            expand=True,
+            spacing=SPACE_0,
         )
         self._history_section = ft.Column(controls=[
             ft.Row(controls=[
@@ -259,11 +297,22 @@ class DownloadsView(ft.Container):
 
         header = ft.Row(
             controls=[
-                app_text("Descargas", size=18, color=TEXT_PRIMARY, font_family=FONT_HEADLINE_BOLD),
-                ft.Container(content=self._count_text, expand=True, padding=ft.Padding.only(left=8)),
-                self._format_dd,
-                self._pause_btn,
-                self._cancel_btn,
+                ft.Column(
+                    controls=[
+                        kicker("DESCARGAS"),
+                        app_text("En prensa", size=FS_PAGE, color=TEXT_PRIMARY, font_family=FONT_HEADLINE_BOLD),
+                        app_text(
+                            "yt-dlp resuelve cada pista en YouTube y conserva solo el audio.",
+                            size=12,
+                            color=TEXT_MUTED,
+                            font_family=FONT_TEXT,
+                        ),
+                    ],
+                    spacing=SPACE_0,
+                    tight=True,
+                    expand=True,
+                ),
+                self._count_text,
                 self._start_btn,
             ],
             spacing=SPACE_3,
@@ -280,10 +329,9 @@ class DownloadsView(ft.Container):
         self.content = ft.Container(
             content=ft.Column(controls=[
                 header,
-                ft.Divider(height=1, color=BORDER_MUTED),
                 self._ffmpeg_banner,
-                destination,
                 self._progress_area,
+                config_strip,
                 self._queue_section,
                 self._history_section,
             ], spacing=SPACE_3, expand=True),
@@ -421,67 +469,98 @@ class DownloadsView(ft.Container):
 
     # ── cola activa ────────────────────────────────────────────────────
 
+    def _toggle_group(self, key: str) -> None:
+        if key in self._collapsed_groups:
+            self._collapsed_groups.remove(key)
+        else:
+            self._collapsed_groups.add(key)
+        collapsed = key in self._collapsed_groups
+        if key == "queue":
+            self._queue_list.visible = not collapsed
+            self._queue_caret.value = PIcons.CARET_RIGHT if collapsed else PIcons.CARET_DOWN
+        else:
+            col_map = {
+                "done": self._done_col,
+                "failed": self._failed_col,
+                "missing": self._missing_col,
+            }
+            col = col_map.get(key)
+            if col is not None and col.controls:
+                for row in col.controls[1:]:
+                    row.visible = not collapsed
+                hdr = col.controls[0]
+                caret = getattr(hdr, "data", None)
+                if caret is not None:
+                    caret.value = PIcons.CARET_RIGHT if collapsed else PIcons.CARET_DOWN
+        try:
+            self.update()
+        except Exception:
+            pass
+
     def _rebuild_queue(self, items: list[dict]) -> None:
         self._item_widgets = []
         rows: list[ft.Control] = []
         for item in items:
-            bar = ft.ProgressBar(value=0, color=ACCENT, bgcolor=BORDER_MUTED, height=3, border_radius=RADIUS_SHARP)
-            pct = app_text("", size=FS_META, color=TEXT_MUTED, font_family=mono_family("light"))
-            icon = app_icon(PIcons.CLOCK, size=18, color=TEXT_MUTED)
+            bar = ft.ProgressBar(value=0, color=ACCENT, bgcolor=BORDER_MUTED, height=2, border_radius=RADIUS_SHARP, visible=False)
+            pct = app_text("en cola", size=FS_META, color=TEXT_MUTED, font_family=mono_family("regular"))
+            icon = app_icon(PIcons.CLOCK, size=16, color=TEXT_MUTED)
             row = ft.Container(
                 border=ft.Border.only(bottom=ft.BorderSide(1, BORDER_ROW)),
-                padding=ft.Padding.symmetric(horizontal=10, vertical=8),
+                padding=ft.Padding.symmetric(horizontal=8, vertical=10),
                 content=ft.Row(controls=[
                     icon,
                     ft.Column(controls=[
-                        app_text(item["title"], size=12, color=TEXT_PRIMARY, font_family=FONT_TEXT,
+                        app_text(item["title"], size=13, color=TEXT_PRIMARY, font_family=FONT_TEXT,
                                  max_lines=1, overflow=ft.TextOverflow.ELLIPSIS),
                         bar,
-                    ], spacing=SPACE_2, expand=True),
-                    ft.Container(width=48, alignment=ft.Alignment.CENTER_RIGHT, content=pct),
+                    ], spacing=SPACE_1, expand=True),
+                    ft.Container(width=64, alignment=ft.Alignment.CENTER_RIGHT, content=pct),
                 ], spacing=SPACE_3, vertical_alignment=ft.CrossAxisAlignment.CENTER),
             )
             row._isolated = True
             rows.append(row)
             self._item_widgets.append((item, bar, pct, icon))
         self._queue_list.controls = rows
+        self._queue_count_text.value = str(len(items))
 
     def _sync_queue(self) -> None:
         for item, bar, pct, icon in self._item_widgets:
             status = item["status"]
             if status == "done":
+                bar.visible = False
                 bar.value, bar.color = 1, SUCCESS
-                pct.value = "100%"
+                pct.value = "listo"
                 icon.value, icon.color = PIcons.CHECK_CIRCLE, SUCCESS
                 icon.font_family = FONT_PHOSPHOR_FILL
             elif status == "paused":
-                # El usuario pausó: no es un fallo. Se conserva el progreso
-                # alcanzado porque la reanudación continúa desde el ``.part``.
+                bar.visible = True
                 bar.color = TEXT_MUTED
                 bar.value = (item["percent"] / 100) if item["percent"] > 0 else None
-                pct.value = "Pausa"
+                pct.value = "en pausa"
                 icon.value, icon.color = PIcons.PAUSE, TEXT_MUTED
                 icon.font_family = FONT_PHOSPHOR
             elif status == "failed":
+                bar.visible = False
                 bar.value, bar.color = 0, ERROR_COL
-                pct.value = item["error"][:12] if item["error"] == "Cancelada" else "Error"
+                pct.value = item["error"][:12].lower() if item["error"] == "Cancelada" else "error"
                 icon.value, icon.color = PIcons.WARNING_CIRCLE, ERROR_COL
                 icon.font_family = FONT_PHOSPHOR_FILL
             elif status == "skipped":
-                # Ya existía en disco; no se reescribió.
+                bar.visible = False
                 bar.value, bar.color = 1, TEXT_MUTED
-                pct.value = "Omitida"
+                pct.value = "omitida"
                 icon.value, icon.color = PIcons.SKIP_FORWARD, TEXT_MUTED
                 icon.font_family = FONT_PHOSPHOR
             elif status == "running":
+                bar.visible = True
                 bar.color = ACCENT
-                # indeterminado hasta que yt-dlp reporte bytes
                 bar.value = (item["percent"] / 100) if item["percent"] > 0 else None
                 pct.value = f"{item['percent']:.0f}%" if item["percent"] > 0 else "…"
                 icon.value, icon.color = PIcons.DOWNLOAD_SIMPLE, ACCENT
                 icon.font_family = FONT_PHOSPHOR
             else:
-                bar.value, pct.value = 0, ""
+                bar.visible = False
+                bar.value, pct.value = 0, "en cola"
                 icon.value, icon.color = PIcons.CLOCK, TEXT_MUTED
                 icon.font_family = FONT_PHOSPHOR
 
@@ -526,7 +605,7 @@ class DownloadsView(ft.Container):
         self._pick_dir_btn.disabled = running
         self._reset_dir_btn.disabled = running
         self._reset_dir_btn.visible = bool(self._custom_dir)
-        self._count_text.value = f"{st.selected_count} pistas seleccionadas"
+        self._count_text.value = f"{st.selected_count} seleccionadas" if st.selected_count else ""
         self._dir_text.value = self._dir
 
         indexed = (
@@ -571,7 +650,18 @@ class DownloadsView(ft.Container):
                 eta_str = f"{eta_s // 60}m {eta_s % 60:02d}s" if eta_s >= 60 else f"{eta_s}s"
                 eta_suffix = f" · ETA ~{eta_str}"
 
-        self._progress_text.value = f"{progress} / {total}{eta_suffix}" if total else ""
+        pct_val = int(round((progress / total) * 100)) if total else 0
+        self._progress_pct_text.value = f"{pct_val} %" if total else ""
+        fmt_label = (self._format_dd.value or DEFAULT_AUDIO_FORMAT).upper()
+        speed_val = str(getattr(st, "download_speed", "") or "").strip()
+        meta_parts = [fmt_label]
+        if speed_val:
+            meta_parts.append(speed_val.upper())
+        if total:
+            meta_parts.append(f"{progress} DE {total}")
+        if eta_suffix:
+            meta_parts.append(eta_suffix.lstrip(" ·"))
+        self._progress_text.value = " · ".join(meta_parts) if total else ""
 
         if paused:
             self._progress_icon.value = PIcons.PAUSE
@@ -690,9 +780,8 @@ class DownloadsView(ft.Container):
 
         # Omitidas primero: son las que el usuario ya tenía y no se tocaron.
         finished = [(d, "skipped") for d in skipped] + [(d, "done") for d in done]
-        self._done_col.controls = (
-            [self._group_label("DESCARGADAS", len(finished))] if finished else []
-        ) + [
+        done_collapsed = "done" in self._collapsed_groups
+        done_rows = [
             self._result_row(
                 title=_entry_title(d),
                 meta=_entry_meta(d),
@@ -706,6 +795,11 @@ class DownloadsView(ft.Container):
             )
             for d, kind in finished
         ]
+        for r in done_rows:
+            r.visible = not done_collapsed
+        self._done_col.controls = (
+            [self._group_label("Completadas", len(finished), group_key="done")] if finished else []
+        ) + done_rows
 
         retry_all_btn = (
             _ghost_btn(
@@ -717,11 +811,8 @@ class DownloadsView(ft.Container):
             if failed
             else None
         )
-        self._failed_col.controls = (
-            [self._group_label("FALLIDAS", len(failed), is_error=True, trailing=retry_all_btn)]
-            if failed
-            else []
-        ) + [
+        failed_collapsed = "failed" in self._collapsed_groups
+        failed_rows = [
             self._result_row(
                 title=_entry_title(f),
                 meta=_entry_meta(f),
@@ -731,10 +822,16 @@ class DownloadsView(ft.Container):
             )
             for f in failed
         ]
+        for r in failed_rows:
+            r.visible = not failed_collapsed
+        self._failed_col.controls = (
+            [self._group_label("Fallidas", len(failed), is_error=True, trailing=retry_all_btn, group_key="failed")]
+            if failed
+            else []
+        ) + failed_rows
 
-        self._missing_col.controls = (
-            [self._group_label("FALTANTES", len(missing))] if missing else []
-        ) + [
+        missing_collapsed = "missing" in self._collapsed_groups
+        missing_rows = [
             self._result_row(
                 title=_entry_title(m),
                 meta=_entry_meta(m),
@@ -744,25 +841,46 @@ class DownloadsView(ft.Container):
             )
             for m in missing
         ]
+        for r in missing_rows:
+            r.visible = not missing_collapsed
+        self._missing_col.controls = (
+            [self._group_label("Faltantes", len(missing), group_key="missing")] if missing else []
+        ) + missing_rows
 
-    @staticmethod
     def _group_label(
+        self,
         text: str,
         count: int,
         *,
         is_error: bool = False,
         trailing: ft.Control | None = None,
+        group_key: str | None = None,
     ) -> ft.Control:
+        collapsed = group_key in self._collapsed_groups if group_key else False
+        caret = app_icon(
+            PIcons.CARET_RIGHT if collapsed else PIcons.CARET_DOWN,
+            size=14,
+            color=ERROR_COL if is_error else TEXT_PRIMARY,
+        )
         controls: list[ft.Control] = [
-            kicker(text),
-            status_chip(str(count), kind="err" if is_error else "neutral"),
+            caret,
+            app_text(
+                text,
+                size=14,
+                color=ERROR_COL if is_error else TEXT_PRIMARY,
+                font_family=FONT_HEADLINE_BOLD,
+            ),
+            app_text(str(count), size=FS_META, color=TEXT_MUTED, font_family=mono_family("regular")),
             ft.Container(expand=True),
         ]
         if trailing is not None:
             controls.append(trailing)
         return ft.Container(
+            data=caret,
+            ink=bool(group_key),
             padding=ft.Padding.only(top=4, bottom=6),
             border=ft.Border.only(bottom=ft.BorderSide(1, BORDER_MUTED)),
+            on_click=(lambda _e, k=group_key: self._toggle_group(k)) if group_key else None,
             content=ft.Row(
                 controls=controls,
                 spacing=SPACE_2,
