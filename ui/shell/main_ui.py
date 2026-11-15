@@ -314,7 +314,8 @@ class PlaylistManagerUI:
         # mode bar visible mientras exista transformación (§25) — no solo 'doble'
         try:
             has_transform = bool(s.segments) or s.show_dual or mode in ("doble", "preview")
-            self._mode_bar.visible = bool((is_dual or has_transform) and not getattr(self, "_catalog_open", False))
+            if getattr(self, "_mode_bar", None) is not None:
+                self._mode_bar.visible = bool((is_dual or has_transform) and not getattr(self, "_catalog_open", False))
         except Exception:
             pass
         # headers SOURCE|RESULT + Divisiones §1,6
@@ -668,11 +669,32 @@ class PlaylistManagerUI:
             if 0 <= v_idx < len(rail_order) and hasattr(self, "_select_module"):
                 self._select_module(rail_order[v_idx])
 
+        def _active_track_list_view():
+            lista_vis = getattr(getattr(self, "_lista_panel", None), "visible", True)
+            preview_vis = getattr(getattr(self, "_preview_panel", None), "visible", False)
+            if not lista_vis and preview_vis:
+                return getattr(self, "_preview_list_view", None)
+            return getattr(self, "_list_view", None)
+
         def _focus_track_row(idx: int | None) -> None:
-            lv = getattr(self, "_list_view", None)
+            lv = _active_track_list_view()
             controls = list(getattr(lv, "controls", ())) if lv is not None else []
             prev = getattr(self, "_focused_track_idx", None)
+            prev_lv = getattr(self, "_focused_track_lv", None)
+            if prev_lv is not None and prev_lv is not lv and prev is not None:
+                prev_controls = list(getattr(prev_lv, "controls", ()))
+                if 0 <= prev < len(prev_controls):
+                    apply_region_focus(
+                        prev_controls[prev],
+                        False,
+                        base_color=ft.Colors.TRANSPARENT,
+                        base_width=1.0,
+                        ring_color=ACCENT,
+                        inset=True,
+                        update=True,
+                    )
             self._focused_track_idx = idx
+            self._focused_track_lv = lv
             for target_idx in {prev, idx}:
                 if target_idx is None or not (0 <= target_idx < len(controls)):
                     continue
@@ -733,14 +755,14 @@ class PlaylistManagerUI:
         self._focus_regions.register(
             FocusRegion(
                 name="tracks",
-                item_count=lambda: len(self.state.display_tracks),
+                item_count=lambda: len(getattr(_active_track_list_view(), "controls", ())),
                 on_focus=_focus_track_row,
                 on_select=_toggle_track_at,
                 on_activate=_toggle_track_at,
                 on_select_all=lambda: self.state.toggle_select_all_scope("visible"),
                 is_active=lambda: (
                     getattr(self, "_current_module", 0) == 0
-                    and bool(getattr(getattr(self, "_list_view", None), "controls", ()))
+                    and bool(getattr(_active_track_list_view(), "controls", ()))
                 ),
             )
         )
@@ -980,6 +1002,8 @@ class PlaylistManagerUI:
 
     def _sync_platform_ui(self, s, is_local_src: bool) -> None:
         """Actualiza selectores y hint segun fuente (regla 6 SRP)."""
+        if hasattr(self, "_set_source_display") and getattr(self._src_dd, "value", None) != s.source:
+            self._set_source_display(s.source)
         if self._playlist_section.visible != (not is_local_src):
             self._playlist_section.visible = not is_local_src
             self._playlist_divider.visible = not is_local_src

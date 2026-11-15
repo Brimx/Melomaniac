@@ -152,7 +152,10 @@ class ActionsController:
         ui._telemetry.clear_postmortem()
         ui.state.load_local_tracks(list(tracks), playlist_name=name or "Playlist Local")
         ui.state.set_source("Archivo Local")
-        ui._src_dd.value = "Archivo Local"
+        if hasattr(ui, "_set_source_display"):
+            ui._set_source_display("Archivo Local")
+        else:
+            ui._src_dd.value = "Archivo Local"
         ui._select_module(0)
         ui._snack(f"{len(tracks)} pistas de «{name}» cargadas en Gestión")
 
