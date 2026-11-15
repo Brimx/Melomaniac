@@ -24,6 +24,7 @@ import flet as ft
 import flet.canvas as cv
 from PIL import Image, ImageDraw, ImageFilter
 
+from ui.components.skeletons import is_reduced_motion
 from ui.theme.tokens import (
     ACCENT,
     ONBOARDING_BG_DASHES,
@@ -162,20 +163,35 @@ def _build_rotating_disc(
     )
 
 
+def _resolve_reduced_motion(reduced_motion: bool | None) -> bool:
+    """Combina flag explícito, preferencia en ``settings_store`` y entorno."""
+    if reduced_motion is not None:
+        return bool(reduced_motion)
+    try:
+        from services import settings_store
+        if settings_store.get_reduce_motion():
+            return True
+    except Exception:
+        pass
+    return is_reduced_motion()
+
+
 class OnboardingBackground(cv.Canvas):
     """Canvas que anima la red mientras ``run()`` esté en ejecución."""
 
     def __init__(
         self,
         *,
-        reduced_motion: bool = False,
+        reduced_motion: bool | None = None,
         disc_zones: Sequence[tuple[float, float, float]] = (),
         on_resize_cb: Callable[[float, float], None] | None = None,
     ) -> None:
         super().__init__(expand=True, on_resize=self._on_resize)
         self._w, self._h = 1280.0, 800.0
         self._task: asyncio.Task | None = None
-        self._reduced_motion = bool(reduced_motion)
+        self._reduced_motion = _resolve_reduced_motion(reduced_motion)
+        self._window_focused = True
+        self._running = False
         self._disc_zones: list[tuple[float, float, float]] = list(disc_zones)
         self._on_resize_cb = on_resize_cb
         rnd = random.Random()
@@ -269,13 +285,26 @@ class OnboardingBackground(cv.Canvas):
         except (asyncio.CancelledError, RuntimeError):
             pass
 
+    def set_window_focused(self, focused: bool) -> None:
+        """Pausa el redibujado cuando la ventana pierde foco y lo reanuda al volver."""
+        self._window_focused = bool(focused)
+        if not self._window_focused:
+            if self._task is not None and not self._task.done():
+                self._task.cancel()
+            self._task = None
+        elif self._running and not self._reduced_motion:
+            if self._task is None or self._task.done():
+                self._task = asyncio.create_task(self.run())
+
     def start(self) -> None:
-        if self._reduced_motion:
+        self._running = True
+        if self._reduced_motion or not self._window_focused:
             return
         if self._task is None or self._task.done():
             self._task = asyncio.create_task(self.run())
 
     def stop(self) -> None:
+        self._running = False
         if self._task is not None and not self._task.done():
             self._task.cancel()
         self._task = None
@@ -284,11 +313,13 @@ class OnboardingBackground(cv.Canvas):
 class OnboardingDiscoBackground(ft.Stack):
     """Fondo DISCO (modo H): dos discos en esquinas opuestas + red enmascarada."""
 
-    def __init__(self, *, reduced_motion: bool = False) -> None:
+    def __init__(self, *, reduced_motion: bool | None = None) -> None:
         super().__init__(expand=True)
-        self._reduced_motion = bool(reduced_motion)
+        self._reduced_motion = _resolve_reduced_motion(reduced_motion)
         self._mounted = False
         self._spinning = False
+        self._active = False
+        self._window_focused = True
         self._spin_task: asyncio.Task | None = None
         self._w, self._h = 1280.0, 800.0
         self._rotating: list[ft.Container] = []
@@ -365,15 +396,31 @@ class OnboardingDiscoBackground(ft.Stack):
         self._mounted = False
         self.stop()
 
+    def set_window_focused(self, focused: bool) -> None:
+        """Pausa discos y red cuando la ventana pierde foco y los reanuda al volver."""
+        self._window_focused = bool(focused)
+        self._net.set_window_focused(self._window_focused)
+        if not self._window_focused:
+            self._spinning = False
+            if self._spin_task is not None and not self._spin_task.done():
+                self._spin_task.cancel()
+            self._spin_task = None
+        elif self._active and not self._reduced_motion:
+            self._spinning = True
+            if self._mounted:
+                self._schedule_spin()
+
     def start(self) -> None:
+        self._active = True
         self._net.start()
-        if self._reduced_motion:
+        if self._reduced_motion or not self._window_focused:
             return
         self._spinning = True
         if self._mounted:
             self._schedule_spin()
 
     def stop(self) -> None:
+        self._active = False
         self._spinning = False
         if self._spin_task is not None and not self._spin_task.done():
             self._spin_task.cancel()

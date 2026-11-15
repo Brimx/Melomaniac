@@ -26,10 +26,11 @@ from ui.theme.fonts import FONT_HEADLINE, FONT_TEXT, mono_family
 from ui.theme.icons import PIcons, app_icon
 from ui.setup.onboarding_bg import OnboardingBackground, OnboardingDiscoBackground
 from ui.theme.tokens import (
-    ACCENT, BG_DEEP, BG_SURFACE, BORDER_MUTED, MOTION_ENTER_MS, MOTION_PANEL_MS,
+    ACCENT, BG_DEEP, BG_SURFACE, BORDER_CONTROL, BORDER_MUTED, FS_META, FS_ROW,
+    FS_SEC, FS_SM, MOTION_ENTER_MS, MOTION_PANEL_MS,
     ONBOARDING_CARD_ALPHA, ONBOARDING_CARD_H, ONBOARDING_CARD_W,
     ONBOARDING_SLIDE, ONBOARDING_STAGGER_MS, PLAYER_PROGRESS_ANIM_MS, PLAYER_PROGRESS_H,
-    RADIUS_SHARP, RADIUS_SM, SPACE_1, SPACE_2, SPACE_3, SUCCESS, TEXT_MUTED, TEXT_PRIMARY, WARNING,
+    RADIUS_SHARP, RADIUS_SM, SPACE_1, SPACE_2, SPACE_3, SPACE_5, SUCCESS, TEXT_MUTED, TEXT_PRIMARY, WARNING,
 )
 from ui.components.widgets import (
     _ghost_btn,
@@ -37,9 +38,10 @@ from ui.components.widgets import (
     app_text,
     notify,
     organize_dropdown,
+    paper_shadow,
 )
 
-_PAD = 28
+_PAD = SPACE_5
 _INNER_W = ONBOARDING_CARD_W - 2 * _PAD
 ONBOARDING_BG_MODES: tuple[str, ...] = ("constellation", "disco", "vinyl", "none")
 
@@ -56,18 +58,21 @@ class _EmptyBackground(ft.Container):
     def stop(self) -> None:
         pass
 
+    def set_window_focused(self, focused: bool) -> None:
+        pass
+
 
 def _feature(icon: str, title: str, text: str) -> ft.Control:
     """Fila icono + título + descripción, común a todos los pasos."""
     return ft.Row(controls=[
         ft.Container(
             width=36, height=36, border_radius=RADIUS_SHARP,
-            border=ft.Border.all(0.8, BORDER_MUTED), alignment=ft.Alignment.CENTER,
+            border=ft.Border.all(1, BORDER_CONTROL), alignment=ft.Alignment.CENTER,
             content=app_icon(icon, size=18, color=ACCENT),
         ),
         ft.Column(controls=[
-            app_text(title, size=13, color=TEXT_PRIMARY, font_family=FONT_HEADLINE),
-            app_text(text, size=11, color=TEXT_MUTED, font_family=FONT_TEXT),
+            app_text(title, size=FS_ROW, color=TEXT_PRIMARY, font_family=FONT_HEADLINE),
+            app_text(text, size=FS_SM, color=TEXT_MUTED, font_family=FONT_TEXT),
         ], spacing=SPACE_1, expand=True),
     ], spacing=SPACE_3, vertical_alignment=ft.CrossAxisAlignment.CENTER)
 
@@ -76,12 +81,12 @@ def _feature(icon: str, title: str, text: str) -> ft.Control:
 
 def _step_welcome(view: "OnboardingView") -> list[ft.Control]:
     return [
+        _feature(PIcons.SIDEBAR_SIMPLE, "Inicio y navegación",
+                 "Vista Inicio con accesos rápidos y rail lateral colapsable para aprovechar la pantalla."),
         _feature(PIcons.ARROWS_LEFT_RIGHT, "Muévete entre plataformas",
                  "Spotify, YouTube Music y Apple Music en un mismo lugar."),
         _feature(PIcons.FOLDER_OPEN, "Tu música local también cuenta",
                  "Carpetas locales con audio, descargas e importación desde TXT, CSV, M3U, PLS o XSPF."),
-        _feature(PIcons.SLIDERS_HORIZONTAL, "Tú decides cómo se ordena",
-                 "Organiza, divide en sublistas y revisa en vista Lista, Doble o Preview antes de transferir."),
     ]
 
 
@@ -102,12 +107,21 @@ def _step_library(view: "OnboardingView") -> list[ft.Control]:
     return [
         _feature(PIcons.BOOKS, "Biblioteca",
                  "Explora tus playlists de YouTube Music, Apple Music o Spotify y carpetas locales."),
-        _feature(PIcons.MUSIC_NOTE, "Reproductor y cola",
-                 "Barra global con cola lateral, aleatorio, repetición y controles MPRIS del sistema."),
         _feature(PIcons.DOWNLOAD_SIMPLE, "Descargas",
                  "Cola con yt-dlp en MP3, FLAC, M4A, Opus u OGG desde coincidencias en YouTube."),
         _feature(PIcons.IMAGE, "Portadas y metadatos",
                  "Resuelve portadas por álbum o ISRC (iTunes, Deezer, MusicBrainz) y permite recalcularlas en Config."),
+    ]
+
+
+def _step_player(view: "OnboardingView") -> list[ft.Control]:
+    return [
+        _feature(PIcons.DISC, "Escena Reproduciendo",
+                 "Vista inmersiva a pantalla completa con disco giratorio, cola lateral y fondo ambiente."),
+        _feature(PIcons.MUSIC_NOTES, "Letras sincronizadas",
+                 "Letras en vivo durante la reproducción, con guardado .lrc o incrustado en tus descargas."),
+        _feature(PIcons.KEY, "Atajos de teclado",
+                 "Espacio pausa, Ctrl+K o / busca, Q abre la cola, M silencia y Esc cierra paneles."),
     ]
 
 
@@ -123,7 +137,7 @@ def _step_prefs(view: "OnboardingView") -> list[ft.Control]:
         on_change=lambda e: settings_store.set_covers_online(bool(e.control.value)),
     )
     view.dir_text = app_text(
-        view.download_dir(), size=11, color=TEXT_PRIMARY, font_family=mono_family("light"),
+        view.download_dir(), size=FS_META, color=TEXT_PRIMARY, font_family=mono_family("light"),
         max_lines=1, overflow=ft.TextOverflow.ELLIPSIS, expand=True,
     )
     folder = ft.Row(controls=[
@@ -132,13 +146,13 @@ def _step_prefs(view: "OnboardingView") -> list[ft.Control]:
         _ghost_btn("Cambiar", PIcons.PENCIL_SIMPLE, view.pick_dir, width=120, height=36),
     ], spacing=SPACE_2, vertical_alignment=ft.CrossAxisAlignment.CENTER)
     return [
-        app_text("Carpeta donde se guardan las descargas", size=11, color=TEXT_MUTED,
+        app_text("Carpeta donde se guardan las descargas", size=FS_SM, color=TEXT_MUTED,
                  font_family=FONT_TEXT),
         folder,
-        ft.Container(height=4),
+        ft.Container(height=SPACE_1),
         fmt,
         covers,
-        app_text("Todo esto se puede cambiar después en Config.", size=11, color=TEXT_MUTED,
+        app_text("Todo esto se puede cambiar después en Config.", size=FS_SM, color=TEXT_MUTED,
                  font_family=FONT_TEXT),
     ]
 
@@ -206,7 +220,7 @@ def _step_system(view: "OnboardingView") -> list[ft.Control]:
                 controls=[
                     app_icon(PIcons.CHECK_CIRCLE, color=SUCCESS, size=18, fill=True),
                     app_text("Gestionado por el instalador de Windows (Menú Inicio y Escritorio)",
-                             size=11, color=TEXT_MUTED, font_family=FONT_TEXT),
+                             size=FS_SM, color=TEXT_MUTED, font_family=FONT_TEXT),
                 ],
                 spacing=SPACE_2,
                 vertical_alignment=ft.CrossAxisAlignment.CENTER,
@@ -215,8 +229,8 @@ def _step_system(view: "OnboardingView") -> list[ft.Control]:
             action_slot.content = ft.Row(
                 controls=[
                     app_icon(PIcons.CHECK_CIRCLE, color=SUCCESS, size=18, fill=True),
-                    app_text("Acceso directo instalado y sincronizado", size=11, color=SUCCESS, font_family=FONT_TEXT),
-                    ft.Container(width=8),
+                    app_text("Acceso directo instalado y sincronizado", size=FS_SM, color=SUCCESS, font_family=FONT_TEXT),
+                    ft.Container(width=SPACE_2),
                     _ghost_btn("Reinstalar", PIcons.ARROWS_CLOCKWISE, _on_click_install, width=120, height=36),
                 ],
                 spacing=SPACE_2,
@@ -226,7 +240,7 @@ def _step_system(view: "OnboardingView") -> list[ft.Control]:
             action_slot.content = ft.Row(
                 controls=[
                     _primary_btn("Actualizar acceso directo", PIcons.ARROWS_CLOCKWISE, _on_click_install, width=220, height=38),
-                    app_text("Apunta a una ruta anterior", size=11, color=WARNING, font_family=FONT_TEXT),
+                    app_text("Apunta a una ruta anterior", size=FS_SM, color=WARNING, font_family=FONT_TEXT),
                 ],
                 spacing=SPACE_2,
                 vertical_alignment=ft.CrossAxisAlignment.CENTER,
@@ -235,7 +249,7 @@ def _step_system(view: "OnboardingView") -> list[ft.Control]:
             action_slot.content = ft.Row(
                 controls=[
                     _primary_btn("Crear acceso directo", PIcons.PLUS, _on_click_install, width=200, height=38),
-                    app_text("Opcional: puedes crearlo o cambiarlo en Config", size=11, color=TEXT_MUTED, font_family=FONT_TEXT),
+                    app_text("Opcional: puedes crearlo o cambiarlo en Config", size=FS_SM, color=TEXT_MUTED, font_family=FONT_TEXT),
                 ],
                 spacing=SPACE_2,
                 vertical_alignment=ft.CrossAxisAlignment.CENTER,
@@ -255,7 +269,7 @@ def _step_system(view: "OnboardingView") -> list[ft.Control]:
 
     return [
         *features,
-        ft.Container(height=4),
+        ft.Container(height=SPACE_1),
         action_slot,
     ]
 
@@ -268,7 +282,7 @@ def _step_connect(view: "OnboardingView") -> list[ft.Control]:
                  "Melomaniac lee primero la sesión de tu navegador, en memoria y sin guardarla."),
         _feature(PIcons.KEY, "Credenciales manuales",
                  "Si hace falta, pégalas en el asistente. Se guardan solo en tu equipo, en config/."),
-        ft.Container(height=4),
+        ft.Container(height=SPACE_1),
         ft.Row(controls=[
             _primary_btn("Configurar plataformas", PIcons.GEAR,
                          view.connect, width=240, height=40),
@@ -303,8 +317,10 @@ ONBOARDING_STEPS: tuple[Step, ...] = (
          "El espacio de trabajo para una playlist.", _step_gestion),
     Step("library", PIcons.BOOKS, "Biblioteca y Descargas",
          "Lo tuyo, sincronizado y en disco.", _step_library),
+    Step("player", PIcons.MUSIC_NOTE, "Reproducción, Letras y Atajos",
+         "Escena Reproduciendo, letras en vivo y control con teclado.", _step_player),
     Step("prefs", PIcons.SLIDERS_HORIZONTAL, "Preferencias",
-         "Tres ajustes para empezar cómodo.", _step_prefs),
+         "Carpeta de descargas, formato de audio y portadas online.", _step_prefs),
     Step("system", PIcons.DESKTOP, "Sistema y actualizaciones",
          "Acceso directo y ciclo de vida de la aplicación.", _step_system),
     Step("connect", PIcons.LINK, "Conectar plataformas",
@@ -337,8 +353,9 @@ class OnboardingView(ft.Container):
         self._index = 0
         self._busy = False
         self._mounted = False
-        self._reduced_motion = is_reduced_motion(page)
+        self._reduced_motion = is_reduced_motion(page) or settings_store.get_reduce_motion()
         self._prev_key_handler = None
+        self._prev_win_handler = None
         self.dir_text: ft.Text | None = None
         self._picker = ft.FilePicker()
         page.services.append(self._picker)
@@ -350,9 +367,9 @@ class OnboardingView(ft.Container):
             width=self._fill_width(0),
             animate=ft.Animation(PLAYER_PROGRESS_ANIM_MS, ft.AnimationCurve.EASE_IN_OUT),
         )
-        self._counter = app_text("", size=11, color=TEXT_MUTED, font_family=mono_family("light"))
-        self._title = app_text("", size=22, color=TEXT_PRIMARY, font_family=FONT_HEADLINE)
-        self._subtitle = app_text("", size=12, color=TEXT_MUTED, font_family=FONT_TEXT)
+        self._counter = app_text("", size=FS_META, color=TEXT_MUTED, font_family=mono_family("light"))
+        self._title = app_text("", size=FS_SEC, color=TEXT_PRIMARY, font_family=FONT_HEADLINE)
+        self._subtitle = app_text("", size=FS_SM, color=TEXT_MUTED, font_family=FONT_TEXT)
         self._icon = app_icon(PIcons.CIRCLE, size=26, color=ACCENT)
         self._items = ft.Column(spacing=SPACE_3)
         self._body = ft.Container(
@@ -363,7 +380,7 @@ class OnboardingView(ft.Container):
                 ft.Row(controls=[self._icon, self._title], spacing=SPACE_3,
                        vertical_alignment=ft.CrossAxisAlignment.CENTER),
                 self._subtitle,
-                ft.Container(height=8),
+                ft.Container(height=SPACE_2),
                 self._items,
             ], spacing=SPACE_1),
         )
@@ -374,7 +391,8 @@ class OnboardingView(ft.Container):
         card = ft.Container(
             width=ONBOARDING_CARD_W, height=ONBOARDING_CARD_H,
             bgcolor=ft.Colors.with_opacity(ONBOARDING_CARD_ALPHA, BG_SURFACE),
-            border=ft.Border.all(0.8, BORDER_MUTED), border_radius=RADIUS_SM,
+            border=ft.Border.all(1, BORDER_CONTROL), border_radius=RADIUS_SM,
+            shadow=paper_shadow(),
             padding=ft.Padding.all(_PAD),
             content=ft.Column(controls=[
                 ft.Row(controls=[
@@ -385,7 +403,7 @@ class OnboardingView(ft.Container):
                     ),
                     self._counter,
                 ], spacing=SPACE_3, vertical_alignment=ft.CrossAxisAlignment.CENTER),
-                ft.Container(height=12),
+                ft.Container(height=SPACE_3),
                 self._body,
                 ft.Row(controls=[
                     self._skip_btn, ft.Container(expand=True), self._back_btn, self._next_slot,
@@ -451,11 +469,32 @@ class OnboardingView(ft.Container):
         if getattr(self._page_ref, "on_keyboard_event", None) is self._on_key_event:
             self._page_ref.on_keyboard_event = self._prev_key_handler
             self._prev_key_handler = None
+        win = getattr(self._page_ref, "window", None)
+        if win is not None and getattr(win, "on_event", None) == self._on_window_event:
+            win.on_event = self._prev_win_handler
+            self._prev_win_handler = None
+
+    def _on_window_event(self, e) -> None:
+        if callable(self._prev_win_handler):
+            try:
+                self._prev_win_handler(e)
+            except Exception:
+                pass
+        ev_type = getattr(e, "type", None) or getattr(e, "data", None)
+        ev_name = str(getattr(ev_type, "value", ev_type) or "").lower()
+        if ev_name in ("blur", "hide", "minimize"):
+            self._bg.set_window_focused(False)
+        elif ev_name in ("focus", "show", "restore"):
+            self._bg.set_window_focused(True)
 
     def did_mount(self) -> None:
         self._mounted = True
         self._prev_key_handler = getattr(self._page_ref, "on_keyboard_event", None)
         self._page_ref.on_keyboard_event = self._on_key_event
+        win = getattr(self._page_ref, "window", None)
+        if win is not None:
+            self._prev_win_handler = getattr(win, "on_event", None)
+            win.on_event = self._on_window_event
         self._bg.start()
         asyncio.create_task(self._enter(0))
 
