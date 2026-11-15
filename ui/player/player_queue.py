@@ -357,6 +357,10 @@ class LyricsPane(ft.Container):
         if not force_reload and key == self._loaded_key and self._status != "empty":
             return
 
+        # Invalida cualquier consulta en vuelo de la pista anterior, aunque la
+        # nueva se resuelva desde caché o la carga se difiera.
+        self._fetch_gen += 1
+
         if not force_reload and key in self._cache:
             self._loaded_key = key
             self._apply_result(self._cache[key])
@@ -375,8 +379,7 @@ class LyricsPane(ft.Container):
             self._render_state("none")
             return
 
-        self._fetch_gen += 1
-        gen = self._fetch_gen
+        gen = self._fetch_gen = self._fetch_gen + 1
         self._render_state("loading")
 
         tr = cur.track
