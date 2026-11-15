@@ -64,15 +64,15 @@ assert borders[ft.ControlState.DEFAULT].side.color == idt2.border[ft.ControlStat
 tf = app_text_field(label="Nombre", hint_text="Escribe aquí")
 assert tf.dense is True
 assert tf.filled is True
-assert tf.fill_color == tokens.BG_INPUT
-assert tf.bgcolor == tokens.BG_INPUT
+assert tf.fill_color == tokens.BG_INSET
+assert tf.bgcolor == tokens.BG_INSET
 assert tf.content_padding == idt2.content_padding
 
 dd = organize_dropdown([("a", "A"), ("b", "B")], "a", "Clave", width=180)
 assert dd.width == 180
 assert dd.dense is True
 assert dd.filled is True
-assert dd.fill_color == tokens.BG_INPUT
+assert dd.fill_color == tokens.BG_INSET
 assert dd.content_padding == idt2.content_padding
 assert dd.border[ft.ControlState.FOCUSED].side.color == tokens.ACCENT
 """
