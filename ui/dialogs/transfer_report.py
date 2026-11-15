@@ -32,14 +32,16 @@ from core.transfer import (
 )
 from services.authentication import TRANSFER_HISTORY_JSONL, TRANSFER_REPORTS_DIR
 from ui.components.widgets import (
+    _ghost_btn,
     _primary_btn,
-    _section_label,
     _status_icon,
     app_dialog,
     app_text,
     close_dialog,
     dialog_action,
+    kicker,
     notify,
+    paper_shadow,
 )
 from ui.dialogs.recovery_panel import (
     AlternativeSearchPanel,
@@ -109,17 +111,17 @@ class TransferReportDialog:
     def show(self) -> None:
         self._render_report()
         actions: list[ft.Control] = [
-            dialog_action(
-                "Exportar", self._on_export, kind="muted",
-                icon=PIcons.DOWNLOAD_SIMPLE,
+            _ghost_btn(
+                "Exportar", PIcons.DOWNLOAD_SIMPLE, self._on_export,
+                height=36,
             ),
         ]
         if self.report.playlist_id:
-            actions.append(dialog_action(
-                "Abrir playlist", self._on_open_playlist, kind="muted",
-                icon=PIcons.ARROW_SQUARE_OUT,
+            actions.append(_ghost_btn(
+                "Abrir playlist", PIcons.ARROW_SQUARE_OUT, self._on_open_playlist,
+                height=36,
             ))
-        actions.append(dialog_action("Cerrar", self._on_close, kind="primary"))
+        actions.append(_primary_btn("Cerrar", None, self._on_close, height=36))
         self._dlg = app_dialog(
             "Reporte de transferencia",
             ft.Container(
@@ -149,7 +151,7 @@ class TransferReportDialog:
             controls.append(self._build_error_banner())
         missing = self.report.missing
         if missing:
-            controls.append(_section_label(f"FALTANTES · {len(missing)}"))
+            controls.append(kicker(f"FALTANTES · {len(missing)}"))
             controls.append(self._build_sections(missing))
         elif self.report.confirmed < self.report.detected:
             controls.append(self._build_warning_banner(
@@ -235,8 +237,9 @@ class TransferReportDialog:
             ], spacing=SPACE_1, tight=True),
             padding=ft.Padding.all(10),
             bgcolor=BG_SURFACE,
-            border=ft.Border.all(0.8, BORDER_CONTROL),
+            border=ft.Border.all(1, BORDER_CONTROL),
             border_radius=RADIUS_SM,
+            shadow=paper_shadow(),
         )
 
     def _build_stats(self) -> ft.Control:
@@ -258,7 +261,7 @@ class TransferReportDialog:
                 expand=True,
                 padding=ft.Padding.symmetric(horizontal=8, vertical=8),
                 bgcolor=BG_INSET,
-                border=ft.Border.all(0.8, BORDER_CONTROL),
+                border=ft.Border.all(1, BORDER_CONTROL),
                 border_radius=RADIUS_SHARP,
             )
 
@@ -281,8 +284,9 @@ class TransferReportDialog:
             ], spacing=SPACE_2),
             padding=SPACE_3,
             bgcolor=BG_SURFACE,
-            border=ft.Border.all(0.8, BORDER_CONTROL),
+            border=ft.Border.all(1, BORDER_CONTROL),
             border_radius=RADIUS_SHARP,
+            shadow=paper_shadow(),
         )
 
     def _build_warning_banner(self, message: str) -> ft.Control:
@@ -296,7 +300,7 @@ class TransferReportDialog:
             ], spacing=SPACE_2),
             padding=SPACE_3,
             bgcolor=WARN_BG,
-            border=ft.Border.all(0.8, WARN_BORDER),
+            border=ft.Border.all(1, WARN_BORDER),
             border_radius=RADIUS_SHARP,
         )
 

@@ -8,6 +8,8 @@ from __future__ import annotations
 import flet as ft
 
 from ui.components.widgets import (
+    _ghost_btn,
+    _primary_btn,
     app_dialog,
     app_text_field,
     debounce,
@@ -15,6 +17,7 @@ from ui.components.widgets import (
     input_border,
     limit_label,
     organize_dropdown,
+    paper_shadow,
     safe_update,
 )
 from ui.theme.tokens import (
@@ -107,7 +110,10 @@ class DivisionController:
                 _acts: list[ft.Control] = []
                 if _has:
                     _acts.append(dialog_action("Limpiar", _cl, kind="danger"))
-                _acts += [dialog_action("Cancelar", lambda _:self._close_dlg(dlg), kind="muted"), dialog_action("Aplicar", _ap, kind="primary")]
+                _acts += [
+                    _ghost_btn("Cancelar", None, lambda _: self._close_dlg(dlg), height=36),
+                    _primary_btn("Aplicar", None, _ap, height=36),
+                ]
                 dlg = app_dialog(
                     "Organizar",
                     ft.Container(
@@ -145,7 +151,10 @@ class DivisionController:
                 def _cl(_e): self.state.clear_split(); self._close_dlg(dlg)
                 acts=[]
                 if bool(self.state.segments): acts.append(dialog_action("Limpiar División",_cl,kind="danger"))
-                acts+=[dialog_action("Cancelar",lambda _:self._close_dlg(dlg),kind="muted"),dialog_action("Dividir",_ap,kind="primary")]
+                acts += [
+                    _ghost_btn("Cancelar", None, lambda _: self._close_dlg(dlg), height=36),
+                    _primary_btn("Dividir", None, _ap, height=36),
+                ]
                 dlg = app_dialog(
                     "Dividir",
                     ft.Container(
@@ -288,10 +297,10 @@ class DivisionController:
                 max_width=420,
             ),
             [
-                dialog_action("Seleccionar todos", _select_all, kind="muted"),
-                dialog_action("Limpiar", _clear, kind="muted"),
-                dialog_action("Cancelar", lambda _: self._close_dlg(dlg_ref.get("dlg")), kind="muted"),
-                dialog_action("Aplicar", _apply, kind="primary"),
+                _ghost_btn("Seleccionar todos", None, _select_all, height=36),
+                _ghost_btn("Limpiar", None, _clear, height=36),
+                _ghost_btn("Cancelar", None, lambda _: self._close_dlg(dlg_ref.get("dlg")), height=36),
+                _primary_btn("Aplicar", None, _apply, height=36),
             ],
             width=None, bgcolor=BG_SURFACE, radius=RADIUS_SM,
         )
@@ -527,17 +536,17 @@ class DivisionController:
                 content=ft.Column([
                     name_field,
                     ft.Row([
-                        ft.Column([ft.Row([add_popup, left_search], spacing=SPACE_1, vertical_alignment=ft.CrossAxisAlignment.CENTER), left_limit, ft.Container(content=left_lv, bgcolor=BG_INSET, border=ft.Border.all(0.8, BORDER_CONTROL), border_radius=RADIUS_SHARP, min_height=200, max_height=320, min_width=240), dialog_action("Agregar →", _add_to_division, kind="primary", icon=PIcons.ARROW_RIGHT)], spacing=SPACE_2, expand=True),
-                        ft.Column([ft.Row([remove_popup, right_search], spacing=SPACE_1, vertical_alignment=ft.CrossAxisAlignment.CENTER), right_limit, ft.Container(content=right_lv, bgcolor=BG_INSET, border=ft.Border.all(0.8, BORDER_CONTROL), border_radius=RADIUS_SHARP, min_height=200, max_height=320, min_width=240), dialog_action("← Quitar", _remove_from_division, kind="danger", icon=PIcons.ARROW_LEFT)], spacing=SPACE_2, expand=True),
+                        ft.Column([ft.Row([add_popup, left_search], spacing=SPACE_1, vertical_alignment=ft.CrossAxisAlignment.CENTER), left_limit, ft.Container(content=left_lv, bgcolor=BG_INSET, border=ft.Border.all(1, BORDER_CONTROL), border_radius=RADIUS_SHARP, shadow=paper_shadow(), min_height=200, max_height=320, min_width=240), _primary_btn("Agregar →", PIcons.ARROW_RIGHT, _add_to_division, height=36)], spacing=SPACE_2, expand=True),
+                        ft.Column([ft.Row([remove_popup, right_search], spacing=SPACE_1, vertical_alignment=ft.CrossAxisAlignment.CENTER), right_limit, ft.Container(content=right_lv, bgcolor=BG_INSET, border=ft.Border.all(1, BORDER_CONTROL), border_radius=RADIUS_SHARP, shadow=paper_shadow(), min_height=200, max_height=320, min_width=240), dialog_action("← Quitar", _remove_from_division, kind="danger", icon=PIcons.ARROW_LEFT)], spacing=SPACE_2, expand=True),
                     ], spacing=SPACE_3, vertical_alignment=ft.CrossAxisAlignment.START),
                 ], tight=True, spacing=SPACE_2),
                 min_width=520,
                 max_width=820,
             ),
             [
-                dialog_action("Cerrar", _close_edit, kind="muted"),
-                dialog_action("Revertir", _revert_edit, kind="muted"),
-                dialog_action("Aplicar", _apply_edit, kind="primary"),
+                _ghost_btn("Cerrar", None, _close_edit, height=36),
+                _ghost_btn("Revertir", None, _revert_edit, height=36),
+                _primary_btn("Aplicar", None, _apply_edit, height=36),
             ],
             width=None, bgcolor=BG_SURFACE, radius=RADIUS_SM,
         )

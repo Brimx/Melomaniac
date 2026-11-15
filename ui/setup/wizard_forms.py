@@ -10,7 +10,8 @@ from services.authentication import ENV_KEYS_APPLE
 from ui.components.widgets import (
     app_text_field,
     input_border,
-    section_label,
+    kicker,
+    paper_shadow,
 )
 from ui.theme.fonts import FONT_HEADLINE_BOLD, FONT_TEXT, mono_family
 from ui.theme.icons import PIcons, app_icon, app_icon_button
@@ -206,8 +207,9 @@ def instructions_box(steps: tuple[tuple[str, str], ...] | list[tuple[str, str]])
     return ft.Container(
         content=ft.Column(rows, spacing=SPACE_2),
         bgcolor=OVERLAY_10,
-        border=ft.Border.all(0.8, OVERLAY_14),
+        border=ft.Border.all(1, OVERLAY_14),
         border_radius=RADIUS_SM,
+        shadow=paper_shadow(),
         padding=ft.Padding.symmetric(horizontal=12, vertical=10),
     )
 
@@ -361,7 +363,7 @@ def field_style() -> dict:
 
 def section_header(text: str) -> ft.Text:
     """Cabecera de sección reutilizable para formularios del wizard."""
-    return section_label(text)
+    return kicker(text)
 
 
 def fixed_note(text: str) -> ft.Container:
@@ -391,7 +393,7 @@ def warn_banner(text: str) -> ft.Container:
             spacing=SPACE_2,
         ),
         bgcolor=WARN_BG,
-        border=ft.Border.all(0.8, WARN_BORDER),
+        border=ft.Border.all(1, WARN_BORDER),
         border_radius=RADIUS_SM,
         padding=ft.Padding.symmetric(horizontal=10, vertical=8),
     )

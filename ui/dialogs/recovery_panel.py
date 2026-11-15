@@ -14,9 +14,10 @@ from engine.normalizer import build_search_query, clean_metadata
 from ui.components.song_row import build_preview_row
 from ui.components.widgets import (
     _primary_btn,
-    _section_label,
     app_text,
     app_text_field,
+    kicker,
+    paper_shadow,
 )
 from ui.theme.fonts import FONT_HEADLINE_SEMI, FONT_TEXT, mono_family
 from ui.theme.icons import PIcons
@@ -95,7 +96,7 @@ def build_original_track_card(name: str, artist: str, reason: str = "") -> ft.Co
     """Tarjeta resumen de la pista faltante/fallida antes de la búsqueda manual."""
     title_line = f"{name} — {artist}" if artist else (name or "Pista sin título")
     items: list[ft.Control] = [
-        _section_label("ORIGINAL"),
+        kicker("ORIGINAL"),
         app_text(
             title_line,
             size=11, color=TEXT_PRIMARY,
@@ -113,8 +114,9 @@ def build_original_track_card(name: str, artist: str, reason: str = "") -> ft.Co
         content=ft.Column(items, spacing=SPACE_1, tight=True),
         padding=SPACE_2,
         bgcolor=BG_INSET,
-        border=ft.Border.all(0.8, BORDER_CONTROL),
+        border=ft.Border.all(1, BORDER_CONTROL),
         border_radius=RADIUS_SHARP,
+        shadow=paper_shadow(),
     )
 
 

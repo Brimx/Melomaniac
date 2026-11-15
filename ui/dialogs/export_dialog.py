@@ -13,9 +13,9 @@ from core.state import AppState
 from engine.exporters import default_export_path, export_tracks
 from ui.components.widgets import (
     _ghost_btn,
+    _primary_btn,
     app_dialog,
     app_text_field,
-    dialog_action,
     input_border,
     organize_dropdown,
     safe_update,
@@ -180,7 +180,7 @@ async def open_export_dialog(
         visible=False,
     )
 
-    primary_btn = dialog_action("Exportar", lambda _: None, kind="primary", icon=PIcons.EXPORT)
+    primary_btn = _primary_btn("Exportar", PIcons.EXPORT, lambda _: None, height=36)
 
     def _on_pf(ok: bool | None) -> None:
         if mode_state["mode"] == "playlist":
@@ -357,7 +357,7 @@ async def open_export_dialog(
             tight=True,
         ),
         [
-            dialog_action("Cancelar", lambda _: host._close_dlg(dlg), kind="muted"),
+            _ghost_btn("Cancelar", None, lambda _: host._close_dlg(dlg), height=36),
             primary_btn,
         ],
         width=560,

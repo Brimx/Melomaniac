@@ -27,11 +27,12 @@ from ui.theme.tokens import (
 from ui.components.widgets import (
     _ghost_btn,
     _primary_btn,
+    app_dialog,
     app_text,
     close_dialog,
-    dialog_action,
     open_external,
     organize_dropdown,
+    paper_shadow,
     show_dialog,
 )
 from ui.setup.wizard_forms import (
@@ -104,7 +105,7 @@ class ConfigWizard:
         self._source_dropdowns: dict[str, ft.Dropdown] = {}
 
         # Save controls
-        self._save_button: Optional[ft.TextButton] = None
+        self._save_button: Optional[ft.Control] = None
         self._save_error: Optional[ft.Text] = None
 
     # ── Dialog lifecycle ───────────────────────────────────────────────
@@ -364,7 +365,8 @@ class ConfigWizard:
                     bgcolor=OVERLAY_08,
                     border_radius=RADIUS_SM,
                     padding=ft.Padding.all(4),
-                    border=ft.Border.all(0.8, OVERLAY_14),
+                    border=ft.Border.all(1, OVERLAY_14),
+                    shadow=paper_shadow(),
                 ),
                 ft.Container(
                     content=self._panel_holder,
@@ -389,28 +391,15 @@ class ConfigWizard:
         )
         body.controls.append(self._save_error)
 
-        self._save_button = dialog_action(
+        self._save_button = _primary_btn(
             "Guardar y Aplicar",
+            PIcons.FLOPPY_DISK,
             self._on_save_click,
-            kind="primary",
-            icon=PIcons.FLOPPY_DISK,
+            height=36,
         )
-        return ft.AlertDialog(
-            modal=True,
-            scrollable=False,
-            clip_behavior=ft.ClipBehavior.ANTI_ALIAS,
-            title=ft.Row(
-                controls=[
-                    app_icon(PIcons.GEAR, color=ACCENT, size=18),
-                    ft.Text(
-                        "Configuración de Credenciales",
-                        size=14, font_family=FONT_HEADLINE_BOLD,
-                        color=TEXT_PRIMARY,
-                    ),
-                ],
-                spacing=SPACE_2,
-            ),
-            content=ft.Container(
+        dlg = app_dialog(
+            "Configuración de Credenciales",
+            ft.Container(
                 content=body,
                 width=620,
                 height=480,
@@ -419,14 +408,18 @@ class ConfigWizard:
                 padding=ft.Padding.all(8),
                 clip_behavior=ft.ClipBehavior.ANTI_ALIAS,
             ),
-            actions=[
+            [
                 self._save_button,
-                dialog_action("Cerrar", self._on_close_click, kind="muted"),
+                _ghost_btn("Cerrar", None, self._on_close_click, height=36),
             ],
-            actions_alignment=ft.MainAxisAlignment.END,
+            width=620,
+            icon=PIcons.GEAR,
             bgcolor=BG_PANEL,
-            shape=ft.RoundedRectangleBorder(radius=14),
+            radius=RADIUS_SM,
         )
+        dlg.scrollable = False
+        dlg.clip_behavior = ft.ClipBehavior.ANTI_ALIAS
+        return dlg
 
     def _close_wizard(self) -> None:
         try:
@@ -577,7 +570,8 @@ class ConfigWizard:
             ft.Container(
                 content=status_row,
                 bgcolor=OVERLAY_08,
-                border=ft.Border.all(0.8, OVERLAY_14),
+                border=ft.Border.all(1, OVERLAY_14),
+                shadow=paper_shadow(),
                 border_radius=RADIUS_SM,
                 padding=ft.Padding.symmetric(horizontal=10, vertical=8),
             ),
@@ -607,7 +601,7 @@ class ConfigWizard:
                 vertical_alignment=ft.CrossAxisAlignment.CENTER,
             ),
             bgcolor=OVERLAY_06,
-            border=ft.Border.all(0.8, OVERLAY_14),
+            border=ft.Border.all(1, OVERLAY_14),
             border_radius=RADIUS_SM,
             padding=ft.Padding.symmetric(horizontal=10, vertical=8),
             ink=True,
