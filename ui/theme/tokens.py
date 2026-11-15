@@ -85,11 +85,6 @@ RADIUS_NONE   = 0
 RADIUS_SHARP  = 3
 RADIUS_SM     = 6
 RADIUS_PILL   = 999  # Solo círculos/discos/indicadores redondos
-RADIUS_INPUT  = RADIUS_SHARP  # deprecated: migrar en Ola 2
-RADIUS_BUTTON = RADIUS_SHARP  # deprecated: migrar en Ola 2
-RADIUS_DIALOG = RADIUS_SM  # deprecated: migrar en Ola 2
-RADIUS_RAIL        = 0  # deprecated: migrar en Ola 2
-RADIUS_RAIL_ITEM   = RADIUS_SHARP  # deprecated: migrar en Ola 2
 
 PAPER_LIFT        = 3  # Desplazamiento (+x, +y) de hoja flotante estándar
 PAPER_LIFT_SM     = 2  # Desplazamiento (+x, +y) de botón compacto o chip activo

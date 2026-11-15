@@ -54,7 +54,7 @@ assert idt.fill_color == tokens.BG_INPUT
 assert isinstance(idt.border, dict)
 assert idt.border[ft.ControlState.DEFAULT].side.color == tokens.BORDER_LIGHT
 assert idt.border[ft.ControlState.FOCUSED].side.color == tokens.ACCENT
-assert idt.border[ft.ControlState.DEFAULT].border_radius == tokens.RADIUS_INPUT
+assert idt.border[ft.ControlState.DEFAULT].border_radius == tokens.RADIUS_SHARP
 
 idt2 = build_input_decoration_theme()
 borders = input_border()

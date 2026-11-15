@@ -15,11 +15,7 @@ import audit_ui  # noqa: E402
 class TokensTest(unittest.TestCase):
     def test_tokens(self):
         self.assertEqual(t.TEXT_PRIMARY, "#FFF2EDE4")
-        self.assertEqual((t.RADIUS_SHARP, t.RADIUS_SM), (3, 6))
-        self.assertEqual(t.RADIUS_BUTTON, 3)
-        self.assertEqual(t.RADIUS_INPUT, 3)
-        self.assertEqual(t.RADIUS_DIALOG, 6)
-        self.assertEqual((t.RADIUS_RAIL, t.RADIUS_RAIL_ITEM), (0, 3))
+        self.assertEqual((t.RADIUS_NONE, t.RADIUS_SHARP, t.RADIUS_SM), (0, 3, 6))
         self.assertEqual(t.HANKO, "#FFD9443B")
         self.assertEqual(t.ONBOARDING_DISC_SEAL, t.SEAL_COLOR)
         self.assertEqual((t.MOTION_PRESS_MS, t.MOTION_EXIT_MS), (90, 167))
@@ -38,7 +34,7 @@ class HelpersTest(unittest.TestCase):
         self.assertIsInstance(w.table_header(["TÍTULO", ("DUR", None)]), ft.Container)
         es = w.empty_state(PIcons.INFO, "Vacío", "Nada", "Ir", noop)
         self.assertEqual(len(es.controls), 4)
-        self.assertEqual(w.hanko_seal("音").border_radius, 2)
+        self.assertEqual(w.hanko_seal("音").border_radius, t.RADIUS_SHARP)
         d = w.collapsible_drawer("REGISTRO", "3 eventos", ft.Text("x"))
         self.assertFalse(d.content.controls[1].visible)
         opts = [("yt", "YouTube", PIcons.YOUTUBE_LOGO), ("sp", "Spotify", PIcons.SPOTIFY_LOGO)]
