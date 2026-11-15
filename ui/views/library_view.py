@@ -20,9 +20,9 @@ from ui.components.playlist_card import PlaylistCard
 from ui.views.playlist_detail_view import PlaylistDetailView
 from ui.theme.tokens import (
     ACCENT, ACCENT_HALO, BG_HOVER, BG_LIST, BG_PANEL, BG_SURFACE,
-    BORDER_LIGHT, BORDER_MUTED, ERROR_COL, FS_META, MOTION_HOVER_MS,
+    BORDER_LIGHT, BORDER_MUTED, ERROR_COL, FS_META, FS_PAGE, MOTION_HOVER_MS,
     RADIUS_PILL, RADIUS_SHARP, RADIUS_SM, SPACE_0, SPACE_1, SPACE_2, SPACE_3,
-    SUCCESS, TEXT_MUTED, TEXT_PRIMARY,
+    SPACE_5, SUCCESS, TEXT_MUTED, TEXT_PRIMARY,
 )
 from ui.theme.icons import PIcons, app_icon, app_icon_button
 from ui.components.widgets import (
@@ -38,6 +38,7 @@ from ui.components.widgets import (
     organize_dropdown,
     section_label,
     show_dialog,
+    tab_underline,
 )
 
 
@@ -97,9 +98,9 @@ class LibraryView(ft.Container):
             self.library_state.select_platform(self._platform)
 
     def _build(self) -> None:
-        # selector plataforma
+        # selector plataforma (tab_underline compacto)
         self._platform_btns = {}
-        self._platform_row = ft.Row(spacing=SPACE_2, wrap=False)
+        self._platform_row = ft.Row(spacing=SPACE_5, tight=True)
         self._rebuild_platform_selector()
 
         self._status_text = app_text("", size=11, color=TEXT_MUTED, font_family=mono_family("regular"))
@@ -164,17 +165,31 @@ class LibraryView(ft.Container):
             lambda _e: self._cycle_sort_mode(),
             height=34,
         )
-        self._lib_bar = ft.Row(
+        self._lib_bar_left = ft.Row(
             controls=[
                 self._local_seg,
                 self._search_field,
                 *self._filter_chip_btns.values(),
-                ft.Container(expand=True),
+            ],
+            spacing=SPACE_2,
+            run_spacing=SPACE_2,
+            wrap=True,
+            vertical_alignment=ft.CrossAxisAlignment.CENTER,
+            expand=True,
+        )
+        self._lib_bar_right = ft.Row(
+            controls=[
                 self._result_count_text,
                 self._sort_btn,
             ],
             spacing=SPACE_2,
-            wrap=True,
+            tight=True,
+            vertical_alignment=ft.CrossAxisAlignment.CENTER,
+        )
+        self._lib_bar = ft.Row(
+            controls=[self._lib_bar_left, self._lib_bar_right],
+            spacing=SPACE_2,
+            alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
             vertical_alignment=ft.CrossAxisAlignment.CENTER,
         )
         self._local_legend = ft.Text(
@@ -224,10 +239,10 @@ class LibraryView(ft.Container):
         )
         self._loading_bar = ft.ProgressBar(visible=False, color=ACCENT, bgcolor=BG_SURFACE)
 
-        self._list_stack = ft.Stack(
+        self._list_stack = ft.Column(
             controls=[self._grid, self._empty, self._filter_empty],
             expand=True,
-            fit=ft.StackFit.EXPAND,
+            spacing=SPACE_0,
         )
 
         header_row = ft.Row(
@@ -235,7 +250,7 @@ class LibraryView(ft.Container):
                 ft.Column(
                     controls=[
                         kicker("BIBLIOTECA"),
-                        app_text("Estantes", size=20, color=TEXT_PRIMARY, font_family=FONT_HEADLINE_BOLD),
+                        app_text("Estantes", size=FS_PAGE, color=TEXT_PRIMARY, font_family=FONT_HEADLINE_BOLD),
                     ],
                     spacing=SPACE_0,
                     tight=True,
@@ -261,84 +276,34 @@ class LibraryView(ft.Container):
 
         self.content = ft.Container(content=body, padding=ft.Padding.all(12), expand=True)
 
+    def _platform_count(self, plat: str) -> int:
+        if plat == LOCAL_LIBRARY_LABEL:
+            if hasattr(self.library_state, "local_folder_summaries"):
+                return (
+                    len(self.library_state.local_folder_summaries())
+                    + len(self.library_state.downloaded_playlist_summaries())
+                    + len(self.library_state.imported_manifest_summaries())
+                )
+            return len(self.library_state.local_summaries())
+        snap = self.library_state.get_snapshot(plat)
+        return len(snap.items) if snap and snap.items else 0
+
     def _rebuild_platform_selector(self) -> None:
-        """Control segmentado de una sola fila: se construye una vez y se actualiza en sitio."""
-        btns_map = getattr(self, "_platform_btns", None)
-        if btns_map is None:
-            btns_map = {}
-            self._platform_btns = btns_map
-        if not btns_map:
-            self._platform_row.controls.clear()
-            for plat in SOURCES:
-                icon = PLATFORM_ICONS.get(plat, PIcons.MUSIC_NOTE)
-                ico_ctrl = app_icon(icon, size=18, color=TEXT_MUTED, fill=False)
-                lbl_ctrl = ft.Text(
-                    _SHORT_LABELS.get(plat, plat),
-                    size=FS_META,
-                    color=TEXT_MUTED,
-                    font_family=FONT_HEADLINE,
-                    max_lines=1,
-                    overflow=ft.TextOverflow.ELLIPSIS,
-                    text_align=ft.TextAlign.CENTER,
-                )
-                btn = ft.Container(
-                    content=ft.Column(
-                        controls=[ico_ctrl, lbl_ctrl],
-                        spacing=SPACE_1,
-                        horizontal_alignment=ft.CrossAxisAlignment.CENTER,
-                        tight=True,
-                    ),
-                    bgcolor=BG_SURFACE,
-                    border=ft.Border.all(0.8, BORDER_LIGHT),
-                    border_radius=RADIUS_SHARP,
-                    padding=ft.Padding.symmetric(horizontal=6, vertical=7),
-                    alignment=ft.Alignment.CENTER,
-                    ink=True,
-                    tooltip=plat,
-                    expand=True,
-                    data=plat,
-                    animate=ft.Animation(MOTION_HOVER_MS, ft.AnimationCurve.EASE_OUT),
-                    animate_scale=ft.Animation(MOTION_HOVER_MS, ft.AnimationCurve.EASE_OUT),
-                    on_click=self._on_platform_click,
-                )
+        """Pestañas subrayadas compactas con nombre y contador cuando hay elementos."""
+        active_key = self._platform or (SOURCES[0] if SOURCES else "")
+        items: list[tuple[str, str]] = []
+        for plat in SOURCES:
+            short = _SHORT_LABELS.get(plat, plat)
+            count = self._platform_count(plat)
+            label = f"{short}  {count}" if count > 0 else short
+            items.append((plat, label))
+        tabs = tab_underline(items, active_key, self._on_platform_select)
+        self._platform_row.controls[:] = tabs.controls
+        self._platform_row.spacing = tabs.spacing
+        self._platform_row.tight = tabs.tight
+        self._platform_btns = {plat: ctrl for plat, ctrl in zip(SOURCES, self._platform_row.controls)}
 
-                def _make_hover(p_name: str, container: ft.Container, ico: ft.Control, lbl: ft.Text):
-                    def _on_hover(e: ft.HoverEvent) -> None:
-                        if p_name == self._platform:
-                            return
-                        hovering = e.data == "true" or e.data is True
-                        container.bgcolor = BG_HOVER if hovering else BG_SURFACE
-                        container.border = ft.Border.all(
-                            0.8, ACCENT if hovering else BORDER_LIGHT
-                        )
-                        container.scale = 1.02 if hovering else 1.0
-                        ico.color = TEXT_PRIMARY if hovering else TEXT_MUTED
-                        lbl.color = TEXT_PRIMARY if hovering else TEXT_MUTED
-                        try:
-                            container.update()
-                        except Exception:
-                            pass
-                    return _on_hover
-
-                btn.on_hover = _make_hover(plat, btn, ico_ctrl, lbl_ctrl)
-                btns_map[plat] = (btn, ico_ctrl, lbl_ctrl)
-                self._platform_row.controls.append(btn)
-
-        for plat, (btn, ico_ctrl, lbl_ctrl) in btns_map.items():
-            selected = plat == self._platform
-            icon = PLATFORM_ICONS.get(plat, PIcons.MUSIC_NOTE)
-            ico_ctrl.value = icon
-            ico_ctrl.color = ACCENT if selected else TEXT_MUTED
-            # Sincroniza relleno Phosphor sin reconstruir controles
-            from ui.theme.fonts import FONT_PHOSPHOR, FONT_PHOSPHOR_FILL
-            ico_ctrl.font_family = FONT_PHOSPHOR_FILL if selected else FONT_PHOSPHOR
-            lbl_ctrl.color = TEXT_PRIMARY if selected else TEXT_MUTED
-            btn.bgcolor = ACCENT_HALO if selected else BG_SURFACE
-            btn.border = ft.Border.all(0.8, ACCENT if selected else BORDER_LIGHT)
-            btn.scale = 1.0
-
-    def _on_platform_click(self, e) -> None:
-        plat = str(e.control.data)
+    def _on_platform_select(self, plat: str) -> None:
         self._platform = plat
         self._rebuild_platform_selector()
         if plat != LOCAL_LIBRARY_LABEL:
@@ -353,6 +318,9 @@ class LibraryView(ft.Container):
             self.update()
         except Exception:
             pass
+
+    def _on_platform_click(self, e) -> None:
+        self._on_platform_select(str(e.control.data))
 
     async def _pick_folder(self) -> None:
         try:
@@ -875,6 +843,7 @@ class LibraryView(ft.Container):
         if plat == LOCAL_LIBRARY_LABEL:
             self._refresh_local()
             return
+        self._rebuild_platform_selector()
         self._add_folder_btn.visible = False
         self._import_manifest_btn.visible = False
         self._local_seg.visible = False
@@ -959,6 +928,7 @@ class LibraryView(ft.Container):
 
     def _refresh_local(self) -> None:
         """Fuente Local: separa Carpetas (3.3) y Playlists locales (descargadas + importadas)."""
+        self._rebuild_platform_selector()
         if hasattr(self.library_state, "local_folder_summaries"):
             folders = self.library_state.local_folder_summaries()
             downloaded = self.library_state.downloaded_playlist_summaries()
