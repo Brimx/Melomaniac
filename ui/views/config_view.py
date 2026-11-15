@@ -35,6 +35,7 @@ from ui.components.widgets import (
     app_dialog,
     app_text,
     close_dialog,
+    kicker,
     notify,
     open_external,
     safe_update,
@@ -49,6 +50,7 @@ from ui.theme.tokens import (
     BG_LIST,
     BG_PANEL,
     BG_SURFACE,
+    BORDER_CONTROL,
     BORDER_MUTED,
     BORDER_ROW,
     FS_META,
@@ -284,11 +286,11 @@ class ConfigView(ft.Container):
                 content=row,
                 bgcolor=ACCENT_HALO if (active and horizontal) else (BG_LIST if active else ft.Colors.TRANSPARENT),
                 border=(
-                    ft.Border.all(0.8, ACCENT if active else BORDER_MUTED)
+                    ft.Border.all(0.8, ACCENT if active else BORDER_CONTROL)
                     if horizontal
                     else ft.Border.only(left=ft.BorderSide(2.0, ACCENT if active else ft.Colors.TRANSPARENT))
                 ),
-                border_radius=RADIUS_SHARP if horizontal else RADIUS_SM,
+                border_radius=RADIUS_SHARP,
                 padding=ft.Padding.symmetric(horizontal=10 if horizontal else 12, vertical=7 if horizontal else 9),
                 data=sec_id,
                 on_click=lambda _e, sid=sec_id: self.select_section(sid),
@@ -309,7 +311,17 @@ class ConfigView(ft.Container):
             )
         return ft.Container(
             width=210,
-            content=ft.Column(controls=items, spacing=SPACE_1, tight=True),
+            content=ft.Column(
+                controls=[
+                    ft.Container(
+                        padding=ft.Padding.only(left=12, bottom=4),
+                        content=kicker("SECCIONES"),
+                    ),
+                    *items,
+                ],
+                spacing=SPACE_1,
+                tight=True,
+            ),
         )
 
     def _sync_nav_selection(self) -> None:
@@ -319,7 +331,7 @@ class ConfigView(ft.Container):
             btn: ft.Container = refs["btn"]
             btn.bgcolor = ACCENT_HALO if (active and horizontal) else (BG_LIST if active else ft.Colors.TRANSPARENT)
             btn.border = (
-                ft.Border.all(0.8, ACCENT if active else BORDER_MUTED)
+                ft.Border.all(0.8, ACCENT if active else BORDER_CONTROL)
                 if horizontal
                 else ft.Border.only(left=ft.BorderSide(2.0, ACCENT if active else ft.Colors.TRANSPARENT))
             )

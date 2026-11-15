@@ -21,8 +21,10 @@ from ui.components.widgets import (
     _ghost_btn,
     _primary_btn,
     app_text,
+    kicker,
     organize_dropdown,
     section_label,
+    status_chip,
 )
 from ui.shell.keymap import SHORTCUTS
 from ui.theme.fonts import FONT_HEADLINE, FONT_HEADLINE_BOLD, FONT_TEXT, mono_family
@@ -34,6 +36,7 @@ from ui.theme.tokens import (
     BG_LIST,
     BG_PANEL,
     BG_SURFACE,
+    BORDER_CONTROL,
     BORDER_LIGHT,
     BORDER_MUTED,
     BORDER_ROW,
@@ -131,10 +134,10 @@ def cfg_card(
     *,
     muted_card: bool = False,
 ) -> ft.Container:
-    """Tarjeta uniforme OLED para todas las secciones de Config."""
-    body: list[ft.Control] = [section_label(title.upper())]
+    """Tarjeta uniforme Sala de escucha para todas las secciones de Config."""
+    body: list[ft.Control] = [kicker(title)]
     if subtitle:
-        body.append(app_text(subtitle, size=11, color=TEXT_MUTED, font_family=FONT_TEXT))
+        body.append(app_text(subtitle, size=FS_META, color=TEXT_MUTED, font_family=FONT_TEXT))
     body.append(ft.Container(height=6))
     for idx, ctrl in enumerate(controls):
         if idx > 0:
@@ -142,7 +145,7 @@ def cfg_card(
         body.append(ctrl)
     return ft.Container(
         bgcolor=BG_SURFACE,
-        border=ft.Border.all(0.8, BORDER_MUTED),
+        border=ft.Border.all(0.8, BORDER_MUTED if muted_card else BORDER_CONTROL),
         border_radius=RADIUS_SHARP,
         padding=ft.Padding.symmetric(horizontal=16, vertical=14),
         opacity=0.72 if muted_card else 1.0,
@@ -191,7 +194,7 @@ def cfg_badge(label: str, kind: str = "muted") -> ft.Container:
     }.get(kind, TEXT_MUTED)
     return ft.Container(
         border=ft.Border.all(0.8, color),
-        border_radius=RADIUS_SM,
+        border_radius=RADIUS_SHARP,
         padding=ft.Padding.symmetric(horizontal=7, vertical=2),
         content=app_text(label.upper(), size=FS_META, color=color, font_family=mono_family("light")),
     )
@@ -535,9 +538,8 @@ def build_descargas_section(view: Any) -> list[ft.Control]:
         [
             cfg_row(
                 "Omitir los que ya existen",
-                "Compara por ISRC o título y artista antes de bajar.",
-                _disabled_switch(True),
-                reason="Siempre activo para evitar duplicados en disco.",
+                "Compara por ISRC o título y artista antes de bajar; siempre activo para evitar duplicados.",
+                status_chip("Activo", kind="ok"),
             ),
             cfg_row(
                 "Descargas simultáneas",
@@ -732,18 +734,8 @@ def build_accesibilidad_section(view: Any) -> list[ft.Control]:
     )
 
     qmode = settings_store.get_queue_mode()
-    q_seg = ft.SegmentedButton(
-        selected=[qmode],
-        allow_multiple_selection=False,
-        allow_empty_selection=False,
-        show_selected_icon=False,
-        segments=[
-            ft.Segment(value="overlay", label="Superpuesto"),
-            ft.Segment(value="push", label="Empuje"),
-        ],
-        on_change=view._on_queue_mode_change,
-    )
-    stage, panel, blocks = _build_queue_preview(qmode, reduce_motion=reduce_val)
+    preview_mode = "push" if qmode != "overlay" else "push"
+    stage, panel, blocks = _build_queue_preview(preview_mode, reduce_motion=reduce_val)
     view._queue_preview_stage = stage
     view._queue_preview_panel = panel
     view._queue_preview_blocks = blocks
@@ -754,8 +746,8 @@ def build_accesibilidad_section(view: Any) -> list[ft.Control]:
         [
             cfg_row(
                 "Modo",
-                "Superpuesto tapa el contenido; Empuje lo desplaza sin encoger tarjetas (el shell usa Empuje actualmente).",
-                q_seg,
+                "Empuje desplaza el contenido sin encoger tarjetas al abrirlo; al cerrarlo queda oculto.",
+                status_chip("Empuje / Oculto", kind="accent"),
             ),
             stage,
         ],
@@ -772,35 +764,49 @@ def build_apariencia_section(view: Any) -> list[ft.Control]:
     theme_tiles: list[ft.Control] = []
     view._theme_tiles = {}
     for th in THEMES:
-        swatches = ft.Row(
-            controls=[
-                ft.Container(
-                    width=14, height=14, bgcolor=col,
-                    border=ft.Border.all(0.6, BORDER_LIGHT), border_radius=RADIUS_SHARP,
+        is_implemented = th["id"] == "sala"
+        tile_controls: list[ft.Control] = [
+            ft.Row(
+                controls=[
+                    ft.Radio(
+                        value=th["id"],
+                        label=th["name"],
+                        active_color=ACCENT,
+                        disabled=not is_implemented,
+                    ),
+                ],
+                spacing=SPACE_1,
+            ),
+        ]
+        if is_implemented:
+            tile_controls.append(
+                ft.Row(
+                    controls=[
+                        ft.Container(
+                            width=14, height=14, bgcolor=col,
+                            border=ft.Border.all(0.6, BORDER_LIGHT), border_radius=RADIUS_SHARP,
+                        )
+                        for col in th["sw"]
+                    ],
+                    spacing=SPACE_1,
                 )
-                for col in th["sw"]
-            ],
-            spacing=SPACE_1,
+            )
+        else:
+            tile_controls.append(status_chip("Próximamente", kind="neutral"))
+        tile_controls.append(
+            app_text(th["note"], size=FS_META, color=TEXT_MUTED, font_family=FONT_TEXT, max_lines=2)
         )
         tile = ft.Container(
             width=220,
             bgcolor=BG_LIST,
-            border=ft.Border.all(0.8, ACCENT if th["id"] == current_theme else BORDER_MUTED),
+            border=ft.Border.all(
+                0.8,
+                ACCENT if th["id"] == current_theme else (BORDER_CONTROL if is_implemented else BORDER_MUTED),
+            ),
             border_radius=RADIUS_SHARP,
             padding=ft.Padding.symmetric(horizontal=10, vertical=10),
-            content=ft.Column(
-                controls=[
-                    ft.Row(
-                        controls=[
-                            ft.Radio(value=th["id"], label=th["name"], active_color=ACCENT),
-                        ],
-                        spacing=SPACE_1,
-                    ),
-                    swatches,
-                    app_text(th["note"], size=FS_META, color=TEXT_MUTED, font_family=FONT_TEXT, max_lines=2),
-                ],
-                spacing=SPACE_2,
-            ),
+            opacity=1.0 if is_implemented else 0.65,
+            content=ft.Column(controls=tile_controls, spacing=SPACE_2),
         )
         theme_tiles.append(tile)
         view._theme_tiles[th["id"]] = tile
@@ -813,7 +819,7 @@ def build_apariencia_section(view: Any) -> list[ft.Control]:
 
     tema_card = cfg_card(
         "Tema",
-        "Solo cambia colores: fuentes y formas no varían. Requiere reiniciar para aplicar tokens globales.",
+        "Solo «Sala de escucha» está activo actualmente; el resto de paletas quedan como roadmap.",
         [view._theme_group],
     )
 
