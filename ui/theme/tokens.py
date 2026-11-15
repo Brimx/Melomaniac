@@ -30,7 +30,8 @@ ON_ACCENT    = "#FF06101F"
 SHADOW_INK   = "#FF224799"  # 75% ACCENT_DIM + BG_DEEP (sombra de hoja 1)
 SHADOW_INK_2 = "#FF11244D"  # 50% SHADOW_INK + BG_DEEP (segunda hoja apilada)
 PAPER_BG     = "#FFE9E2D0"  # Banda obi / papel hueso
-SEAL_COLOR   = "#FFD9443B"  # Sello hanko / bermellón
+HANKO        = "#FFD9443B"  # Sello hanko / bermellón
+SEAL_COLOR   = HANKO  # alias heredado
 DISABLED_OPACITY = 0.38
 
 # Acento y estados
@@ -55,7 +56,7 @@ WARN_BG      = "#120C0000"
 WARN_BORDER  = "#30FFA500"
 
 # Texto
-TEXT_PRIMARY = "#FFF2F6FF"
+TEXT_PRIMARY = "#FFF2EDE4"  # blanco cálido (§2.7)
 TEXT_MUTED   = "#FF848DA1"
 TEXT_DIM     = "#FF3D4455"
 DECOR_LINE   = TEXT_DIM  # Alias semántico: solo adornos, nunca texto legible
@@ -81,11 +82,11 @@ FS_DISPLAY = 40
 # Radios canónicos y geometría de relieve / foco
 RADIUS_SHARP  = 3
 RADIUS_SM     = 6
-RADIUS_INPUT  = 10
-RADIUS_BUTTON = 10
-RADIUS_DIALOG = 14
-RADIUS_RAIL        = RADIUS_DIALOG
-RADIUS_RAIL_ITEM   = RADIUS_BUTTON
+RADIUS_INPUT  = RADIUS_SHARP  # deprecated: migrar en Ola 2
+RADIUS_BUTTON = RADIUS_SHARP  # deprecated: migrar en Ola 2
+RADIUS_DIALOG = RADIUS_SM  # deprecated: migrar en Ola 2
+RADIUS_RAIL        = 0  # deprecated: migrar en Ola 2
+RADIUS_RAIL_ITEM   = RADIUS_SHARP  # deprecated: migrar en Ola 2
 
 PAPER_LIFT        = 3  # Desplazamiento (+x, +y) de hoja flotante estándar
 PAPER_LIFT_SM     = 2  # Desplazamiento (+x, +y) de botón compacto o chip activo
@@ -160,7 +161,7 @@ ONBOARDING_BG_DASHES   = (None, (7, 5), (1.5, 5))
 
 # Fondo DISCO del onboarding (modo H: capa estática + reflejo/sello giratorio).
 ONBOARDING_DISC_BODY        = "#FF060609"
-ONBOARDING_DISC_SEAL        = "#FFD9443B"
+ONBOARDING_DISC_SEAL        = HANKO
 ONBOARDING_DISC_HIGHLIGHT   = "#FFFAFCFF"
 ONBOARDING_DISC_BLUR        = 22
 ONBOARDING_DISC_MASK_MARGIN = 26
