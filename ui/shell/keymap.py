@@ -495,11 +495,11 @@ class FocusRegion:
     name: str
     item_count: Callable[[], int]
     on_focus: Callable[[int | None], None]
-    on_activate: Optional[Callable[[int], None]] = None
-    on_select: Optional[Callable[[int], None]] = None
-    on_delete: Optional[Callable[[int], None]] = None
-    on_select_all: Optional[Callable[[], None]] = None
-    is_active: Optional[Callable[[], bool]] = None
+    on_activate: Callable[[int], None] | None = None
+    on_select: Callable[[int], None] | None = None
+    on_delete: Callable[[int], None] | None = None
+    on_select_all: Callable[[], None] | None = None
+    is_active: Callable[[], bool] | None = None
     horizontal: bool = False
     wrap: bool = False
     default_index: Callable[[], int] | None = None
