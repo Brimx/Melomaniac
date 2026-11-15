@@ -27,7 +27,11 @@ from ui.theme.tokens import (
     BORDER_CONTROL,
     BORDER_MUTED,
     ERROR_COL,
+    FS_META,
     RADIUS_SHARP,
+    SPACE_1,
+    SPACE_2,
+    SPACE_3,
     TEXT_MUTED,
     TEXT_PRIMARY,
     WARNING,
@@ -102,12 +106,12 @@ def build_original_track_card(name: str, artist: str, reason: str = "") -> ft.Co
     if reason:
         items.append(app_text(
             f"Motivo: {reason}",
-            size=9, color=WARNING, font_family=FONT_TEXT,
+            size=FS_META, color=WARNING, font_family=FONT_TEXT,
             max_lines=2, overflow=ft.TextOverflow.ELLIPSIS,
         ))
     return ft.Container(
-        content=ft.Column(items, spacing=2, tight=True),
-        padding=8,
+        content=ft.Column(items, spacing=SPACE_1, tight=True),
+        padding=SPACE_2,
         bgcolor=BG_INSET,
         border=ft.Border.all(0.8, BORDER_CONTROL),
         border_radius=RADIUS_SHARP,
@@ -142,7 +146,7 @@ class AlternativeSearchPanel(ft.Column):
         action_trailing: Sequence[ft.Control] = (),
         on_refresh: Callable[[], None] | None = None,
     ) -> None:
-        super().__init__(spacing=10, tight=True)
+        super().__init__(spacing=SPACE_3, tight=True)
         self._page_ref = page
         self.original = original
         self.reason = reason
@@ -174,13 +178,13 @@ class AlternativeSearchPanel(ft.Column):
         self.spinner = ft.ProgressRing(
             width=16, height=16, stroke_width=2, color=ACCENT, visible=False,
         )
-        self.status_text = app_text("", size=10, color=TEXT_MUTED, font_family=FONT_TEXT)
-        self.results_column = ft.Column(spacing=4, scroll=ft.ScrollMode.AUTO)
+        self.status_text = app_text("", size=FS_META, color=TEXT_MUTED, font_family=FONT_TEXT)
+        self.results_column = ft.Column(spacing=SPACE_1, scroll=ft.ScrollMode.AUTO)
 
         query_ctrl: ft.Control = (
             ft.Row(
                 [self.query_field, *query_trailing],
-                spacing=8,
+                spacing=SPACE_2,
                 vertical_alignment=ft.CrossAxisAlignment.CENTER,
             )
             if query_trailing
@@ -194,7 +198,7 @@ class AlternativeSearchPanel(ft.Column):
                 ft.Container(expand=True),
                 self.status_text,
             ],
-            spacing=8,
+            spacing=SPACE_2,
             vertical_alignment=ft.CrossAxisAlignment.CENTER,
         )
 
@@ -281,16 +285,16 @@ class AlternativeSearchPanel(ft.Column):
             ]
             if cand.used:
                 row_items.append(
-                    app_text("Ya se intentó", size=9, color=ERROR_COL, font_family=FONT_TEXT)
+                    app_text("Ya se intentó", size=FS_META, color=ERROR_COL, font_family=FONT_TEXT)
                 )
             elif cand.note:
                 row_items.append(
-                    app_text(cand.note, size=9, color=TEXT_MUTED, font_family=FONT_TEXT)
+                    app_text(cand.note, size=FS_META, color=TEXT_MUTED, font_family=FONT_TEXT)
                 )
             row_items.extend([
                 app_text(
                     f"{int(score)}{cand.score_suffix}",
-                    size=10,
+                    size=FS_META,
                     color=ACCENT if score >= 70 else TEXT_MUTED,
                     font_family=mono_family(),
                 ),
@@ -298,7 +302,7 @@ class AlternativeSearchPanel(ft.Column):
             ])
             self.results_column.controls.append(ft.Row(
                 row_items,
-                spacing=6,
+                spacing=SPACE_2,
                 vertical_alignment=ft.CrossAxisAlignment.CENTER,
             ))
 

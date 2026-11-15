@@ -26,9 +26,13 @@ from ui.theme.tokens import (
     ON_ACCENT,
     RADIUS_SHARP,
     RADIUS_SM,
+    SPACE_1,
+    SPACE_2,
+    SPACE_3,
+    DECOR_LINE,
+    FS_META,
     TEXT_PRIMARY,
     TEXT_MUTED,
-    TEXT_DIM,
     DIALOG_OPTION_LIMIT,
 )
 from ui.theme.icons import PIcons, app_icon
@@ -89,7 +93,7 @@ def show_organize_dialog(page: ft.Page, state) -> None:
         seg_orden = ft.SegmentedButton(
             selected=[orden["value"]], allow_empty_selection=False, allow_multiple_selection=False, show_selected_icon=False,
             style=ft.ButtonStyle(bgcolor={ft.ControlState.SELECTED: ACCENT, ft.ControlState.DEFAULT: BG_SURFACE}, color={ft.ControlState.SELECTED: ON_ACCENT, ft.ControlState.DEFAULT: TEXT_MUTED}),
-            segments=[ft.Segment(value="original", label=ft.Text("Mantener orden", size=10)), ft.Segment(value="az", label=ft.Text("A → Z", size=11)), ft.Segment(value="za", label=ft.Text("Z → A", size=11))],
+            segments=[ft.Segment(value="original", label=ft.Text("Mantener orden", size=FS_META)), ft.Segment(value="az", label=ft.Text("A → Z", size=11)), ft.Segment(value="za", label=ft.Text("Z → A", size=11))],
             on_change=lambda e: orden.__setitem__("value", list(e.control.selected)[0] if hasattr(e.control, "selected") and e.control.selected else e.control.value),
         )
     except Exception:
@@ -100,7 +104,7 @@ def show_organize_dialog(page: ft.Page, state) -> None:
         seg_group = ft.SegmentedButton(
             selected=[group_by["value"]], allow_empty_selection=False, allow_multiple_selection=False, show_selected_icon=False,
             style=ft.ButtonStyle(bgcolor={ft.ControlState.SELECTED: ACCENT, ft.ControlState.DEFAULT: BG_SURFACE}, color={ft.ControlState.SELECTED: ON_ACCENT, ft.ControlState.DEFAULT: TEXT_MUTED}),
-            segments=[ft.Segment(value="none", label=ft.Text("Sin agrupar", size=10)), ft.Segment(value="artist", label=ft.Text("Artista", size=10)), ft.Segment(value="album", label=ft.Text("Álbum", size=10)), ft.Segment(value="release_date", label=ft.Text("Fecha", size=10))],
+            segments=[ft.Segment(value="none", label=ft.Text("Sin agrupar", size=FS_META)), ft.Segment(value="artist", label=ft.Text("Artista", size=FS_META)), ft.Segment(value="album", label=ft.Text("Álbum", size=FS_META)), ft.Segment(value="release_date", label=ft.Text("Fecha", size=FS_META))],
             on_change=lambda e: group_by.__setitem__("value", list(e.control.selected)[0] if hasattr(e.control, "selected") and e.control.selected else e.control.value),
         )
     except Exception:
@@ -113,7 +117,7 @@ def show_organize_dialog(page: ft.Page, state) -> None:
     def _on_third(e): third_key["value"] = e.control.value
     dd_second.on_select = _on_second  # type: ignore
     dd_third.on_select = _on_third  # type: ignore
-    adv_row = ft.Row([dd_second, dd_third], spacing=8, visible=_init_adv)
+    adv_row = ft.Row([dd_second, dd_third], spacing=SPACE_2, visible=_init_adv)
     def _on_adv(e): 
         avanzado["value"] = bool(e.control.value)
         adv_row.visible = avanzado["value"]
@@ -124,11 +128,11 @@ def show_organize_dialog(page: ft.Page, state) -> None:
     content = ft.Column([
         dd_sort,
         seg_orden,
-        ft.Text("Agrupar dispersos juntos:", size=10, color=TEXT_MUTED, font_family="IBM Plex Sans"),
+        ft.Text("Agrupar dispersos juntos:", size=FS_META, color=TEXT_MUTED, font_family="IBM Plex Sans"),
         seg_group,
         sw_adv,
         adv_row,
-    ], tight=True, spacing=12)
+    ], tight=True, spacing=SPACE_3)
 
     dlg_ref: dict = {}
 
@@ -273,7 +277,7 @@ def show_group_dialog(page: ft.Page, state) -> None:
     max_divs = {"value": getattr(state, "split_key_count", "2") if getattr(state, "split_key_count", None) in ("2","3","4","5") else "2"}
 
     dd_count = organize_dropdown([("2","2 divisiones"),("3","3 divisiones"),("4","4 divisiones"),("5","5 divisiones")], max_divs["value"], "Cantidad de divisiones (max 5)")
-    count_hint = ft.Text(f"Se crearán {max_divs['value']} divisiones vacías — luego configura contenido por división.", size=10, color=TEXT_MUTED, font_family="IBM Plex Sans")
+    count_hint = ft.Text(f"Se crearán {max_divs['value']} divisiones vacías — luego configura contenido por división.", size=FS_META, color=TEXT_MUTED, font_family="IBM Plex Sans")
     def _on_count_change(e):
         max_divs["value"] = e.control.value
         try:
@@ -303,28 +307,28 @@ def show_group_dialog(page: ft.Page, state) -> None:
     name_fields: dict[str, ft.TextField] = {}
 
     # contenedor dinámico para divisiones
-    divisions_col = ft.Column(spacing=12, scroll=ft.ScrollMode.AUTO, height=380)
+    divisions_col = ft.Column(spacing=SPACE_3, scroll=ft.ScrollMode.AUTO, height=380)
 
     def _build_division_panel(div_key: str):
         st = divisions_state[div_key]
         # nombre editable
-        name_tf = track_input_focus(ft.TextField(value=st["name"], label=f"Nombre {div_key}", width=360, height=36, bgcolor=BG_INPUT, border=input_border(), text_style=ft.TextStyle(size=11, color=TEXT_PRIMARY), label_style=ft.TextStyle(size=9, color=TEXT_MUTED)))
+        name_tf = track_input_focus(ft.TextField(value=st["name"], label=f"Nombre {div_key}", width=360, height=36, bgcolor=BG_INPUT, border=input_border(), text_style=ft.TextStyle(size=11, color=TEXT_PRIMARY), label_style=ft.TextStyle(size=FS_META, color=TEXT_MUTED)))
         def _on_name(e, _k=div_key):
             divisions_state[_k]["name"] = (e.control.value or _k).strip() or _k
         name_tf.on_change = _on_name
         name_fields[div_key] = name_tf
 
         # buscadores + listas por tipo
-        art_search = track_input_focus(ft.TextField(hint_text="Buscar artista…", prefix=app_icon(PIcons.MAGNIFYING_GLASS, size=14, color=TEXT_DIM), width=360, height=32, bgcolor=BG_INPUT, border=input_border(), dense=True, content_padding=ft.Padding.symmetric(horizontal=8, vertical=4), text_style=ft.TextStyle(size=11)))
-        alb_search = track_input_focus(ft.TextField(hint_text="Buscar álbum…", prefix=app_icon(PIcons.MAGNIFYING_GLASS, size=14, color=TEXT_DIM), width=360, height=32, bgcolor=BG_INPUT, border=input_border(), dense=True, content_padding=ft.Padding.symmetric(horizontal=8, vertical=4), text_style=ft.TextStyle(size=11)))
-        song_search = track_input_focus(ft.TextField(hint_text="Buscar canción…", prefix=app_icon(PIcons.MAGNIFYING_GLASS, size=14, color=TEXT_DIM), width=360, height=36, bgcolor=BG_INPUT, border=input_border(), dense=True, content_padding=ft.Padding.symmetric(horizontal=8, vertical=4), text_style=ft.TextStyle(size=11)))
-        art_limit = ft.Text("", size=9, color=TEXT_DIM, font_family="IBM Plex Sans")
-        alb_limit = ft.Text("", size=9, color=TEXT_DIM, font_family="IBM Plex Sans")
-        song_limit = ft.Text("", size=9, color=TEXT_DIM, font_family="IBM Plex Sans")
+        art_search = track_input_focus(ft.TextField(hint_text="Buscar artista…", prefix=app_icon(PIcons.MAGNIFYING_GLASS, size=14, color=DECOR_LINE), width=360, height=32, bgcolor=BG_INPUT, border=input_border(), dense=True, content_padding=ft.Padding.symmetric(horizontal=8, vertical=4), text_style=ft.TextStyle(size=11)))
+        alb_search = track_input_focus(ft.TextField(hint_text="Buscar álbum…", prefix=app_icon(PIcons.MAGNIFYING_GLASS, size=14, color=DECOR_LINE), width=360, height=32, bgcolor=BG_INPUT, border=input_border(), dense=True, content_padding=ft.Padding.symmetric(horizontal=8, vertical=4), text_style=ft.TextStyle(size=11)))
+        song_search = track_input_focus(ft.TextField(hint_text="Buscar canción…", prefix=app_icon(PIcons.MAGNIFYING_GLASS, size=14, color=DECOR_LINE), width=360, height=36, bgcolor=BG_INPUT, border=input_border(), dense=True, content_padding=ft.Padding.symmetric(horizontal=8, vertical=4), text_style=ft.TextStyle(size=11)))
+        art_limit = ft.Text("", size=FS_META, color=TEXT_MUTED, font_family="IBM Plex Sans")
+        alb_limit = ft.Text("", size=FS_META, color=TEXT_MUTED, font_family="IBM Plex Sans")
+        song_limit = ft.Text("", size=FS_META, color=TEXT_MUTED, font_family="IBM Plex Sans")
 
-        art_lv = ft.ListView(height=140, spacing=4, padding=ft.Padding.all(4), expand=False)
-        alb_lv = ft.ListView(height=140, spacing=4, padding=ft.Padding.all(4), expand=False)
-        song_lv = ft.ListView(height=170, spacing=4, padding=ft.Padding.all(4), expand=False)  # más grande para canciones
+        art_lv = ft.ListView(height=140, spacing=SPACE_1, padding=ft.Padding.all(4), expand=False)
+        alb_lv = ft.ListView(height=140, spacing=SPACE_1, padding=ft.Padding.all(4), expand=False)
+        song_lv = ft.ListView(height=170, spacing=SPACE_1, padding=ft.Padding.all(4), expand=False)  # más grande para canciones
 
         # headers dinámicos para contador
         art_header = ft.Text(f"Artistas ({len(st['artists'])})", size=11, color=TEXT_PRIMARY)
@@ -350,7 +354,7 @@ def show_group_dialog(page: ft.Page, state) -> None:
                     if e.control.value: st["artists"].add(_a)
                     else: st["artists"].discard(_a)
                     _update_headers()
-                chk = ft.Checkbox(label=a, value=a in st["artists"], fill_color={ft.ControlState.SELECTED: ACCENT}, check_color=TEXT_PRIMARY, label_style=ft.TextStyle(size=11, color=TEXT_PRIMARY if a in st["artists"] else TEXT_MUTED), border_side=ft.BorderSide(1.0, ACCENT if a in st["artists"] else TEXT_DIM), on_change=_on_art)
+                chk = ft.Checkbox(label=a, value=a in st["artists"], fill_color={ft.ControlState.SELECTED: ACCENT}, check_color=TEXT_PRIMARY, label_style=ft.TextStyle(size=11, color=TEXT_PRIMARY if a in st["artists"] else TEXT_MUTED), border_side=ft.BorderSide(1.0, ACCENT if a in st["artists"] else DECOR_LINE), on_change=_on_art)
                 art_lv.controls.append(chk)
             try: art_lv.update(); art_limit.update()
             except: pass
@@ -365,7 +369,7 @@ def show_group_dialog(page: ft.Page, state) -> None:
                     if e.control.value: st["albums"].add(_a)
                     else: st["albums"].discard(_a)
                     _update_headers()
-                chk = ft.Checkbox(label=a, value=a in st["albums"], fill_color={ft.ControlState.SELECTED: ACCENT}, check_color=TEXT_PRIMARY, label_style=ft.TextStyle(size=11, color=TEXT_PRIMARY if a in st["albums"] else TEXT_MUTED), border_side=ft.BorderSide(1.0, ACCENT if a in st["albums"] else TEXT_DIM), on_change=_on_alb)
+                chk = ft.Checkbox(label=a, value=a in st["albums"], fill_color={ft.ControlState.SELECTED: ACCENT}, check_color=TEXT_PRIMARY, label_style=ft.TextStyle(size=11, color=TEXT_PRIMARY if a in st["albums"] else TEXT_MUTED), border_side=ft.BorderSide(1.0, ACCENT if a in st["albums"] else DECOR_LINE), on_change=_on_alb)
                 alb_lv.controls.append(chk)
             try: alb_lv.update(); alb_limit.update()
             except: pass
@@ -384,7 +388,7 @@ def show_group_dialog(page: ft.Page, state) -> None:
                     if e.control.value: st["songs"].add(_tid)
                     else: st["songs"].discard(_tid)
                     _update_headers()
-                chk = ft.Checkbox(label=label, value=t.id in st["songs"], fill_color={ft.ControlState.SELECTED: ACCENT}, check_color=TEXT_PRIMARY, label_style=ft.TextStyle(size=11, color=TEXT_PRIMARY if t.id in st["songs"] else TEXT_MUTED), border_side=ft.BorderSide(1.0, ACCENT if t.id in st["songs"] else TEXT_DIM), on_change=_on_song)
+                chk = ft.Checkbox(label=label, value=t.id in st["songs"], fill_color={ft.ControlState.SELECTED: ACCENT}, check_color=TEXT_PRIMARY, label_style=ft.TextStyle(size=11, color=TEXT_PRIMARY if t.id in st["songs"] else TEXT_MUTED), border_side=ft.BorderSide(1.0, ACCENT if t.id in st["songs"] else DECOR_LINE), on_change=_on_song)
                 song_lv.controls.append(chk)
             try: song_lv.update(); song_limit.update()
             except: pass
@@ -402,23 +406,23 @@ def show_group_dialog(page: ft.Page, state) -> None:
             controls=[
                 ft.ExpansionPanel(
                     header=ft.ListTile(title=art_header),
-                    content=ft.Column([art_search, art_limit, ft.Container(content=art_lv, height=170, bgcolor=BG_INSET, border=ft.Border.all(0.8, BORDER_CONTROL), border_radius=RADIUS_SHARP)], tight=True, spacing=6),
+                    content=ft.Column([art_search, art_limit, ft.Container(content=art_lv, height=170, bgcolor=BG_INSET, border=ft.Border.all(0.8, BORDER_CONTROL), border_radius=RADIUS_SHARP)], tight=True, spacing=SPACE_2),
                     bgcolor=BG_SURFACE, can_tap_header=True,
                 ),
                 ft.ExpansionPanel(
                     header=ft.ListTile(title=alb_header),
-                    content=ft.Column([alb_search, alb_limit, ft.Container(content=alb_lv, height=170, bgcolor=BG_INSET, border=ft.Border.all(0.8, BORDER_CONTROL), border_radius=RADIUS_SHARP)], tight=True, spacing=6),
+                    content=ft.Column([alb_search, alb_limit, ft.Container(content=alb_lv, height=170, bgcolor=BG_INSET, border=ft.Border.all(0.8, BORDER_CONTROL), border_radius=RADIUS_SHARP)], tight=True, spacing=SPACE_2),
                     bgcolor=BG_SURFACE, can_tap_header=True,
                 ),
                 ft.ExpansionPanel(
                     header=ft.ListTile(title=song_header),
-                    content=ft.Column([song_search, song_limit, ft.Container(content=song_lv, height=200, bgcolor=BG_INSET, border=ft.Border.all(0.8, BORDER_CONTROL), border_radius=RADIUS_SHARP)], tight=True, spacing=6),
+                    content=ft.Column([song_search, song_limit, ft.Container(content=song_lv, height=200, bgcolor=BG_INSET, border=ft.Border.all(0.8, BORDER_CONTROL), border_radius=RADIUS_SHARP)], tight=True, spacing=SPACE_2),
                     bgcolor=BG_SURFACE, can_tap_header=True,
                 ),
             ],
         )
         return ft.Container(
-            content=ft.Column([name_tf, exp], spacing=8),
+            content=ft.Column([name_tf, exp], spacing=SPACE_2),
             bgcolor=BG_SURFACE, border=ft.Border.all(0.8, BORDER_CONTROL), border_radius=RADIUS_SM, padding=ft.Padding.all(8),
         )
 
@@ -440,7 +444,7 @@ def show_group_dialog(page: ft.Page, state) -> None:
         count_hint,
         ft.Divider(height=1, color=BORDER_LIGHT),
         divisions_col,
-    ], tight=True, spacing=10, scroll=ft.ScrollMode.AUTO)
+    ], tight=True, spacing=SPACE_3, scroll=ft.ScrollMode.AUTO)
 
     dlg_ref: dict = {}
 
@@ -552,14 +556,14 @@ def show_reorganize_dialog(page: ft.Page, state) -> None:
                 if 0 <= oi < len(art_items) and 0 <= ni < len(art_items):
                     val = art_items.pop(oi); art_items.insert(ni, val)
                     try:
-                        art_lv.controls = [ft.ListTile(title=ft.Text(a, size=11, color=TEXT_PRIMARY, font_family="IBM Plex Sans"), leading=app_icon(PIcons.DOTS_SIX_VERTICAL, size=14, color=TEXT_DIM)) for a in art_items]
+                        art_lv.controls = [ft.ListTile(title=ft.Text(a, size=11, color=TEXT_PRIMARY, font_family="IBM Plex Sans"), leading=app_icon(PIcons.DOTS_SIX_VERTICAL, size=14, color=DECOR_LINE)) for a in art_items]
                         art_lv.update()
                     except Exception:
                         pass
             except Exception:
                 pass
 
-        art_lv = ft.ReorderableListView(controls=[ft.ListTile(title=ft.Text(a, size=11, color=TEXT_PRIMARY, font_family="IBM Plex Sans"), leading=app_icon(PIcons.DOTS_SIX_VERTICAL, size=14, color=TEXT_DIM)) for a in art_items], on_reorder=_art_on_reorder, height=180)
+        art_lv = ft.ReorderableListView(controls=[ft.ListTile(title=ft.Text(a, size=11, color=TEXT_PRIMARY, font_family="IBM Plex Sans"), leading=app_icon(PIcons.DOTS_SIX_VERTICAL, size=14, color=DECOR_LINE)) for a in art_items], on_reorder=_art_on_reorder, height=180)
 
         def _alb_on_reorder(e):
             try:
@@ -567,14 +571,14 @@ def show_reorganize_dialog(page: ft.Page, state) -> None:
                 if 0 <= oi < len(alb_items) and 0 <= ni < len(alb_items):
                     val = alb_items.pop(oi); alb_items.insert(ni, val)
                     try:
-                        alb_lv.controls = [ft.ListTile(title=ft.Text(a, size=11, color=TEXT_PRIMARY, font_family="IBM Plex Sans"), leading=app_icon(PIcons.DOTS_SIX_VERTICAL, size=14, color=TEXT_DIM)) for a in alb_items]
+                        alb_lv.controls = [ft.ListTile(title=ft.Text(a, size=11, color=TEXT_PRIMARY, font_family="IBM Plex Sans"), leading=app_icon(PIcons.DOTS_SIX_VERTICAL, size=14, color=DECOR_LINE)) for a in alb_items]
                         alb_lv.update()
                     except Exception:
                         pass
             except Exception:
                 pass
 
-        alb_lv = ft.ReorderableListView(controls=[ft.ListTile(title=ft.Text(a, size=11, color=TEXT_PRIMARY, font_family="IBM Plex Sans"), leading=app_icon(PIcons.DOTS_SIX_VERTICAL, size=14, color=TEXT_DIM)) for a in alb_items], on_reorder=_alb_on_reorder, height=180)
+        alb_lv = ft.ReorderableListView(controls=[ft.ListTile(title=ft.Text(a, size=11, color=TEXT_PRIMARY, font_family="IBM Plex Sans"), leading=app_icon(PIcons.DOTS_SIX_VERTICAL, size=14, color=DECOR_LINE)) for a in alb_items], on_reorder=_alb_on_reorder, height=180)
 
         def _apply(_e):
             if art_items != artists:
@@ -585,12 +589,12 @@ def show_reorganize_dialog(page: ft.Page, state) -> None:
 
         content = ft.Column([
             ft.Text("REORGANIZAR — arrastra para reordenar", size=11, color=TEXT_PRIMARY, font_family="IBM Plex Sans Medium"),
-            ft.Text("Artistas", size=10, color=TEXT_MUTED, font_family="IBM Plex Sans"),
+            ft.Text("Artistas", size=FS_META, color=TEXT_MUTED, font_family="IBM Plex Sans"),
             ft.Container(content=art_lv, bgcolor=BG_INSET, border=ft.Border.all(0.8, BORDER_CONTROL), border_radius=RADIUS_SHARP, padding=ft.Padding.all(4)),
-            ft.Text("Álbumes", size=10, color=TEXT_MUTED, font_family="IBM Plex Sans"),
+            ft.Text("Álbumes", size=FS_META, color=TEXT_MUTED, font_family="IBM Plex Sans"),
             ft.Container(content=alb_lv, bgcolor=BG_INSET, border=ft.Border.all(0.8, BORDER_CONTROL), border_radius=RADIUS_SHARP, padding=ft.Padding.all(4)),
-            ft.Text("La lista principal refleja el resultado — reordenamiento §9, no reasignación.", size=9, color=TEXT_DIM, font_family="IBM Plex Sans"),
-        ], tight=True, spacing=10, scroll=ft.ScrollMode.AUTO)
+            ft.Text("La lista principal refleja el resultado — reordenamiento §9, no reasignación.", size=FS_META, color=TEXT_MUTED, font_family="IBM Plex Sans"),
+        ], tight=True, spacing=SPACE_3, scroll=ft.ScrollMode.AUTO)
 
         dlg = app_dialog("Reorganizar", ft.Container(content=content, width=420, height=460, padding=ft.Padding.all(8)), [dialog_action("Cancelar", lambda _: _close_dlg(page, dlg_ref.get("dlg")), kind="muted"), dialog_action("Aplicar", _apply, kind="primary")], width=460, bgcolor=BG_SURFACE, radius=RADIUS_SM)
         dlg_ref["dlg"] = dlg

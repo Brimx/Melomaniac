@@ -27,8 +27,11 @@ from ui.theme.tokens import (
     BORDER_LIGHT,
     CHIP_BG,
     DIALOG_OPTION_LIMIT,
-    RADIUS_INPUT,
-    TEXT_DIM,
+    FS_META,
+    RADIUS_SHARP,
+    SPACE_1,
+    SPACE_2,
+    SPACE_3,
     TEXT_MUTED,
     TEXT_PRIMARY,
 )
@@ -87,8 +90,8 @@ def open_merge_dialog(host) -> None:
         prefix_icon=PIcons.MAGNIFYING_GLASS,
         height=36,
     )
-    limit_txt = ft.Text("", size=10, color=TEXT_DIM, font_family=mono_family("light"))
-    lv = ft.ListView(spacing=4, height=230)
+    limit_txt = ft.Text("", size=FS_META, color=TEXT_MUTED, font_family=mono_family("light"))
+    lv = ft.ListView(spacing=SPACE_1, height=230)
     dedup_chk = ft.Checkbox(
         label="Omitir canciones duplicadas (ISRC, ID o título y artista)",
         value=True,
@@ -248,7 +251,7 @@ def open_merge_dialog(host) -> None:
                             height=36,
                         ),
                     ],
-                    spacing=8,
+                    spacing=SPACE_2,
                     vertical_alignment=ft.CrossAxisAlignment.CENTER,
                 ),
                 limit_txt,
@@ -256,12 +259,12 @@ def open_merge_dialog(host) -> None:
                     content=lv,
                     bgcolor=CHIP_BG,
                     border=ft.Border.all(0.8, BORDER_LIGHT),
-                    border_radius=RADIUS_INPUT,
-                    padding=ft.Padding.all(8),
+                    border_radius=RADIUS_SHARP,
+                    padding=ft.Padding.all(SPACE_2),
                 ),
                 dedup_chk,
             ],
-            spacing=10,
+            spacing=SPACE_3,
             tight=True,
         ),
         [

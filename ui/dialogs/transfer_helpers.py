@@ -16,7 +16,8 @@ from ui.theme.tokens import (
     BORDER_LIGHT,
     CHIP_BG,
     ERROR_COL,
-    RADIUS_INPUT,
+    RADIUS_SHARP,
+    SPACE_2,
     SUCCESS,
     TEXT_MUTED,
 )
@@ -138,11 +139,11 @@ def make_preflight_status_row(host, on_status_change=None):
     banner = ft.Container(
         bgcolor=CHIP_BG,
         border=ft.Border.all(0.8, BORDER_LIGHT),
-        border_radius=RADIUS_INPUT,
+        border_radius=RADIUS_SHARP,
         padding=ft.Padding.symmetric(horizontal=10, vertical=8),
         content=ft.Row(
             [icon_ctrl, status_txt, config_btn, recheck_btn],
-            spacing=8,
+            spacing=SPACE_2,
             vertical_alignment=ft.CrossAxisAlignment.CENTER,
         ),
     )

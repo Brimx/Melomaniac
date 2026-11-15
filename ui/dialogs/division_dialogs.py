@@ -24,11 +24,15 @@ from ui.theme.tokens import (
     BG_SURFACE,
     BORDER_CONTROL,
     BORDER_MUTED,
+    DECOR_LINE,
     DIALOG_OPTION_LIMIT,
+    FS_META,
     ON_ACCENT,
     RADIUS_SHARP,
     RADIUS_SM,
-    TEXT_DIM,
+    SPACE_1,
+    SPACE_2,
+    SPACE_3,
     TEXT_MUTED,
     TEXT_PRIMARY,
     WARNING,
@@ -74,7 +78,7 @@ class DivisionController:
                 try:
                     _seg = ft.SegmentedButton(selected=[_orden["value"]], allow_empty_selection=False, allow_multiple_selection=False, show_selected_icon=False,
                         style=ft.ButtonStyle(bgcolor={ft.ControlState.SELECTED: ACCENT, ft.ControlState.DEFAULT: BG_SURFACE}, color={ft.ControlState.SELECTED: ON_ACCENT, ft.ControlState.DEFAULT: TEXT_MUTED}),
-                        segments=[ft.Segment(value="original", label=ft.Text("Mantener orden", size=10)), ft.Segment(value="az", label=ft.Text("A → Z", size=11)), ft.Segment(value="za", label=ft.Text("Z → A", size=11))],
+                        segments=[ft.Segment(value="original", label=ft.Text("Mantener orden", size=FS_META)), ft.Segment(value="az", label=ft.Text("A → Z", size=11)), ft.Segment(value="za", label=ft.Text("Z → A", size=11))],
                         on_change=lambda e: _orden.__setitem__("value", list(e.control.selected)[0] if hasattr(e.control,"selected") and e.control.selected else e.control.value))
                 except Exception:
                     _seg = ft.Dropdown(value=_orden["value"], width=240, bgcolor=BG_INPUT, border=input_border(), options=[ft.dropdown.Option("original","Mantener orden"), ft.dropdown.Option("az","A → Z"), ft.dropdown.Option("za","Z → A")], on_select=lambda e: _orden.__setitem__("value", e.control.value))
@@ -107,7 +111,7 @@ class DivisionController:
                 dlg = app_dialog(
                     "Organizar",
                     ft.Container(
-                        content=ft.Column([_dd, _seg], tight=True, spacing=12),
+                        content=ft.Column([_dd, _seg], tight=True, spacing=SPACE_3),
                         min_width=280,
                         max_width=420,
                     ),
@@ -145,7 +149,7 @@ class DivisionController:
                 dlg = app_dialog(
                     "Dividir",
                     ft.Container(
-                        content=ft.Column([_dd], tight=True, spacing=12),
+                        content=ft.Column([_dd], tight=True, spacing=SPACE_3),
                         min_width=280,
                         max_width=400,
                     ),
@@ -213,7 +217,7 @@ class DivisionController:
         selected: set[str] = set(s.active_segment_keys) if s.active_segment_keys is not None else set(s.segments.keys())
 
         search_field = app_text_field(hint_text="Buscar división…", prefix_icon=PIcons.MAGNIFYING_GLASS, height=36, content_padding=ft.Padding.symmetric(horizontal=10, vertical=6))
-        list_view = ft.ListView(spacing=4, padding=ft.Padding.all(4), expand=True)
+        list_view = ft.ListView(spacing=SPACE_1, padding=ft.Padding.all(4), expand=True)
 
         def _rebuild(filter_q: str = ""):
             q = (filter_q or "").strip().lower()
@@ -230,7 +234,7 @@ class DivisionController:
                     fill_color={ft.ControlState.SELECTED: ACCENT},
                     check_color=TEXT_PRIMARY,
                     label_style=ft.TextStyle(color=TEXT_PRIMARY if is_checked else TEXT_MUTED, size=11, font_family=FONT_HEADLINE),
-                    border_side=ft.BorderSide(1.2, ACCENT if is_checked else TEXT_DIM),
+                    border_side=ft.BorderSide(1.2, ACCENT if is_checked else DECOR_LINE),
                     data=k,
                     on_change=lambda e, _k=k: _on_toggle(_k, bool(e.control.value)),
                 )
@@ -279,7 +283,7 @@ class DivisionController:
                     search_field,
                     ft.Divider(height=1, color=BORDER_MUTED, thickness=0.5),
                     ft.Container(content=list_view, min_height=180, max_height=260),
-                ], tight=True, spacing=8),
+                ], tight=True, spacing=SPACE_2),
                 min_width=300,
                 max_width=420,
             ),
@@ -330,10 +334,10 @@ class DivisionController:
         right_sel: set[str] = set()
         left_search = app_text_field(hint_text="Buscar en ORIGINAL…", prefix_icon=PIcons.MAGNIFYING_GLASS, expand=True, height=32, content_padding=ft.Padding.symmetric(horizontal=8, vertical=4))
         right_search = app_text_field(hint_text="Buscar en División…", prefix_icon=PIcons.MAGNIFYING_GLASS, expand=True, height=32, content_padding=ft.Padding.symmetric(horizontal=8, vertical=4))
-        left_lv = ft.ListView(spacing=4, padding=ft.Padding.all(6), expand=True)
-        right_lv = ft.ListView(spacing=4, padding=ft.Padding.all(6), expand=True)
-        left_limit = ft.Text("", size=9, color=TEXT_DIM, font_family=FONT_TEXT)
-        right_limit = ft.Text("", size=9, color=TEXT_DIM, font_family=FONT_TEXT)
+        left_lv = ft.ListView(spacing=SPACE_1, padding=ft.Padding.all(6), expand=True)
+        right_lv = ft.ListView(spacing=SPACE_1, padding=ft.Padding.all(6), expand=True)
+        left_limit = ft.Text("", size=FS_META, color=TEXT_MUTED, font_family=FONT_TEXT)
+        right_limit = ft.Text("", size=FS_META, color=TEXT_MUTED, font_family=FONT_TEXT)
 
         def _rebuild_left(q: str = ""):
             ql = (q or "").strip().lower()
@@ -351,7 +355,7 @@ class DivisionController:
                     # cuenta canciones de ese artista en ORIGINAL
                     cnt = sum(1 for t in src_tracks if t.artist == a)
                     label = f"{a} ({cnt})"
-                    chk = ft.Checkbox(label=label, value=a in left_sel, fill_color={ft.ControlState.SELECTED: ACCENT}, check_color=TEXT_PRIMARY, label_style=ft.TextStyle(size=10, color=TEXT_PRIMARY if a in left_sel else TEXT_MUTED), border_side=ft.BorderSide(1.0, ACCENT if a in left_sel else TEXT_DIM), data=a, on_change=lambda e, _a=a: (left_sel.add(_a) if e.control.value else left_sel.discard(_a)))
+                    chk = ft.Checkbox(label=label, value=a in left_sel, fill_color={ft.ControlState.SELECTED: ACCENT}, check_color=TEXT_PRIMARY, label_style=ft.TextStyle(size=FS_META, color=TEXT_PRIMARY if a in left_sel else TEXT_MUTED), border_side=ft.BorderSide(1.0, ACCENT if a in left_sel else DECOR_LINE), data=a, on_change=lambda e, _a=a: (left_sel.add(_a) if e.control.value else left_sel.discard(_a)))
                     left_lv.controls.append(chk)
             elif crit == "album":
                 albums = sorted(
@@ -364,7 +368,7 @@ class DivisionController:
                 for a in shown:
                     cnt = sum(1 for t in src_tracks if t.album == a)
                     label = f"{a} ({cnt})"
-                    chk = ft.Checkbox(label=label, value=a in left_sel, fill_color={ft.ControlState.SELECTED: ACCENT}, check_color=TEXT_PRIMARY, label_style=ft.TextStyle(size=10, color=TEXT_PRIMARY if a in left_sel else TEXT_MUTED), border_side=ft.BorderSide(1.0, ACCENT if a in left_sel else TEXT_DIM), data=a, on_change=lambda e, _a=a: (left_sel.add(_a) if e.control.value else left_sel.discard(_a)))
+                    chk = ft.Checkbox(label=label, value=a in left_sel, fill_color={ft.ControlState.SELECTED: ACCENT}, check_color=TEXT_PRIMARY, label_style=ft.TextStyle(size=FS_META, color=TEXT_PRIMARY if a in left_sel else TEXT_MUTED), border_side=ft.BorderSide(1.0, ACCENT if a in left_sel else DECOR_LINE), data=a, on_change=lambda e, _a=a: (left_sel.add(_a) if e.control.value else left_sel.discard(_a)))
                     left_lv.controls.append(chk)
             else:
                 matches = []
@@ -375,7 +379,7 @@ class DivisionController:
                 shown = matches[:DIALOG_OPTION_LIMIT]
                 left_limit.value = limit_label(len(shown), len(matches))
                 for t, label in shown:
-                    chk = ft.Checkbox(label=label, value=t.id in left_sel, fill_color={ft.ControlState.SELECTED: ACCENT}, check_color=TEXT_PRIMARY, label_style=ft.TextStyle(size=10, color=TEXT_PRIMARY if t.id in left_sel else TEXT_MUTED), border_side=ft.BorderSide(1.0, ACCENT if t.id in left_sel else TEXT_DIM), data=t.id, on_change=lambda e, _tid=t.id: (left_sel.add(_tid) if e.control.value else left_sel.discard(_tid)))
+                    chk = ft.Checkbox(label=label, value=t.id in left_sel, fill_color={ft.ControlState.SELECTED: ACCENT}, check_color=TEXT_PRIMARY, label_style=ft.TextStyle(size=FS_META, color=TEXT_PRIMARY if t.id in left_sel else TEXT_MUTED), border_side=ft.BorderSide(1.0, ACCENT if t.id in left_sel else DECOR_LINE), data=t.id, on_change=lambda e, _tid=t.id: (left_sel.add(_tid) if e.control.value else left_sel.discard(_tid)))
                     left_lv.controls.append(chk)
             try: left_lv.update(); left_limit.update()
             except: pass
@@ -394,7 +398,7 @@ class DivisionController:
                 right_limit.value = limit_label(len(shown), len(artists))
                 for a in shown:
                     cnt = sum(1 for t in div_tracks if t.artist == a)
-                    chk = ft.Checkbox(label=f"{a} ({cnt})", value=a in right_sel, fill_color={ft.ControlState.SELECTED: ACCENT}, check_color=TEXT_PRIMARY, label_style=ft.TextStyle(size=10, color=TEXT_PRIMARY if a in right_sel else TEXT_MUTED), border_side=ft.BorderSide(1.0, ACCENT if a in right_sel else TEXT_DIM), data=a, on_change=lambda e, _a=a: (right_sel.add(_a) if e.control.value else right_sel.discard(_a)))
+                    chk = ft.Checkbox(label=f"{a} ({cnt})", value=a in right_sel, fill_color={ft.ControlState.SELECTED: ACCENT}, check_color=TEXT_PRIMARY, label_style=ft.TextStyle(size=FS_META, color=TEXT_PRIMARY if a in right_sel else TEXT_MUTED), border_side=ft.BorderSide(1.0, ACCENT if a in right_sel else DECOR_LINE), data=a, on_change=lambda e, _a=a: (right_sel.add(_a) if e.control.value else right_sel.discard(_a)))
                     right_lv.controls.append(chk)
             elif crit == "album":
                 albums = sorted(
@@ -406,7 +410,7 @@ class DivisionController:
                 right_limit.value = limit_label(len(shown), len(albums))
                 for a in shown:
                     cnt = sum(1 for t in div_tracks if t.album == a)
-                    chk = ft.Checkbox(label=f"{a} ({cnt})", value=a in right_sel, fill_color={ft.ControlState.SELECTED: ACCENT}, check_color=TEXT_PRIMARY, label_style=ft.TextStyle(size=10, color=TEXT_PRIMARY if a in right_sel else TEXT_MUTED), border_side=ft.BorderSide(1.0, ACCENT if a in right_sel else TEXT_DIM), data=a, on_change=lambda e, _a=a: (right_sel.add(_a) if e.control.value else right_sel.discard(_a)))
+                    chk = ft.Checkbox(label=f"{a} ({cnt})", value=a in right_sel, fill_color={ft.ControlState.SELECTED: ACCENT}, check_color=TEXT_PRIMARY, label_style=ft.TextStyle(size=FS_META, color=TEXT_PRIMARY if a in right_sel else TEXT_MUTED), border_side=ft.BorderSide(1.0, ACCENT if a in right_sel else DECOR_LINE), data=a, on_change=lambda e, _a=a: (right_sel.add(_a) if e.control.value else right_sel.discard(_a)))
                     right_lv.controls.append(chk)
             else:
                 matches = []
@@ -417,7 +421,7 @@ class DivisionController:
                 shown = matches[:DIALOG_OPTION_LIMIT]
                 right_limit.value = limit_label(len(shown), len(matches))
                 for t, label in shown:
-                    chk = ft.Checkbox(label=label, value=t.id in right_sel, fill_color={ft.ControlState.SELECTED: ACCENT}, check_color=TEXT_PRIMARY, label_style=ft.TextStyle(size=10, color=TEXT_PRIMARY if t.id in right_sel else TEXT_MUTED), border_side=ft.BorderSide(1.0, ACCENT if t.id in right_sel else TEXT_DIM), data=t.id, on_change=lambda e, _tid=t.id: (right_sel.add(_tid) if e.control.value else right_sel.discard(_tid)))
+                    chk = ft.Checkbox(label=label, value=t.id in right_sel, fill_color={ft.ControlState.SELECTED: ACCENT}, check_color=TEXT_PRIMARY, label_style=ft.TextStyle(size=FS_META, color=TEXT_PRIMARY if t.id in right_sel else TEXT_MUTED), border_side=ft.BorderSide(1.0, ACCENT if t.id in right_sel else DECOR_LINE), data=t.id, on_change=lambda e, _tid=t.id: (right_sel.add(_tid) if e.control.value else right_sel.discard(_tid)))
                     right_lv.controls.append(chk)
             try: right_lv.update(); right_limit.update()
             except: pass
@@ -427,18 +431,18 @@ class DivisionController:
         add_popup = ft.PopupMenuButton(
             content=add_icon_ctrl, tooltip="Añadir por",
             items=[
-                ft.PopupMenuItem(content=ft.Row([app_icon(PIcons.USER, size=15, color=TEXT_PRIMARY), ft.Text("Artista", font_family=FONT_TEXT, size=12)], spacing=8), on_click=lambda _: _set_add_crit("artist")),
-                ft.PopupMenuItem(content=ft.Row([app_icon(PIcons.DISC, size=15, color=TEXT_PRIMARY), ft.Text("Álbum", font_family=FONT_TEXT, size=12)], spacing=8), on_click=lambda _: _set_add_crit("album")),
-                ft.PopupMenuItem(content=ft.Row([app_icon(PIcons.MUSIC_NOTE, size=15, color=TEXT_PRIMARY), ft.Text("Canción", font_family=FONT_TEXT, size=12)], spacing=8), on_click=lambda _: _set_add_crit("song")),
+                ft.PopupMenuItem(content=ft.Row([app_icon(PIcons.USER, size=15, color=TEXT_PRIMARY), ft.Text("Artista", font_family=FONT_TEXT, size=12)], spacing=SPACE_2), on_click=lambda _: _set_add_crit("artist")),
+                ft.PopupMenuItem(content=ft.Row([app_icon(PIcons.DISC, size=15, color=TEXT_PRIMARY), ft.Text("Álbum", font_family=FONT_TEXT, size=12)], spacing=SPACE_2), on_click=lambda _: _set_add_crit("album")),
+                ft.PopupMenuItem(content=ft.Row([app_icon(PIcons.MUSIC_NOTE, size=15, color=TEXT_PRIMARY), ft.Text("Canción", font_family=FONT_TEXT, size=12)], spacing=SPACE_2), on_click=lambda _: _set_add_crit("song")),
             ],
         )
         remove_icon_ctrl = app_icon(PIcons.MUSIC_NOTE, size=16, color=WARNING)
         remove_popup = ft.PopupMenuButton(
             content=remove_icon_ctrl, tooltip="Eliminar por",
             items=[
-                ft.PopupMenuItem(content=ft.Row([app_icon(PIcons.USER, size=15, color=TEXT_PRIMARY), ft.Text("Artista", font_family=FONT_TEXT, size=12)], spacing=8), on_click=lambda _: _set_remove_crit("artist")),
-                ft.PopupMenuItem(content=ft.Row([app_icon(PIcons.DISC, size=15, color=TEXT_PRIMARY), ft.Text("Álbum", font_family=FONT_TEXT, size=12)], spacing=8), on_click=lambda _: _set_remove_crit("album")),
-                ft.PopupMenuItem(content=ft.Row([app_icon(PIcons.MUSIC_NOTE, size=15, color=TEXT_PRIMARY), ft.Text("Canción", font_family=FONT_TEXT, size=12)], spacing=8), on_click=lambda _: _set_remove_crit("song")),
+                ft.PopupMenuItem(content=ft.Row([app_icon(PIcons.USER, size=15, color=TEXT_PRIMARY), ft.Text("Artista", font_family=FONT_TEXT, size=12)], spacing=SPACE_2), on_click=lambda _: _set_remove_crit("artist")),
+                ft.PopupMenuItem(content=ft.Row([app_icon(PIcons.DISC, size=15, color=TEXT_PRIMARY), ft.Text("Álbum", font_family=FONT_TEXT, size=12)], spacing=SPACE_2), on_click=lambda _: _set_remove_crit("album")),
+                ft.PopupMenuItem(content=ft.Row([app_icon(PIcons.MUSIC_NOTE, size=15, color=TEXT_PRIMARY), ft.Text("Canción", font_family=FONT_TEXT, size=12)], spacing=SPACE_2), on_click=lambda _: _set_remove_crit("song")),
             ],
         )
         def _set_add_crit(v: str):
@@ -523,10 +527,10 @@ class DivisionController:
                 content=ft.Column([
                     name_field,
                     ft.Row([
-                        ft.Column([ft.Row([add_popup, left_search], spacing=4, vertical_alignment=ft.CrossAxisAlignment.CENTER), left_limit, ft.Container(content=left_lv, bgcolor=BG_INSET, border=ft.Border.all(0.8, BORDER_CONTROL), border_radius=RADIUS_SHARP, min_height=200, max_height=320, min_width=240), dialog_action("Agregar →", _add_to_division, kind="primary", icon=PIcons.ARROW_RIGHT)], spacing=6, expand=True),
-                        ft.Column([ft.Row([remove_popup, right_search], spacing=4, vertical_alignment=ft.CrossAxisAlignment.CENTER), right_limit, ft.Container(content=right_lv, bgcolor=BG_INSET, border=ft.Border.all(0.8, BORDER_CONTROL), border_radius=RADIUS_SHARP, min_height=200, max_height=320, min_width=240), dialog_action("← Quitar", _remove_from_division, kind="danger", icon=PIcons.ARROW_LEFT)], spacing=6, expand=True),
-                    ], spacing=10, vertical_alignment=ft.CrossAxisAlignment.START),
-                ], tight=True, spacing=8),
+                        ft.Column([ft.Row([add_popup, left_search], spacing=SPACE_1, vertical_alignment=ft.CrossAxisAlignment.CENTER), left_limit, ft.Container(content=left_lv, bgcolor=BG_INSET, border=ft.Border.all(0.8, BORDER_CONTROL), border_radius=RADIUS_SHARP, min_height=200, max_height=320, min_width=240), dialog_action("Agregar →", _add_to_division, kind="primary", icon=PIcons.ARROW_RIGHT)], spacing=SPACE_2, expand=True),
+                        ft.Column([ft.Row([remove_popup, right_search], spacing=SPACE_1, vertical_alignment=ft.CrossAxisAlignment.CENTER), right_limit, ft.Container(content=right_lv, bgcolor=BG_INSET, border=ft.Border.all(0.8, BORDER_CONTROL), border_radius=RADIUS_SHARP, min_height=200, max_height=320, min_width=240), dialog_action("← Quitar", _remove_from_division, kind="danger", icon=PIcons.ARROW_LEFT)], spacing=SPACE_2, expand=True),
+                    ], spacing=SPACE_3, vertical_alignment=ft.CrossAxisAlignment.START),
+                ], tight=True, spacing=SPACE_2),
                 min_width=520,
                 max_width=820,
             ),

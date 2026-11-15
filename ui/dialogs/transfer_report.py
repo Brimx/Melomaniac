@@ -66,10 +66,14 @@ from ui.theme.tokens import (
     BORDER_CONTROL,
     BORDER_ROW,
     ERROR_COL,
+    FS_META,
     RADIUS_SHARP,
     RADIUS_SM,
+    SPACE_0,
+    SPACE_1,
+    SPACE_2,
+    SPACE_3,
     SUCCESS,
-    TEXT_DIM,
     TEXT_MUTED,
     TEXT_PRIMARY,
     WARN_BG,
@@ -94,7 +98,7 @@ class TransferReportDialog:
         self.state = state
         self.report = report
         self._dlg: ft.AlertDialog | None = None
-        self._body = ft.Column(spacing=10, scroll=ft.ScrollMode.AUTO, expand=True)
+        self._body = ft.Column(spacing=SPACE_3, scroll=ft.ScrollMode.AUTO, expand=True)
         self._view = "report"
         self._active_issue: TransferIssue | None = None
         self._search_panel: AlternativeSearchPanel | None = None
@@ -180,7 +184,7 @@ class TransferReportDialog:
                 height=28,
             ),
             app_text("Volver al reporte", size=11, color=TEXT_MUTED),
-        ], spacing=2)
+        ], spacing=SPACE_1)
 
         async def _search(query: str) -> list[Track]:
             return await self.state.search_candidates(
@@ -221,14 +225,14 @@ class TransferReportDialog:
                     max_lines=2, overflow=ft.TextOverflow.ELLIPSIS,
                 ),
                 app_text(
-                    description, size=10, color=TEXT_MUTED, font_family=FONT_TEXT,
+                    description, size=FS_META, color=TEXT_MUTED, font_family=FONT_TEXT,
                     max_lines=2, overflow=ft.TextOverflow.ELLIPSIS,
                 ),
                 app_text(
                     f"{self.report.destination} · {self.report.status}",
-                    size=9, color=TEXT_DIM, font_family=mono_family("light"),
+                    size=FS_META, color=TEXT_MUTED, font_family=mono_family("light"),
                 ),
-            ], spacing=2, tight=True),
+            ], spacing=SPACE_1, tight=True),
             padding=ft.Padding.all(10),
             bgcolor=BG_SURFACE,
             border=ft.Border.all(0.8, BORDER_CONTROL),
@@ -245,11 +249,11 @@ class TransferReportDialog:
                         text_align=ft.TextAlign.CENTER,
                     ),
                     app_text(
-                        label, size=9, color=TEXT_MUTED,
+                        label, size=FS_META, color=TEXT_MUTED,
                         font_family=FONT_HEADLINE,
                         text_align=ft.TextAlign.CENTER,
                     ),
-                ], spacing=0, tight=True,
+                ], spacing=SPACE_0, tight=True,
                     horizontal_alignment=ft.CrossAxisAlignment.CENTER),
                 expand=True,
                 padding=ft.Padding.symmetric(horizontal=8, vertical=8),
@@ -264,7 +268,7 @@ class TransferReportDialog:
             _stat("Detectadas", str(self.report.detected), ACCENT),
             _stat("Tiempo", format_elapsed(self.report.elapsed_s), TEXT_PRIMARY),
             _stat("Faltantes", str(missing), WARNING if missing else SUCCESS),
-        ], spacing=8)
+        ], spacing=SPACE_2)
 
     def _build_success_banner(self) -> ft.Control:
         return ft.Container(
@@ -274,8 +278,8 @@ class TransferReportDialog:
                     "Todas las canciones quedaron confirmadas en la playlist.",
                     size=11, color=SUCCESS, font_family=FONT_TEXT, expand=True,
                 ),
-            ], spacing=8),
-            padding=10,
+            ], spacing=SPACE_2),
+            padding=SPACE_3,
             bgcolor=BG_SURFACE,
             border=ft.Border.all(0.8, BORDER_CONTROL),
             border_radius=RADIUS_SHARP,
@@ -286,11 +290,11 @@ class TransferReportDialog:
             content=ft.Row([
                 app_icon(PIcons.WARNING_CIRCLE, color=WARNING, size=18, fill=True),
                 app_text(
-                    message, size=10, color=WARNING,
+                    message, size=FS_META, color=WARNING,
                     font_family=FONT_TEXT, expand=True,
                 ),
-            ], spacing=8),
-            padding=10,
+            ], spacing=SPACE_2),
+            padding=SPACE_3,
             bgcolor=WARN_BG,
             border=ft.Border.all(0.8, WARN_BORDER),
             border_radius=RADIUS_SHARP,
@@ -324,7 +328,7 @@ class TransferReportDialog:
                 content=ft.Container(
                     content=ft.Column(
                         [self._build_issue_row(issue) for issue in group],
-                        spacing=0, tight=True,
+                        spacing=SPACE_0, tight=True,
                     ),
                     padding=ft.Padding.only(left=6, right=6, bottom=6),
                 ),
@@ -337,7 +341,7 @@ class TransferReportDialog:
             elevation=0,
             divider_color=BORDER_LIGHT,
             expand_icon_color=TEXT_MUTED,
-            spacing=6,
+            spacing=SPACE_2,
         )
 
     def _build_issue_row(self, issue: TransferIssue) -> ft.Control:
@@ -354,17 +358,17 @@ class TransferReportDialog:
                     ),
                     app_text(
                         f"{track.artist} · {reason}",
-                        size=9, color=TEXT_MUTED, font_family=FONT_TEXT,
+                        size=FS_META, color=TEXT_MUTED, font_family=FONT_TEXT,
                         max_lines=2, overflow=ft.TextOverflow.ELLIPSIS,
                     ),
-                ], spacing=0, tight=True, expand=True),
+                ], spacing=SPACE_0, tight=True, expand=True),
                 dialog_action(
                     "Buscar",
                     lambda _e, i=issue: self._show_search(i),
                     kind="primary",
                     icon=PIcons.MAGNIFYING_GLASS,
                 ),
-            ], spacing=8, vertical_alignment=ft.CrossAxisAlignment.CENTER),
+            ], spacing=SPACE_2, vertical_alignment=ft.CrossAxisAlignment.CENTER),
             padding=ft.Padding.symmetric(horizontal=6, vertical=4),
             border=ft.Border.only(bottom=ft.BorderSide(0.4, BORDER_ROW)),
         )

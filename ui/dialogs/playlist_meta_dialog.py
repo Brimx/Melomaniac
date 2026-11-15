@@ -31,7 +31,7 @@ import flet as ft
 
 from ui.theme.tokens import (
     BG_PANEL, BG_INPUT, BORDER_LIGHT,
-    ACCENT, TEXT_PRIMARY, TEXT_MUTED, TEXT_DIM,
+    ACCENT, DECOR_LINE, FS_META, SPACE_2, TEXT_PRIMARY, TEXT_MUTED,
 )
 from ui.theme.icons import PIcons
 from ui.components.widgets import (
@@ -149,7 +149,7 @@ class PlaylistMetaDialog:
             fill_color={ft.ControlState.SELECTED: ACCENT},
             check_color=TEXT_PRIMARY,
             label_style=ft.TextStyle(color=TEXT_MUTED, size=11, font_family="IBM Plex Sans"),
-            border_side=ft.BorderSide(1.2, TEXT_DIM),
+            border_side=ft.BorderSide(1.2, DECOR_LINE),
             visible=True,
         )
         if not self._source_requires_auth:
@@ -165,7 +165,7 @@ class PlaylistMetaDialog:
             self._div_switch = ft.Dropdown(
                 label="División", value=self._divisions[0], width=CONTENT_W, height=38,
                 bgcolor=BG_INPUT, border=_ib(),
-                label_style=ft.TextStyle(color=TEXT_MUTED, size=10, font_family="IBM Plex Sans"),
+                label_style=ft.TextStyle(color=TEXT_MUTED, size=FS_META, font_family="IBM Plex Sans"),
                 text_style=ft.TextStyle(color=TEXT_PRIMARY, size=11, font_family="IBM Plex Sans"),
                 options=[ft.dropdown.Option(d, d) for d in self._divisions],
             )
@@ -174,7 +174,7 @@ class PlaylistMetaDialog:
             self._dest_dd = ft.Dropdown(
                 label="Destino para esta división", value="Mantener", width=CONTENT_W, height=38,
                 bgcolor=BG_INPUT, border=_ib(),
-                label_style=ft.TextStyle(color=TEXT_MUTED, size=10, font_family="IBM Plex Sans"),
+                label_style=ft.TextStyle(color=TEXT_MUTED, size=FS_META, font_family="IBM Plex Sans"),
                 text_style=ft.TextStyle(color=TEXT_PRIMARY, size=11, font_family="IBM Plex Sans"),
                 options=[ft.dropdown.Option(o, o) for o in dest_opts],
             )
@@ -196,7 +196,7 @@ class PlaylistMetaDialog:
                 _section_label("DIVISIÓN"),
                 self._div_switch,
                 self._dest_dd,
-                ft.Text("Mantener = usa destino global elegido fuera; otras opciones son las dos plataformas restantes.", size=9, color=TEXT_DIM, font_family="IBM Plex Sans"),
+                ft.Text("Mantener = usa destino global elegido fuera; otras opciones son las dos plataformas restantes.", size=FS_META, color=TEXT_MUTED, font_family="IBM Plex Sans"),
             ]
         controls += [
             _section_label("NOMBRE"),
@@ -204,7 +204,7 @@ class PlaylistMetaDialog:
             _section_label("DESCRIPCIÓN"),
             self._desc_field,
             self._delete_chk,
-            ft.Text("Desmarcado por defecto — crea nueva sin borrar original.", size=9, color=TEXT_DIM, font_family="IBM Plex Sans"),
+            ft.Text("Desmarcado por defecto — crea nueva sin borrar original.", size=FS_META, color=TEXT_MUTED, font_family="IBM Plex Sans"),
         ]
         # Botón Guardar + primario Siguiente/Crear
         self._primary_btn = dialog_action("Siguiente" if self._divisions and len(self._divisions) > 1 else "Crear y transferir", self._on_next_or_confirm, kind="primary", icon=PIcons.ARROWS_LEFT_RIGHT)
@@ -212,7 +212,7 @@ class PlaylistMetaDialog:
             "Personalizar playlist",
             ft.Column(
                 controls=controls,
-                spacing=8,
+                spacing=SPACE_2,
                 tight=True,
                 width=CONTENT_W,
                 horizontal_alignment=ft.CrossAxisAlignment.STRETCH,

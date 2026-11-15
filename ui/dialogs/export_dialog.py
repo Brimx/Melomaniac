@@ -32,7 +32,10 @@ from ui.theme.tokens import (
     ACCENT,
     BG_INPUT,
     BG_SURFACE,
+    FS_META,
     ON_ACCENT,
+    SPACE_2,
+    SPACE_3,
     TEXT_MUTED,
     TEXT_PRIMARY,
 )
@@ -131,22 +134,22 @@ async def open_export_dialog(
         [
             ft.Text(
                 "Guarda la selección actual con el mismo bloque que lee TXT/CSV/M3U/XSPF.",
-                size=10,
+                size=FS_META,
                 color=TEXT_MUTED,
                 font_family=FONT_TEXT,
             ),
             ft.Row(
                 [fmt_dd, ft.Container(expand=True), order_seg],
-                spacing=8,
+                spacing=SPACE_2,
                 vertical_alignment=ft.CrossAxisAlignment.CENTER,
             ),
             ft.Row(
                 [path_field, pick_btn],
-                spacing=8,
+                spacing=SPACE_2,
                 vertical_alignment=ft.CrossAxisAlignment.CENTER,
             ),
         ],
-        spacing=10,
+        spacing=SPACE_3,
         tight=True,
         visible=(mode_state["mode"] == "file"),
     )
@@ -165,7 +168,7 @@ async def open_export_dialog(
     )
     target_help = ft.Text(
         "",
-        size=10,
+        size=FS_META,
         color=TEXT_MUTED,
         font_family=FONT_TEXT,
         visible=False,
@@ -223,7 +226,7 @@ async def open_export_dialog(
             target_help,
             new_name_field,
         ],
-        spacing=8,
+        spacing=SPACE_2,
         tight=True,
         visible=(mode_state["mode"] == "playlist"),
     )
@@ -281,7 +284,7 @@ async def open_export_dialog(
 
     info_txt = ft.Text(
         f"{len(src_tracks)} canciones · {(host.state.playlist_name or 'Selección')[:30]}",
-        size=10,
+        size=FS_META,
         color=TEXT_MUTED,
         font_family=mono_family("light"),
     )
@@ -350,7 +353,7 @@ async def open_export_dialog(
         "Exportar / Añadir a playlist",
         ft.Column(
             [exp_mode_seg, info_txt, file_box, playlist_box],
-            spacing=10,
+            spacing=SPACE_3,
             tight=True,
         ),
         [

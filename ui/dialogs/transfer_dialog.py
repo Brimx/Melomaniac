@@ -26,8 +26,11 @@ from ui.theme.icons import PIcons
 from ui.theme.tokens import (
     ACCENT,
     BG_SURFACE,
+    DECOR_LINE,
+    FS_META,
     ON_ACCENT,
-    TEXT_DIM,
+    SPACE_2,
+    SPACE_3,
     TEXT_MUTED,
     TEXT_PRIMARY,
 )
@@ -156,7 +159,7 @@ async def open_transfer_dialog(host, *, has_divisions: bool = False) -> None:
         fill_color={ft.ControlState.SELECTED: ACCENT},
         check_color=TEXT_PRIMARY,
         label_style=ft.TextStyle(color=TEXT_MUTED, size=11, font_family=FONT_TEXT),
-        border_side=ft.BorderSide(1.2, TEXT_DIM),
+        border_side=ft.BorderSide(1.2, DECOR_LINE),
     )
     existing_dd = organize_dropdown(
         [],
@@ -166,13 +169,13 @@ async def open_transfer_dialog(host, *, has_divisions: bool = False) -> None:
     )
     existing_help = ft.Text(
         "",
-        size=10,
+        size=FS_META,
         color=TEXT_MUTED,
         font_family=FONT_TEXT,
         visible=False,
     )
-    new_box = ft.Column([title_field, desc_field, delete_chk], spacing=8, tight=True)
-    existing_box = ft.Column([existing_dd, existing_help], spacing=6, tight=True, visible=False)
+    new_box = ft.Column([title_field, desc_field, delete_chk], spacing=SPACE_2, tight=True)
+    existing_box = ft.Column([existing_dd, existing_help], spacing=SPACE_2, tight=True, visible=False)
 
     confirm_btn = dialog_action(
         "Transferir",
@@ -271,7 +274,7 @@ async def open_transfer_dialog(host, *, has_divisions: bool = False) -> None:
 
     mode_row = ft.Row(
         [ft.Text("Modo:", size=11, color=TEXT_MUTED, font_family=FONT_HEADLINE), mode_seg],
-        spacing=8,
+        spacing=SPACE_2,
         vertical_alignment=ft.CrossAxisAlignment.CENTER,
         visible=not has_divisions,
     )
@@ -356,7 +359,7 @@ async def open_transfer_dialog(host, *, has_divisions: bool = False) -> None:
                 new_box,
                 existing_box,
             ],
-            spacing=10,
+            spacing=SPACE_3,
             tight=True,
         ),
         [
