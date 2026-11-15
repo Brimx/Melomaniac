@@ -15,6 +15,7 @@ from __future__ import annotations
 import asyncio
 import os
 import re
+import time
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -58,12 +59,15 @@ from ui.components.widgets import (
     _primary_btn,
     app_text,
     close_dialog,
+    empty_state,
     fmt_ms,
+    kicker,
     notify,
     organize_dropdown,
     section_label,
     set_button_text,
     status_banner,
+    status_chip,
 )
 
 _HISTORY_LIMIT = 500
@@ -86,6 +90,8 @@ class DownloadsView(ft.Container):
         self.player_bar = player_bar
         self._cancel_requested = False
         self._was_running = False
+        self._queue_started_at: float | None = None
+        self._queue_eta_total: int = 0
         self._items_key: int = -1
         self._item_widgets: list[tuple[dict, ft.ProgressBar, ft.Text, ft.Icon]] = []
         self._history_dir = ""
@@ -162,14 +168,15 @@ class DownloadsView(ft.Container):
         )
         self._dir_text.expand = True
 
-        # progreso global (tarjeta .press solo mientras hay cola o resultado reciente)
-        self._progress_icon = app_icon(PIcons.DOWNLOAD_SIMPLE, size=22, color=ACCENT)
+        # progreso global (resumen en una línea + barra de progreso)
+        self._progress_icon = app_icon(PIcons.DOWNLOAD_SIMPLE, size=20, color=ACCENT)
         self._progress = ft.ProgressBar(
             value=0, color=ACCENT, bgcolor=BORDER_MUTED, height=3, border_radius=RADIUS_SHARP,
         )
-        self._progress_text = app_text("", size=11, color=TEXT_MUTED, font_family=mono_family("light"))
+        self._progress_text = app_text("", size=FS_META, color=TEXT_MUTED, font_family=mono_family("light"))
         self._current_text = app_text("", size=12, color=TEXT_PRIMARY, font_family=FONT_TEXT,
-                                      max_lines=1, overflow=ft.TextOverflow.ELLIPSIS)
+                                      max_lines=1, overflow=ft.TextOverflow.ELLIPSIS, expand=True)
+        self._status_chip_slot = ft.Container(visible=False)
         self._progress_area = ft.Container(
             bgcolor=BG_PANEL,
             border=ft.Border.all(1, BORDER_MUTED),
@@ -180,12 +187,19 @@ class DownloadsView(ft.Container):
                 controls=[
                     self._progress_icon,
                     ft.Column(
-                        controls=[self._current_text, self._progress, self._progress_text],
-                        spacing=SPACE_1,
+                        controls=[
+                            ft.Row(
+                                controls=[self._status_chip_slot, self._current_text, self._progress_text],
+                                spacing=SPACE_2,
+                                vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                            ),
+                            self._progress,
+                        ],
+                        spacing=SPACE_2,
                         expand=True,
                     ),
                 ],
-                spacing=SPACE_4,
+                spacing=SPACE_3,
                 vertical_alignment=ft.CrossAxisAlignment.CENTER,
             ),
         )
@@ -193,7 +207,7 @@ class DownloadsView(ft.Container):
         # estado A: cola activa (una fila por pista)
         self._queue_list = ft.ListView(expand=True, spacing=SPACE_2, padding=SPACE_0)
         self._queue_section = ft.Column(
-            controls=[section_label("EN PROCESO"), self._queue_list],
+            controls=[kicker("EN PROCESO"), self._queue_list],
             spacing=SPACE_2, expand=True, visible=False,
         )
 
@@ -211,15 +225,14 @@ class DownloadsView(ft.Container):
         self._index_btn.visible = self.library_state is not None
         self._history_list = ft.ListView(expand=True, spacing=SPACE_0, padding=SPACE_0)
         self._history_empty = ft.Container(
-            expand=True, alignment=ft.Alignment.CENTER,
-            content=ft.Column(controls=[
-                app_icon(PIcons.DOWNLOAD_SIMPLE, size=48, color=TEXT_MUTED),
-                app_text("Sin descargas todavía", size=13, color=TEXT_PRIMARY,
-                         font_family=FONT_HEADLINE_BOLD),
-                app_text("Selecciona pistas en Gestión o descarga una playlist desde Biblioteca",
-                         size=11, color=TEXT_MUTED, font_family=FONT_TEXT,
-                         text_align=ft.TextAlign.CENTER),
-            ], horizontal_alignment=ft.CrossAxisAlignment.CENTER, spacing=SPACE_2),
+            expand=True,
+            alignment=ft.Alignment.TOP_LEFT,
+            padding=ft.Padding.symmetric(vertical=SPACE_4),
+            content=empty_state(
+                PIcons.DOWNLOAD_SIMPLE,
+                "Sin descargas todavía",
+                "Selecciona pistas en Gestión o descarga una playlist desde Biblioteca",
+            ),
         )
         self._done_col = ft.Column(spacing=SPACE_1)
         self._failed_col = ft.Column(spacing=SPACE_1)
@@ -535,23 +548,59 @@ class DownloadsView(ft.Container):
 
         self._progress_area.visible = running or (state != TransferState.IDLE and total > 0)
         self._progress.value = (progress / total) if total else 0
-        self._progress_text.value = f"{progress} / {total}" if total else ""
+
+        if running and not paused:
+            if self._queue_started_at is None or total != self._queue_eta_total:
+                self._queue_started_at = time.monotonic()
+                self._queue_eta_total = total
+        elif not running and not paused:
+            self._queue_started_at = None
+            self._queue_eta_total = 0
+
+        eta_suffix = ""
+        if (
+            running
+            and not paused
+            and progress > 0
+            and total > progress
+            and self._queue_started_at is not None
+        ):
+            elapsed = time.monotonic() - self._queue_started_at
+            if elapsed >= 1.0:
+                eta_s = max(1, int(round((total - progress) * (elapsed / progress))))
+                eta_str = f"{eta_s // 60}m {eta_s % 60:02d}s" if eta_s >= 60 else f"{eta_s}s"
+                eta_suffix = f" · ETA ~{eta_str}"
+
+        self._progress_text.value = f"{progress} / {total}{eta_suffix}" if total else ""
 
         if paused:
             self._progress_icon.value = PIcons.PAUSE
             self._progress_icon.color = TEXT_MUTED
+            self._status_chip_slot.content = status_chip("En pausa", kind="warn")
+            self._status_chip_slot.visible = True
         elif running:
             self._progress_icon.value = PIcons.DOWNLOAD_SIMPLE
             self._progress_icon.color = ACCENT
+            self._status_chip_slot.content = status_chip("En curso", kind="accent")
+            self._status_chip_slot.visible = True
         elif state == TransferState.DONE:
+            cancelled = total > 0 and progress < total
             self._progress_icon.value = PIcons.CHECK_CIRCLE
             self._progress_icon.color = SUCCESS
+            self._status_chip_slot.content = status_chip(
+                "Cancelado" if cancelled else "Listo",
+                kind="warn" if cancelled else "ok",
+            )
+            self._status_chip_slot.visible = True
         elif state == TransferState.ERROR:
             self._progress_icon.value = PIcons.WARNING_CIRCLE
             self._progress_icon.color = ERROR_COL
+            self._status_chip_slot.content = status_chip("Interrumpido", kind="err")
+            self._status_chip_slot.visible = True
         else:
             self._progress_icon.value = PIcons.DOWNLOAD_SIMPLE
             self._progress_icon.color = TEXT_MUTED
+            self._status_chip_slot.visible = False
 
         if paused and running:
             # yt-dlp tarda un instante en abortar la pista activa; sin esto el
@@ -705,13 +754,8 @@ class DownloadsView(ft.Container):
         trailing: ft.Control | None = None,
     ) -> ft.Control:
         controls: list[ft.Control] = [
-            section_label(text),
-            app_text(
-                str(count),
-                size=11,
-                color=ERROR_COL if is_error else TEXT_MUTED,
-                font_family=mono_family("light"),
-            ),
+            kicker(text),
+            status_chip(str(count), kind="err" if is_error else "neutral"),
             ft.Container(expand=True),
         ]
         if trailing is not None:
@@ -760,12 +804,16 @@ class DownloadsView(ft.Container):
         return [f for f in AUDIO_FORMATS if f != current]
 
     def _retry(self, entries: list[dict], audio_format: str = "") -> None:
-        """Reintenta las entradas con el formato actual o uno alternativo."""
-        if len(entries) == 1:
-            self._enqueue_recovery(entries[0], audio_format=audio_format)
+        """Reintenta las entradas conservando el contexto por pista."""
+        retry_fn = getattr(self.app_state, "retry_downloads", None)
+        if not callable(retry_fn):
+            if len(entries) == 1:
+                self._enqueue_recovery(entries[0], audio_format=audio_format)
+                return
+            notify(self._page_ref, "No hay soporte de reintento múltiple", kind="error")
             return
         try:
-            task = self.app_state.retry_downloads(entries, audio_format=audio_format)
+            task = retry_fn(entries, audio_format=audio_format)
         except Exception as exc:  # noqa: BLE001 - la UI no debe caerse
             notify(self._page_ref, f"No se pudo reintentar: {exc}", kind="error")
             return
@@ -808,10 +856,20 @@ class DownloadsView(ft.Container):
         if fmt not in AUDIO_FORMATS:
             fmt = DEFAULT_AUDIO_FORMAT
 
-        ctx = dict(getattr(self.app_state, "_download_resume_ctx", {}) or {})
-        dest_dir = ctx.get("destination_dir") if "destination_dir" in ctx else self._custom_dir
-        playlist_name = str(ctx.get("playlist_name") or "")
-        platform = str(ctx.get("platform") or "")
+        entry_dict = entry if isinstance(entry, dict) else {}
+        orig_track = entry_dict.get("_track")
+        flow = getattr(self.app_state, "_download_flow", None)
+        if orig_track is not None and flow is not None and hasattr(flow, "_ctx_for"):
+            ctx = dict(flow._ctx_for(orig_track) or {})
+        else:
+            ctx = dict(getattr(self.app_state, "_download_resume_ctx", {}) or {})
+        dest_dir = (
+            entry_dict.get("destination_dir")
+            if "destination_dir" in entry_dict
+            else (ctx.get("destination_dir") if "destination_dir" in ctx else self._custom_dir)
+        )
+        playlist_name = str(entry_dict.get("playlist_name") or ctx.get("playlist_name") or "")
+        platform = str(entry_dict.get("platform") or ctx.get("platform") or "")
 
         try:
             task = self.app_state.download_tracks(
