@@ -54,9 +54,8 @@ from ui.theme.tokens import (
     ON_ACCENT, PAPER_BG, SHADOW_INK, SHADOW_INK_2,
     PAPER_LIFT, PAPER_LIFT_SM, PAPER_CANTO_PX,
     FOCUS_RING_WIDTH, FOCUS_RING_OFFSET, SELECTION_BAR_W,
-    FS_META, RADIUS_SHARP,
-    RADIUS_INPUT, RADIUS_BUTTON, RADIUS_DIALOG,
-    MOTION_HOVER_MS,
+    FS_META, RADIUS_SHARP, RADIUS_SM, HANKO, BG_INSET,
+    MOTION_HOVER_MS, MOTION_PRESS_MS,
 )
 
 FONT = FONT_TEXT
@@ -172,7 +171,7 @@ def _as_icon(value, height: float | None = None) -> ft.Control:
 def input_border(
     border_color: str = BORDER_LIGHT,
     focused_color: str = ACCENT,
-    radius: float = RADIUS_INPUT,
+    radius: float = RADIUS_SHARP,
     width: float = 1.0,
 ) -> dict:
     """Borde canónico OLED para TextField/Dropdown y Theme.input_decoration_theme.
@@ -202,7 +201,7 @@ def input_border(
 def build_input_decoration_theme() -> ft.InputDecorationTheme:
     """Tema centralizado OLED para TextField/Dropdown (usado en app.py)."""
     return ft.InputDecorationTheme(
-        border=input_border(BORDER_LIGHT, ACCENT, RADIUS_INPUT),
+        border=input_border(BORDER_LIGHT, ACCENT, RADIUS_SHARP),
         filled=True,
         fill_color=BG_INPUT,
         dense=True,
@@ -262,19 +261,19 @@ def app_text_field(
     on_submit=None,
     content_padding=None,
     text_style: ft.TextStyle | None = None,
-    border_radius: float = RADIUS_INPUT,
+    border_radius: float = RADIUS_SHARP,
     **kwargs,
 ) -> ft.TextField:
-    """TextField canónico OLED. Base: playlist_meta (radius 10, dense).
+    """TextField canónico OLED. Base: playlist_meta (radius 3, dense).
 
     Unifica playlist_meta._field_style + wizard._field_style/_make_field
     + main_ui paste/id/name fields y se alinea con InputDecorationTheme.
     """
     # Traduce props deprecadas si algún caller aún las pasa
-    _bc = kwargs.pop("border_color", BORDER_LIGHT)
+    _bc = kwargs.pop("border_color", BORDER_CONTROL)
     _fbc = kwargs.pop("focused_border_color", ACCENT)
     _br = kwargs.pop("border", None)
-    _bg = kwargs.pop("bgcolor", BG_INPUT)
+    _bg = kwargs.pop("bgcolor", BG_INSET)
     border = _br if _br is not None else input_border(_bc, _fbc, border_radius)
 
     # La altura del campo es la referencia para centrar sus iconos.
@@ -356,9 +355,9 @@ def app_dialog(
     icon: str | None = None,
     actions_alignment: ft.MainAxisAlignment = ft.MainAxisAlignment.END,
     bgcolor: str = BG_PANEL,
-    radius: float = RADIUS_DIALOG,
+    radius: float = RADIUS_SM,
 ) -> ft.AlertDialog:
-    """AlertDialog canónico OLED: modal + BG_PANEL + radius 14."""
+    """AlertDialog canónico OLED: modal + BG_PANEL + radius 6."""
     if isinstance(title, str):
         ic = icon or PIcons.INFO
         is_glyph = bool(ic and len(ic) == 1 and ord(ic) >= 0xE000)
@@ -391,10 +390,10 @@ def organize_dropdown(
     **kwargs,
 ) -> ft.Dropdown:
     """Dropdown canónico para Organizar/Dividir. Alineado con InputDecorationTheme y SHRINK_WRAP."""
-    _bc = kwargs.pop("border_color", BORDER_LIGHT)
+    _bc = kwargs.pop("border_color", BORDER_CONTROL)
     _fbc = kwargs.pop("focused_border_color", ACCENT)
     _br = kwargs.pop("border", None)
-    _bg = kwargs.pop("bgcolor", BG_INPUT)
+    _bg = kwargs.pop("bgcolor", BG_INSET)
     return ft.Dropdown(
         options=[ft.dropdown.Option(key=k, text=t) for k, t in options],
         value=value,
@@ -407,7 +406,7 @@ def organize_dropdown(
         content_padding=kwargs.pop(
             "content_padding", ft.Padding.symmetric(horizontal=12, vertical=8)
         ),
-        border=_br if _br is not None else input_border(_bc, _fbc, RADIUS_INPUT),
+        border=_br if _br is not None else input_border(_bc, _fbc, RADIUS_SHARP),
         label_style=kwargs.pop(
             "label_style",
             ft.TextStyle(color=TEXT_MUTED, size=10, font_family=FONT_HEADLINE),
@@ -511,7 +510,7 @@ def status_banner(
                        vertical_alignment=ft.CrossAxisAlignment.CENTER),
         bgcolor=WARN_BG if kind == "warning" else BG_PANEL,
         border=ft.Border.all(0.8, WARN_BORDER if kind == "warning" else accent),
-        border_radius=RADIUS_INPUT,
+        border_radius=RADIUS_SHARP,
         padding=ft.Padding.symmetric(horizontal=10, vertical=6),
         visible=False,
     )
@@ -596,7 +595,7 @@ def _primary_btn(
     is_glyph = bool(icon and len(icon) == 1 and ord(icon) >= 0xE000)
     if is_glyph:
         btn_content = ft.Row(
-            [app_icon(icon, size=18, color=TEXT_PRIMARY), ft.Text(text, opacity=1.0, font_family=FONT_HEADLINE)],
+            [app_icon(icon, size=18, color=ON_ACCENT), ft.Text(text, opacity=1.0, font_family=FONT_HEADLINE)],
             alignment=ft.MainAxisAlignment.CENTER,
             vertical_alignment=ft.CrossAxisAlignment.CENTER,
             tight=True,
@@ -619,12 +618,18 @@ def _primary_btn(
                 ft.ControlState.PRESSED: ACCENT_DIM,
                 ft.ControlState.DISABLED: BG_HOVER,
             },
-            color={ft.ControlState.DEFAULT: TEXT_PRIMARY, ft.ControlState.DISABLED: TEXT_MUTED},
-            elevation={ft.ControlState.DEFAULT: 0, ft.ControlState.HOVERED: 6},
-            shadow_color={ft.ControlState.HOVERED: ACCENT_HALO},
-            shape=ft.RoundedRectangleBorder(radius=RADIUS_BUTTON),
+            color={ft.ControlState.DEFAULT: ON_ACCENT, ft.ControlState.DISABLED: TEXT_MUTED},
+            # Relieve de papel: sombra dura de tinta que se hunde al pulsar.
+            elevation={
+                ft.ControlState.DEFAULT: PAPER_LIFT,
+                ft.ControlState.HOVERED: PAPER_LIFT,
+                ft.ControlState.PRESSED: 0,
+                ft.ControlState.DISABLED: 0,
+            },
+            shadow_color=SHADOW_INK,
+            shape=ft.RoundedRectangleBorder(radius=RADIUS_SHARP),
             padding=ft.Padding.symmetric(horizontal=16, vertical=pad_v),
-            animation_duration=MOTION_HOVER_MS,
+            animation_duration=MOTION_PRESS_MS,
         ),
         width=width,
         height=height,
@@ -692,12 +697,12 @@ def _ghost_btn(text: str, icon: str | None, on_click, width=None, height=None, d
                 ft.ControlState.HOVERED: TEXT_PRIMARY,
             },
             side={
-                ft.ControlState.DEFAULT: ft.BorderSide(0.8, BORDER_MUTED),
+                ft.ControlState.DEFAULT: ft.BorderSide(1, BORDER_CONTROL),
                 ft.ControlState.HOVERED: ft.BorderSide(0.8, ACCENT),
             },
-            shape=ft.RoundedRectangleBorder(radius=RADIUS_BUTTON),
+            shape=ft.RoundedRectangleBorder(radius=RADIUS_SHARP),
             padding=ft.Padding.symmetric(horizontal=14, vertical=pad_v),
-            animation_duration=MOTION_HOVER_MS,
+            animation_duration=MOTION_PRESS_MS,
         ),
         width=width,
         height=height,
@@ -1062,3 +1067,173 @@ def apply_region_focus(
     return control
 
 
+
+
+# ── Helpers Sala de escucha (Ola 1) ──────────────────────────────────────────
+
+def kicker(text: str, color: str = TEXT_MUTED) -> ft.Text:
+    """Etiqueta mono 11 px en mayúsculas con letter-spacing amplio."""
+    return ft.Text(
+        (text or "").upper(),
+        size=11,
+        color=color,
+        font_family=mono_family("regular"),
+        no_wrap=True,
+        style=ft.TextStyle(letter_spacing=1.3),
+    )
+
+
+def tab_underline(
+    items: Sequence[tuple[str, str]],
+    active_key: str,
+    on_change: Callable[[str], None],
+) -> ft.Row:
+    """Pestañas subrayadas: ``items`` = [(clave, etiqueta)]; activa con línea ACCENT de 2 px."""
+    def _tab(key: str, label: str) -> ft.Container:
+        active = key == active_key
+        return ft.Container(
+            content=ft.Text(
+                label,
+                size=13,
+                color=TEXT_PRIMARY if active else TEXT_MUTED,
+                font_family=FONT_SEMI if active else FONT_MEDIUM,
+            ),
+            padding=ft.Padding.only(left=2, right=2, top=6, bottom=8),
+            border=ft.Border(bottom=ft.BorderSide(2, ACCENT if active else ft.Colors.TRANSPARENT)),
+            ink=True,
+            on_click=lambda e, k=key: on_change(k),
+            animate=ft.Animation(MOTION_HOVER_MS, ft.AnimationCurve.EASE_OUT),
+        )
+
+    return ft.Row([_tab(k, l) for k, l in items], spacing=20, tight=True)
+
+
+def table_header(columns: Sequence[str | tuple[str, int | None]]) -> ft.Container:
+    """Cabecera fija de tabla. Columna = ``"TÍTULO"`` o ``("TÍTULO", expand)``; sin expand se ajusta al contenido."""
+    cells: list[ft.Control] = []
+    for col in columns:
+        label, expand = (col, 1) if isinstance(col, str) else col
+        cells.append(ft.Container(content=kicker(label), expand=expand))
+    return ft.Container(
+        content=ft.Row(cells, spacing=12, vertical_alignment=ft.CrossAxisAlignment.CENTER),
+        padding=ft.Padding.symmetric(horizontal=12, vertical=8),
+        border=ft.Border(bottom=ft.BorderSide(1, BORDER_ROW)),
+    )
+
+
+def empty_state(
+    icon: str,
+    title: str,
+    subtitle: str = "",
+    action_label: str | None = None,
+    on_action=None,
+) -> ft.Column:
+    """Estado vacío alineado a la izquierda: icono Phosphor 24 px, título, frase y botón opcional."""
+    controls: list[ft.Control] = [
+        app_icon(icon, size=24, color=TEXT_MUTED),
+        ft.Text(title, size=15, color=TEXT_PRIMARY, font_family=FONT_HEADLINE_BOLD),
+    ]
+    if subtitle:
+        controls.append(ft.Text(subtitle, size=12, color=TEXT_MUTED, font_family=FONT))
+    if action_label and on_action:
+        controls.append(_ghost_btn(action_label, None, on_action, height=32))
+    return ft.Column(
+        controls,
+        spacing=8,
+        horizontal_alignment=ft.CrossAxisAlignment.START,
+        tight=True,
+    )
+
+
+def hanko_seal(glyph: str, size: float = 18) -> ft.Container:
+    """Sello cuadrado bermellón (radio 2 px) con un glifo."""
+    return ft.Container(
+        content=ft.Text(
+            glyph,
+            size=max(8, int(size * 0.6)),
+            color=PAPER_BG,
+            font_family=FONT_HEADLINE_BOLD,
+            text_align=ft.TextAlign.CENTER,
+        ),
+        width=size,
+        height=size,
+        bgcolor=HANKO,
+        border_radius=2,
+        alignment=ft.Alignment.CENTER,
+    )
+
+
+def collapsible_drawer(
+    title: str,
+    subtitle: str,
+    content: ft.Control,
+    expanded: bool = False,
+) -> ft.Container:
+    """Cajón colapsable de una línea («REGISTRO · N eventos»); clic en la cabecera alterna el contenido."""
+    body = ft.Container(content=content, visible=expanded, padding=ft.Padding.only(top=8))
+    caret = app_icon(PIcons.CARET_UP if expanded else PIcons.CARET_DOWN, size=14, color=TEXT_MUTED)
+
+    def _toggle(e=None):
+        body.visible = not body.visible
+        caret.value = PIcons.CARET_UP if body.visible else PIcons.CARET_DOWN
+        safe_update(body)
+        safe_update(caret)
+
+    header = ft.Container(
+        content=ft.Row(
+            [kicker(title), ft.Text(subtitle, size=11, color=TEXT_DIM, font_family=FONT), ft.Container(expand=True), caret],
+            spacing=10,
+            vertical_alignment=ft.CrossAxisAlignment.CENTER,
+        ),
+        ink=True,
+        on_click=_toggle,
+    )
+    return ft.Container(
+        content=ft.Column([header, body], spacing=0, tight=True),
+        padding=ft.Padding.symmetric(horizontal=12, vertical=8),
+        border=ft.Border.all(1, BORDER_ROW),
+        border_radius=RADIUS_SHARP,
+    )
+
+
+def platform_select(
+    options: Sequence[tuple[str, str, str]],
+    value: str,
+    on_change: Callable[[str], None],
+    label: str = "PLATAFORMA",
+) -> ft.PopupMenuButton:
+    """Selector de plataforma: ``options`` = [(clave, etiqueta, glifo PIcons)]; kicker + icono + caret."""
+    by_key = {k: (l, g) for k, l, g in options}
+    cur_label, cur_glyph = by_key.get(value, next(iter(by_key.values()), ("", PIcons.INFO)))
+    face = ft.Container(
+        content=ft.Row(
+            [
+                app_icon(cur_glyph, size=16, color=ACCENT),
+                kicker(label),
+                ft.Text(cur_label, size=12, color=TEXT_PRIMARY, font_family=FONT_MEDIUM),
+                app_icon(PIcons.CARET_DOWN, size=14, color=TEXT_MUTED),
+            ],
+            spacing=8,
+            tight=True,
+            vertical_alignment=ft.CrossAxisAlignment.CENTER,
+        ),
+        padding=ft.Padding.symmetric(horizontal=10, vertical=6),
+        bgcolor=BG_INSET,
+        border=ft.Border.all(1, BORDER_CONTROL),
+        border_radius=RADIUS_SHARP,
+    )
+    return ft.PopupMenuButton(
+        content=face,
+        bgcolor=BG_PANEL,
+        items=[
+            ft.PopupMenuItem(
+                content=ft.Row(
+                    [app_icon(g, size=16, color=ACCENT if k == value else TEXT_MUTED),
+                     ft.Text(l, size=12, color=TEXT_PRIMARY, font_family=FONT)],
+                    spacing=8,
+                ),
+                on_click=lambda e, key=k: on_change(key),
+            )
+            for k, l, g in options
+        ],
+    )
