@@ -20,6 +20,7 @@ import asyncio
 import math
 import os
 from pathlib import Path
+import time
 from typing import Any
 from urllib.parse import unquote, urlparse
 
@@ -29,8 +30,16 @@ from PIL import Image
 
 from core.playback import PlayableTrack, RepeatMode
 from services import cover_cache, settings_store
-from ui.components.song_row import ITEM_H
-from ui.components.widgets import app_text, fmt_ms as _fmt_ms, is_mounted, safe_update, section_label
+from ui.components.song_row import ITEM_H, _thumb_content_for
+from ui.components.widgets import (
+    app_text,
+    empty_state,
+    fmt_ms as _fmt_ms,
+    is_mounted,
+    safe_update,
+    section_label,
+    tab_underline,
+)
 from ui.player.player_queue import (
     LyricsPane,
     _TAB_COLA,
@@ -84,10 +93,13 @@ from ui.theme.tokens import (
 
 _OLED_MAX_Y = 0.0136
 _AMBIENT_FADE_MS = 24_000
-_DISC_ROTATION_MS = 6_000
+_DISC_ROTATION_MS = 1_800
 _COVER_SIZE = 252
 _DISC_SIZE = 228
 _DISC_PEEK = 58
+_ASCII_RAMP = " .:-=+*#%@"
+_ASCII_COLS = 96
+_ASCII_ROWS = 48
 
 
 def _rgb_luminance_y(rgb: tuple[int, int, int]) -> float:
@@ -183,6 +195,34 @@ def extract_ambient_pair(image_path: str | Path) -> tuple[str, str] | None:
     )
 
 
+_ASCII_OLED_COLOR = cap_oled_luminance((200, 200, 200))
+
+
+def extract_ascii_art(
+    image_path: str | Path,
+    *,
+    cols: int = _ASCII_COLS,
+    rows: int = _ASCII_ROWS,
+) -> str | None:
+    """Genera representación ASCII estática ``cols×rows`` desde portada local."""
+    path = Path(image_path)
+    if not path.is_file():
+        return None
+    try:
+        with Image.open(path) as img:
+            gray = img.convert("L").resize((cols, rows), Image.Resampling.LANCZOS)
+            px = gray.load()
+    except Exception:
+        return None
+    if px is None:
+        return None
+    n_ramp = len(_ASCII_RAMP) - 1
+    return "\n".join(
+        "".join(_ASCII_RAMP[px[x, y] * n_ramp // 255] for x in range(cols))
+        for y in range(rows)
+    )
+
+
 def _resolve_local_cover(img_url: str) -> Path | None:
     raw = (img_url or "").strip()
     if not raw:
@@ -208,6 +248,8 @@ class _VinylDisc(ft.Stack):
     def __init__(self, size: int = _DISC_SIZE) -> None:
         self._size = size
         self._angle = 0.0
+        self._spin_start_angle = 0.0
+        self._spin_started_at = 0.0
         self._spinning = False
         self._should_spin = False
 
@@ -288,14 +330,25 @@ class _VinylDisc(ft.Stack):
             if not self._spinning:
                 self._spinning = True
                 self._advance_rotation()
-        else:
+        elif self._spinning:
             self._spinning = False
+            elapsed_ms = max(0.0, (time.monotonic() - self._spin_started_at) * 1000.0)
+            frac = min(1.0, elapsed_ms / max(1, _DISC_ROTATION_MS))
+            self._angle = self._spin_start_angle + frac * math.tau
+            self._rotator.animate_rotation = None
+            self._rotator.rotate = ft.Rotate(self._angle, alignment=ft.Alignment.CENTER)
+            safe_update(self._rotator)
 
     def _advance_rotation(self) -> None:
         if not self._should_spin or not is_mounted(self):
             self._spinning = False
             return
+        self._spin_start_angle = self._angle
+        self._spin_started_at = time.monotonic()
         self._angle += math.tau
+        self._rotator.animate_rotation = ft.Animation(
+            _DISC_ROTATION_MS, ft.AnimationCurve.LINEAR
+        )
         self._rotator.rotate = ft.Rotate(self._angle, alignment=ft.Alignment.CENTER)
         if not safe_update(self._rotator):
             self._spinning = False
@@ -323,6 +376,17 @@ class NowPlayingScene(ft.Container):
         self._last_cover_url: str | None = None
         self._amb_active_pair: tuple[str, str] | None = None
         self._amb_cache: dict[str, tuple[str, str] | None] = {}
+        self._ascii_cache: dict[str, str | None] = {}
+        self._rendered_cover_url: str | None = None
+        self._needs_refresh = False
+        self._last_track_sig: Any = None
+        self._last_transport_sig: Any = None
+        self._last_vol_sig: Any = None
+        self._last_queue_sig: Any = None
+        self._show_disc_setting = True
+        self._show_amb_setting = True
+        self._reduce_motion_setting = False
+        self._reload_motion_settings()
         self._track_width = 360.0
         self._scrubbing = False
         self._scrub_ms = 0
@@ -364,14 +428,13 @@ class NowPlayingScene(ft.Container):
             top=0,
             content=self._disc,
         )
-        self._cover_fallback = app_icon(PIcons.DISC, size=56, color=DECOR_LINE, fill=True)
-        self._cover_img = ft.Image(
-            src="",
+        self._cover_thumb = ft.Container(
             width=_COVER_SIZE,
             height=_COVER_SIZE,
-            fit=ft.BoxFit.COVER,
             border_radius=RADIUS_SM,
-            visible=False,
+            clip_behavior=ft.ClipBehavior.ANTI_ALIAS,
+            alignment=ft.Alignment.CENTER,
+            content=_thumb_content_for("", box=_COVER_SIZE, icon_size=56),
         )
         self._format_badge_txt = app_text(
             "", size=FS_META, color=TEXT_MUTED, font_family=mono_family("medium")
@@ -397,12 +460,7 @@ class NowPlayingScene(ft.Container):
             alignment=ft.Alignment.CENTER,
             content=ft.Stack(
                 controls=[
-                    ft.Container(
-                        expand=True,
-                        alignment=ft.Alignment.CENTER,
-                        content=self._cover_fallback,
-                    ),
-                    self._cover_img,
+                    self._cover_thumb,
                     self._format_badge,
                 ],
                 expand=True,
@@ -576,41 +634,9 @@ class NowPlayingScene(ft.Container):
         )
 
         # ── Columna derecha compartiendo Cola y Letra ──────────────────
-        self._tab_refs: dict[str, tuple[ft.Container, ft.Text, ft.Text]] = {}
-        tab_controls: list[ft.Control] = []
-        for tab_key, label_text, glyph in (
-            (_TAB_LETRA, "Letra", PIcons.MUSIC_NOTES),
-            (_TAB_COLA, "Cola", PIcons.QUEUE),
-        ):
-            ico = app_icon(glyph, size=14, color=DECOR_LINE, fill=False)
-            lbl = app_text(label_text, size=12, color=TEXT_MUTED, font_family=FONT_HEADLINE)
-            btn = ft.Container(
-                expand=True,
-                height=34,
-                border_radius=RADIUS_SHARP,
-                padding=ft.Padding.symmetric(horizontal=10, vertical=4),
-                alignment=ft.Alignment.CENTER,
-                ink=True,
-                animate=ft.Animation(MOTION_HOVER_MS, ft.AnimationCurve.EASE_OUT),
-                on_click=lambda _e, key=tab_key: self.set_tab(key),
-                content=ft.Row(
-                    controls=[ico, lbl],
-                    spacing=SPACE_2,
-                    alignment=ft.MainAxisAlignment.CENTER,
-                    vertical_alignment=ft.CrossAxisAlignment.CENTER,
-                    tight=True,
-                ),
-            )
-            self._tab_refs[tab_key] = (btn, ico, lbl)
-            tab_controls.append(btn)
-
-        tab_bar = ft.Container(
-            width=240,
-            bgcolor=BG_SURFACE,
-            border=ft.Border.all(0.8, BORDER_MUTED),
-            border_radius=RADIUS_SHARP,
-            padding=ft.Padding.all(2),
-            content=ft.Row(controls=tab_controls, spacing=SPACE_1),
+        self._tab_items = [(_TAB_LETRA, "Letra"), (_TAB_COLA, "Cola")]
+        self._tab_bar = ft.Container(
+            content=tab_underline(self._tab_items, self._active_tab, self.set_tab),
         )
 
         self._queue_count_txt = app_text("0 pistas", size=11, color=TEXT_MUTED, font_family=FONT_TEXT)
@@ -624,8 +650,13 @@ class NowPlayingScene(ft.Container):
         )
         self._queue_empty = ft.Container(
             expand=True,
-            alignment=ft.Alignment.CENTER,
-            content=app_text("Cola vacía", size=13, color=TEXT_MUTED, font_family=FONT_TEXT),
+            alignment=ft.Alignment.CENTER_LEFT,
+            padding=ft.Padding.symmetric(horizontal=SPACE_3, vertical=SPACE_4),
+            content=empty_state(
+                PIcons.QUEUE,
+                "Cola vacía",
+                "Reproduce una pista desde Descargas o Biblioteca Local.",
+            ),
         )
         self._cola_view = ft.Column(
             controls=[
@@ -658,7 +689,7 @@ class NowPlayingScene(ft.Container):
             padding=ft.Padding.symmetric(vertical=24),
             content=ft.Column(
                 controls=[
-                    tab_bar,
+                    self._tab_bar,
                     ft.Divider(height=1, color=BORDER_MUTED),
                     ft.Stack(
                         controls=[self._cola_view, self._letra_view],
@@ -696,6 +727,25 @@ class NowPlayingScene(ft.Container):
             ),
         )
 
+        self._ascii_txt = app_text(
+            "",
+            size=FS_META,
+            color=_ASCII_OLED_COLOR,
+            font_family=mono_family("regular"),
+            no_wrap=True,
+            selectable=False,
+        )
+        self._ascii_layer = ft.Container(
+            left=0,
+            top=0,
+            bottom=0,
+            width=520,
+            clip_behavior=ft.ClipBehavior.HARD_EDGE,
+            alignment=ft.Alignment.CENTER_LEFT,
+            visible=False,
+            content=self._ascii_txt,
+        )
+
         super().__init__(
             left=0,
             top=0,
@@ -710,6 +760,7 @@ class NowPlayingScene(ft.Container):
                 fit=ft.StackFit.EXPAND,
                 controls=[
                     self._amb_host,
+                    self._ascii_layer,
                     body,
                     ft.Container(left=24, top=20, content=close_btn),
                 ],
@@ -775,6 +826,11 @@ class NowPlayingScene(ft.Container):
         if callable(self._prev_key_handler):
             self._prev_key_handler(e)
 
+    def _reload_motion_settings(self) -> None:
+        self._show_disc_setting = bool(_read_setting("get_scene_show_disc", "scene_show_disc", True))
+        self._show_amb_setting = bool(_read_setting("get_scene_ambient_bg", "scene_ambient_bg", True))
+        self._reduce_motion_setting = bool(_read_setting("get_reduce_motion", "reduce_motion", False))
+
     def open(self) -> None:
         if self._disposed:
             return
@@ -783,12 +839,13 @@ class NowPlayingScene(ft.Container):
         self._is_open = True
         self._window_focused = True
         self._install_page_hooks()
+        self._reload_motion_settings()
 
         overlay = getattr(self._page_ref, "overlay", None)
         if isinstance(overlay, list) and self not in overlay:
             overlay.append(self)
 
-        reduce = bool(_read_setting("get_reduce_motion", "reduce_motion", False))
+        reduce = self._reduce_motion_setting
         self.animate_opacity = None if reduce else ft.Animation(MOTION_PANEL_MS, ft.AnimationCurve.EASE_IN_OUT)
         self.visible = True
         self.opacity = 1.0 if reduce else 0.0
@@ -869,8 +926,8 @@ class NowPlayingScene(ft.Container):
             self._is_open
             and self._window_focused
             and self._amb_active_pair is not None
-            and bool(_read_setting("get_scene_ambient_bg", "scene_ambient_bg", True))
-            and not bool(_read_setting("get_reduce_motion", "reduce_motion", False))
+            and self._show_amb_setting
+            and not self._reduce_motion_setting
         )
 
     def _should_spin_disc(self) -> bool:
@@ -878,17 +935,19 @@ class NowPlayingScene(ft.Container):
             self._is_open
             and self._window_focused
             and bool(getattr(self.player_bar, "is_playing", False))
-            and bool(_read_setting("get_scene_show_disc", "scene_show_disc", True))
-            and not bool(_read_setting("get_reduce_motion", "reduce_motion", False))
+            and self._show_disc_setting
+            and not self._reduce_motion_setting
         )
 
     def _sync_motion_state(self) -> None:
-        show_disc = bool(_read_setting("get_scene_show_disc", "scene_show_disc", True))
+        self._reload_motion_settings()
+        show_disc = self._show_disc_setting
         self._disc_holder.visible = show_disc
         self._disc.set_spinning(self._should_spin_disc())
 
-        show_amb = bool(_read_setting("get_scene_ambient_bg", "scene_ambient_bg", True))
-        reduce = bool(_read_setting("get_reduce_motion", "reduce_motion", False))
+        show_amb = self._show_amb_setting
+        reduce = self._reduce_motion_setting
+        self._ascii_layer.visible = show_amb and bool(self._ascii_txt.value)
         if not show_amb or self._amb_active_pair is None:
             self._amb_host.visible = False
             self._amb_cycling = False
@@ -961,30 +1020,41 @@ class NowPlayingScene(ft.Container):
         else:
             self._amb_cycling = False
 
+    def _apply_ascii_art(self, ascii_art: str | None) -> None:
+        self._ascii_txt.value = ascii_art or ""
+        self._ascii_layer.visible = bool(ascii_art) and self._show_amb_setting
+        safe_update(self._ascii_layer)
+
     def _refresh_ambient_for_cover(self, img_url: str) -> None:
+        if not self._is_open:
+            return
         if img_url == self._last_cover_url:
             return
         self._last_cover_url = img_url
         self._amb_gen += 1
         gen = self._amb_gen
-        if not img_url or not bool(_read_setting("get_scene_ambient_bg", "scene_ambient_bg", True)):
+        if not img_url or not self._show_amb_setting:
+            self._apply_ascii_art(None)
             self._apply_ambient_pair(None)
             return
         if img_url in self._amb_cache:
+            self._apply_ascii_art(self._ascii_cache.get(img_url))
             self._apply_ambient_pair(self._amb_cache[img_url])
             return
 
         async def _load() -> None:
-            def _worker() -> tuple[str, str] | None:
+            def _worker() -> tuple[tuple[str, str] | None, str | None]:
                 path = _resolve_local_cover(img_url)
                 if path is None:
-                    return None
-                return extract_ambient_pair(path)
+                    return None, None
+                return extract_ambient_pair(path), extract_ascii_art(path)
 
-            pair = await asyncio.to_thread(_worker)
+            pair, ascii_art = await asyncio.to_thread(_worker)
             if gen != self._amb_gen or self._disposed:
                 return
             self._amb_cache[img_url] = pair
+            self._ascii_cache[img_url] = ascii_art
+            self._apply_ascii_art(ascii_art)
             self._apply_ambient_pair(pair)
 
         try:
@@ -1000,14 +1070,7 @@ class NowPlayingScene(ft.Container):
     # ── Pestañas Cola/Letra y sincronización de barra ──────────────────
 
     def _apply_tab_styles(self) -> None:
-        for tab_key, (btn, ico, lbl) in self._tab_refs.items():
-            active = tab_key == self._active_tab
-            btn.bgcolor = ACCENT_HALO if active else ft.Colors.TRANSPARENT
-            btn.border = ft.Border.all(0.8, ACCENT if active else ft.Colors.TRANSPARENT)
-            ico.color = ACCENT if active else DECOR_LINE
-            ico.font_family = FONT_PHOSPHOR_FILL if active else FONT_PHOSPHOR
-            lbl.color = TEXT_PRIMARY if active else TEXT_MUTED
-            lbl.font_family = FONT_HEADLINE_BOLD if active else FONT_HEADLINE
+        self._tab_bar.content = tab_underline(self._tab_items, self._active_tab, self.set_tab)
         self._cola_view.visible = self._active_tab == _TAB_COLA
         self._letra_view.visible = self._active_tab == _TAB_LETRA
 
@@ -1029,95 +1092,143 @@ class NowPlayingScene(ft.Container):
         self.player_bar.move_queue_item(int(old_idx), int(new_idx))
 
     def refresh(self) -> None:
+        if not self._is_open:
+            self._needs_refresh = True
+            return
+        self._needs_refresh = False
+
         q = self.player_bar.queue
         items = q.ordered_tracks()
         cur: PlayableTrack | None = q.current
         playing = bool(getattr(self.player_bar, "is_playing", False))
         has_queue = bool(q.order)
 
-        if cur is not None:
-            tr = cur.track
-            title = tr.name or os.path.basename(cur.path)
-            artist = tr.artist or "Archivo local"
-            sub = f"{artist} — {tr.album}" if tr.album else artist
-            self._title_txt.value = title
-            self._title_txt.font_family = font_family_for(title, "bold")
-            self._artist_txt.value = sub
-            self._artist_txt.font_family = font_family_for(sub)
-            if tr.img_url:
-                self._cover_img.src = tr.img_url
-                self._cover_img.visible = True
-                self._cover_fallback.visible = False
+        track_sig = (
+            (
+                cur.path,
+                cur.track.id,
+                cur.track.name,
+                cur.track.artist,
+                cur.track.album,
+                cur.track.img_url,
+                cur.badge_text,
+            )
+            if cur is not None
+            else None
+        )
+        if track_sig != self._last_track_sig:
+            self._last_track_sig = track_sig
+            if cur is not None:
+                tr = cur.track
+                title = tr.name or os.path.basename(cur.path)
+                artist = tr.artist or "Archivo local"
+                sub = f"{artist} — {tr.album}" if tr.album else artist
+                self._title_txt.value = title
+                self._title_txt.font_family = font_family_for(title, "bold")
+                self._artist_txt.value = sub
+                self._artist_txt.font_family = font_family_for(sub)
+                if tr.img_url != self._rendered_cover_url:
+                    self._rendered_cover_url = tr.img_url
+                    self._cover_thumb.content = _thumb_content_for(
+                        tr.img_url, box=_COVER_SIZE, icon_size=56
+                    )
+                    safe_update(self._cover_thumb)
+                self._format_badge_txt.value = cur.badge_text
+                self._format_badge.visible = True
+                self._refresh_ambient_for_cover(tr.img_url)
             else:
-                self._cover_img.visible = False
-                self._cover_fallback.visible = True
-            self._format_badge_txt.value = cur.badge_text
-            self._format_badge.visible = True
-            self._refresh_ambient_for_cover(tr.img_url)
-        else:
-            self._title_txt.value = "Sin reproducción"
-            self._title_txt.font_family = FONT_HEADLINE_BOLD
-            self._artist_txt.value = "Selecciona una pista descargada"
-            self._artist_txt.font_family = FONT_TEXT
-            self._cover_img.visible = False
-            self._cover_fallback.visible = True
-            self._format_badge.visible = False
-            self._refresh_ambient_for_cover("")
+                self._title_txt.value = "Sin reproducción"
+                self._title_txt.font_family = FONT_HEADLINE_BOLD
+                self._artist_txt.value = "Selecciona una pista descargada"
+                self._artist_txt.font_family = FONT_TEXT
+                if self._rendered_cover_url is not None:
+                    self._rendered_cover_url = None
+                    self._cover_thumb.content = _thumb_content_for(
+                        "", box=_COVER_SIZE, icon_size=56
+                    )
+                    safe_update(self._cover_thumb)
+                self._format_badge.visible = False
+                self._refresh_ambient_for_cover("")
+            safe_update(self._title_txt)
+            safe_update(self._artist_txt)
+            safe_update(self._format_badge)
+            self._letra_view.refresh_track()
 
-        self._play_btn.icon_text.value = PIcons.PAUSE if playing else PIcons.PLAY
-        self._play_btn.icon_text.font_family = FONT_PHOSPHOR_FILL
-        self._play_btn.disabled = not has_queue
-        self._play_btn.opacity = 0.4 if not has_queue else 1.0
-        self._prev_btn.disabled = not has_queue
-        self._prev_btn.opacity = 0.4 if not has_queue else 1.0
-        self._next_btn.disabled = not has_queue
-        self._next_btn.opacity = 0.4 if not has_queue else 1.0
+        transport_sig = (playing, has_queue, q.shuffle, q.repeat)
+        if transport_sig != self._last_transport_sig:
+            self._last_transport_sig = transport_sig
+            self._play_btn.icon_text.value = PIcons.PAUSE if playing else PIcons.PLAY
+            self._play_btn.icon_text.font_family = FONT_PHOSPHOR_FILL
+            self._play_btn.disabled = not has_queue
+            self._play_btn.opacity = 0.4 if not has_queue else 1.0
+            self._prev_btn.disabled = not has_queue
+            self._prev_btn.opacity = 0.4 if not has_queue else 1.0
+            self._next_btn.disabled = not has_queue
+            self._next_btn.opacity = 0.4 if not has_queue else 1.0
 
-        self._shuffle_btn.icon_text.color = ACCENT if q.shuffle else TEXT_MUTED
-        self._shuffle_btn.icon_text.font_family = FONT_PHOSPHOR_FILL if q.shuffle else FONT_PHOSPHOR
+            self._shuffle_btn.icon_text.color = ACCENT if q.shuffle else TEXT_MUTED
+            self._shuffle_btn.icon_text.font_family = FONT_PHOSPHOR_FILL if q.shuffle else FONT_PHOSPHOR
 
-        if q.repeat == RepeatMode.ONE:
-            self._repeat_btn.icon_text.value = PIcons.REPEAT_ONCE
-            self._repeat_btn.icon_text.font_family = FONT_PHOSPHOR_FILL
-            self._repeat_btn.icon_text.color = ACCENT
-        elif q.repeat == RepeatMode.ALL:
-            self._repeat_btn.icon_text.value = PIcons.REPEAT
-            self._repeat_btn.icon_text.font_family = FONT_PHOSPHOR_FILL
-            self._repeat_btn.icon_text.color = ACCENT
-        else:
-            self._repeat_btn.icon_text.value = PIcons.REPEAT
-            self._repeat_btn.icon_text.font_family = FONT_PHOSPHOR
-            self._repeat_btn.icon_text.color = TEXT_MUTED
+            if q.repeat == RepeatMode.ONE:
+                self._repeat_btn.icon_text.value = PIcons.REPEAT_ONCE
+                self._repeat_btn.icon_text.font_family = FONT_PHOSPHOR_FILL
+                self._repeat_btn.icon_text.color = ACCENT
+            elif q.repeat == RepeatMode.ALL:
+                self._repeat_btn.icon_text.value = PIcons.REPEAT
+                self._repeat_btn.icon_text.font_family = FONT_PHOSPHOR_FILL
+                self._repeat_btn.icon_text.color = ACCENT
+            else:
+                self._repeat_btn.icon_text.value = PIcons.REPEAT
+                self._repeat_btn.icon_text.font_family = FONT_PHOSPHOR
+                self._repeat_btn.icon_text.color = TEXT_MUTED
+
+            safe_update(self._play_btn)
+            safe_update(self._prev_btn)
+            safe_update(self._next_btn)
+            safe_update(self._shuffle_btn)
+            safe_update(self._repeat_btn)
 
         muted = bool(getattr(self.player_bar, "_muted", False))
         vol = float(getattr(self.player_bar, "_volume", 1.0))
-        self._vol_slider.value = 0.0 if muted else vol
-        if muted or vol <= 0.0:
-            self._mute_btn.icon_text.value = PIcons.SPEAKER_SLASH
-            self._mute_btn.icon_text.color = ACCENT if muted else TEXT_MUTED
-        elif vol < 0.5:
-            self._mute_btn.icon_text.value = PIcons.SPEAKER_LOW
-            self._mute_btn.icon_text.color = TEXT_MUTED
-        else:
-            self._mute_btn.icon_text.value = PIcons.SPEAKER_HIGH
-            self._mute_btn.icon_text.color = TEXT_MUTED
+        vol_sig = (muted, round(vol, 4))
+        if vol_sig != self._last_vol_sig:
+            self._last_vol_sig = vol_sig
+            self._vol_slider.value = 0.0 if muted else vol
+            if muted or vol <= 0.0:
+                self._mute_btn.icon_text.value = PIcons.SPEAKER_SLASH
+                self._mute_btn.icon_text.color = ACCENT if muted else TEXT_MUTED
+            elif vol < 0.5:
+                self._mute_btn.icon_text.value = PIcons.SPEAKER_LOW
+                self._mute_btn.icon_text.color = TEXT_MUTED
+            else:
+                self._mute_btn.icon_text.value = PIcons.SPEAKER_HIGH
+                self._mute_btn.icon_text.color = TEXT_MUTED
+            safe_update(self._vol_slider)
+            safe_update(self._mute_btn)
 
-        self._queue_count_txt.value = f"{len(items)} {'pista' if len(items) == 1 else 'pistas'}"
-        self._queue_list.controls = [
-            build_queue_row(idx, pt, pt is cur, self.player_bar, reorderable=True)
-            for idx, pt in enumerate(items)
-        ]
-        self._queue_empty.visible = not items
-        self._queue_list.visible = bool(items)
+        queue_sig = (
+            tuple((id(pt), pt.path, pt.track.id) for pt in items),
+            id(cur) if cur is not None else None,
+        )
+        if queue_sig != self._last_queue_sig:
+            self._last_queue_sig = queue_sig
+            self._queue_count_txt.value = f"{len(items)} {'pista' if len(items) == 1 else 'pistas'}"
+            self._queue_list.controls = [
+                build_queue_row(idx, pt, pt is cur, self.player_bar, reorderable=True)
+                for idx, pt in enumerate(items)
+            ]
+            self._queue_empty.visible = not items
+            self._queue_list.visible = bool(items)
+            safe_update(self._queue_count_txt)
+            safe_update(self._queue_list)
+            safe_update(self._queue_empty)
 
-        self._disc_holder.visible = bool(_read_setting("get_scene_show_disc", "scene_show_disc", True))
+        self._disc_holder.visible = self._show_disc_setting
         self._disc.set_spinning(self._should_spin_disc())
-        self._letra_view.refresh_track()
         if not self._scrubbing:
             pos = int(getattr(self.player_bar, "position_ms", 0) or 0)
             dur = int(getattr(self.player_bar, "duration_ms", 0) or 0)
             self._update_progress(pos, dur)
-        self._safe_update()
 
     # ── Barra de progreso y volumen locales ────────────────────────────
 

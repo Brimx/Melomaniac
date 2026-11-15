@@ -13,6 +13,7 @@ from __future__ import annotations
 import asyncio
 from bisect import bisect_right
 from collections.abc import Callable
+import inspect
 import os
 from typing import Any
 
@@ -30,15 +31,17 @@ from ui.theme.tokens import (
     ACCENT, ACCENT_HALO, BG_PANEL, BG_SURFACE, BORDER_MUTED,
     CHIP_BG, DECOR_LINE, FS_META, MOTION_ENTER_MS, MOTION_HOVER_MS,
     MOTION_PANEL_MS, PLAYER_QUEUE_W, RADIUS_SHARP,
-    SPACE_0, SPACE_1, SPACE_2, SPACE_3,
+    SPACE_0, SPACE_1, SPACE_2, SPACE_3, SPACE_4,
     TEXT_MUTED, TEXT_PRIMARY,
 )
 from ui.components.widgets import (
     _ghost_btn,
     app_text,
+    empty_state,
     is_mounted,
     safe_update,
     section_label,
+    tab_underline,
 )
 
 _KEY_QUEUE_OPEN = "queue_panel_open"
@@ -363,6 +366,9 @@ class LyricsPane(ft.Container):
         # nueva se resuelva desde caché o la carga se difiera.
         self._fetch_gen += 1
 
+        if force_reload:
+            self._cache.pop(key, None)
+
         if not force_reload and key in self._cache:
             self._loaded_key = key
             self._apply_result(self._cache[key])
@@ -372,9 +378,9 @@ class LyricsPane(ft.Container):
             return
 
         self._loaded_key = key
-        self._start_fetch(cur, key)
+        self._start_fetch(cur, key, force_reload=force_reload)
 
-    def _start_fetch(self, cur: PlayableTrack, key: tuple) -> None:
+    def _start_fetch(self, cur: PlayableTrack, key: tuple, *, force_reload: bool = False) -> None:
         lyrics_svc = _import_lyrics_service()
         if lyrics_svc is None:
             self._result = None
@@ -388,18 +394,47 @@ class LyricsPane(ft.Container):
         dur_ms = int(cur.duration_ms or getattr(self.player_bar, "duration_ms", 0) or 0)
         allow_net = _lyrics_allow_network()
 
+        def _call_lyrics() -> Any:
+            kwargs: dict[str, Any] = {
+                "audio_path": cur.path,
+                "title": tr.name,
+                "artist": tr.artist,
+                "album": tr.album,
+                "duration_ms": dur_ms,
+                "allow_network": allow_net,
+            }
+            if force_reload:
+                try:
+                    sig = inspect.signature(lyrics_svc.get_lyrics)
+                    params = sig.parameters
+                    accepts_use_cache = "use_cache" in params or any(
+                        p.kind == inspect.Parameter.VAR_KEYWORD for p in params.values()
+                    )
+                except (TypeError, ValueError):
+                    accepts_use_cache = False
+                if accepts_use_cache:
+                    return lyrics_svc.get_lyrics(tr, use_cache=False, **kwargs)
+                load_local = getattr(lyrics_svc, "load_local_lyrics", None)
+                fetch_fn = getattr(lyrics_svc, "fetch_lyrics", None)
+                if callable(fetch_fn):
+                    if cur.path and callable(load_local):
+                        local = load_local(cur.path)
+                        if local is not None:
+                            return local
+                    return fetch_fn(
+                        tr,
+                        title=tr.name,
+                        artist=tr.artist,
+                        album=tr.album,
+                        duration_ms=dur_ms,
+                        use_cache=False,
+                        allow_network=allow_net,
+                    )
+            return lyrics_svc.get_lyrics(tr, **kwargs)
+
         async def _load() -> None:
             try:
-                res = await asyncio.to_thread(
-                    lyrics_svc.get_lyrics,
-                    tr,
-                    audio_path=cur.path,
-                    title=tr.name,
-                    artist=tr.artist,
-                    album=tr.album,
-                    duration_ms=dur_ms,
-                    allow_network=allow_net,
-                )
+                res = await asyncio.to_thread(_call_lyrics)
             except Exception as exc:
                 if gen != self._fetch_gen:
                     return
@@ -463,39 +498,38 @@ class LyricsPane(ft.Container):
         self._state_box.visible = True
         self._footer.visible = False
 
+        action_label: str | None = None
+        on_action = None
         if kind == "empty":
             icon, title, sub = PIcons.MUSIC_NOTES, "Sin reproducción", "Reproduce una pista para ver su letra."
-            extra = None
         elif kind == "disabled":
             icon, title, sub = PIcons.MUSIC_NOTES, "Letras desactivadas", "Actívalas en Configuración → Reproducción."
-            extra = None
         elif kind == "loading":
             icon, title, sub = PIcons.ARROWS_CLOCKWISE, "Buscando letra…", "Consultando archivo local y proveedor."
-            extra = None
         elif kind == "instrumental":
             icon, title, sub = PIcons.DISC, "Instrumental", "Esta pista está marcada como instrumental."
-            extra = None
         elif kind == "error":
-            icon, title, sub = PIcons.WARNING, "No se pudo obtener la letra", self._error_msg or "Error de red o proveedor."
-            extra = _ghost_btn("Reintentar", PIcons.ARROWS_CLOCKWISE, lambda _e: self.refresh_track(force_reload=True), height=32)
+            icon = PIcons.WARNING_CIRCLE
+            title = "Error de conexión"
+            sub = self._error_msg or "No se pudo consultar el proveedor de letras. Revisa tu red."
+            action_label = "Reintentar"
+            on_action = lambda _e: self.refresh_track(force_reload=True)
         else:
-            icon, title, sub = PIcons.MUSIC_NOTES, "Sin letra disponible", "Ni el archivo ni el proveedor la tienen."
-            extra = _ghost_btn("Reintentar", PIcons.ARROWS_CLOCKWISE, lambda _e: self.refresh_track(force_reload=True), height=32)
+            icon = PIcons.MUSIC_NOTES
+            title = "Sin letra disponible"
+            sub = "Ni el archivo ni el proveedor tienen letra para esta pista."
+            action_label = "Reintentar"
+            on_action = lambda _e: self.refresh_track(force_reload=True)
 
-        col_controls: list[ft.Control] = [
-            app_icon(icon, size=36, color=ACCENT if kind == "loading" else DECOR_LINE, fill=(kind != "loading")),
-            app_text(title, size=14 if self._large else 13, color=TEXT_PRIMARY, font_family=FONT_HEADLINE_BOLD, text_align=ft.TextAlign.CENTER),
-            app_text(sub, size=12 if self._large else 11, color=TEXT_MUTED, font_family=FONT_TEXT, text_align=ft.TextAlign.CENTER),
-        ]
-        if extra is not None:
-            col_controls.append(ft.Container(padding=ft.Padding.only(top=6), content=extra))
-
-        self._state_box.content = ft.Column(
-            controls=col_controls,
-            horizontal_alignment=ft.CrossAxisAlignment.CENTER,
-            alignment=ft.MainAxisAlignment.CENTER,
-            spacing=SPACE_2,
-            tight=True,
+        self._state_box.content = ft.Container(
+            padding=ft.Padding.symmetric(horizontal=SPACE_3, vertical=SPACE_3),
+            content=empty_state(
+                icon,
+                title,
+                sub,
+                action_label=action_label,
+                on_action=on_action,
+            ),
         )
         self._safe_update()
 
@@ -721,42 +755,10 @@ class PlayerQueuePanel(ft.Container):
             height=30,
         )
 
-        self._tab_refs: dict[str, tuple[ft.Container, ft.Text, ft.Text]] = {}
-        tab_controls: list[ft.Control] = []
-        for tab_key, label_text, glyph in _TAB_SPECS:
-            ico = app_icon(glyph, size=14, color=DECOR_LINE, fill=False)
-            lbl = app_text(label_text, size=12, color=TEXT_MUTED, font_family=FONT_HEADLINE)
-            btn = ft.Container(
-                expand=True,
-                height=30,
-                border_radius=RADIUS_SHARP,
-                padding=ft.Padding.symmetric(horizontal=8, vertical=4),
-                alignment=ft.Alignment.CENTER,
-                ink=True,
-                animate=ft.Animation(MOTION_HOVER_MS, ft.AnimationCurve.EASE_OUT),
-                on_click=lambda _e, key=tab_key: self.set_tab(key),
-                content=ft.Row(
-                    controls=[ico, lbl],
-                    spacing=SPACE_2,
-                    alignment=ft.MainAxisAlignment.CENTER,
-                    vertical_alignment=ft.CrossAxisAlignment.CENTER,
-                    tight=True,
-                ),
-            )
-            self._tab_refs[tab_key] = (btn, ico, lbl)
-            tab_controls.append(btn)
-
+        self._tab_items = [(_TAB_COLA, "Cola"), (_TAB_LETRA, "Letra")]
         self._tab_bar = ft.Container(
             expand=True,
-            bgcolor=BG_SURFACE,
-            border=ft.Border.all(0.8, BORDER_MUTED),
-            border_radius=RADIUS_SHARP,
-            padding=ft.Padding.all(2),
-            content=ft.Row(
-                controls=tab_controls,
-                spacing=SPACE_1,
-                vertical_alignment=ft.CrossAxisAlignment.CENTER,
-            ),
+            content=tab_underline(self._tab_items, self._active_tab, self.set_tab),
         )
 
         self._list_view = ft.ReorderableListView(
@@ -770,26 +772,12 @@ class PlayerQueuePanel(ft.Container):
 
         self._empty_box = ft.Container(
             expand=True,
-            alignment=ft.Alignment.CENTER,
-            content=ft.Column(
-                controls=[
-                    app_icon(PIcons.QUEUE, size=40, color=DECOR_LINE, fill=True),
-                    app_text(
-                        "Cola vacía",
-                        size=13,
-                        color=TEXT_PRIMARY,
-                        font_family=FONT_HEADLINE_BOLD,
-                    ),
-                    app_text(
-                        "Reproduce una pista desde Descargas o Biblioteca Local",
-                        size=11,
-                        color=TEXT_MUTED,
-                        font_family=FONT_TEXT,
-                        text_align=ft.TextAlign.CENTER,
-                    ),
-                ],
-                horizontal_alignment=ft.CrossAxisAlignment.CENTER,
-                spacing=SPACE_2,
+            alignment=ft.Alignment.CENTER_LEFT,
+            padding=ft.Padding.symmetric(horizontal=SPACE_3, vertical=SPACE_4),
+            content=empty_state(
+                PIcons.QUEUE,
+                "Cola vacía",
+                "Reproduce una pista desde Descargas o Biblioteca Local.",
             ),
         )
 
@@ -866,14 +854,7 @@ class PlayerQueuePanel(ft.Container):
         return self._active_tab
 
     def _apply_tab_styles(self) -> None:
-        for tab_key, (btn, ico, lbl) in self._tab_refs.items():
-            active = tab_key == self._active_tab
-            btn.bgcolor = ACCENT_HALO if active else ft.Colors.TRANSPARENT
-            btn.border = ft.Border.all(0.8, ACCENT if active else ft.Colors.TRANSPARENT)
-            ico.color = ACCENT if active else DECOR_LINE
-            ico.font_family = FONT_PHOSPHOR_FILL if active else FONT_PHOSPHOR
-            lbl.color = TEXT_PRIMARY if active else TEXT_MUTED
-            lbl.font_family = FONT_HEADLINE_BOLD if active else FONT_HEADLINE
+        self._tab_bar.content = tab_underline(self._tab_items, self._active_tab, self.set_tab)
         self._cola_view.visible = self._active_tab == _TAB_COLA
         self._letra_view.visible = self._active_tab == _TAB_LETRA
 
