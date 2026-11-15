@@ -3,8 +3,11 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 
 import flet as ft
+
+log = logging.getLogger(__name__)
 
 from core.config import APP_VERSION
 from core.models import TransferState
@@ -41,13 +44,12 @@ from ui.theme.tokens import (
     RAIL_ITEM_PAD_V,
     RAIL_ITEM_SPACING,
     RAIL_LABEL_W,
-    RAIL_MARGIN,
     RAIL_PAD_H,
     RAIL_PAD_V,
     RAIL_VERSION_H,
-    RAIL_VERSION_H_COLLAPSED,
     RAIL_W_COLLAPSED,
     RAIL_W_EXPANDED,
+    SELECTION_BAR_W,
     SIDEBAR_BG,
     SPACE_0,
     SPACE_1,
@@ -80,8 +82,8 @@ def _read_rail_collapsed(page: ft.Page | None) -> bool:
         saved = settings_store.load_settings().get(_RAIL_COLLAPSED_KEY)
         if saved is not None:
             return bool(saved)
-    except Exception:
-        pass
+    except Exception as exc:
+        log.debug("No se pudo leer estado del rail: %s", exc)
     return False
 
 
@@ -90,8 +92,8 @@ def _save_rail_collapsed_sync(collapsed: bool) -> None:
         data = settings_store.load_settings()
         data[_RAIL_COLLAPSED_KEY] = bool(collapsed)
         settings_store.save_settings(data)
-    except Exception:
-        pass
+    except Exception as exc:
+        log.debug("No se pudo guardar estado del rail: %s", exc)
 
 
 def _persist_rail_collapsed(collapsed: bool) -> None:
@@ -202,9 +204,13 @@ def build_nav_rail(ui) -> None:
     ui._rail_dl_badge_text = None
     ui._rail_dl_badge_dot = None
 
+    _ACTIVE_TINT = ft.Colors.with_opacity(0.45, ACCENT_HALO)
+
     def _item_base_border(mod_idx: int) -> ft.Border:
         is_sel = (mod_idx == ui._current_module)
-        return ft.Border.all(0.8, ACCENT if is_sel else ft.Colors.TRANSPARENT)
+        return ft.Border.only(
+            left=ft.BorderSide(SELECTION_BAR_W, ACCENT if is_sel else ft.Colors.TRANSPARENT)
+        )
 
     def _rail_item(visual_idx: int, mod_idx: int, label: str, icon_out: str, icon_sel: str) -> ft.Container:
         is_sel = (mod_idx == ui._current_module)
@@ -301,9 +307,9 @@ def build_nav_rail(ui) -> None:
 
         cont = ft.Container(
             content=row,
-            bgcolor=ACCENT_HALO if is_sel else ft.Colors.TRANSPARENT,
+            bgcolor=_ACTIVE_TINT if is_sel else ft.Colors.TRANSPARENT,
             border=_item_base_border(mod_idx),
-            border_radius=RADIUS_SHARP,
+            border_radius=RADIUS_NONE,
             padding=ft.Padding.symmetric(horizontal=SPACE_3, vertical=RAIL_ITEM_PAD_V),
             height=RAIL_ITEM_H,
             data=str(mod_idx),
@@ -323,7 +329,7 @@ def build_nav_rail(ui) -> None:
             is_h = e.data == "true" or e.data is True
             cont.bgcolor = BG_HOVER if is_h else ft.Colors.TRANSPARENT
             if ui._rail_focus_idx != visual_idx:
-                cont.border = ft.Border.all(0.8, ACCENT if is_h else ft.Colors.TRANSPARENT)
+                cont.border = _item_base_border(mod_idx)
             icon.color = TEXT_PRIMARY if is_h else DECOR_LINE
             txt.color = TEXT_PRIMARY if is_h else TEXT_MUTED
             safe_update(cont)
@@ -349,20 +355,14 @@ def build_nav_rail(ui) -> None:
             )
         if ui._rail_version_text is not None:
             ui._rail_version_text.opacity = 0.7 if expanded else 0.0
-        if ui._rail_version_box is not None:
-            ui._rail_version_box.height = (
-                RAIL_VERSION_H if expanded else RAIL_VERSION_H_COLLAPSED
-            )
         for i, label_box in enumerate(ui._rail_label_boxes):
             label_box.width = RAIL_LABEL_W if expanded else 0
             label_box.margin = (
                 ft.Margin.only(left=SPACE_3) if expanded else ft.Margin.only(left=0)
             )
             label_box.opacity = 1.0 if expanded else 0.0
-            try:
+            if i < len(ui._rail_item_refs) and i < len(ui._rail_dests):
                 ui._rail_item_refs[i].tooltip = None if expanded else ui._rail_dests[i][1]
-            except Exception:
-                pass
         _refresh_rail_downloads_badge(update=False)
         if update:
             safe_update(ui._nav_rail)
@@ -397,8 +397,8 @@ def build_nav_rail(ui) -> None:
     ui._rail_brand_slot = ft.Container(
         width=RAIL_BRAND_SLOT_SZ,
         height=RAIL_BRAND_SLOT_SZ,
-        border=ft.Border.all(0.8, BORDER_LIGHT),
-        border_radius=RADIUS_SHARP,
+        border=ft.Border.all(1, BORDER_LIGHT),
+        border_radius=RADIUS_NONE,
         bgcolor=ft.Colors.TRANSPARENT,
         tooltip="Melomaniac",
         visible=ui._rail_collapsed,
@@ -420,15 +420,31 @@ def build_nav_rail(ui) -> None:
         color=TEXT_PRIMARY,
         font_family=brand_family("bold"),
         visible=True,
-        expand=True,
         no_wrap=True,
         max_lines=1,
         overflow=ft.TextOverflow.CLIP,
     )
+    ui._rail_version_text = ft.Text(
+        f"v{APP_VERSION}",
+        size=FS_META,
+        color=TEXT_MUTED,
+        font_family=mono_family("light"),
+        visible=True,
+        height=RAIL_VERSION_H,
+        no_wrap=True,
+        max_lines=1,
+        opacity=0.7 if not ui._rail_collapsed else 0.0,
+        animate_opacity=ft.Animation(RAIL_ANIM_MS, ft.AnimationCurve.EASE_IN_OUT),
+    )
     ui._rail_header_brand_box = ft.Container(
-        content=ui._rail_header_brand,
+        content=ft.Column(
+            controls=[ui._rail_header_brand, ui._rail_version_text],
+            spacing=SPACE_0,
+            tight=True,
+            alignment=ft.MainAxisAlignment.CENTER,
+        ),
         width=RAIL_BRAND_W if not ui._rail_collapsed else 0,
-        height=24,
+        height=RAIL_HEADER_H,
         margin=ft.Margin.only(left=SPACE_2) if not ui._rail_collapsed else ft.Margin.only(left=0),
         opacity=1.0 if not ui._rail_collapsed else 0.0,
         alignment=ft.Alignment.CENTER_LEFT,
@@ -444,11 +460,14 @@ def build_nav_rail(ui) -> None:
         vertical_alignment=ft.CrossAxisAlignment.CENTER,
         alignment=ft.MainAxisAlignment.START,
     )
+    # Altura fija de cabecera para que los destinos no salten al colapsar/expandir.
     ui._rail_header_box = ft.Container(
+        height=RAIL_HEADER_H + RAIL_BRAND_SLOT_SZ,
         content=ft.Column(
             controls=[ui._rail_brand_slot, ui._rail_header_row],
-            spacing=SPACE_2,
+            spacing=SPACE_1,
             tight=True,
+            alignment=ft.MainAxisAlignment.CENTER,
             horizontal_alignment=ft.CrossAxisAlignment.CENTER,
         ),
         alignment=ft.Alignment.CENTER if ui._rail_collapsed else ft.Alignment.CENTER_LEFT,
@@ -467,7 +486,7 @@ def build_nav_rail(ui) -> None:
             is_sel = (mod_idx == ui._current_module)
             is_foc = (ui._rail_focus_idx == v_idx)
             try:
-                cont.bgcolor = ACCENT_HALO if is_sel else ft.Colors.TRANSPARENT
+                cont.bgcolor = _ACTIVE_TINT if is_sel else ft.Colors.TRANSPARENT
                 if is_foc:
                     apply_region_focus(cont, True, ring_width=FOCUS_RING_WIDTH, inset=True)
                 else:
@@ -483,8 +502,8 @@ def build_nav_rail(ui) -> None:
                 if lbl_ctrl is not None:
                     lbl_ctrl.color = TEXT_PRIMARY if is_sel else TEXT_MUTED
                     lbl_ctrl.font_family = FONT_HEADLINE_MEDIUM if is_sel else FONT_HEADLINE
-            except Exception:
-                pass
+            except Exception as exc:
+                log.debug("No se pudo refrescar selección de rail: %s", exc)
 
     ui._refresh_rail_selection = _refresh_rail_selection  # type: ignore
 
@@ -530,55 +549,31 @@ def build_nav_rail(ui) -> None:
 
     ui._refresh_rail_downloads_badge = _refresh_rail_downloads_badge
 
-    ui._rail_version_text = ft.Text(
-        f"v{APP_VERSION}",
-        size=FS_META,
-        color=TEXT_MUTED,
-        font_family=mono_family("light"),
-        visible=True,
-        height=RAIL_VERSION_H,
-        no_wrap=True,
-        max_lines=1,
-        opacity=0.7 if not ui._rail_collapsed else 0.0,
-        animate_opacity=ft.Animation(RAIL_ANIM_MS, ft.AnimationCurve.EASE_IN_OUT),
-        text_align=ft.TextAlign.CENTER,
-    )
-    ui._rail_version_box = ft.Container(
-        content=ui._rail_version_text,
-        height=RAIL_VERSION_H if not ui._rail_collapsed else RAIL_VERSION_H_COLLAPSED,
-        clip_behavior=ft.ClipBehavior.HARD_EDGE,
-        animate=ft.Animation(RAIL_ANIM_MS, ft.AnimationCurve.EASE_IN_OUT),
-    )
     rail_bottom = ft.Column(
-        controls=[config_item, ui._rail_version_box],
+        controls=[config_item],
         spacing=SPACE_1,
         horizontal_alignment=ft.CrossAxisAlignment.STRETCH,
     )
     ui._nav_rail = ft.Container(
         width=ui._rail_w_expanded if not ui._rail_collapsed else ui._rail_w_collapsed,
-        margin=ft.Margin.all(RAIL_MARGIN),
+        margin=ft.Margin.all(SPACE_0),
         bgcolor=SIDEBAR_BG,
-        border=ft.Border.all(0.8, BORDER_MUTED),
+        border=ft.Border.only(right=ft.BorderSide(1, BORDER_MUTED)),
         border_radius=RADIUS_NONE,
         padding=ft.Padding.symmetric(horizontal=RAIL_PAD_H, vertical=RAIL_PAD_V),
-        shadow=ft.BoxShadow(
-            blur_radius=18,
-            color=ft.Colors.with_opacity(0.45, BG_DEEP),
-            offset=ft.Offset(0, 4),
-        ),
         animate=ft.Animation(RAIL_ANIM_MS, ft.AnimationCurve.EASE_IN_OUT),
-        clip_behavior=ft.ClipBehavior.ANTI_ALIAS,
+        clip_behavior=ft.ClipBehavior.HARD_EDGE,
         content=ft.Column(
             controls=[
                 ui._rail_header_box,
-                ft.Divider(height=1, color=BORDER_MUTED, thickness=0.5),
+                ft.Divider(height=1, color=BORDER_MUTED, thickness=1),
                 ft.Column(
                     controls=rail_items,
                     spacing=RAIL_ITEM_SPACING,
                     horizontal_alignment=ft.CrossAxisAlignment.STRETCH,
                 ),
                 ft.Container(expand=True),
-                ft.Divider(height=1, color=BORDER_MUTED, thickness=0.5),
+                ft.Divider(height=1, color=BORDER_MUTED, thickness=1),
                 rail_bottom,
             ],
             spacing=SPACE_3,

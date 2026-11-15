@@ -42,10 +42,14 @@ from ui.theme.tokens import (
     PLAYER_PROGRESS_ANIM_MS,
     PLAYER_PROGRESS_H,
     PLAYER_THUMB_SIZE,
+    RADIUS_NONE,
+    SPACE_2,
+    SPACE_4,
     TEXT_MUTED,
     TEXT_PRIMARY,
     MOTION_HOVER_MS,
 )
+from ui.components.song_row import _thumb_content_for
 from ui.components.widgets import (
     app_text,
     fmt_ms as _fmt_ms,
@@ -100,17 +104,21 @@ class PlayerBar(ft.Container):
         app_state=None,
         *,
         on_toggle_queue: Callable[[], None] | None = None,
+        on_open_lyrics: Callable[[], None] | None = None,
         dbus_mpris: MPRISService | None = None,
     ) -> None:
         super().__init__(
             height=PLAYER_BAR_H,
             bgcolor=BG_PANEL,
-            border=ft.Border.only(top=ft.BorderSide(0.8, BORDER_MUTED)),
-            padding=ft.Padding.symmetric(horizontal=16, vertical=8),
+            border=ft.Border.only(top=ft.BorderSide(1, BORDER_MUTED)),
+            border_radius=RADIUS_NONE,
+            padding=ft.Padding.symmetric(horizontal=SPACE_4, vertical=SPACE_2),
         )
         self._page_ref = page
         self.app_state = app_state
         self._on_toggle_queue = on_toggle_queue
+        self._on_open_lyrics = on_open_lyrics
+        self._last_thumb_url: str | None = None
         self._listeners: list[Callable[[], None]] = []
         self._pos_listeners: list[Callable[[int, int], None]] = []
         self._last_notified_pos: tuple[int, int] = (-1, -1)
@@ -306,6 +314,12 @@ class PlayerBar(ft.Container):
             self._now_playing_scene.close()
         else:
             self.open_now_playing_scene()
+
+    def _open_lyrics_panel(self) -> None:
+        if callable(self._on_open_lyrics):
+            self._on_open_lyrics()
+        elif callable(self._on_toggle_queue):
+            self._on_toggle_queue()
 
     # ── construcción visual ────────────────────────────────────────────
 
@@ -791,10 +805,12 @@ class PlayerBar(ft.Container):
         dur = self._duration_ms
         frac = max(0.0, min(1.0, pos_ms / dur)) if dur > 0 else 0.0
         self._progress_fill.width = frac * self._track_width
-        self._time_txt.value = f"{_fmt_ms(pos_ms)} / {_fmt_ms(dur)}"
+        self._time_pos_txt.value = _fmt_ms(pos_ms)
+        self._time_dur_txt.value = f"−{_fmt_ms(max(0, dur - pos_ms))}" if dur > 0 else "0:00"
         try:
             self._progress_fill.update()
-            self._time_txt.update()
+            self._time_pos_txt.update()
+            self._time_dur_txt.update()
         except Exception:
             pass
         self._notify_position_listeners(pos_ms, dur)
@@ -827,11 +843,12 @@ class PlayerBar(ft.Container):
             self._title_txt.font_family = font_family_for(title, "bold")
             self._artist_txt.value = artist
             self._artist_txt.font_family = font_family_for(artist)
-            if tr.img_url:
-                self._thumb_img.src = tr.img_url
-                self._thumb_img.visible = True
-            else:
-                self._thumb_img.visible = False
+            img_url = tr.img_url or ""
+            if img_url != self._last_thumb_url:
+                self._last_thumb_url = img_url
+                self._thumb_box.content = _thumb_content_for(
+                    img_url, box=PLAYER_THUMB_SIZE, icon_size=18
+                )
             self._badge_txt.value = cur.badge_text
             self._badge_box.tooltip = cur.stream_tooltip
             self._badge_box.visible = True
@@ -842,7 +859,11 @@ class PlayerBar(ft.Container):
             self._title_txt.font_family = FONT_HEADLINE_BOLD
             self._artist_txt.value = "Selecciona una pista descargada"
             self._artist_txt.font_family = FONT_TEXT
-            self._thumb_img.visible = False
+            if self._last_thumb_url != "":
+                self._last_thumb_url = ""
+                self._thumb_box.content = _thumb_content_for(
+                    "", box=PLAYER_THUMB_SIZE, icon_size=18
+                )
             self._badge_txt.value = "—"
             self._badge_box.tooltip = "Formato real del archivo"
             self._badge_box.visible = False
