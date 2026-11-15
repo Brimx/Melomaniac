@@ -518,6 +518,17 @@ class PlaylistManagerUI:
 
         self._build_nav_rail()
         self._build_modules_and_root()
+        if getattr(self, "player_bar", None) is not None:
+            def _open_lyrics_from_bar() -> None:
+                pq = getattr(self, "player_queue", None)
+                if pq is None:
+                    return
+                if hasattr(pq, "set_tab"):
+                    pq.set_tab("letra")
+                if hasattr(pq, "set_open") and not getattr(pq, "is_open", False):
+                    pq.set_open(True)
+
+            self.player_bar._on_open_lyrics = _open_lyrics_from_bar
         self._mount_home_view()
         self._inject_config_dependencies()
         self._setup_keyboard_and_regions()
@@ -646,6 +657,14 @@ class PlaylistManagerUI:
         else:
             panels.append(home)
             stack.controls.append(home)
+        if (
+            self.on_show_welcome is not None
+            and getattr(self, "_current_module", 0) == 0
+            and self.state.load_state == LoadState.IDLE
+            and not self.state.tracks
+            and hasattr(self, "_select_module")
+        ):
+            self._select_module(HOME_MODULE_IDX)
 
     def _open_playlist_from_home(self, summary) -> None:
         """Abre una playlist reciente desde Inicio saltando a Biblioteca."""
@@ -770,7 +789,7 @@ class PlaylistManagerUI:
             FocusRegion(
                 name="queue",
                 item_count=lambda: len(
-                    getattr(getattr(getattr(self, "player_bar", None), "queue", None), "items", ())
+                    getattr(getattr(getattr(self, "player_bar", None), "queue", None), "tracks", ())
                 ),
                 on_focus=_focus_queue_row,
                 on_activate=lambda idx: (
@@ -805,7 +824,10 @@ class PlaylistManagerUI:
 
         def _close_overlay() -> None:
             pb = getattr(self, "player_bar", None)
-            if pb is not None and getattr(pb, "_now_playing_scene", None) is not None:
+            scene = getattr(pb, "_now_playing_scene", None) if pb is not None else None
+            if scene is not None and (
+                getattr(scene, "is_open", False) or getattr(scene, "visible", False)
+            ):
                 close_scene = getattr(pb, "close_now_playing_scene", None)
                 if callable(close_scene):
                     close_scene()
