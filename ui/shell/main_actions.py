@@ -28,7 +28,7 @@ from ui.dialogs.transfer_helpers import (
 )
 from ui.theme.fonts import FONT_HEADLINE
 from ui.theme.icons import PIcons
-from ui.theme.tokens import TEXT_DIM, TEXT_MUTED
+from ui.theme.tokens import FS_META, SPACE_2, SPACE_3, TEXT_MUTED
 
 
 class ActionsController:
@@ -197,20 +197,20 @@ class ActionsController:
                     ft.Container(content=ui._paste_field, width=480, height=220),
                     ft.Row(
                         [
-                            ft.Text("Orden:", size=10, color=TEXT_MUTED, font_family=FONT_HEADLINE),
+                            ft.Text("Orden:", size=FS_META, color=TEXT_MUTED, font_family=FONT_HEADLINE),
                             order_seg,
                         ],
-                        spacing=8,
+                        spacing=SPACE_2,
                         vertical_alignment=ft.CrossAxisAlignment.CENTER,
                     ),
                     ft.Text(
                         "Elige cómo está escrito cada línea (TuneMyMusic usa Artista - Título).",
-                        size=9,
-                        color=TEXT_DIM,
+                        size=FS_META,
+                        color=TEXT_MUTED,
                         font_family=FONT_HEADLINE,
                     ),
                 ],
-                spacing=10,
+                spacing=SPACE_3,
                 tight=True,
             ),
             [
@@ -271,20 +271,20 @@ class ActionsController:
                     name_field,
                     ft.Row(
                         [
-                            ft.Text("Orden:", size=10, color=TEXT_MUTED, font_family=FONT_HEADLINE),
+                            ft.Text("Orden:", size=FS_META, color=TEXT_MUTED, font_family=FONT_HEADLINE),
                             order_seg2,
                         ],
-                        spacing=8,
+                        spacing=SPACE_2,
                         vertical_alignment=ft.CrossAxisAlignment.CENTER,
                     ),
                     ft.Text(
                         "Confirma el orden de cada línea antes de importar.",
-                        size=9,
-                        color=TEXT_DIM,
+                        size=FS_META,
+                        color=TEXT_MUTED,
                         font_family=FONT_HEADLINE,
                     ),
                 ],
-                spacing=10,
+                spacing=SPACE_3,
                 tight=True,
             ),
             [

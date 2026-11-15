@@ -63,14 +63,21 @@ from ui.theme.tokens import (
     BORDER_LIGHT,
     BORDER_MUTED,
     CHIP_BG,
+    DECOR_LINE,
+    FS_META,
     MOTION_HOVER_MS,
     MOTION_PANEL_MS,
     PLAYER_PROGRESS_ANIM_MS,
     PLAYER_PROGRESS_H,
-    RADIUS_BUTTON,
-    RADIUS_DIALOG,
+    RADIUS_PILL,
+    RADIUS_SHARP,
+    RADIUS_SM,
     SIDEBAR_BG,
-    TEXT_DIM,
+    SPACE_1,
+    SPACE_2,
+    SPACE_3,
+    SPACE_4,
+    SPACE_7,
     TEXT_MUTED,
     TEXT_PRIMARY,
 )
@@ -243,7 +250,7 @@ class _VinylDisc(ft.Stack):
         seal_dot = ft.Container(
             width=max(8, int(size * 0.045)),
             height=max(8, int(size * 0.045)),
-            border_radius=99,
+            border_radius=RADIUS_PILL,
             bgcolor=ft.Colors.with_opacity(0.33, TEXT_PRIMARY),
             left=int(center - label_r * 0.58),
             top=int(center - label_r * 0.58),
@@ -357,22 +364,22 @@ class NowPlayingScene(ft.Container):
             top=0,
             content=self._disc,
         )
-        self._cover_fallback = app_icon(PIcons.DISC, size=56, color=TEXT_DIM, fill=True)
+        self._cover_fallback = app_icon(PIcons.DISC, size=56, color=DECOR_LINE, fill=True)
         self._cover_img = ft.Image(
             src="",
             width=_COVER_SIZE,
             height=_COVER_SIZE,
             fit=ft.BoxFit.COVER,
-            border_radius=RADIUS_DIALOG,
+            border_radius=RADIUS_SM,
             visible=False,
         )
         self._format_badge_txt = app_text(
-            "", size=10, color=TEXT_MUTED, font_family=mono_family("medium")
+            "", size=FS_META, color=TEXT_MUTED, font_family=mono_family("medium")
         )
         self._format_badge = ft.Container(
             bgcolor=CHIP_BG,
             border=ft.Border.all(0.8, BORDER_MUTED),
-            border_radius=6,
+            border_radius=RADIUS_SM,
             padding=ft.Padding.symmetric(horizontal=8, vertical=3),
             right=10,
             bottom=10,
@@ -386,7 +393,7 @@ class NowPlayingScene(ft.Container):
             left=0,
             bgcolor=BG_SURFACE,
             border=ft.Border.all(1.0, BORDER_LIGHT),
-            border_radius=RADIUS_DIALOG,
+            border_radius=RADIUS_SM,
             alignment=ft.Alignment.CENTER,
             content=ft.Stack(
                 controls=[
@@ -541,7 +548,7 @@ class NowPlayingScene(ft.Container):
                     ft.Container(height=10),
                     ft.Row(
                         controls=[self._pos_txt, self._progress_gesture, self._rem_txt],
-                        spacing=10,
+                        spacing=SPACE_3,
                         vertical_alignment=ft.CrossAxisAlignment.CENTER,
                     ),
                     ft.Row(
@@ -552,17 +559,17 @@ class NowPlayingScene(ft.Container):
                             self._next_btn,
                             self._repeat_btn,
                         ],
-                        spacing=14,
+                        spacing=SPACE_4,
                         alignment=ft.MainAxisAlignment.CENTER,
                         vertical_alignment=ft.CrossAxisAlignment.CENTER,
                     ),
                     ft.Row(
                         controls=[self._mute_btn, self._vol_slider],
-                        spacing=6,
+                        spacing=SPACE_2,
                         vertical_alignment=ft.CrossAxisAlignment.CENTER,
                     ),
                 ],
-                spacing=4,
+                spacing=SPACE_1,
                 tight=True,
                 horizontal_alignment=ft.CrossAxisAlignment.STRETCH,
             ),
@@ -575,12 +582,12 @@ class NowPlayingScene(ft.Container):
             (_TAB_LETRA, "Letra", PIcons.MUSIC_NOTES),
             (_TAB_COLA, "Cola", PIcons.QUEUE),
         ):
-            ico = app_icon(glyph, size=14, color=TEXT_DIM, fill=False)
+            ico = app_icon(glyph, size=14, color=DECOR_LINE, fill=False)
             lbl = app_text(label_text, size=12, color=TEXT_MUTED, font_family=FONT_HEADLINE)
             btn = ft.Container(
                 expand=True,
                 height=34,
-                border_radius=RADIUS_BUTTON - 2,
+                border_radius=RADIUS_SHARP,
                 padding=ft.Padding.symmetric(horizontal=10, vertical=4),
                 alignment=ft.Alignment.CENTER,
                 ink=True,
@@ -588,7 +595,7 @@ class NowPlayingScene(ft.Container):
                 on_click=lambda _e, key=tab_key: self.set_tab(key),
                 content=ft.Row(
                     controls=[ico, lbl],
-                    spacing=6,
+                    spacing=SPACE_2,
                     alignment=ft.MainAxisAlignment.CENTER,
                     vertical_alignment=ft.CrossAxisAlignment.CENTER,
                     tight=True,
@@ -601,9 +608,9 @@ class NowPlayingScene(ft.Container):
             width=240,
             bgcolor=BG_SURFACE,
             border=ft.Border.all(0.8, BORDER_MUTED),
-            border_radius=RADIUS_BUTTON,
+            border_radius=RADIUS_SHARP,
             padding=ft.Padding.all(2),
-            content=ft.Row(controls=tab_controls, spacing=4),
+            content=ft.Row(controls=tab_controls, spacing=SPACE_1),
         )
 
         self._queue_count_txt = app_text("0 pistas", size=11, color=TEXT_MUTED, font_family=FONT_TEXT)
@@ -633,7 +640,7 @@ class NowPlayingScene(ft.Container):
                     fit=ft.StackFit.EXPAND,
                 ),
             ],
-            spacing=8,
+            spacing=SPACE_2,
             expand=True,
             visible=(self._active_tab == _TAB_COLA),
         )
@@ -659,7 +666,7 @@ class NowPlayingScene(ft.Container):
                         fit=ft.StackFit.EXPAND,
                     ),
                 ],
-                spacing=12,
+                spacing=SPACE_3,
                 expand=True,
             ),
         )
@@ -675,7 +682,7 @@ class NowPlayingScene(ft.Container):
             height=40,
             bgcolor=BG_PANEL,
             border=ft.Border.all(0.8, BORDER_MUTED),
-            border_radius=RADIUS_BUTTON,
+            border_radius=RADIUS_SHARP,
         )
 
         body = ft.Container(
@@ -683,7 +690,7 @@ class NowPlayingScene(ft.Container):
             padding=ft.Padding.symmetric(horizontal=56, vertical=28),
             content=ft.Row(
                 controls=[left_col, right_col],
-                spacing=52,
+                spacing=SPACE_7,
                 expand=True,
                 vertical_alignment=ft.CrossAxisAlignment.CENTER,
             ),
@@ -997,7 +1004,7 @@ class NowPlayingScene(ft.Container):
             active = tab_key == self._active_tab
             btn.bgcolor = ACCENT_HALO if active else ft.Colors.TRANSPARENT
             btn.border = ft.Border.all(0.8, ACCENT if active else ft.Colors.TRANSPARENT)
-            ico.color = ACCENT if active else TEXT_DIM
+            ico.color = ACCENT if active else DECOR_LINE
             ico.font_family = FONT_PHOSPHOR_FILL if active else FONT_PHOSPHOR
             lbl.color = TEXT_PRIMARY if active else TEXT_MUTED
             lbl.font_family = FONT_HEADLINE_BOLD if active else FONT_HEADLINE

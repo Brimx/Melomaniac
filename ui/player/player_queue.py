@@ -28,8 +28,10 @@ from ui.theme.icons import PIcons, app_icon, app_icon_button
 from ui.components.song_row import ITEM_H
 from ui.theme.tokens import (
     ACCENT, ACCENT_HALO, BG_PANEL, BG_SURFACE, BORDER_MUTED,
-    CHIP_BG, MOTION_ENTER_MS, MOTION_HOVER_MS, MOTION_PANEL_MS, PLAYER_QUEUE_W,
-    RADIUS_BUTTON, RADIUS_INPUT, TEXT_DIM, TEXT_MUTED, TEXT_PRIMARY,
+    CHIP_BG, DECOR_LINE, FS_META, MOTION_ENTER_MS, MOTION_HOVER_MS,
+    MOTION_PANEL_MS, PLAYER_QUEUE_W, RADIUS_SHARP,
+    SPACE_0, SPACE_1, SPACE_2, SPACE_3,
+    TEXT_MUTED, TEXT_PRIMARY,
 )
 from ui.components.widgets import (
     _ghost_btn,
@@ -153,7 +155,7 @@ def build_queue_row(
                     width=24,
                     height=ITEM_H - 12,
                     alignment=ft.Alignment.CENTER,
-                    content=app_icon(PIcons.DOTS_SIX_VERTICAL, size=16, color=TEXT_DIM),
+                    content=app_icon(PIcons.DOTS_SIX_VERTICAL, size=16, color=DECOR_LINE),
                 ),
             )
         )
@@ -167,7 +169,7 @@ def build_queue_row(
     lead_btn = ft.Container(
         width=26,
         height=26,
-        border_radius=RADIUS_BUTTON,
+        border_radius=RADIUS_SHARP,
         alignment=ft.Alignment.CENTER,
         tooltip="Reproducir esta pista",
         on_click=lambda _e, pos=queue_pos: player_bar.select_queue_index(pos),
@@ -190,14 +192,14 @@ def build_queue_row(
                 ),
                 app_text(
                     artist,
-                    size=10,
+                    size=FS_META,
                     color=TEXT_MUTED,
                     font_family=font_family_for(artist),
                     max_lines=1,
                     overflow=ft.TextOverflow.ELLIPSIS,
                 ),
             ],
-            spacing=1,
+            spacing=SPACE_0,
             alignment=ft.MainAxisAlignment.CENTER,
         ),
     )
@@ -205,12 +207,12 @@ def build_queue_row(
     fmt_chip = ft.Container(
         bgcolor=CHIP_BG,
         border=ft.Border.all(0.6, BORDER_MUTED),
-        border_radius=4,
+        border_radius=RADIUS_SHARP,
         padding=ft.Padding.symmetric(horizontal=6, vertical=2),
         tooltip=item.stream_tooltip,
         content=app_text(
             ext_badge,
-            size=9,
+            size=FS_META,
             color=TEXT_MUTED,
             font_family=mono_family("medium"),
         ),
@@ -219,7 +221,7 @@ def build_queue_row(
     remove_btn = app_icon_button(
         PIcons.X,
         size=14,
-        icon_color=TEXT_DIM,
+        icon_color=DECOR_LINE,
         hover_color_icon=ACCENT,
         tooltip="Quitar de la cola",
         on_click=lambda _e, pos=queue_pos: player_bar.remove_queue_index(pos),
@@ -232,12 +234,12 @@ def build_queue_row(
         height=ITEM_H,
         bgcolor=ACCENT_HALO if is_current else BG_SURFACE,
         border=ft.Border.all(0.6, ACCENT if is_current else BORDER_MUTED),
-        border_radius=RADIUS_INPUT,
+        border_radius=RADIUS_SHARP,
         padding=ft.Padding.symmetric(horizontal=6, vertical=4),
         margin=ft.Margin.only(bottom=4),
         content=ft.Row(
             controls=[*leading_controls, lead_btn, meta, fmt_chip, remove_btn],
-            spacing=6,
+            spacing=SPACE_2,
             vertical_alignment=ft.CrossAxisAlignment.CENTER,
         ),
     )
@@ -272,7 +274,7 @@ class LyricsPane(ft.Container):
 
         self._scroll_col = ft.Column(
             scroll=ft.ScrollMode.AUTO,
-            spacing=12 if large else 8,
+            spacing=SPACE_3 if large else SPACE_2,
             expand=True,
         )
         self._state_box = ft.Container(
@@ -282,7 +284,7 @@ class LyricsPane(ft.Container):
         )
         self._source_txt = app_text(
             "Fuente · —",
-            size=10,
+            size=FS_META,
             color=TEXT_MUTED,
             font_family=mono_family("light"),
         )
@@ -305,7 +307,7 @@ class LyricsPane(ft.Container):
                 ),
                 self._footer,
             ],
-            spacing=4,
+            spacing=SPACE_1,
             expand=True,
         )
 
@@ -481,7 +483,7 @@ class LyricsPane(ft.Container):
             extra = _ghost_btn("Reintentar", PIcons.ARROWS_CLOCKWISE, lambda _e: self.refresh_track(force_reload=True), height=32)
 
         col_controls: list[ft.Control] = [
-            app_icon(icon, size=36, color=ACCENT if kind == "loading" else TEXT_DIM, fill=(kind != "loading")),
+            app_icon(icon, size=36, color=ACCENT if kind == "loading" else DECOR_LINE, fill=(kind != "loading")),
             app_text(title, size=14 if self._large else 13, color=TEXT_PRIMARY, font_family=FONT_HEADLINE_BOLD, text_align=ft.TextAlign.CENTER),
             app_text(sub, size=12 if self._large else 11, color=TEXT_MUTED, font_family=FONT_TEXT, text_align=ft.TextAlign.CENTER),
         ]
@@ -492,7 +494,7 @@ class LyricsPane(ft.Container):
             controls=col_controls,
             horizontal_alignment=ft.CrossAxisAlignment.CENTER,
             alignment=ft.MainAxisAlignment.CENTER,
-            spacing=6,
+            spacing=SPACE_2,
             tight=True,
         )
         self._safe_update()
@@ -545,7 +547,7 @@ class LyricsPane(ft.Container):
                 opacity=0.35,
                 animate_opacity=None if reduce else ft.Animation(MOTION_ENTER_MS, ft.AnimationCurve.EASE_OUT),
                 padding=ft.Padding.symmetric(horizontal=6, vertical=4 if self._large else 2),
-                border_radius=RADIUS_BUTTON - 2,
+                border_radius=RADIUS_SHARP,
                 ink=callable(seek_fn),
                 on_click=(lambda _e, ms=time_ms: seek_fn(ms)) if callable(seek_fn) else None,
                 content=txt,
@@ -722,12 +724,12 @@ class PlayerQueuePanel(ft.Container):
         self._tab_refs: dict[str, tuple[ft.Container, ft.Text, ft.Text]] = {}
         tab_controls: list[ft.Control] = []
         for tab_key, label_text, glyph in _TAB_SPECS:
-            ico = app_icon(glyph, size=14, color=TEXT_DIM, fill=False)
+            ico = app_icon(glyph, size=14, color=DECOR_LINE, fill=False)
             lbl = app_text(label_text, size=12, color=TEXT_MUTED, font_family=FONT_HEADLINE)
             btn = ft.Container(
                 expand=True,
                 height=30,
-                border_radius=RADIUS_BUTTON - 2,
+                border_radius=RADIUS_SHARP,
                 padding=ft.Padding.symmetric(horizontal=8, vertical=4),
                 alignment=ft.Alignment.CENTER,
                 ink=True,
@@ -735,7 +737,7 @@ class PlayerQueuePanel(ft.Container):
                 on_click=lambda _e, key=tab_key: self.set_tab(key),
                 content=ft.Row(
                     controls=[ico, lbl],
-                    spacing=6,
+                    spacing=SPACE_2,
                     alignment=ft.MainAxisAlignment.CENTER,
                     vertical_alignment=ft.CrossAxisAlignment.CENTER,
                     tight=True,
@@ -748,11 +750,11 @@ class PlayerQueuePanel(ft.Container):
             expand=True,
             bgcolor=BG_SURFACE,
             border=ft.Border.all(0.8, BORDER_MUTED),
-            border_radius=RADIUS_BUTTON,
+            border_radius=RADIUS_SHARP,
             padding=ft.Padding.all(2),
             content=ft.Row(
                 controls=tab_controls,
-                spacing=4,
+                spacing=SPACE_1,
                 vertical_alignment=ft.CrossAxisAlignment.CENTER,
             ),
         )
@@ -771,7 +773,7 @@ class PlayerQueuePanel(ft.Container):
             alignment=ft.Alignment.CENTER,
             content=ft.Column(
                 controls=[
-                    app_icon(PIcons.QUEUE, size=40, color=TEXT_DIM, fill=True),
+                    app_icon(PIcons.QUEUE, size=40, color=DECOR_LINE, fill=True),
                     app_text(
                         "Cola vacía",
                         size=13,
@@ -787,7 +789,7 @@ class PlayerQueuePanel(ft.Container):
                     ),
                 ],
                 horizontal_alignment=ft.CrossAxisAlignment.CENTER,
-                spacing=6,
+                spacing=SPACE_2,
             ),
         )
 
@@ -800,7 +802,7 @@ class PlayerQueuePanel(ft.Container):
                                 section_label("COLA DE REPRODUCCIÓN"),
                                 self._count_txt,
                             ],
-                            spacing=2,
+                            spacing=SPACE_1,
                             expand=True,
                         ),
                         self._clear_btn,
@@ -813,7 +815,7 @@ class PlayerQueuePanel(ft.Container):
                     fit=ft.StackFit.EXPAND,
                 ),
             ],
-            spacing=8,
+            spacing=SPACE_2,
             expand=True,
             visible=(self._active_tab == _TAB_COLA),
         )
@@ -836,7 +838,7 @@ class PlayerQueuePanel(ft.Container):
                 controls=[
                     ft.Row(
                         controls=[self._tab_bar, self._close_btn],
-                        spacing=8,
+                        spacing=SPACE_2,
                         vertical_alignment=ft.CrossAxisAlignment.CENTER,
                     ),
                     ft.Divider(height=1, color=BORDER_MUTED),
@@ -846,7 +848,7 @@ class PlayerQueuePanel(ft.Container):
                         fit=ft.StackFit.EXPAND,
                     ),
                 ],
-                spacing=8,
+                spacing=SPACE_2,
                 expand=True,
             ),
         )
@@ -868,7 +870,7 @@ class PlayerQueuePanel(ft.Container):
             active = tab_key == self._active_tab
             btn.bgcolor = ACCENT_HALO if active else ft.Colors.TRANSPARENT
             btn.border = ft.Border.all(0.8, ACCENT if active else ft.Colors.TRANSPARENT)
-            ico.color = ACCENT if active else TEXT_DIM
+            ico.color = ACCENT if active else DECOR_LINE
             ico.font_family = FONT_PHOSPHOR_FILL if active else FONT_PHOSPHOR
             lbl.color = TEXT_PRIMARY if active else TEXT_MUTED
             lbl.font_family = FONT_HEADLINE_BOLD if active else FONT_HEADLINE
