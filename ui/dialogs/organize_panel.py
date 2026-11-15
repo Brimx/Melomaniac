@@ -40,6 +40,7 @@ from ui.components.widgets import (
     _ghost_btn,
     _primary_btn,
     app_dialog,
+    app_switch,
     close_dialog,
     debounce,
     dialog_action,
@@ -127,7 +128,7 @@ def show_organize_dialog(page: ft.Page, state) -> None:
         adv_row.visible = avanzado["value"]
         try: adv_row.update()
         except: pass
-    sw_adv = ft.Switch(label="Avanzado", value=_init_adv, active_color=ACCENT, on_change=_on_adv)
+    sw_adv = app_switch(label="Avanzado", value=_init_adv, on_change=_on_adv)
 
     content = ft.Column([
         dd_sort,

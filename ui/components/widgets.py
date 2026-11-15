@@ -35,6 +35,7 @@ from __future__ import annotations
 import asyncio
 import math
 from dataclasses import dataclass
+from types import SimpleNamespace
 from typing import Any, Callable, Sequence
 
 import flet as ft
@@ -1237,4 +1238,106 @@ def platform_select(
             )
             for k, l, g in options
         ],
+    )
+
+
+class AppSwitch(ft.Row):
+    """Toggle cuadrado estilo Sala de escucha compatible con la API básica de ``ft.Switch``."""
+
+    def __init__(
+        self,
+        value: bool = False,
+        label: str = "",
+        on_change=None,
+        disabled: bool = False,
+        width: int = 36,
+        height: int = 18,
+    ) -> None:
+        self._value = bool(value)
+        self._on_change = on_change
+        self._width = width
+        self._height = height
+        self._thumb_size = max(8, height - 6)
+        self._thumb_top = max(1, (height - 2 - self._thumb_size) // 2)
+
+        self._thumb = ft.Container(
+            width=self._thumb_size,
+            height=self._thumb_size,
+            border_radius=RADIUS_SHARP,
+            bgcolor=ACCENT if self._value else TEXT_MUTED,
+            top=self._thumb_top,
+            left=self._thumb_left(),
+            animate=ft.Animation(MOTION_HOVER_MS, ft.AnimationCurve.EASE_OUT),
+            animate_position=ft.Animation(MOTION_HOVER_MS, ft.AnimationCurve.EASE_OUT),
+        )
+        self._box = ft.Container(
+            width=width,
+            height=height,
+            border_radius=RADIUS_SHARP,
+            border=ft.Border.all(1, ACCENT if self._value else BORDER_CONTROL),
+            bgcolor=BG_INSET,
+            content=ft.Stack([self._thumb]),
+            animate=ft.Animation(MOTION_HOVER_MS, ft.AnimationCurve.EASE_OUT),
+            on_click=self._toggle,
+        )
+        controls: list[ft.Control] = [self._box]
+        if label:
+            controls.append(
+                ft.Container(
+                    content=app_text(label, size=12, color=TEXT_PRIMARY),
+                    on_click=self._toggle,
+                )
+            )
+        super().__init__(
+            controls=controls,
+            spacing=SPACE_2,
+            tight=True,
+            vertical_alignment=ft.CrossAxisAlignment.CENTER,
+            disabled=disabled,
+            opacity=0.45 if disabled else 1.0,
+        )
+
+    def _thumb_left(self) -> int:
+        return (self._width - self._thumb_size - 4) if self._value else 2
+
+    def _sync_visuals(self) -> None:
+        self._box.border = ft.Border.all(1, ACCENT if self._value else BORDER_CONTROL)
+        self._thumb.bgcolor = ACCENT if self._value else TEXT_MUTED
+        self._thumb.left = self._thumb_left()
+        self.opacity = 0.45 if self.disabled else 1.0
+
+    @property
+    def value(self) -> bool:
+        return self._value
+
+    @value.setter
+    def value(self, val: bool) -> None:
+        self._value = bool(val)
+        self._sync_visuals()
+        safe_update(self)
+
+    def _toggle(self, _e=None) -> None:
+        if self.disabled:
+            return
+        self.value = not self._value
+        if self._on_change is not None:
+            self._on_change(SimpleNamespace(control=self, page=control_page(self), data=self._value))
+
+
+def app_switch(
+    value: bool = False,
+    label: str = "",
+    on_change=None,
+    disabled: bool = False,
+    width: int = 36,
+    height: int = 18,
+) -> AppSwitch:
+    """Crea un toggle cuadrado estilo Sala de escucha."""
+    return AppSwitch(
+        value=value,
+        label=label,
+        on_change=on_change,
+        disabled=disabled,
+        width=width,
+        height=height,
     )

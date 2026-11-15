@@ -32,6 +32,7 @@ from services.authentication import (
 from ui.components.widgets import (
     _ghost_btn,
     _primary_btn,
+    AppSwitch,
     app_dialog,
     app_text,
     close_dialog,
@@ -185,7 +186,7 @@ class ConfigView(ft.Container):
         self._local_folders_col: ft.Column | None = None
         self._reindex_btn: ft.Control | None = None
         self._reindex_status: ft.Text | None = None
-        self._covers_sw: ft.Switch | None = None
+        self._covers_sw: AppSwitch | None = None
         self._cover_refresh_text: ft.Text | None = None
         self._cover_refresh_btn: ft.Control | None = None
         self._cache_text: ft.Text | None = None

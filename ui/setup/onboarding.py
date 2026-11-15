@@ -35,6 +35,7 @@ from ui.theme.tokens import (
 from ui.components.widgets import (
     _ghost_btn,
     _primary_btn,
+    app_switch,
     app_text,
     notify,
     organize_dropdown,
@@ -131,9 +132,9 @@ def _step_prefs(view: "OnboardingView") -> list[ft.Control]:
         settings_store.get_download_format(), "Formato de descarga", width=180,
     )
     fmt.on_select = lambda e: settings_store.set_download_format(str(e.control.value or ""))
-    covers = ft.Switch(
-        label="Resolver portadas online", value=settings_store.get_covers_online(),
-        active_color=ACCENT,
+    covers = app_switch(
+        label="Resolver portadas online",
+        value=settings_store.get_covers_online(),
         on_change=lambda e: settings_store.set_covers_online(bool(e.control.value)),
     )
     view.dir_text = app_text(

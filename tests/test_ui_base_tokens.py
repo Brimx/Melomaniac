@@ -47,6 +47,33 @@ class HelpersTest(unittest.TestCase):
         g = w._ghost_btn("No", None, lambda e: None)
         self.assertEqual(g.style.shape.radius, t.RADIUS_SHARP)
 
+    def test_app_switch(self):
+        events: list[bool] = []
+        sw = w.app_switch(value=False, label="Prueba", on_change=lambda e: events.append(e.control.value))
+        self.assertIsInstance(sw, w.AppSwitch)
+        self.assertFalse(sw.value)
+        self.assertFalse(sw.disabled)
+        self.assertEqual(sw._box.width, 36)
+        self.assertEqual(sw._box.height, 18)
+        self.assertEqual(sw._box.border_radius, t.RADIUS_SHARP)
+        self.assertEqual(sw._thumb.width, 12)
+        self.assertEqual(sw._thumb.height, 12)
+        self.assertEqual(sw._thumb.left, 2)
+
+        sw._box.on_click(None)
+        self.assertTrue(sw.value)
+        self.assertEqual(events, [True])
+        self.assertEqual(sw._thumb.left, 20)
+        self.assertEqual(sw._thumb.bgcolor, t.ACCENT)
+
+        sw_disabled = w.app_switch(value=True, disabled=True, on_change=lambda e: events.append(e.control.value))
+        self.assertTrue(sw_disabled.value)
+        self.assertTrue(sw_disabled.disabled)
+        self.assertEqual(sw_disabled.opacity, 0.45)
+        sw_disabled._box.on_click(None)
+        self.assertTrue(sw_disabled.value)
+        self.assertEqual(events, [True])
+
 
 class AuditTest(unittest.TestCase):
     def test_scan_and_strict(self):

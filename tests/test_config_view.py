@@ -12,6 +12,7 @@ import flet as ft
 
 import services.settings_store as settings_store
 import ui.views.config_view as config_view_mod
+from ui.components.widgets import AppSwitch
 from ui.views.config_sections import CONFIG_SECTIONS
 from ui.views.config_view import ConfigView
 
@@ -194,14 +195,14 @@ class ConfigViewTests(unittest.TestCase):
         view = ConfigView(_mock_page(1280))
         view.select_section("apariencia", update=False)
         ap_controls = _walk_controls(view._body_col)
-        switches = [c for c in ap_controls if isinstance(c, ft.Switch)]
+        switches = [c for c in ap_controls if isinstance(c, (ft.Switch, AppSwitch))]
         self.assertEqual(len(switches), 0)
         texts = [getattr(c, "value", "") for c in ap_controls if isinstance(c, ft.Text)]
         self.assertTrue(any("Ir a Accesibilidad" in str(t) for t in texts))
         self.assertTrue(any("No disponible:" in str(t) for t in texts))
 
         view.select_section("accesibilidad", update=False)
-        acc_switches = [c for c in _walk_controls(view._body_col) if isinstance(c, ft.Switch)]
+        acc_switches = [c for c in _walk_controls(view._body_col) if isinstance(c, (ft.Switch, AppSwitch))]
         self.assertEqual(sum(1 for sw in acc_switches if not sw.disabled), 1)
 
     def test_native_controls_persist_volume_lyrics_provider_queue_mode_and_theme(self) -> None:

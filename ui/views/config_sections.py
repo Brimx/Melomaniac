@@ -20,6 +20,8 @@ from services import settings_store
 from ui.components.widgets import (
     _ghost_btn,
     _primary_btn,
+    AppSwitch,
+    app_switch,
     app_text,
     kicker,
     organize_dropdown,
@@ -200,8 +202,8 @@ def cfg_badge(label: str, kind: str = "muted") -> ft.Container:
     )
 
 
-def _disabled_switch(value: bool = False) -> ft.Switch:
-    return ft.Switch(value=value, active_color=ACCENT, disabled=True)
+def _disabled_switch(value: bool = False) -> AppSwitch:
+    return app_switch(value=value, disabled=True)
 
 
 def _disabled_dropdown(label: str, value: str, text: str, width: float = 190) -> ft.Dropdown:
@@ -314,9 +316,8 @@ def build_conexiones_section(view: Any) -> list[ft.Control]:
 
 def build_reproduccion_section(view: Any) -> list[ft.Control]:
     """Escena Reproduciendo, Letras, Audio y Sistema (MPRIS)."""
-    lyrics_sw = ft.Switch(
+    lyrics_sw = app_switch(
         value=settings_store.get_lyrics_enabled(),
-        active_color=ACCENT,
         on_change=lambda e: view._persist_bool(settings_store.set_lyrics_enabled, e.control.value),
     )
     prov_seg = ft.SegmentedButton(
@@ -331,14 +332,12 @@ def build_reproduccion_section(view: Any) -> list[ft.Control]:
         ],
         on_change=view._on_lyrics_provider_change,
     )
-    disc_sw = ft.Switch(
+    disc_sw = app_switch(
         value=settings_store.get_scene_show_disc(),
-        active_color=ACCENT,
         on_change=lambda e: view._persist_bool(settings_store.set_scene_show_disc, e.control.value),
     )
-    amb_sw = ft.Switch(
+    amb_sw = app_switch(
         value=settings_store.get_scene_ambient_bg(),
-        active_color=ACCENT,
         on_change=lambda e: view._persist_bool(settings_store.set_scene_ambient_bg, e.control.value),
     )
 
@@ -356,9 +355,8 @@ def build_reproduccion_section(view: Any) -> list[ft.Control]:
     )
 
     is_linux = sys.platform.startswith("linux")
-    mpris_sw = ft.Switch(
+    mpris_sw = app_switch(
         value=settings_store.get_mpris_enabled() if is_linux else False,
-        active_color=ACCENT,
         disabled=not is_linux,
         on_change=lambda e: view._persist_bool(settings_store.set_mpris_enabled, e.control.value),
     )
@@ -455,14 +453,12 @@ def build_descargas_section(view: Any) -> list[ft.Control]:
     )
     view._format_dd.on_select = view._on_format_change
 
-    save_lrc_sw = ft.Switch(
+    save_lrc_sw = app_switch(
         value=settings_store.get_lyrics_save_lrc(),
-        active_color=ACCENT,
         on_change=lambda e: view._persist_bool(settings_store.set_lyrics_save_lrc, e.control.value),
     )
-    embed_lyrics_sw = ft.Switch(
+    embed_lyrics_sw = app_switch(
         value=settings_store.get_lyrics_embed_tags(),
-        active_color=ACCENT,
         on_change=lambda e: view._persist_bool(settings_store.set_lyrics_embed_tags, e.control.value),
     )
 
@@ -588,9 +584,8 @@ def build_biblioteca_section(view: Any) -> list[ft.Control]:
         ],
     )
 
-    view._covers_sw = ft.Switch(
+    view._covers_sw = app_switch(
         value=settings_store.get_covers_online(),
-        active_color=ACCENT,
         on_change=view._on_covers_change,
     )
     view._cover_refresh_text = app_text("", size=11, color=TEXT_MUTED, font_family=FONT_TEXT, visible=False)
@@ -694,9 +689,8 @@ def _build_queue_preview(mode: str, *, reduce_motion: bool) -> tuple[ft.Containe
 def build_accesibilidad_section(view: Any) -> list[ft.Control]:
     """Movimiento (único lugar), foco/teclado y preview de modo de cola."""
     reduce_val = settings_store.get_reduce_motion()
-    reduce_sw = ft.Switch(
+    reduce_sw = app_switch(
         value=reduce_val,
-        active_color=ACCENT,
         on_change=lambda e: view._persist_bool(settings_store.set_reduce_motion, e.control.value),
     )
     movimiento_card = cfg_card(
