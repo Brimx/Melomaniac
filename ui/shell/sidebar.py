@@ -28,17 +28,18 @@ from ui.theme.tokens import (
     BG_SURFACE,
     BORDER_CONTROL,
     BORDER_MUTED,
+    DECOR_LINE,
     ERROR_COL,
     FS_META,
     RADIUS_SHARP,
     RADIUS_SM,
     SIDEBAR_BG,
+    SPACE_0,
     SPACE_1,
     SPACE_2,
     SPACE_3,
     SPACE_4,
     SUCCESS,
-    TEXT_DIM,
     TEXT_MUTED,
     TEXT_PRIMARY,
     WARNING,
@@ -51,7 +52,7 @@ def build_sidebar(ui) -> None:
 
     ui.btn_wizard = app_icon_button(
         PIcons.GEAR,
-        icon_color=TEXT_DIM,
+        icon_color=DECOR_LINE,
         hover_color_icon=TEXT_PRIMARY,
         size=16,
         tooltip="Configurar credenciales",
@@ -86,30 +87,30 @@ def build_sidebar(ui) -> None:
                             ),
                             ft.Text(
                                 f"v{APP_VERSION}",
-                                size=9,
-                                color=TEXT_DIM,
+                                size=FS_META,
+                                color=TEXT_MUTED,
                                 font_family=FONT_TEXT,
                                 style=ft.TextStyle(letter_spacing=0.8),
                                 opacity=1.0,
                             ),
                         ],
-                        spacing=0,
+                        spacing=SPACE_0,
                         tight=True,
                         expand=True,
                     ),
                     ui.btn_wizard,
                 ],
-                spacing=10,
+                spacing=SPACE_3,
                 vertical_alignment=ft.CrossAxisAlignment.CENTER,
             ),
         ],
-        spacing=0,
+        spacing=SPACE_0,
     )
 
     _dd_style = dict(
         bgcolor=BG_INPUT,
         border=input_border(),
-        label_style=ft.TextStyle(color=TEXT_MUTED, size=10, font_family=FONT_HEADLINE),
+        label_style=ft.TextStyle(color=TEXT_MUTED, size=FS_META, font_family=FONT_HEADLINE),
         text_style=ft.TextStyle(color=TEXT_PRIMARY, size=11, font_family=FONT_TEXT),
         content_padding=ft.Padding.symmetric(horizontal=8, vertical=0),
         expand=True,
@@ -160,22 +161,22 @@ def build_sidebar(ui) -> None:
         visible=False,
         **_dd_style,
     )
-    ui._status_badge = ft.Text("", size=10, color=SUCCESS, font_family=mono_family(), opacity=1.0)
-    ui._dest_session_warn = ft.Text("", size=9, color=ERROR_COL, font_family=FONT_TEXT, visible=False)
+    ui._status_badge = ft.Text("", size=FS_META, color=SUCCESS, font_family=mono_family(), opacity=1.0)
+    ui._dest_session_warn = ft.Text("", size=FS_META, color=ERROR_COL, font_family=FONT_TEXT, visible=False)
 
     platform_section = ft.Column(
         [
             _section_label("PLATAFORMAS"),
-            ft.Row([ui._src_dd, ui._dst_dd], spacing=8),
+            ft.Row([ui._src_dd, ui._dst_dd], spacing=SPACE_2),
             ui._status_badge,
             ui._dest_session_warn,
         ],
-        spacing=8,
+        spacing=SPACE_2,
     )
 
     ui._id_clear_btn = app_icon_button(
         PIcons.X,
-        icon_color=TEXT_DIM,
+        icon_color=DECOR_LINE,
         hover_color_icon=TEXT_PRIMARY,
         size=12,
         width=24,
@@ -208,21 +209,21 @@ def build_sidebar(ui) -> None:
     ui._playlist_pick.visible = False
     ui._playlist_help = app_text(
         "",
-        size=9,
-        color=TEXT_DIM,
+        size=FS_META,
+        color=TEXT_MUTED,
         font_family=FONT_TEXT,
         visible=False,
     )
     ui._url_toggle_label = ft.Text(
         "Avanzado",
-        size=10,
+        size=FS_META,
         color=TEXT_MUTED,
         font_family=FONT_HEADLINE,
     )
     ui._use_url_btn = ft.TextButton(
         content=ft.Row(
             [app_icon(PIcons.LINK, size=13, color=TEXT_MUTED), ui._url_toggle_label],
-            spacing=6,
+            spacing=SPACE_2,
             tight=True,
         ),
         on_click=ui._on_toggle_url_field,
@@ -242,7 +243,7 @@ def build_sidebar(ui) -> None:
             ui._use_url_btn,
             ui._load_btn,
         ],
-        spacing=8,
+        spacing=SPACE_2,
         visible=(s.source not in AppState.LOCAL_SOURCES),
     )
     ui._id_field.visible = False

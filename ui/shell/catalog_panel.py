@@ -26,14 +26,15 @@ from ui.theme.tokens import (
     BG_SURFACE,
     BORDER_CONTROL,
     BORDER_MUTED,
+    FS_META,
     ON_ACCENT,
-    RADIUS_INPUT,
     RADIUS_SHARP,
     RADIUS_SM,
     SKELETON_DARK,
+    SPACE_0,
+    SPACE_1,
     SPACE_2,
     SPACE_3,
-    TEXT_DIM,
     TEXT_MUTED,
     TEXT_PRIMARY,
 )
@@ -172,7 +173,7 @@ class CatalogController:
             font_family=FONT_TEXT,
         )
         ui._catalog_results_lv = ft.ListView(
-            spacing=6,
+            spacing=SPACE_2,
             expand=True,
             padding=ft.Padding.only(bottom=12),
         )
@@ -192,18 +193,18 @@ class CatalogController:
                             ui._catalog_run_btn,
                             ui._catalog_close_btn,
                         ],
-                        spacing=8,
+                        spacing=SPACE_2,
                         vertical_alignment=ft.CrossAxisAlignment.CENTER,
                     ),
                     ft.Row(
                         [ui._catalog_tabs, ft.Container(expand=True), ui._catalog_status],
-                        spacing=10,
+                        spacing=SPACE_3,
                         vertical_alignment=ft.CrossAxisAlignment.CENTER,
                     ),
                     ui._catalog_detail_bar,
                     ui._catalog_results_lv,
                 ],
-                spacing=10,
+                spacing=SPACE_3,
                 expand=True,
             ),
         )
@@ -373,7 +374,7 @@ class CatalogController:
                         overflow=ft.TextOverflow.ELLIPSIS,
                     ),
                 ],
-                spacing=2,
+                spacing=SPACE_1,
                 expand=True,
             )
             actions: list[ft.Control] = []
@@ -441,11 +442,11 @@ class CatalogController:
                 ft.Container(
                     bgcolor=BG_SURFACE,
                     border=ft.Border.all(0.6, BORDER_MUTED),
-                    border_radius=RADIUS_INPUT,
+                    border_radius=RADIUS_SHARP,
                     padding=ft.Padding.symmetric(horizontal=10, vertical=8),
                     content=ft.Row(
                         [thumb, info, *actions],
-                        spacing=10,
+                        spacing=SPACE_3,
                         vertical_alignment=ft.CrossAxisAlignment.CENTER,
                     ),
                 )
@@ -534,7 +535,7 @@ class CatalogController:
                     ft.Container(
                         bgcolor=BG_SURFACE,
                         border=ft.Border.all(0.6, BORDER_MUTED),
-                        border_radius=RADIUS_INPUT,
+                        border_radius=RADIUS_SHARP,
                         padding=ft.Padding.symmetric(horizontal=10, vertical=8),
                         content=ft.Row(
                             [
@@ -542,9 +543,9 @@ class CatalogController:
                                 ft.Column(
                                     [
                                         ft.Text(aname, size=12, color=TEXT_PRIMARY, font_family=FONT_HEADLINE),
-                                        ft.Text(asub, size=10, color=TEXT_MUTED, font_family=FONT_TEXT),
+                                        ft.Text(asub, size=FS_META, color=TEXT_MUTED, font_family=FONT_TEXT),
                                     ],
-                                    spacing=2,
+                                    spacing=SPACE_1,
                                     expand=True,
                                 ),
                                 _ghost_btn(
@@ -556,7 +557,7 @@ class CatalogController:
                                     height=30,
                                 ),
                             ],
-                            spacing=10,
+                            spacing=SPACE_3,
                             vertical_alignment=ft.CrossAxisAlignment.CENTER,
                         ),
                     )
@@ -569,11 +570,11 @@ class CatalogController:
         return ft.Container(
             bgcolor=BG_SURFACE,
             border=ft.Border.all(0.6, BORDER_MUTED),
-            border_radius=RADIUS_INPUT,
+            border_radius=RADIUS_SHARP,
             padding=ft.Padding.symmetric(horizontal=10, vertical=6),
             content=ft.Row(
                 [
-                    ft.Text(str(idx), size=11, color=TEXT_DIM, font_family=mono_family("light"), width=24),
+                    ft.Text(str(idx), size=11, color=TEXT_MUTED, font_family=mono_family("light"), width=24),
                     _catalog_thumb(tr.img_url, box=38, radius=6, icon_size=16),
                     ft.Column(
                         [
@@ -587,17 +588,17 @@ class CatalogController:
                             ),
                             ft.Text(
                                 tr.artist,
-                                size=10,
+                                size=FS_META,
                                 color=TEXT_MUTED,
                                 font_family=FONT_TEXT,
                                 max_lines=1,
                                 overflow=ft.TextOverflow.ELLIPSIS,
                             ),
                         ],
-                        spacing=1,
+                        spacing=SPACE_0,
                         expand=True,
                     ),
-                    ft.Text(tr.duration or "", size=10, color=TEXT_DIM, font_family=mono_family("light")),
+                    ft.Text(tr.duration or "", size=FS_META, color=TEXT_MUTED, font_family=mono_family("light")),
                     _ghost_btn(
                         "Descargar",
                         PIcons.DOWNLOAD_SIMPLE,
@@ -613,7 +614,7 @@ class CatalogController:
                         height=28,
                     ),
                 ],
-                spacing=8,
+                spacing=SPACE_2,
                 vertical_alignment=ft.CrossAxisAlignment.CENTER,
             ),
         )

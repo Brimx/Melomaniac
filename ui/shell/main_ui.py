@@ -89,7 +89,7 @@ from ui.theme.tokens import (
     WARNING,
     ERROR_COL,
     TEXT_MUTED,
-    TEXT_DIM,
+    DECOR_LINE,
 )
 from ui.dialogs.division_dialogs import DivisionController
 from ui.shell.catalog_panel import CatalogController
@@ -1009,7 +1009,7 @@ class PlaylistManagerUI:
         for plat, ic in (("YouTube Music", self._auth_yt), ("Apple Music", self._auth_am), ("Spotify", self._auth_sp)):
             ok = s.auth_session_ok.get(plat)
             # None = preflight sin ejecutar todavía: gris, no verde.
-            col = SUCCESS if ok else (TEXT_DIM if ok is None else ERROR_COL)
+            col = SUCCESS if ok else (DECOR_LINE if ok is None else ERROR_COL)
             if hasattr(ic, "content") and hasattr(ic.content, "color"):
                 ic.content.color = col
             else:

@@ -25,12 +25,13 @@ from ui.theme.tokens import (
     BG_HOVER,
     BORDER_LIGHT,
     BORDER_MUTED,
+    DECOR_LINE,
     FOCUS_RING_WIDTH,
     FS_META,
     MOTION_HOVER_MS,
     ON_ACCENT,
-    RADIUS_RAIL,
-    RADIUS_RAIL_ITEM,
+    RADIUS_NONE,
+    RADIUS_PILL,
     RADIUS_SHARP,
     RAIL_ANIM_MS,
     RAIL_BRAND_SLOT_SZ,
@@ -48,10 +49,10 @@ from ui.theme.tokens import (
     RAIL_W_COLLAPSED,
     RAIL_W_EXPANDED,
     SIDEBAR_BG,
+    SPACE_0,
     SPACE_1,
     SPACE_2,
     SPACE_3,
-    TEXT_DIM,
     TEXT_MUTED,
     TEXT_PRIMARY,
 )
@@ -263,7 +264,7 @@ def build_nav_rail(ui) -> None:
         icon = app_icon(
             icon_sel if is_sel else icon_out,
             size=20,
-            color=ACCENT if is_sel else TEXT_DIM,
+            color=ACCENT if is_sel else DECOR_LINE,
             fill=is_sel,
         )
 
@@ -271,7 +272,7 @@ def build_nav_rail(ui) -> None:
             dot = ft.Container(
                 width=8,
                 height=8,
-                border_radius=4,
+                border_radius=RADIUS_PILL,
                 bgcolor=ACCENT,
                 border=ft.Border.all(1, SIDEBAR_BG),
                 right=0,
@@ -292,7 +293,7 @@ def build_nav_rail(ui) -> None:
 
         row = ft.Row(
             [icon_slot, label_box],
-            spacing=0,
+            spacing=SPACE_0,
             vertical_alignment=ft.CrossAxisAlignment.CENTER,
             tight=True,
             alignment=ft.MainAxisAlignment.START,
@@ -302,7 +303,7 @@ def build_nav_rail(ui) -> None:
             content=row,
             bgcolor=ACCENT_HALO if is_sel else ft.Colors.TRANSPARENT,
             border=_item_base_border(mod_idx),
-            border_radius=RADIUS_RAIL_ITEM,
+            border_radius=RADIUS_SHARP,
             padding=ft.Padding.symmetric(horizontal=SPACE_3, vertical=RAIL_ITEM_PAD_V),
             height=RAIL_ITEM_H,
             data=str(mod_idx),
@@ -323,7 +324,7 @@ def build_nav_rail(ui) -> None:
             cont.bgcolor = BG_HOVER if is_h else ft.Colors.TRANSPARENT
             if ui._rail_focus_idx != visual_idx:
                 cont.border = ft.Border.all(0.8, ACCENT if is_h else ft.Colors.TRANSPARENT)
-            icon.color = TEXT_PRIMARY if is_h else TEXT_DIM
+            icon.color = TEXT_PRIMARY if is_h else DECOR_LINE
             txt.color = TEXT_PRIMARY if is_h else TEXT_MUTED
             safe_update(cont)
 
@@ -437,7 +438,7 @@ def build_nav_rail(ui) -> None:
     )
     ui._rail_header_row = ft.Row(
         [ui._rail_toggle_btn, ui._rail_header_brand_box],
-        spacing=0,
+        spacing=SPACE_0,
         height=RAIL_HEADER_H,
         tight=True,
         vertical_alignment=ft.CrossAxisAlignment.CENTER,
@@ -478,7 +479,7 @@ def build_nav_rail(ui) -> None:
                 if icon_ctrl is not None:
                     icon_ctrl.value = glyph
                     icon_ctrl.font_family = FONT_PHOSPHOR_FILL if is_sel else FONT_PHOSPHOR
-                    icon_ctrl.color = ACCENT if is_sel else TEXT_DIM
+                    icon_ctrl.color = ACCENT if is_sel else DECOR_LINE
                 if lbl_ctrl is not None:
                     lbl_ctrl.color = TEXT_PRIMARY if is_sel else TEXT_MUTED
                     lbl_ctrl.font_family = FONT_HEADLINE_MEDIUM if is_sel else FONT_HEADLINE
@@ -532,7 +533,7 @@ def build_nav_rail(ui) -> None:
     ui._rail_version_text = ft.Text(
         f"v{APP_VERSION}",
         size=FS_META,
-        color=TEXT_DIM,
+        color=TEXT_MUTED,
         font_family=mono_family("light"),
         visible=True,
         height=RAIL_VERSION_H,
@@ -550,7 +551,7 @@ def build_nav_rail(ui) -> None:
     )
     rail_bottom = ft.Column(
         controls=[config_item, ui._rail_version_box],
-        spacing=2,
+        spacing=SPACE_1,
         horizontal_alignment=ft.CrossAxisAlignment.STRETCH,
     )
     ui._nav_rail = ft.Container(
@@ -558,7 +559,7 @@ def build_nav_rail(ui) -> None:
         margin=ft.Margin.all(RAIL_MARGIN),
         bgcolor=SIDEBAR_BG,
         border=ft.Border.all(0.8, BORDER_MUTED),
-        border_radius=RADIUS_RAIL,
+        border_radius=RADIUS_NONE,
         padding=ft.Padding.symmetric(horizontal=RAIL_PAD_H, vertical=RAIL_PAD_V),
         shadow=ft.BoxShadow(
             blur_radius=18,
@@ -580,7 +581,7 @@ def build_nav_rail(ui) -> None:
                 ft.Divider(height=1, color=BORDER_MUTED, thickness=0.5),
                 rail_bottom,
             ],
-            spacing=10,
+            spacing=SPACE_3,
             expand=True,
             horizontal_alignment=ft.CrossAxisAlignment.STRETCH,
         ),

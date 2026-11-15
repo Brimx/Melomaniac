@@ -27,7 +27,7 @@ from ui.theme.tokens import (
     FOCUS_RING_OFFSET,
     FOCUS_RING_WIDTH as _TOKEN_FOCUS_RING_WIDTH,
     MOTION_HOVER_MS,
-    RADIUS_BUTTON,
+    RADIUS_SHARP,
 )
 
 # Tokens de foco visible (anillo 2+2 px a 0 ms en regiones; halo opcional en botones)
@@ -468,7 +468,7 @@ def focus_button_style(
     base_side: ft.BorderSide | None = None,
     focused_color: str = FOCUS_RING_COLOR,
     focused_width: float = FOCUS_RING_WIDTH,
-    radius: float = RADIUS_BUTTON,
+    radius: float = RADIUS_SHARP,
     halo_color: str = FOCUS_HALO_COLOR,
 ) -> ft.ButtonStyle:
     """``ButtonStyle`` con anillo de foco visible en ``ControlState.FOCUSED``."""

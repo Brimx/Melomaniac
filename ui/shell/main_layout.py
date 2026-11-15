@@ -33,6 +33,7 @@ from ui.theme.tokens import (
     BORDER_LIGHT,
     BORDER_MUTED,
     CHIP_BG,
+    DECOR_LINE,
     ERROR_COL,
     FS_META,
     FS_SEC,
@@ -41,13 +42,13 @@ from ui.theme.tokens import (
     ON_ACCENT,
     RADIUS_SHARP,
     RADIUS_SM,
+    SPACE_0,
     SPACE_1,
     SPACE_2,
     SPACE_3,
     SPACE_4,
     SPACE_5,
     SUCCESS,
-    TEXT_DIM,
     TEXT_MUTED,
     TEXT_PRIMARY,
 )
@@ -187,10 +188,10 @@ class LayoutController:
             content=ft.Column(
                 controls=[
                     ft.Container(
-                        content=app_icon(PIcons.WRENCH, size=52, color=TEXT_DIM),
+                        content=app_icon(PIcons.WRENCH, size=52, color=DECOR_LINE),
                         bgcolor=CHIP_BG,
                         border=ft.Border.all(0.8, BORDER_LIGHT),
-                        border_radius=20,
+                        border_radius=RADIUS_SM,
                         padding=ft.Padding.all(20),
                     ),
                     ft.Text(
@@ -211,13 +212,13 @@ class LayoutController:
                     ft.Text(
                         "Función en desarrollo",
                         size=11,
-                        color=TEXT_DIM,
+                        color=TEXT_MUTED,
                         font_family=FONT_TEXT,
                         opacity=0.8,
                     ),
                 ],
                 horizontal_alignment=ft.CrossAxisAlignment.CENTER,
-                spacing=8,
+                spacing=SPACE_2,
             ),
             alignment=ft.Alignment.CENTER,
             visible=visible,
@@ -344,7 +345,7 @@ class LayoutController:
             num_txt = ft.Text(
                 num,
                 size=FS_META,
-                color=TEXT_DIM,
+                color=TEXT_MUTED,
                 font_family=mono_family("light"),
                 opacity=1.0,
             )
@@ -379,7 +380,7 @@ class LayoutController:
         step_controls: list[ft.Control] = []
         for idx, (box, _, _) in enumerate(ui._step_items):
             if idx > 0:
-                step_controls.append(app_icon(PIcons.CARET_RIGHT, size=12, color=TEXT_DIM))
+                step_controls.append(app_icon(PIcons.CARET_RIGHT, size=12, color=DECOR_LINE))
             step_controls.append(box)
         ui._steps_strip = ft.Row(
             controls=step_controls,
@@ -435,7 +436,7 @@ class LayoutController:
 
         ui._auth_yt = app_icon_button(
             glyph=PIcons.YOUTUBE_LOGO,
-            icon_color=TEXT_DIM,
+            icon_color=DECOR_LINE,
             size=16,
             tooltip="YouTube Music · clic = validar sesión ahora",
             on_click=lambda _: asyncio.create_task(ui._on_auth_probe("YouTube Music")),
@@ -444,7 +445,7 @@ class LayoutController:
         )
         ui._auth_am = app_icon_button(
             glyph=PIcons.APPLE_LOGO,
-            icon_color=TEXT_DIM,
+            icon_color=DECOR_LINE,
             size=16,
             tooltip="Apple Music · clic = validar sesión ahora",
             on_click=lambda _: asyncio.create_task(ui._on_auth_probe("Apple Music")),
@@ -453,7 +454,7 @@ class LayoutController:
         )
         ui._auth_sp = app_icon_button(
             glyph=PIcons.SPOTIFY_LOGO,
-            icon_color=TEXT_DIM,
+            icon_color=DECOR_LINE,
             size=16,
             tooltip="Spotify · clic = validar sesión ahora",
             on_click=lambda _: asyncio.create_task(ui._on_auth_probe("Spotify")),
@@ -462,7 +463,7 @@ class LayoutController:
         )
         ui._auth_strip = ft.Row(
             controls=[ui._auth_yt, ui._auth_am, ui._auth_sp],
-            spacing=2,
+            spacing=SPACE_1,
             vertical_alignment=ft.CrossAxisAlignment.CENTER,
         )
 
@@ -471,7 +472,7 @@ class LayoutController:
             label_style=ft.TextStyle(color=TEXT_MUTED, size=FS_META, font_family=FONT_HEADLINE),
             fill_color={ft.ControlState.SELECTED: ACCENT},
             check_color=ON_ACCENT,
-            border_side=ft.BorderSide(1.5, TEXT_DIM),
+            border_side=ft.BorderSide(1.5, DECOR_LINE),
             on_change=lambda _: ui.state.toggle_select_all(),
         )
 
@@ -482,7 +483,7 @@ class LayoutController:
             "", size=FS_META, color=TEXT_MUTED, font_family=mono_family("light"), opacity=0.8
         )
         ui._content_eta_label = ft.Text(
-            "", size=FS_META, color=TEXT_DIM, font_family=mono_family("light"), opacity=0.65
+            "", size=FS_META, color=TEXT_MUTED, font_family=mono_family("light"), opacity=0.65
         )
         ui._content_progress = ft.Container(
             content=ft.Column(
@@ -490,7 +491,7 @@ class LayoutController:
                     ui._content_progress_bar,
                     ft.Row(
                         [ui._content_prog_label, ft.Container(expand=True), ui._content_eta_label],
-                        spacing=0,
+                        spacing=SPACE_0,
                     ),
                 ],
                 spacing=SPACE_1,
@@ -504,7 +505,7 @@ class LayoutController:
 
         ui._clear_session_btn = app_icon_button(
             glyph=PIcons.TRASH,
-            icon_color=TEXT_DIM,
+            icon_color=DECOR_LINE,
             size=16,
             tooltip="Limpiar playlist cargada",
             on_click=ui._on_clear_session,
@@ -541,7 +542,7 @@ class LayoutController:
                     ft.Text(
                         "DESTINO",
                         size=FS_META,
-                        color=TEXT_DIM,
+                        color=TEXT_MUTED,
                         font_family=FONT_HEADLINE_BOLD,
                     ),
                     ui._route_dst_text,
@@ -563,7 +564,7 @@ class LayoutController:
                     ft.Text(
                         "ORIGEN",
                         size=FS_META,
-                        color=TEXT_DIM,
+                        color=TEXT_MUTED,
                         font_family=FONT_HEADLINE_BOLD,
                     ),
                     ui._route_src_text,
@@ -629,7 +630,7 @@ class LayoutController:
             ctrl = ft.Text(
                 text,
                 size=FS_META,
-                color=TEXT_DIM,
+                color=TEXT_MUTED,
                 font_family=FONT_HEADLINE_BOLD,
                 style=ft.TextStyle(letter_spacing=0.6),
                 text_align=ft.TextAlign.CENTER if center else ft.TextAlign.LEFT,
@@ -688,7 +689,7 @@ class LayoutController:
         ui._list_view = ft.ListView(
             item_extent=ITEM_H,
             cache_extent=ITEM_H * 8,
-            spacing=0,
+            spacing=SPACE_0,
             expand=True,
             padding=ft.Padding.only(bottom=20),
         )
@@ -699,7 +700,7 @@ class LayoutController:
         ui._skeleton_view = ft.ListView(
             item_extent=ITEM_H,
             cache_extent=ITEM_H * 8,
-            spacing=0,
+            spacing=SPACE_0,
             expand=True,
             controls=ui._skeletons,
             visible=True,
@@ -711,7 +712,7 @@ class LayoutController:
         ui._empty_hint_text = ft.Text(
             "Introduce el ID o la URL en el panel izquierdo y pulsa «Cargar».",
             size=12,
-            color=TEXT_DIM,
+            color=TEXT_MUTED,
             font_family=FONT_TEXT,
             opacity=1.0,
             text_align=ft.TextAlign.CENTER,
@@ -721,7 +722,7 @@ class LayoutController:
             content=ft.Column(
                 controls=[
                     ft.Container(
-                        content=app_icon(PIcons.PLAYLIST, size=44, color=TEXT_DIM),
+                        content=app_icon(PIcons.PLAYLIST, size=44, color=DECOR_LINE),
                         bgcolor=BG_INSET,
                         border=ft.Border.all(0.8, BORDER_CONTROL),
                         border_radius=RADIUS_SM,
@@ -760,7 +761,7 @@ class LayoutController:
                     ui._error_text,
                 ],
                 horizontal_alignment=ft.CrossAxisAlignment.CENTER,
-                spacing=8,
+                spacing=SPACE_2,
             ),
             alignment=ft.Alignment.CENTER,
             visible=False,
@@ -770,12 +771,12 @@ class LayoutController:
         ui._preview_list_view = ft.ListView(
             item_extent=ITEM_H,
             cache_extent=ITEM_H * 8,
-            spacing=0,
+            spacing=SPACE_0,
             expand=True,
             padding=ft.Padding.only(bottom=20),
         )
         ui._preview_count = ft.Text(
-            "", size=10, color=TEXT_MUTED, font_family=mono_family("light"), opacity=1.0
+            "", size=FS_META, color=TEXT_MUTED, font_family=mono_family("light"), opacity=1.0
         )
         ui._preview_empty = self._make_cono_empty(
             "Preview vacío", "Marca canciones y organiza para ver cómo se va a pasar.", visible=False
@@ -790,7 +791,7 @@ class LayoutController:
         ui._preview_skeleton_view = ft.ListView(
             item_extent=ITEM_H,
             cache_extent=ITEM_H * 8,
-            spacing=0,
+            spacing=SPACE_0,
             expand=True,
             controls=ui._preview_skeletons,
             visible=True,
@@ -868,7 +869,7 @@ class LayoutController:
                     ui._lista_subheader,
                     list_stack,
                 ],
-                spacing=0,
+                spacing=SPACE_0,
                 expand=True,
             ),
             padding=ft.Padding.symmetric(horizontal=SPACE_1, vertical=0),
@@ -893,13 +894,13 @@ class LayoutController:
             getattr(ui.state, "dual_mode", "lista"), on_change=_on_mode_change
         )
         ui._division_btn_text = ft.Text("División 1", size=FS_META, color=TEXT_MUTED, font_family=FONT_HEADLINE)
-        ui._division_label = ft.Text("División", size=FS_META, color=TEXT_DIM, font_family=FONT_HEADLINE_BOLD)
+        ui._division_label = ft.Text("División", size=FS_META, color=TEXT_MUTED, font_family=FONT_HEADLINE_BOLD)
         ui._division_popup = ft.PopupMenuButton(
             content=ft.Row(
                 [
-                    app_icon(PIcons.FUNNEL, size=14, color=TEXT_DIM),
+                    app_icon(PIcons.FUNNEL, size=14, color=DECOR_LINE),
                     ui._division_btn_text,
-                    app_icon(PIcons.CARET_DOWN, size=14, color=TEXT_DIM),
+                    app_icon(PIcons.CARET_DOWN, size=14, color=DECOR_LINE),
                 ],
                 spacing=SPACE_1,
                 tight=True,
@@ -915,7 +916,7 @@ class LayoutController:
             tooltip="División activa — cambia preview",
             visible=False,
         )
-        ui._division_col = ft.Column([ui._division_label, ui._division_popup], spacing=0, tight=True)
+        ui._division_col = ft.Column([ui._division_label, ui._division_popup], spacing=SPACE_0, tight=True)
         ui._partition_dd = None
         ui._partition_btn = _ghost_btn(
             "Todos", PIcons.FUNNEL, lambda _: ui._open_partition_picker()
@@ -931,24 +932,24 @@ class LayoutController:
         )
         ui._mode_bar = ft.Row(
             [
-                ft.Text("Vista:", size=10, color=TEXT_MUTED, font_family=FONT_HEADLINE),
+                ft.Text("Vista:", size=FS_META, color=TEXT_MUTED, font_family=FONT_HEADLINE),
                 ui._mode_seg,
                 ft.VerticalDivider(width=1, color=BORDER_MUTED),
-                app_icon(PIcons.GIT_BRANCH, size=14, color=TEXT_DIM),
+                app_icon(PIcons.GIT_BRANCH, size=14, color=DECOR_LINE),
                 ui._division_col,
                 ui._edit_division_btn,
                 ft.Container(expand=True),
                 app_icon_button(
                     glyph=PIcons.X,
                     size=14,
-                    icon_color=TEXT_DIM,
+                    icon_color=DECOR_LINE,
                     tooltip="Cerrar doble vista",
                     on_click=lambda _: ui.state.set_show_dual(False),
                     width=24,
                     height=24,
                 ),
             ],
-            spacing=8,
+            spacing=SPACE_2,
             vertical_alignment=ft.CrossAxisAlignment.CENTER,
             visible=False,
         )
@@ -991,7 +992,7 @@ class LayoutController:
                 controls=[
                     ft.Column(
                         controls=[ui._footer_summary, ui._footer_sub],
-                        spacing=2,
+                        spacing=SPACE_1,
                         alignment=ft.MainAxisAlignment.CENTER,
                         expand=True,
                     ),
@@ -1040,7 +1041,7 @@ class LayoutController:
                 else:
                     box.bgcolor = BG_INSET
                     box.border = ft.Border.all(0.8, BORDER_MUTED)
-                    num_txt.color = TEXT_DIM
+                    num_txt.color = TEXT_MUTED
                     lbl_txt.color = TEXT_MUTED
 
         # 2. Ruta origen -> destino
@@ -1187,7 +1188,7 @@ class LayoutController:
         ui = self._ui
         ui._panel_gestion = ft.Row(
             controls=[ui._sidebar, ui._content],
-            spacing=0,
+            spacing=SPACE_0,
             expand=True,
             vertical_alignment=ft.CrossAxisAlignment.STRETCH,
         )
@@ -1321,13 +1322,13 @@ class LayoutController:
                             ui._module_stack,
                             ui.player_queue,
                         ],
-                        spacing=0,
+                        spacing=SPACE_0,
                         expand=True,
                         vertical_alignment=ft.CrossAxisAlignment.STRETCH,
                     ),
                     ui.player_bar,
                 ],
-                spacing=0,
+                spacing=SPACE_0,
                 expand=True,
             ),
             bgcolor=BG_LIST,

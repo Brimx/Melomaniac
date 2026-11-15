@@ -13,14 +13,19 @@ from ui.theme.tokens import (
     BG_SURFACE,
     BORDER_MUTED,
     CHIP_BG,
+    DECOR_LINE,
+    FS_META,
     MOTION_HOVER_MS,
     OVERLAY_08,
     PLAYER_PROGRESS_ANIM_MS,
     PLAYER_PROGRESS_H,
     PLAYER_THUMB_SIZE,
-    RADIUS_BUTTON,
-    RADIUS_INPUT,
-    TEXT_DIM,
+    RADIUS_SHARP,
+    RADIUS_SM,
+    SPACE_0,
+    SPACE_1,
+    SPACE_2,
+    SPACE_3,
     TEXT_MUTED,
     TEXT_PRIMARY,
 )
@@ -36,13 +41,13 @@ def build_player_bar_layout(bar, *, default_track_width: float = 240.0) -> None:
 
 def _build_now_playing_section(bar) -> ft.Container:
     # [thumb]
-    bar._thumb_icon = app_icon(PIcons.DISC, size=18, color=TEXT_DIM)
+    bar._thumb_icon = app_icon(PIcons.DISC, size=18, color=DECOR_LINE)
     bar._thumb_img = ft.Image(
         src="",
         width=PLAYER_THUMB_SIZE,
         height=PLAYER_THUMB_SIZE,
         fit=ft.BoxFit.COVER,
-        border_radius=RADIUS_INPUT,
+        border_radius=RADIUS_SHARP,
         visible=False,
     )
     def _on_thumb_hover(e: ft.HoverEvent) -> None:
@@ -55,7 +60,7 @@ def _build_now_playing_section(bar) -> ft.Container:
         height=PLAYER_THUMB_SIZE,
         bgcolor=BG_SURFACE,
         border=ft.Border.all(0.8, BORDER_MUTED),
-        border_radius=RADIUS_INPUT,
+        border_radius=RADIUS_SHARP,
         alignment=ft.Alignment.CENTER,
         ink=True,
         tooltip="Abrir escena Reproduciendo",
@@ -86,7 +91,7 @@ def _build_now_playing_section(bar) -> ft.Container:
         width=190,
         content=ft.Column(
             controls=[bar._title_txt, bar._artist_txt],
-            spacing=1,
+            spacing=SPACE_0,
             alignment=ft.MainAxisAlignment.CENTER,
         ),
     )
@@ -94,14 +99,14 @@ def _build_now_playing_section(bar) -> ft.Container:
     # [badge formato]
     bar._badge_txt = app_text(
         "—",
-        size=10,
+        size=FS_META,
         color=TEXT_MUTED,
         font_family=mono_family("medium"),
     )
     bar._badge_box = ft.Container(
         bgcolor=CHIP_BG,
         border=ft.Border.all(0.8, BORDER_MUTED),
-        border_radius=6,
+        border_radius=RADIUS_SM,
         padding=ft.Padding.symmetric(horizontal=8, vertical=4),
         content=bar._badge_txt,
         tooltip="Formato real del archivo",
@@ -144,7 +149,7 @@ def _build_transport_and_progress_section(bar, *, default_track_width: float = 2
     )
     bar._transport_row = ft.Row(
         controls=[bar._prev_btn, bar._play_btn, bar._next_btn],
-        spacing=4,
+        spacing=SPACE_1,
         vertical_alignment=ft.CrossAxisAlignment.CENTER,
         tight=True,
     )
@@ -211,7 +216,7 @@ def _build_volume_and_queue_section(bar) -> ft.Row:
     )
     vol_row = ft.Row(
         controls=[bar._mute_btn, bar._vol_slider],
-        spacing=0,
+        spacing=SPACE_0,
         vertical_alignment=ft.CrossAxisAlignment.CENTER,
         tight=True,
     )
@@ -238,7 +243,7 @@ def _build_volume_and_queue_section(bar) -> ft.Row:
     bar._queue_icon = app_icon(PIcons.QUEUE, size=16, color=TEXT_PRIMARY)
     bar._queue_count_txt = app_text(
         "0",
-        size=10,
+        size=FS_META,
         color=TEXT_MUTED,
         font_family=mono_family("medium"),
     )
@@ -252,7 +257,7 @@ def _build_volume_and_queue_section(bar) -> ft.Row:
     bar._queue_btn = ft.Container(
         bgcolor=OVERLAY_08,
         border=ft.Border.all(0.8, BORDER_MUTED),
-        border_radius=RADIUS_BUTTON,
+        border_radius=RADIUS_SHARP,
         padding=ft.Padding.symmetric(horizontal=10, vertical=0),
         height=32,
         alignment=ft.Alignment.CENTER,
@@ -265,7 +270,7 @@ def _build_volume_and_queue_section(bar) -> ft.Row:
                 bar._queue_icon,
                 bar._queue_count_txt,
             ],
-            spacing=6,
+            spacing=SPACE_2,
             alignment=ft.MainAxisAlignment.CENTER,
             vertical_alignment=ft.CrossAxisAlignment.CENTER,
             tight=True,
@@ -288,7 +293,7 @@ def _assemble_bar_row(bar, meta_col: ft.Container, vol_row: ft.Row) -> None:
             bar._repeat_btn,
             bar._queue_btn,
         ],
-        spacing=10,
+        spacing=SPACE_3,
         vertical_alignment=ft.CrossAxisAlignment.CENTER,
         expand=True,
     )
