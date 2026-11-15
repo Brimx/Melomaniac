@@ -12,6 +12,35 @@ import time
 from core.models import Track, TransferState
 
 
+def build_lyrics_download_options() -> dict:
+    """Kwargs de letras para ``download_audio`` según ``settings_store``.
+
+    Devuelve ``{}`` si ni ``.lrc`` ni incrustar están activos; nunca lanza.
+    """
+    try:
+        from services import settings_store
+
+        save_lrc = bool(settings_store.get_lyrics_save_lrc())
+        embed = bool(settings_store.get_lyrics_embed_tags())
+        if not (save_lrc or embed):
+            return {}
+        from services import lyrics as lyrics_svc
+
+        def _fetch(t):
+            return lyrics_svc.get_lyrics(
+                t,
+                title=t.name,
+                artist=t.artist,
+                album=getattr(t, "album", ""),
+                duration_ms=int(getattr(t, "duration_ms", 0) or 0),
+                allow_network=True,
+            )
+
+        return {"lyrics_fetcher": _fetch, "save_lrc": save_lrc, "embed_lyrics": embed}
+    except Exception:  # noqa: BLE001 - las letras nunca bloquean la cola
+        return {}
+
+
 class DownloadRunner:
     """Descargas con yt-dlp: cola, pausa, reintentos y manifiesto."""
 
@@ -552,6 +581,8 @@ class DownloadRunner:
         except Exception as exc:  # noqa: BLE001 - portadas nunca bloquean la cola
             self._state._log(f"[WARN] Portadas online no disponibles: {exc}")
 
+        lyrics_opts = build_lyrics_download_options()
+
         local_folders_arg: tuple[str, ...] = ()
         try:
             from services import settings_store
@@ -650,6 +681,7 @@ class DownloadRunner:
                             skip_existing=True,
                             pause_event=pause,
                             video_id=job_pinned_video_id,
+                            **lyrics_opts,
                         )
                     except Exception as exc:  # noqa: BLE001 - nunca debe tumbar la cola
                         result = None
