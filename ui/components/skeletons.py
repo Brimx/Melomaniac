@@ -12,9 +12,13 @@ from ui.theme.fonts import mono_family
 from ui.theme.tokens import (
     BG_SURFACE,
     BORDER_ROW,
+    FS_META,
     MOTION_REVEAL_MS,
     MOTION_SKELETON_MS,
+    RADIUS_SHARP,
+    RADIUS_SM,
     SKELETON_DARK,
+    SPACE_4,
     TEXT_MUTED,
 )
 
@@ -79,7 +83,7 @@ class _BaseSkeletonRow(ft.Container):
 
         self._reveal_text = ft.Text(
             "",
-            size=10,
+            size=FS_META,
             color=TEXT_MUTED,
             font_family=mono_family("light"),
             opacity=1.0,
@@ -224,17 +228,17 @@ class SkeletonRow(_BaseSkeletonRow):
 
     def __init__(self, _index: int, *, reduced_motion: bool | None = None):
         # placeholders — dentro de Shimmer serán animados por gradiente; bgcolor es base
-        self._num = ft.Container(width=28, height=10, border_radius=3, bgcolor=BG_SURFACE)
-        self._thumb = ft.Container(width=55, height=55, border_radius=8, bgcolor=BG_SURFACE)
-        self._title = ft.Container(expand=3, height=10, border_radius=3, bgcolor=BG_SURFACE)
-        self._album = ft.Container(expand=2, height=10, border_radius=3, bgcolor=BG_SURFACE)
-        self._dur = ft.Container(width=48, height=10, border_radius=3, bgcolor=BG_SURFACE)
-        self._status = ft.Container(width=26, height=10, border_radius=3, bgcolor=BG_SURFACE)
-        self._chk = ft.Container(width=32, height=18, border_radius=4, bgcolor=BG_SURFACE)
+        self._num = ft.Container(width=28, height=10, border_radius=RADIUS_SHARP, bgcolor=BG_SURFACE)
+        self._thumb = ft.Container(width=55, height=55, border_radius=RADIUS_SM, bgcolor=BG_SURFACE)
+        self._title = ft.Container(expand=3, height=10, border_radius=RADIUS_SHARP, bgcolor=BG_SURFACE)
+        self._album = ft.Container(expand=2, height=10, border_radius=RADIUS_SHARP, bgcolor=BG_SURFACE)
+        self._dur = ft.Container(width=48, height=10, border_radius=RADIUS_SHARP, bgcolor=BG_SURFACE)
+        self._status = ft.Container(width=26, height=10, border_radius=RADIUS_SHARP, bgcolor=BG_SURFACE)
+        self._chk = ft.Container(width=32, height=18, border_radius=RADIUS_SHARP, bgcolor=BG_SURFACE)
 
         _row = ft.Row(
             controls=[self._num, self._thumb, self._title, self._album, self._dur, self._status, self._chk],
-            spacing=16, vertical_alignment=ft.CrossAxisAlignment.CENTER,
+            spacing=SPACE_4, vertical_alignment=ft.CrossAxisAlignment.CENTER,
         )
         super().__init__(
             _index,
@@ -252,14 +256,14 @@ class PreviewSkeletonRow(_BaseSkeletonRow):
     """
 
     def __init__(self, _index: int, *, reduced_motion: bool | None = None):
-        self._num = ft.Container(width=28, height=10, border_radius=3, bgcolor=BG_SURFACE)
-        self._thumb = ft.Container(width=55, height=55, border_radius=8, bgcolor=BG_SURFACE)
-        self._title = ft.Container(expand=3, height=10, border_radius=3, bgcolor=BG_SURFACE)
-        self._album = ft.Container(expand=2, height=10, border_radius=3, bgcolor=BG_SURFACE)
-        self._dur = ft.Container(width=48, height=10, border_radius=3, bgcolor=BG_SURFACE)
+        self._num = ft.Container(width=28, height=10, border_radius=RADIUS_SHARP, bgcolor=BG_SURFACE)
+        self._thumb = ft.Container(width=55, height=55, border_radius=RADIUS_SM, bgcolor=BG_SURFACE)
+        self._title = ft.Container(expand=3, height=10, border_radius=RADIUS_SHARP, bgcolor=BG_SURFACE)
+        self._album = ft.Container(expand=2, height=10, border_radius=RADIUS_SHARP, bgcolor=BG_SURFACE)
+        self._dur = ft.Container(width=48, height=10, border_radius=RADIUS_SHARP, bgcolor=BG_SURFACE)
         _row = ft.Row(
             controls=[self._num, self._thumb, self._title, self._album, self._dur],
-            spacing=16, vertical_alignment=ft.CrossAxisAlignment.CENTER,
+            spacing=SPACE_4, vertical_alignment=ft.CrossAxisAlignment.CENTER,
         )
         super().__init__(
             _index,
@@ -281,15 +285,15 @@ class LibrarySkeletonRow(_BaseSkeletonRow):
     """
 
     def __init__(self, _index: int, *, reduced_motion: bool | None = None):
-        self._num = ft.Container(width=28, height=10, border_radius=3, bgcolor=BG_SURFACE)
-        self._thumb = ft.Container(width=48, height=48, border_radius=6, bgcolor=BG_SURFACE)
-        self._title = ft.Container(expand=3, height=10, border_radius=3, bgcolor=BG_SURFACE)
-        self._album = ft.Container(expand=2, height=10, border_radius=3, bgcolor=BG_SURFACE)
-        self._dur = ft.Container(width=48, height=10, border_radius=3, bgcolor=BG_SURFACE)
-        self._action = ft.Container(width=32, height=10, border_radius=3, bgcolor=BG_SURFACE)
+        self._num = ft.Container(width=28, height=10, border_radius=RADIUS_SHARP, bgcolor=BG_SURFACE)
+        self._thumb = ft.Container(width=48, height=48, border_radius=RADIUS_SM, bgcolor=BG_SURFACE)
+        self._title = ft.Container(expand=3, height=10, border_radius=RADIUS_SHARP, bgcolor=BG_SURFACE)
+        self._album = ft.Container(expand=2, height=10, border_radius=RADIUS_SHARP, bgcolor=BG_SURFACE)
+        self._dur = ft.Container(width=48, height=10, border_radius=RADIUS_SHARP, bgcolor=BG_SURFACE)
+        self._action = ft.Container(width=32, height=10, border_radius=RADIUS_SHARP, bgcolor=BG_SURFACE)
         _row = ft.Row(
             controls=[self._num, self._thumb, self._title, self._album, self._dur, self._action],
-            spacing=16, vertical_alignment=ft.CrossAxisAlignment.CENTER,
+            spacing=SPACE_4, vertical_alignment=ft.CrossAxisAlignment.CENTER,
         )
         super().__init__(
             _index,

@@ -21,10 +21,14 @@ from ui.theme.tokens import (
     BG_LIST,
     BG_SURFACE,
     BORDER_ROW,
+    DECOR_LINE,
     MOTION_HOVER_MS,
     OVERLAY_14,
+    RADIUS_PILL,
+    RADIUS_SM,
     SKELETON_DARK,
-    TEXT_DIM,
+    SPACE_0,
+    SPACE_4,
     TEXT_MUTED,
     TEXT_PRIMARY,
 )
@@ -145,7 +149,7 @@ def build_detail_track_row(
     thumb = ft.Container(
         width=48,
         height=48,
-        border_radius=6,
+        border_radius=RADIUS_SM,
         bgcolor=SKELETON_DARK,
         clip_behavior=ft.ClipBehavior.ANTI_ALIAS,
         content=_thumb_content_for(track.img_url, box=48, icon_size=16),
@@ -174,7 +178,7 @@ def build_detail_track_row(
         max_lines=1,
         overflow=ft.TextOverflow.ELLIPSIS,
     )
-    dur = ft.Text(track.duration, size=11, color=TEXT_DIM, font_family=mono_family("light"))
+    dur = ft.Text(track.duration, size=11, color=TEXT_MUTED, font_family=mono_family("light"))
 
     chk = ft.Checkbox(
         value=id(track) in view._selected_ids,
@@ -184,7 +188,7 @@ def build_detail_track_row(
             ft.ControlState.DEFAULT: BG_SURFACE,
         },
         check_color=TEXT_PRIMARY,
-        border_side=ft.BorderSide(1.5, TEXT_DIM),
+        border_side=ft.BorderSide(1.5, DECOR_LINE),
         on_change=lambda _e, tr=track: view.toggle_track_selection(tr),
     )
     view._row_checkboxes[id(track)] = chk
@@ -203,7 +207,7 @@ def build_detail_track_row(
         ),
         width=32,
         height=32,
-        border_radius=16,
+        border_radius=RADIUS_PILL,
         bgcolor=ft.Colors.TRANSPARENT,
         alignment=ft.Alignment.CENTER,
         scale=1.0,
@@ -250,7 +254,7 @@ def build_detail_track_row(
             thumb,
             ft.Column(
                 controls=[title, artist],
-                spacing=1,
+                spacing=SPACE_0,
                 expand=3,
                 tight=True,
                 alignment=ft.MainAxisAlignment.CENTER,
@@ -260,7 +264,7 @@ def build_detail_track_row(
             action_icon,
             menu_btn,
         ],
-        spacing=16,
+        spacing=SPACE_4,
         vertical_alignment=ft.CrossAxisAlignment.CENTER,
     )
 

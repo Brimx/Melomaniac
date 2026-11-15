@@ -17,8 +17,8 @@ from ui.theme.icons import PIcons
 from ui.components.song_row import _thumb_content_for
 from ui.theme.tokens import (
     ACCENT, BG_DEEP, BG_HOVER, BG_SURFACE, BORDER_LIGHT, BORDER_MUTED,
-    ERROR_COL, SKELETON_DARK, TEXT_MUTED, TEXT_PRIMARY, WARNING,
-    MOTION_HOVER_MS,
+    ERROR_COL, FS_META, MOTION_HOVER_MS, RADIUS_SHARP, RADIUS_SM,
+    SKELETON_DARK, SPACE_0, SPACE_1, SPACE_2, TEXT_MUTED, TEXT_PRIMARY, WARNING,
 )
 from ui.components.widgets import (
     control_page,
@@ -77,7 +77,7 @@ def _build_obi_strip(label: str, cover_size: int = 140) -> ft.Control:
         top=(cover_size - strip_w) / 2,
         content=ft.Text(
             label,
-            size=8,
+            size=FS_META,
             color=BG_SURFACE,
             font_family=mono_family("regular"),
             max_lines=1,
@@ -91,7 +91,7 @@ def _cover_single(url: str, size: int = 140) -> ft.Container:
     return ft.Container(
         width=size,
         height=size,
-        border_radius=8,
+        border_radius=RADIUS_SM,
         bgcolor=SKELETON_DARK,
         border=ft.Border.all(1, BORDER_MUTED),
         clip_behavior=ft.ClipBehavior.ANTI_ALIAS,
@@ -106,17 +106,17 @@ def _cover_grid(urls: list[str], size: int = 140) -> ft.Container:
     for i in range(4):
         url = urls[i] if i < len(urls) else ""
         c = _thumb_content_for(url, box=(size - 2) // 2, icon_size=16)
-        cells.append(ft.Container(expand=True, bgcolor=SKELETON_DARK, clip_behavior=ft.ClipBehavior.ANTI_ALIAS, border_radius=4, alignment=ft.Alignment.CENTER, content=c))
+        cells.append(ft.Container(expand=True, bgcolor=SKELETON_DARK, clip_behavior=ft.ClipBehavior.ANTI_ALIAS, border_radius=RADIUS_SHARP, alignment=ft.Alignment.CENTER, content=c))
     return ft.Container(
         width=size,
         height=size,
-        border_radius=8,
+        border_radius=RADIUS_SM,
         border=ft.Border.all(1, BORDER_MUTED),
         clip_behavior=ft.ClipBehavior.ANTI_ALIAS,
         content=ft.Column(controls=[
-            ft.Row(controls=cells[0:2], spacing=2, expand=True),
-            ft.Row(controls=cells[2:4], spacing=2, expand=True),
-        ], spacing=2, expand=True),
+            ft.Row(controls=cells[0:2], spacing=SPACE_1, expand=True),
+            ft.Row(controls=cells[2:4], spacing=SPACE_1, expand=True),
+        ], spacing=SPACE_1, expand=True),
     )
 
 
@@ -155,9 +155,9 @@ class PlaylistCard(ft.Container):
 
         badge = None
         if state == LibraryLoadState.STALE:
-            badge = ft.Container(content=ft.Text("CACHÉ", size=8, color=TEXT_PRIMARY, font_family=FONT_HEADLINE_BOLD), bgcolor=ft.Colors.with_opacity(0.85, WARNING), padding=ft.Padding.symmetric(horizontal=6, vertical=2), border_radius=6)
+            badge = ft.Container(content=ft.Text("CACHÉ", size=FS_META, color=TEXT_PRIMARY, font_family=FONT_HEADLINE_BOLD), bgcolor=ft.Colors.with_opacity(0.85, WARNING), padding=ft.Padding.symmetric(horizontal=6, vertical=2), border_radius=RADIUS_SM)
         elif state == LibraryLoadState.ERROR:
-            badge = ft.Container(content=ft.Text("ERROR", size=8, color=TEXT_PRIMARY, font_family=FONT_HEADLINE_BOLD), bgcolor=ft.Colors.with_opacity(0.85, ERROR_COL), padding=ft.Padding.symmetric(horizontal=6, vertical=2), border_radius=6)
+            badge = ft.Container(content=ft.Text("ERROR", size=FS_META, color=TEXT_PRIMARY, font_family=FONT_HEADLINE_BOLD), bgcolor=ft.Colors.with_opacity(0.85, ERROR_COL), padding=ft.Padding.symmetric(horizontal=6, vertical=2), border_radius=RADIUS_SM)
 
         stack_controls: list[ft.Control] = [self._cover_box]
         obi_text = _obi_label_for(summary.platform, obi_label)
@@ -191,7 +191,7 @@ class PlaylistCard(ft.Container):
 
         meta_line1 = ft.Text(
             line1_text,
-            size=10,
+            size=FS_META,
             color=TEXT_MUTED,
             font_family=mono_family("regular"),
             max_lines=1,
@@ -199,7 +199,7 @@ class PlaylistCard(ft.Container):
         )
         meta_line2 = ft.Text(
             line2_val,
-            size=10,
+            size=FS_META,
             color=TEXT_MUTED,
             font_family=mono_family("regular"),
             max_lines=1,
@@ -217,14 +217,14 @@ class PlaylistCard(ft.Container):
         )
         footer = ft.Row(
             controls=[
-                ft.Column(controls=[meta_line1, meta_line2], spacing=1, tight=True, expand=True),
+                ft.Column(controls=[meta_line1, meta_line2], spacing=SPACE_0, tight=True, expand=True),
                 self._menu_btn,
             ],
-            spacing=4,
+            spacing=SPACE_1,
             vertical_alignment=ft.CrossAxisAlignment.END,
         )
 
-        col = ft.Column(controls=[cover_stack, name, footer], spacing=6, tight=True)
+        col = ft.Column(controls=[cover_stack, name, footer], spacing=SPACE_2, tight=True)
         content = wrap_with_context_menu(
             col,
             self.context_actions,
@@ -236,7 +236,7 @@ class PlaylistCard(ft.Container):
             width=160,
             bgcolor=BG_SURFACE,
             border=ft.Border.all(0.8, BORDER_MUTED),
-            border_radius=12,
+            border_radius=RADIUS_SM,
             padding=ft.Padding.all(10),
             ink=True,
             on_click=lambda e: on_tap(summary) if on_tap else None,

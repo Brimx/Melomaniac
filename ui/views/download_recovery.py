@@ -34,9 +34,11 @@ from ui.theme.tokens import (
     BORDER_MUTED,
     BORDER_ROW,
     ERROR_COL,
-    RADIUS_INPUT,
+    FS_META,
+    SPACE_0,
+    SPACE_2,
+    SPACE_3,
     SUCCESS,
-    TEXT_DIM,
     TEXT_MUTED,
     TEXT_PRIMARY,
 )
@@ -288,14 +290,14 @@ def build_history_row(
                 ft.Container(
                     width=56,
                     content=app_text(
-                        ext, size=10, color=TEXT_MUTED, font_family=mono_family("light")
+                        ext, size=FS_META, color=TEXT_MUTED, font_family=mono_family("light")
                     ),
                 ),
                 ft.Container(
                     width=72,
                     content=app_text(
                         fmt_size(size),
-                        size=10,
+                        size=FS_META,
                         color=TEXT_MUTED,
                         font_family=mono_family("light"),
                     ),
@@ -304,13 +306,13 @@ def build_history_row(
                     width=110,
                     content=app_text(
                         datetime.fromtimestamp(mtime).strftime("%Y-%m-%d %H:%M"),
-                        size=10,
-                        color=TEXT_DIM,
+                        size=FS_META,
+                        color=TEXT_MUTED,
                         font_family=mono_family("light"),
                     ),
                 ),
             ],
-            spacing=10,
+            spacing=SPACE_3,
             vertical_alignment=ft.CrossAxisAlignment.CENTER,
         ),
     )
@@ -426,22 +428,22 @@ def build_result_row(
                         ),
                         app_text(
                             detail,
-                            size=10,
+                            size=FS_META,
                             color=TEXT_MUTED,
                             font_family=FONT_TEXT,
                             max_lines=1,
                             overflow=ft.TextOverflow.ELLIPSIS,
                         ),
                     ],
-                    spacing=1,
+                    spacing=SPACE_0,
                     expand=True,
                 ),
                 ft.Container(
                     width=118,
                     content=app_text(
                         meta,
-                        size=10,
-                        color=TEXT_DIM,
+                        size=FS_META,
+                        color=TEXT_MUTED,
                         font_family=mono_family("light"),
                         max_lines=1,
                         overflow=ft.TextOverflow.ELLIPSIS,
@@ -449,7 +451,7 @@ def build_result_row(
                 ),
                 *actions,
             ],
-            spacing=10,
+            spacing=SPACE_3,
             vertical_alignment=ft.CrossAxisAlignment.CENTER,
         ),
     )
@@ -487,7 +489,7 @@ async def open_youtube_recovery_dialog(
     format_dd.on_select = _on_fmt_select
 
     sized_body = ft.Container(
-        content=ft.Column(controls=[], spacing=8, tight=True),
+        content=ft.Column(controls=[], spacing=SPACE_2, tight=True),
         width=fixed_width,
         min_width=360,
         max_width=660,

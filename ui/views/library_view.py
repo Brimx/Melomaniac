@@ -19,8 +19,9 @@ from ui.components.playlist_card import PlaylistCard
 from ui.views.playlist_detail_view import PlaylistDetailView
 from ui.theme.tokens import (
     ACCENT, ACCENT_HALO, BG_HOVER, BG_LIST, BG_PANEL, BG_SURFACE,
-    BORDER_LIGHT, BORDER_MUTED, ERROR_COL, MOTION_HOVER_MS, RADIUS_BUTTON,
-    SUCCESS, TEXT_DIM, TEXT_MUTED, TEXT_PRIMARY,
+    BORDER_LIGHT, BORDER_MUTED, ERROR_COL, FS_META, MOTION_HOVER_MS,
+    RADIUS_PILL, RADIUS_SHARP, RADIUS_SM, SPACE_1, SPACE_2, SPACE_3,
+    SUCCESS, TEXT_MUTED, TEXT_PRIMARY,
 )
 from ui.theme.icons import PIcons, app_icon, app_icon_button
 from ui.components.widgets import (
@@ -94,7 +95,7 @@ class LibraryView(ft.Container):
     def _build(self) -> None:
         # selector plataforma
         self._platform_btns = {}
-        self._platform_row = ft.Row(spacing=8, wrap=False)
+        self._platform_row = ft.Row(spacing=SPACE_2, wrap=False)
         self._rebuild_platform_selector()
 
         self._status_text = app_text("", size=11, color=TEXT_MUTED, font_family=mono_family("regular"))
@@ -116,7 +117,7 @@ class LibraryView(ft.Container):
             btn = ft.Container(
                 content=app_text(tab_lbl, size=11, color=TEXT_PRIMARY, font_family=FONT_HEADLINE),
                 padding=ft.Padding.symmetric(horizontal=10, vertical=6),
-                border_radius=RADIUS_BUTTON,
+                border_radius=RADIUS_SHARP,
                 bgcolor=ACCENT_HALO if self._local_tab == tab_key else BG_SURFACE,
                 border=ft.Border.all(0.8, ACCENT if self._local_tab == tab_key else BORDER_MUTED),
                 ink=True,
@@ -125,7 +126,7 @@ class LibraryView(ft.Container):
             self._local_tab_btns[tab_key] = btn
         self._local_seg = ft.Row(
             controls=list(self._local_tab_btns.values()),
-            spacing=6,
+            spacing=SPACE_2,
             visible=self._platform == LOCAL_LIBRARY_LABEL,
         )
 
@@ -144,7 +145,7 @@ class LibraryView(ft.Container):
             chip = ft.Container(
                 content=app_text(flbl, size=11, color=TEXT_PRIMARY if active else TEXT_MUTED, font_family=FONT_HEADLINE),
                 padding=ft.Padding.symmetric(horizontal=10, vertical=6),
-                border_radius=16,
+                border_radius=RADIUS_PILL,
                 bgcolor=ACCENT_HALO if active else BG_SURFACE,
                 border=ft.Border.all(0.8, ACCENT if active else BORDER_MUTED),
                 ink=True,
@@ -168,7 +169,7 @@ class LibraryView(ft.Container):
                 self._result_count_text,
                 self._sort_btn,
             ],
-            spacing=8,
+            spacing=SPACE_2,
             wrap=True,
             vertical_alignment=ft.CrossAxisAlignment.CENTER,
         )
@@ -180,36 +181,36 @@ class LibraryView(ft.Container):
             visible=self._platform == LOCAL_LIBRARY_LABEL and self._local_tab == "playlists",
         )
 
-        self._playlists_row = ft.Row(wrap=True, spacing=12, run_spacing=12)
-        self._grid_row = ft.Row(wrap=True, spacing=12, run_spacing=12)
+        self._playlists_row = ft.Row(wrap=True, spacing=SPACE_3, run_spacing=SPACE_3)
+        self._grid_row = ft.Row(wrap=True, spacing=SPACE_3, run_spacing=SPACE_3)
         self._grid = ft.Column(
             controls=[self._grid_row],
             scroll=ft.ScrollMode.AUTO,
             expand=True,
-            spacing=10,
+            spacing=SPACE_3,
             horizontal_alignment=ft.CrossAxisAlignment.STRETCH,
             visible=True,
         )
         self._empty_title = app_text("Sin playlists cacheadas", size=13, color=TEXT_PRIMARY, font_family=FONT_HEADLINE_BOLD)
         self._empty_sub = app_text("Elige una fuente para sincronizar", size=11, color=TEXT_MUTED, font_family=FONT_TEXT)
         self._empty = ft.Container(expand=True, visible=False, alignment=ft.Alignment.CENTER, content=ft.Column(controls=[
-            app_icon(PIcons.BOOKS, size=48, color=TEXT_DIM),
+            app_icon(PIcons.BOOKS, size=48, color=TEXT_MUTED),
             self._empty_title,
             self._empty_sub,
-        ], horizontal_alignment=ft.CrossAxisAlignment.CENTER, spacing=8))
+        ], horizontal_alignment=ft.CrossAxisAlignment.CENTER, spacing=SPACE_2))
         self._filter_empty = ft.Container(
             expand=True,
             visible=False,
             alignment=ft.Alignment.CENTER,
             content=ft.Column(
                 controls=[
-                    app_icon(PIcons.MAGNIFYING_GLASS, size=42, color=TEXT_DIM),
+                    app_icon(PIcons.MAGNIFYING_GLASS, size=42, color=TEXT_MUTED),
                     app_text("Nada coincide", size=13, color=TEXT_PRIMARY, font_family=FONT_HEADLINE_BOLD),
                     app_text("Prueba quitando algún filtro.", size=11, color=TEXT_MUTED, font_family=FONT_TEXT),
                     _ghost_btn("Limpiar filtros", PIcons.X, lambda _e: self._clear_filters(), height=34),
                 ],
                 horizontal_alignment=ft.CrossAxisAlignment.CENTER,
-                spacing=8,
+                spacing=SPACE_2,
             ),
         )
         self._loading_bar = ft.ProgressBar(visible=False, color=ACCENT, bgcolor=BG_SURFACE)
@@ -229,7 +230,7 @@ class LibraryView(ft.Container):
                 self._add_folder_btn,
                 self._refresh_btn,
             ],
-            spacing=10,
+            spacing=SPACE_3,
             vertical_alignment=ft.CrossAxisAlignment.CENTER,
         )
 
@@ -240,7 +241,7 @@ class LibraryView(ft.Container):
             self._local_legend,
             self._loading_bar,
             ft.Container(expand=True, content=self._list_stack),
-        ], spacing=8, expand=True)
+        ], spacing=SPACE_2, expand=True)
 
         self.content = ft.Container(content=body, padding=ft.Padding.all(12), expand=True)
 
@@ -254,10 +255,10 @@ class LibraryView(ft.Container):
             self._platform_row.controls.clear()
             for plat in SOURCES:
                 icon = PLATFORM_ICONS.get(plat, PIcons.MUSIC_NOTE)
-                ico_ctrl = app_icon(icon, size=18, color=TEXT_DIM, fill=False)
+                ico_ctrl = app_icon(icon, size=18, color=TEXT_MUTED, fill=False)
                 lbl_ctrl = ft.Text(
                     _SHORT_LABELS.get(plat, plat),
-                    size=10,
+                    size=FS_META,
                     color=TEXT_MUTED,
                     font_family=FONT_HEADLINE,
                     max_lines=1,
@@ -267,13 +268,13 @@ class LibraryView(ft.Container):
                 btn = ft.Container(
                     content=ft.Column(
                         controls=[ico_ctrl, lbl_ctrl],
-                        spacing=3,
+                        spacing=SPACE_1,
                         horizontal_alignment=ft.CrossAxisAlignment.CENTER,
                         tight=True,
                     ),
                     bgcolor=BG_SURFACE,
                     border=ft.Border.all(0.8, BORDER_LIGHT),
-                    border_radius=RADIUS_BUTTON,
+                    border_radius=RADIUS_SHARP,
                     padding=ft.Padding.symmetric(horizontal=6, vertical=7),
                     alignment=ft.Alignment.CENTER,
                     ink=True,
@@ -295,7 +296,7 @@ class LibraryView(ft.Container):
                             0.8, ACCENT if hovering else BORDER_LIGHT
                         )
                         container.scale = 1.02 if hovering else 1.0
-                        ico.color = TEXT_PRIMARY if hovering else TEXT_DIM
+                        ico.color = TEXT_PRIMARY if hovering else TEXT_MUTED
                         lbl.color = TEXT_PRIMARY if hovering else TEXT_MUTED
                         try:
                             container.update()
@@ -311,7 +312,7 @@ class LibraryView(ft.Container):
             selected = plat == self._platform
             icon = PLATFORM_ICONS.get(plat, PIcons.MUSIC_NOTE)
             ico_ctrl.value = icon
-            ico_ctrl.color = ACCENT if selected else TEXT_DIM
+            ico_ctrl.color = ACCENT if selected else TEXT_MUTED
             # Sincroniza relleno Phosphor sin reconstruir controles
             from ui.theme.fonts import FONT_PHOSPHOR, FONT_PHOSPHOR_FILL
             ico_ctrl.font_family = FONT_PHOSPHOR_FILL if selected else FONT_PHOSPHOR
@@ -523,14 +524,14 @@ class LibraryView(ft.Container):
                 ft.Container(
                     content=ft.Text(
                         badge_text,
-                        size=8,
+                        size=FS_META,
                         color=TEXT_PRIMARY,
                         font_family=FONT_HEADLINE_BOLD,
                     ),
                     bgcolor=badge_bgcolor,
                     border=ft.Border.all(0.8, badge_border),
                     padding=ft.Padding.symmetric(horizontal=6, vertical=2),
-                    border_radius=6,
+                    border_radius=RADIUS_SM,
                     left=14,
                     top=14,
                 )
@@ -548,7 +549,7 @@ class LibraryView(ft.Container):
                         hover_bgcolor=BG_HOVER,
                         border=ft.Border.all(0.8, BORDER_MUTED),
                         hover_border=ft.Border.all(0.8, ACCENT),
-                        border_radius=13,
+                        border_radius=RADIUS_PILL,
                         icon_color=TEXT_MUTED,
                         hover_color_icon=ACCENT,
                         tooltip="Importar a Local sin descargar",
@@ -571,7 +572,7 @@ class LibraryView(ft.Container):
                         hover_bgcolor=BG_HOVER,
                         border=ft.Border.all(0.8, BORDER_MUTED),
                         hover_border=ft.Border.all(0.8, ERROR_COL),
-                        border_radius=13,
+                        border_radius=RADIUS_PILL,
                         icon_color=TEXT_MUTED,
                         hover_color_icon=ERROR_COL,
                         tooltip="Quitar playlist importada",
@@ -737,7 +738,7 @@ class LibraryView(ft.Container):
         if has_any_cached:
             controls.append(cached_dd)
         controls.extend([url_input, owner_input, status_txt])
-        dlg_body = ft.Column(controls=controls, spacing=10, tight=True)
+        dlg_body = ft.Column(controls=controls, spacing=SPACE_3, tight=True)
 
         dlg: ft.AlertDialog | None = None
         busy = False
@@ -896,7 +897,7 @@ class LibraryView(ft.Container):
                             for summ in recents
                         ],
                         scroll=ft.ScrollMode.AUTO,
-                        spacing=12,
+                        spacing=SPACE_3,
                     )
                 )
                 sections.append(section_label("TODAS LAS PLAYLISTS"))

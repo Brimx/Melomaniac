@@ -16,11 +16,15 @@ from ui.theme.tokens import (
     BG_SURFACE,
     BORDER_LIGHT,
     BORDER_ROW,
+    DECOR_LINE,
     ERROR_COL,
+    FS_META,
     MOTION_HOVER_MS,
     OVERLAY_14,
-    RADIUS_INPUT,
-    TEXT_DIM,
+    RADIUS_SHARP,
+    RADIUS_SM,
+    SPACE_0,
+    SPACE_2,
     TEXT_MUTED,
     TEXT_PRIMARY,
 )
@@ -54,7 +58,7 @@ def _invoke_menu_action(action: ContextMenuAction) -> None:
 
 def _menu_action_color(action: ContextMenuAction) -> str:
     if action.disabled:
-        return TEXT_DIM
+        return DECOR_LINE
     if action.danger:
         return ERROR_COL
     return TEXT_PRIMARY
@@ -104,7 +108,7 @@ def build_popup_menu_items(
             ft.PopupMenuItem(
                 content=ft.Row(
                     controls=row_controls,
-                    spacing=8,
+                    spacing=SPACE_2,
                     tight=True,
                     vertical_alignment=ft.CrossAxisAlignment.CENTER,
                 ),
@@ -167,7 +171,7 @@ def build_context_menu_button(
         width=width,
         height=height,
         alignment=ft.Alignment.CENTER,
-        border_radius=RADIUS_INPUT,
+        border_radius=RADIUS_SHARP,
         bgcolor=ft.Colors.TRANSPARENT,
         tooltip=tooltip,
         scale=1.0,
@@ -267,7 +271,7 @@ def show_context_menu(
                 padding=ft.Padding.symmetric(horizontal=12, vertical=6),
                 content=ft.Text(
                     title,
-                    size=10,
+                    size=FS_META,
                     color=TEXT_MUTED,
                     font_family=FONT_HEADLINE,
                     max_lines=1,
@@ -303,12 +307,12 @@ def show_context_menu(
             height=34,
             margin=ft.Margin.symmetric(horizontal=4),
             padding=ft.Padding.symmetric(horizontal=10, vertical=6),
-            border_radius=6,
+            border_radius=RADIUS_SM,
             bgcolor=ft.Colors.TRANSPARENT,
             animate=ft.Animation(MOTION_HOVER_MS, ft.AnimationCurve.EASE_OUT),
             content=ft.Row(
                 controls=row_controls,
-                spacing=8,
+                spacing=SPACE_2,
                 vertical_alignment=ft.CrossAxisAlignment.CENTER,
             ),
         )
@@ -339,14 +343,14 @@ def show_context_menu(
         width=width,
         bgcolor=BG_SURFACE,
         border=ft.Border.all(0.8, BORDER_LIGHT),
-        border_radius=RADIUS_INPUT,
+        border_radius=RADIUS_SHARP,
         padding=ft.Padding.symmetric(vertical=6),
         shadow=ft.BoxShadow(
             blur_radius=18,
             spread_radius=1,
             color=ft.Colors.with_opacity(0.65, BG_DEEP),
         ),
-        content=ft.Column(controls=card_controls, spacing=0, tight=True),
+        content=ft.Column(controls=card_controls, spacing=SPACE_0, tight=True),
     )
 
     backdrop = ft.GestureDetector(

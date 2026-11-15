@@ -43,9 +43,10 @@ from ui.theme.fonts import font_family_for, mono_family
 from ui.theme.icons import PIcons, app_icon
 from ui.theme.tokens import (
     BG_LIST, BG_HOVER, SKELETON_DARK,
-    TEXT_PRIMARY, TEXT_MUTED, TEXT_DIM,
+    TEXT_PRIMARY, TEXT_MUTED, DECOR_LINE,
     ACCENT, SUCCESS, BG_SURFACE, BORDER_ROW,
     BG_INPUT, BORDER_LIGHT,
+    RADIUS_NONE, RADIUS_PILL, RADIUS_SM, SPACE_0, SPACE_4,
     MOTION_HOVER_MS, MOTION_REVEAL_MS, MOTION_SKELETON_MS,
 )
 from ui.components.context_menu import (
@@ -92,11 +93,11 @@ def _thumb_content_for(
             fit=ft.BoxFit.COVER,
             gapless_playback=True,
             filter_quality=ft.FilterQuality.MEDIUM,
-            error_content=app_icon(PIcons.MUSIC_NOTE, color=TEXT_DIM, size=icon_size),
+            error_content=app_icon(PIcons.MUSIC_NOTE, color=DECOR_LINE, size=icon_size),
             **size,
         )
     return ft.Container(
-        content=app_icon(PIcons.MUSIC_NOTE, color=TEXT_DIM, size=icon_size),
+        content=app_icon(PIcons.MUSIC_NOTE, color=DECOR_LINE, size=icon_size),
         alignment=ft.Alignment.CENTER,
     )
 
@@ -112,7 +113,7 @@ def build_preview_row(track: Track, index: int) -> ft.Container:
     thumb_content = _thumb_content_for(track.img_url, box=55)
     thumb = ft.Container(
         width=55, height=55,
-        border_radius=8,
+        border_radius=RADIUS_SM,
         bgcolor=SKELETON_DARK,
         clip_behavior=ft.ClipBehavior.ANTI_ALIAS,
         content=thumb_content,
@@ -138,7 +139,7 @@ def build_preview_row(track: Track, index: int) -> ft.Container:
         opacity=1.0,
     )
     dur_text = ft.Text(
-        track.duration, size=11, color=TEXT_DIM,
+        track.duration, size=11, color=TEXT_MUTED,
         font_family=mono_family("light"),
         opacity=1.0,
     )
@@ -155,7 +156,7 @@ def build_preview_row(track: Track, index: int) -> ft.Container:
             thumb,
             ft.Column(
                 controls=[title_text, artist_text],
-                spacing=1,
+                spacing=SPACE_0,
                 tight=True,
                 expand=3,
                 alignment=ft.MainAxisAlignment.CENTER,
@@ -163,14 +164,14 @@ def build_preview_row(track: Track, index: int) -> ft.Container:
             ft.Container(content=album_text, expand=2, alignment=ft.Alignment.CENTER_LEFT),
             ft.Container(content=dur_text, width=48, alignment=ft.Alignment.CENTER),
         ],
-        spacing=16,
+        spacing=SPACE_4,
         vertical_alignment=ft.CrossAxisAlignment.CENTER,
     )
     return ft.Container(
         height=ITEM_H,
         padding=ft.Padding.symmetric(horizontal=16, vertical=0),
         border=ft.Border.only(bottom=ft.BorderSide(0.5, BORDER_ROW)),
-        border_radius=0,
+        border_radius=RADIUS_NONE,
         bgcolor=BG_LIST,
         content=row_content,
     )
@@ -271,7 +272,7 @@ class SongRow(ft.Container):
 
         self._thumb = ft.Container(
             width=55, height=55,
-            border_radius=8,
+            border_radius=RADIUS_SM,
             bgcolor=SKELETON_DARK,
             clip_behavior=ft.ClipBehavior.ANTI_ALIAS,
             content=_thumb_content,
@@ -288,7 +289,7 @@ class SongRow(ft.Container):
                 ft.ControlState.DEFAULT:  BG_SURFACE,
             },
             check_color=TEXT_PRIMARY,
-            border_side=ft.BorderSide(1.5, TEXT_DIM),
+            border_side=ft.BorderSide(1.5, DECOR_LINE),
             on_change=lambda e: on_toggle(track.id),
         )
 
@@ -298,7 +299,7 @@ class SongRow(ft.Container):
         
         self._status_icon = _status_icon(track.transfer_status)
         self._hover_dl_icon = app_icon(PIcons.DOWNLOAD_SIMPLE, color=ACCENT, size=16)
-        self._hover_dl_busy_icon = app_icon(PIcons.DOWNLOAD_SIMPLE, color=TEXT_DIM, size=16)
+        self._hover_dl_busy_icon = app_icon(PIcons.DOWNLOAD_SIMPLE, color=TEXT_MUTED, size=16)
         self._done_icon = app_icon(PIcons.CHECK_CIRCLE, color=SUCCESS, size=15, fill=True)
         self._status_cell_state: tuple | None = None
 
@@ -354,7 +355,7 @@ class SongRow(ft.Container):
             opacity=1.0,
         )
         dur_text = ft.Text(
-            track.duration, size=11, color=TEXT_DIM,
+            track.duration, size=11, color=TEXT_MUTED,
             font_family=mono_family("light"),
             opacity=1.0,
         )
@@ -392,7 +393,7 @@ class SongRow(ft.Container):
             content=self._status_icon,
             width=26,
             height=26,
-            border_radius=13,
+            border_radius=RADIUS_PILL,
             alignment=ft.Alignment.CENTER,
             animate=ft.Animation(MOTION_HOVER_MS, ft.AnimationCurve.EASE_OUT),
             animate_scale=ft.Animation(MOTION_HOVER_MS, ft.AnimationCurve.EASE_OUT),
@@ -418,7 +419,7 @@ class SongRow(ft.Container):
                 self._thumb,
                 ft.Column(
                     controls=[title_text, artist_text],
-                    spacing=1,
+                    spacing=SPACE_0,
                     tight=True,
                     expand=3,
                     alignment=ft.MainAxisAlignment.CENTER,
@@ -429,7 +430,7 @@ class SongRow(ft.Container):
                 ft.Container(content=self._chk,         width=32, alignment=ft.Alignment.CENTER),
                 self._menu_btn,
             ],
-            spacing=16,
+            spacing=SPACE_4,
             vertical_alignment=ft.CrossAxisAlignment.CENTER,
         )
 
@@ -437,7 +438,7 @@ class SongRow(ft.Container):
             height=ITEM_H,
             padding=ft.Padding.symmetric(horizontal=16, vertical=0),
             border=ft.Border.only(bottom=ft.BorderSide(0.5, BORDER_ROW)),
-            border_radius=0,
+            border_radius=RADIUS_NONE,
             bgcolor=BG_LIST,
             animate=ft.Animation(MOTION_HOVER_MS, ft.AnimationCurve.EASE_OUT),
             on_hover=self._on_hover,
