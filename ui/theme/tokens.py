@@ -62,6 +62,7 @@ TEXT_DIM     = "#FF3D4455"
 DECOR_LINE   = TEXT_DIM  # Alias semántico: solo adornos, nunca texto legible
 
 # Escala de espaciado (§4.3)
+SPACE_0 = 0
 SPACE_1 = 4
 SPACE_2 = 8
 SPACE_3 = 12
@@ -80,8 +81,10 @@ FS_PAGE    = 28
 FS_DISPLAY = 40
 
 # Radios canónicos y geometría de relieve / foco
+RADIUS_NONE   = 0
 RADIUS_SHARP  = 3
 RADIUS_SM     = 6
+RADIUS_PILL   = 999  # Solo círculos/discos/indicadores redondos
 RADIUS_INPUT  = RADIUS_SHARP  # deprecated: migrar en Ola 2
 RADIUS_BUTTON = RADIUS_SHARP  # deprecated: migrar en Ola 2
 RADIUS_DIALOG = RADIUS_SM  # deprecated: migrar en Ola 2
