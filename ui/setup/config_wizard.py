@@ -22,6 +22,7 @@ from ui.theme.tokens import (
     ACCENT, SUCCESS, WARNING, ERROR_COL,
     TEXT_PRIMARY, TEXT_MUTED,
     OVERLAY_06, OVERLAY_08, OVERLAY_14,
+    FS_META, RADIUS_SM, SPACE_1, SPACE_2, SPACE_3,
 )
 from ui.components.widgets import (
     _ghost_btn,
@@ -210,10 +211,10 @@ class ConfigWizard:
                         ),
                     ),
                 ],
-                spacing=6, tight=True,
+                spacing=SPACE_2, tight=True,
             ),
             bgcolor=OVERLAY_14 if idx == self._active_tab_idx else "transparent",
-            border_radius=8,
+            border_radius=RADIUS_SM,
             padding=ft.Padding.symmetric(horizontal=10, vertical=6),
             data=str(idx),
             ink=True,
@@ -359,9 +360,9 @@ class ConfigWizard:
         return ft.Column(
             controls=[
                 ft.Container(
-                    content=ft.Row(controls=self._tab_buttons, spacing=4),
+                    content=ft.Row(controls=self._tab_buttons, spacing=SPACE_1),
                     bgcolor=OVERLAY_08,
-                    border_radius=10,
+                    border_radius=RADIUS_SM,
                     padding=ft.Padding.all(4),
                     border=ft.Border.all(0.8, OVERLAY_14),
                 ),
@@ -369,19 +370,19 @@ class ConfigWizard:
                     content=self._panel_holder,
                     expand=True,
                     bgcolor=BG_SURFACE,
-                    border_radius=8,
+                    border_radius=RADIUS_SM,
                     padding=ft.Padding.all(0),
                     clip_behavior=ft.ClipBehavior.ANTI_ALIAS,
                 ),
             ],
-            spacing=8,
+            spacing=SPACE_2,
             expand=True,
         )
 
     def _build_dialog(self, body: ft.Column) -> ft.AlertDialog:
         self._save_error = ft.Text(
             "",
-            size=10,
+            size=FS_META,
             color=ERROR_COL,
             font_family=FONT_TEXT,
             visible=False,
@@ -407,14 +408,14 @@ class ConfigWizard:
                         color=TEXT_PRIMARY,
                     ),
                 ],
-                spacing=8,
+                spacing=SPACE_2,
             ),
             content=ft.Container(
                 content=body,
                 width=620,
                 height=480,
                 bgcolor=BG_SURFACE,
-                border_radius=10,
+                border_radius=RADIUS_SM,
                 padding=ft.Padding.all(8),
                 clip_behavior=ft.ClipBehavior.ANTI_ALIAS,
             ),
@@ -544,7 +545,7 @@ class ConfigWizard:
         status_text = app_text("", size=11, color=TEXT_MUTED, expand=True)
         status_row = ft.Row(
             controls=[status_icon, status_text],
-            spacing=6,
+            spacing=SPACE_2,
             vertical_alignment=ft.CrossAxisAlignment.CENTER,
         )
         self._status_rows[platform] = status_row
@@ -566,7 +567,7 @@ class ConfigWizard:
                     height=38,
                 ),
             ],
-            spacing=8,
+            spacing=SPACE_2,
             wrap=True,
         )
 
@@ -577,7 +578,7 @@ class ConfigWizard:
                 content=status_row,
                 bgcolor=OVERLAY_08,
                 border=ft.Border.all(0.8, OVERLAY_14),
-                border_radius=8,
+                border_radius=RADIUS_SM,
                 padding=ft.Padding.symmetric(horizontal=10, vertical=8),
             ),
             actions_row,
@@ -602,12 +603,12 @@ class ConfigWizard:
         adv_header = ft.Container(
             content=ft.Row(
                 controls=[adv_icon, adv_label],
-                spacing=6,
+                spacing=SPACE_2,
                 vertical_alignment=ft.CrossAxisAlignment.CENTER,
             ),
             bgcolor=OVERLAY_06,
             border=ft.Border.all(0.8, OVERLAY_14),
-            border_radius=8,
+            border_radius=RADIUS_SM,
             padding=ft.Padding.symmetric(horizontal=10, vertical=8),
             ink=True,
             on_click=_toggle_adv,
@@ -637,12 +638,12 @@ class ConfigWizard:
         ]
         controls = self._build_browser_session_header(
             "YouTube Music",
-            ft.Column(controls=adv_controls, spacing=10),
+            ft.Column(controls=adv_controls, spacing=SPACE_3),
         )
         return ft.Container(
             content=ft.Column(
                 controls=controls,
-                spacing=10,
+                spacing=SPACE_3,
                 scroll=ft.ScrollMode.AUTO,
             ),
             padding=ft.Padding.all(12),
@@ -670,10 +671,10 @@ class ConfigWizard:
         ]
         controls = self._build_browser_session_header(
             "Apple Music",
-            ft.Column(controls=adv_controls, spacing=10),
+            ft.Column(controls=adv_controls, spacing=SPACE_3),
         )
         return ft.Container(
-            content=ft.Column(controls, spacing=10, scroll=ft.ScrollMode.AUTO),
+            content=ft.Column(controls, spacing=SPACE_3, scroll=ft.ScrollMode.AUTO),
             padding=ft.Padding.all(12),
             expand=True,
         )
@@ -708,12 +709,12 @@ class ConfigWizard:
         ]
         controls = self._build_browser_session_header(
             "Spotify",
-            ft.Column(controls=adv_controls, spacing=10),
+            ft.Column(controls=adv_controls, spacing=SPACE_3),
         )
         return ft.Container(
             content=ft.Column(
                 controls=controls,
-                spacing=10,
+                spacing=SPACE_3,
                 scroll=ft.ScrollMode.AUTO,
             ),
             padding=ft.Padding.all(12),

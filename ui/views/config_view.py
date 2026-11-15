@@ -51,11 +51,15 @@ from ui.theme.tokens import (
     BG_SURFACE,
     BORDER_MUTED,
     BORDER_ROW,
+    FS_META,
     MOTION_HOVER_MS,
-    RADIUS_BUTTON,
-    RADIUS_RAIL_ITEM,
+    RADIUS_SHARP,
+    RADIUS_SM,
+    SPACE_1,
+    SPACE_2,
+    SPACE_3,
+    SPACE_5,
     SUCCESS,
-    TEXT_DIM,
     TEXT_MUTED,
     TEXT_PRIMARY,
     WARNING,
@@ -259,7 +263,7 @@ class ConfigView(ft.Container):
         for sec_id, num, label, icon_glyph in CONFIG_SECTIONS:
             active = sec_id == self._active_section
             num_txt = app_text(
-                num, size=10, color=ACCENT if active else TEXT_DIM,
+                num, size=FS_META, color=ACCENT if active else TEXT_MUTED,
                 font_family=mono_family("light"), visible=not horizontal,
             )
             ico_ctrl = app_icon(
@@ -272,7 +276,7 @@ class ConfigView(ft.Container):
             )
             row = ft.Row(
                 controls=[num_txt, ico_ctrl, lbl_txt] if not horizontal else [ico_ctrl, lbl_txt],
-                spacing=8 if not horizontal else 6,
+                spacing=SPACE_2 if not horizontal else SPACE_1,
                 tight=horizontal,
                 vertical_alignment=ft.CrossAxisAlignment.CENTER,
             )
@@ -284,7 +288,7 @@ class ConfigView(ft.Container):
                     if horizontal
                     else ft.Border.only(left=ft.BorderSide(2.0, ACCENT if active else ft.Colors.TRANSPARENT))
                 ),
-                border_radius=RADIUS_RAIL_ITEM if horizontal else 6,
+                border_radius=RADIUS_SHARP if horizontal else RADIUS_SM,
                 padding=ft.Padding.symmetric(horizontal=10 if horizontal else 12, vertical=7 if horizontal else 9),
                 data=sec_id,
                 on_click=lambda _e, sid=sec_id: self.select_section(sid),
@@ -301,11 +305,11 @@ class ConfigView(ft.Container):
         if horizontal:
             return ft.Container(
                 padding=ft.Padding.only(bottom=6),
-                content=ft.Row(controls=items, wrap=True, spacing=6, run_spacing=6),
+                content=ft.Row(controls=items, wrap=True, spacing=SPACE_2, run_spacing=SPACE_2),
             )
         return ft.Container(
             width=210,
-            content=ft.Column(controls=items, spacing=2, tight=True),
+            content=ft.Column(controls=items, spacing=SPACE_1, tight=True),
         )
 
     def _sync_nav_selection(self) -> None:
@@ -319,7 +323,7 @@ class ConfigView(ft.Container):
                 if horizontal
                 else ft.Border.only(left=ft.BorderSide(2.0, ACCENT if active else ft.Colors.TRANSPARENT))
             )
-            refs["num"].color = ACCENT if active else TEXT_DIM
+            refs["num"].color = ACCENT if active else TEXT_MUTED
             refs["icon"].color = ACCENT if active else TEXT_MUTED
             refs["label"].color = TEXT_PRIMARY if active else TEXT_MUTED
             refs["label"].font_family = FONT_HEADLINE if active else FONT_TEXT
@@ -358,14 +362,14 @@ class ConfigView(ft.Container):
         if self._is_compact:
             self._layout_host.content = ft.Column(
                 controls=[self._nav_ctrl, self._body_scroll],
-                spacing=10,
+                spacing=SPACE_3,
                 expand=True,
                 horizontal_alignment=ft.CrossAxisAlignment.STRETCH,
             )
         else:
             self._layout_host.content = ft.Row(
                 controls=[self._nav_ctrl, self._body_scroll],
-                spacing=28,
+                spacing=SPACE_5,
                 expand=True,
                 vertical_alignment=ft.CrossAxisAlignment.START,
             )
@@ -376,11 +380,11 @@ class ConfigView(ft.Container):
                 app_icon(PIcons.GEAR, size=18, color=TEXT_MUTED),
                 app_text("Configuración", size=16, color=TEXT_PRIMARY, font_family=FONT_HEADLINE),
             ],
-            spacing=8,
+            spacing=SPACE_2,
         )
         self._body_col = ft.Column(
             controls=self._build_section_controls(self._active_section),
-            spacing=12,
+            spacing=SPACE_3,
             horizontal_alignment=ft.CrossAxisAlignment.STRETCH,
         )
         self._body_frame = ft.Container(
@@ -409,7 +413,7 @@ class ConfigView(ft.Container):
                     ft.Divider(height=1, color=BORDER_MUTED),
                     self._layout_host,
                 ],
-                spacing=12,
+                spacing=SPACE_3,
                 expand=True,
                 horizontal_alignment=ft.CrossAxisAlignment.STRETCH,
             ),
@@ -843,7 +847,7 @@ class ConfigView(ft.Container):
                 padding=ft.Padding.symmetric(horizontal=10, vertical=6),
                 bgcolor=BG_LIST,
                 border=ft.Border.all(0.6, BORDER_ROW),
-                border_radius=6,
+                border_radius=RADIUS_SM,
                 content=ft.Row(
                     controls=[
                         app_icon(PIcons.FOLDER, size=16, color=TEXT_MUTED),
@@ -851,7 +855,7 @@ class ConfigView(ft.Container):
                             folder, size=11, color=TEXT_PRIMARY, font_family=mono_family("light"),
                             max_lines=1, overflow=ft.TextOverflow.ELLIPSIS, expand=True,
                         ),
-                        app_text(count_str, size=10, color=TEXT_MUTED, font_family=mono_family("light")),
+                        app_text(count_str, size=FS_META, color=TEXT_MUTED, font_family=mono_family("light")),
                         app_icon_button(
                             PIcons.X,
                             size=14,
@@ -861,7 +865,7 @@ class ConfigView(ft.Container):
                             on_click=lambda _e, f=folder: self._on_remove_local_folder(f),
                         ),
                     ],
-                    spacing=8,
+                    spacing=SPACE_2,
                     vertical_alignment=ft.CrossAxisAlignment.CENTER,
                 ),
             )
@@ -1242,7 +1246,7 @@ class ConfigView(ft.Container):
                             width=180, height=34,
                         ),
                     ],
-                    spacing=8,
+                    spacing=SPACE_2,
                     wrap=True,
                     vertical_alignment=ft.CrossAxisAlignment.CENTER,
                 ),

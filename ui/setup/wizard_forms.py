@@ -16,12 +16,17 @@ from ui.theme.fonts import FONT_HEADLINE_BOLD, FONT_TEXT, mono_family
 from ui.theme.icons import PIcons, app_icon, app_icon_button
 from ui.theme.tokens import (
     ACCENT,
+    FS_META,
     OVERLAY_06,
     OVERLAY_10,
     OVERLAY_14,
     OVERLAY_18,
+    RADIUS_PILL,
+    RADIUS_SM,
+    SPACE_0,
+    SPACE_1,
+    SPACE_2,
     SUCCESS,
-    TEXT_DIM,
     TEXT_MUTED,
     TEXT_PRIMARY,
     WARN_BG,
@@ -163,12 +168,12 @@ def instructions_box(steps: tuple[tuple[str, str], ...] | list[tuple[str, str]])
                 ft.Container(
                     content=ft.Text(
                         str(num),
-                        size=10,
+                        size=FS_META,
                         color=ACCENT,
                         font_family=FONT_HEADLINE_BOLD,
                     ),
                     bgcolor=OVERLAY_18,
-                    border_radius=20,
+                    border_radius=RADIUS_PILL,
                     width=20,
                     height=20,
                     alignment=ft.Alignment.CENTER,
@@ -188,21 +193,21 @@ def instructions_box(steps: tuple[tuple[str, str], ...] | list[tuple[str, str]])
                             font_family=FONT_TEXT,
                         ),
                     ],
-                    spacing=1,
+                    spacing=SPACE_0,
                     tight=True,
                     expand=True,
                 ),
             ],
-            spacing=8,
+            spacing=SPACE_2,
             vertical_alignment=ft.CrossAxisAlignment.START,
         )
 
     rows = [_step(i + 1, lbl, txt) for i, (lbl, txt) in enumerate(steps)]
     return ft.Container(
-        content=ft.Column(rows, spacing=8),
+        content=ft.Column(rows, spacing=SPACE_2),
         bgcolor=OVERLAY_10,
         border=ft.Border.all(0.8, OVERLAY_14),
-        border_radius=10,
+        border_radius=RADIUS_SM,
         padding=ft.Padding.symmetric(horizontal=12, vertical=10),
     )
 
@@ -279,7 +284,7 @@ def make_expandable_field(
     return (
         ft.Row(
             controls=[field, toggle],
-            spacing=4,
+            spacing=SPACE_1,
             vertical_alignment=ft.CrossAxisAlignment.CENTER,
             expand=True,
         ),
@@ -336,7 +341,7 @@ def build_field_controls(
 
         if bool(spec.get("saved_badge", False)) and value.strip():
             field.helper = "Sesión guardada"
-            field.helper_style = ft.TextStyle(color=SUCCESS, size=10, font_family=FONT_TEXT)
+            field.helper_style = ft.TextStyle(color=SUCCESS, size=FS_META, font_family=FONT_TEXT)
 
         registry[key] = field
         controls.append(control)
@@ -362,9 +367,9 @@ def section_header(text: str) -> ft.Text:
 def fixed_note(text: str) -> ft.Container:
     """Nota informativa secundaria al pie de un formulario."""
     return ft.Container(
-        content=ft.Text(text, size=9, color=TEXT_DIM, font_family=FONT_TEXT),
+        content=ft.Text(text, size=FS_META, color=TEXT_MUTED, font_family=FONT_TEXT),
         bgcolor=OVERLAY_06,
-        border_radius=6,
+        border_radius=RADIUS_SM,
         padding=ft.Padding.symmetric(horizontal=8, vertical=6),
     )
 
@@ -377,17 +382,17 @@ def warn_banner(text: str) -> ft.Container:
                 app_icon(PIcons.WARNING, color=WARNING, size=14),
                 ft.Text(
                     text,
-                    size=10,
+                    size=FS_META,
                     color=WARNING,
                     font_family=FONT_TEXT,
                     expand=True,
                 ),
             ],
-            spacing=6,
+            spacing=SPACE_2,
         ),
         bgcolor=WARN_BG,
         border=ft.Border.all(0.8, WARN_BORDER),
-        border_radius=8,
+        border_radius=RADIUS_SM,
         padding=ft.Padding.symmetric(horizontal=10, vertical=8),
     )
 
