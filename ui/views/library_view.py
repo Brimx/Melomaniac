@@ -13,6 +13,7 @@ from core.config import LOCAL_LIBRARY_LABEL, PLATFORM_ORDER
 from core.library_models import LibraryLoadState
 from core.models import PlaylistMeta
 from engine.local_manifests import detect_platform_from_url
+from services import settings_store
 from services.library_state import LibraryState
 from ui.theme.fonts import FONT_HEADLINE, FONT_HEADLINE_BOLD, FONT_TEXT, mono_family
 from ui.components.playlist_card import PlaylistCard
@@ -20,7 +21,7 @@ from ui.views.playlist_detail_view import PlaylistDetailView
 from ui.theme.tokens import (
     ACCENT, ACCENT_HALO, BG_HOVER, BG_LIST, BG_PANEL, BG_SURFACE,
     BORDER_LIGHT, BORDER_MUTED, ERROR_COL, FS_META, MOTION_HOVER_MS,
-    RADIUS_PILL, RADIUS_SHARP, RADIUS_SM, SPACE_1, SPACE_2, SPACE_3,
+    RADIUS_PILL, RADIUS_SHARP, RADIUS_SM, SPACE_0, SPACE_1, SPACE_2, SPACE_3,
     SUCCESS, TEXT_MUTED, TEXT_PRIMARY,
 )
 from ui.theme.icons import PIcons, app_icon, app_icon_button
@@ -31,6 +32,8 @@ from ui.components.widgets import (
     app_text_field,
     close_dialog,
     dialog_action,
+    empty_state,
+    kicker,
     notify,
     organize_dropdown,
     section_label,
@@ -85,6 +88,7 @@ class LibraryView(ft.Container):
         self._sort_mode: int = 0
         self._local_tab: str = "carpetas"
         self._recent_opened_ids: list[tuple[str, str]] = []
+        self._show_obi: bool = self._read_show_obi()
         self._build()
         self.library_state.subscribe(lambda: self._refresh())
         # inicial: selecciona primera plataforma si hay
@@ -191,26 +195,31 @@ class LibraryView(ft.Container):
             horizontal_alignment=ft.CrossAxisAlignment.STRETCH,
             visible=True,
         )
-        self._empty_title = app_text("Sin playlists cacheadas", size=13, color=TEXT_PRIMARY, font_family=FONT_HEADLINE_BOLD)
-        self._empty_sub = app_text("Elige una fuente para sincronizar", size=11, color=TEXT_MUTED, font_family=FONT_TEXT)
-        self._empty = ft.Container(expand=True, visible=False, alignment=ft.Alignment.CENTER, content=ft.Column(controls=[
-            app_icon(PIcons.BOOKS, size=48, color=TEXT_MUTED),
-            self._empty_title,
-            self._empty_sub,
-        ], horizontal_alignment=ft.CrossAxisAlignment.CENTER, spacing=SPACE_2))
+        empty_col = empty_state(
+            PIcons.BOOKS,
+            "Sin playlists cacheadas",
+            "Elige una fuente para sincronizar",
+        )
+        self._empty_title = empty_col.controls[1]
+        self._empty_sub = empty_col.controls[2]
+        self._empty = ft.Container(
+            expand=True,
+            visible=False,
+            alignment=ft.Alignment.CENTER_LEFT,
+            padding=ft.Padding.symmetric(horizontal=SPACE_3, vertical=SPACE_3),
+            content=empty_col,
+        )
         self._filter_empty = ft.Container(
             expand=True,
             visible=False,
-            alignment=ft.Alignment.CENTER,
-            content=ft.Column(
-                controls=[
-                    app_icon(PIcons.MAGNIFYING_GLASS, size=42, color=TEXT_MUTED),
-                    app_text("Nada coincide", size=13, color=TEXT_PRIMARY, font_family=FONT_HEADLINE_BOLD),
-                    app_text("Prueba quitando algún filtro.", size=11, color=TEXT_MUTED, font_family=FONT_TEXT),
-                    _ghost_btn("Limpiar filtros", PIcons.X, lambda _e: self._clear_filters(), height=34),
-                ],
-                horizontal_alignment=ft.CrossAxisAlignment.CENTER,
-                spacing=SPACE_2,
+            alignment=ft.Alignment.CENTER_LEFT,
+            padding=ft.Padding.symmetric(horizontal=SPACE_3, vertical=SPACE_3),
+            content=empty_state(
+                PIcons.MAGNIFYING_GLASS,
+                "Nada coincide",
+                "Prueba quitando algún filtro.",
+                action_label="Limpiar filtros",
+                on_action=lambda _e: self._clear_filters(),
             ),
         )
         self._loading_bar = ft.ProgressBar(visible=False, color=ACCENT, bgcolor=BG_SURFACE)
@@ -223,7 +232,14 @@ class LibraryView(ft.Container):
 
         header_row = ft.Row(
             controls=[
-                app_text("Estantes", size=20, color=TEXT_PRIMARY, font_family=FONT_HEADLINE_BOLD),
+                ft.Column(
+                    controls=[
+                        kicker("BIBLIOTECA"),
+                        app_text("Estantes", size=20, color=TEXT_PRIMARY, font_family=FONT_HEADLINE_BOLD),
+                    ],
+                    spacing=SPACE_0,
+                    tight=True,
+                ),
                 self._status_text,
                 ft.Container(expand=True),
                 self._import_manifest_btn,
@@ -403,6 +419,18 @@ class LibraryView(ft.Container):
                 chip.content.color = TEXT_MUTED
         self._refresh()
 
+    def _read_show_obi(self) -> bool:
+        getter = getattr(settings_store, "get_show_platform_obi", None)
+        if callable(getter):
+            try:
+                return bool(getter())
+            except Exception:
+                return True
+        try:
+            return bool(settings_store.load_settings().get("show_platform_obi", True))
+        except Exception:
+            return True
+
     def _filter_and_sort_items(self, items: list, *, is_local: bool) -> list:
         out = list(items)
         q = self._search_query.strip().casefold()
@@ -412,13 +440,23 @@ class LibraryView(ft.Container):
             out = [s for s in out if (getattr(s, "track_count", None) or 0) > 0]
         if "big" in self._active_filters:
             out = [s for s in out if (getattr(s, "track_count", None) or 0) > 100]
-        if "today" in self._active_filters:
+        if "today" in self._active_filters and not is_local:
             today = date.today().isoformat()
             out = [
                 s for s in out
-                if not is_local and str(getattr(s, "synced_at", "") or "")[:10] == today
+                if str(getattr(s, "synced_at", "") or "")[:10] == today
             ]
-        if self._sort_mode == 1:
+        if self._sort_mode == 0:
+            recent_rank = {k: i for i, k in enumerate(self._recent_opened_ids)}
+            out.sort(key=lambda s: str(getattr(s, "name", "") or "").casefold())
+            out.sort(key=lambda s: str(getattr(s, "synced_at", "") or ""), reverse=True)
+            out.sort(
+                key=lambda s: (
+                    0 if (getattr(s, "platform", ""), getattr(s, "id", "")) in recent_rank else 1,
+                    recent_rank.get((getattr(s, "platform", ""), getattr(s, "id", "")), 0),
+                )
+            )
+        elif self._sort_mode == 1:
             out.sort(key=lambda s: str(getattr(s, "name", "") or "").casefold())
         elif self._sort_mode == 2:
             out.sort(key=lambda s: str(getattr(s, "name", "") or "").casefold(), reverse=True)
@@ -516,6 +554,7 @@ class LibraryView(ft.Container):
             on_tap=self._on_open_playlist,
             obi_label=obi_label,
             subtitle_line2=subtitle_line2,
+            show_obi=self._show_obi,
         )
         overlays: list[ft.Control] = []
 
@@ -840,6 +879,9 @@ class LibraryView(ft.Container):
         self._import_manifest_btn.visible = False
         self._local_seg.visible = False
         self._local_legend.visible = False
+        if "today" in self._filter_chip_btns:
+            self._filter_chip_btns["today"].visible = True
+        self._show_obi = self._read_show_obi()
         self._empty_title.value = "Sin playlists cacheadas"
         self._empty_sub.value = "Elige una fuente para sincronizar"
         snap = self.library_state.get_snapshot(plat)
@@ -930,6 +972,9 @@ class LibraryView(ft.Container):
         self._import_manifest_btn.visible = True
         self._local_seg.visible = True
         self._local_legend.visible = self._local_tab == "playlists"
+        if "today" in self._filter_chip_btns:
+            self._filter_chip_btns["today"].visible = False
+        self._show_obi = self._read_show_obi()
         self._loading_bar.visible = False
 
         for k, btn in self._local_tab_btns.items():

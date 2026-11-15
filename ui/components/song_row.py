@@ -60,6 +60,8 @@ from ui.components.widgets import (
     control_page,
     input_border,
     open_external,
+    safe_update,
+    selection_border,
     track_input_focus,
 )
 
@@ -282,6 +284,12 @@ class SongRow(ft.Container):
         # CHECKBOX DE SELECCIÓN
         # ──────────────────────────────────────────────────────────────
         
+        def _on_chk_change(e) -> None:
+            self._last_selected = bool(getattr(e.control, "value", False))
+            self.border = selection_border(self._last_selected)
+            safe_update(self)
+            on_toggle(track.id)
+
         self._chk = ft.Checkbox(
             value=track.selected,
             fill_color={
@@ -290,7 +298,7 @@ class SongRow(ft.Container):
             },
             check_color=TEXT_PRIMARY,
             border_side=ft.BorderSide(1.5, DECOR_LINE),
-            on_change=lambda e: on_toggle(track.id),
+            on_change=_on_chk_change,
         )
 
         # ──────────────────────────────────────────────────────────────
@@ -437,7 +445,7 @@ class SongRow(ft.Container):
         super().__init__(
             height=ITEM_H,
             padding=ft.Padding.symmetric(horizontal=16, vertical=0),
-            border=ft.Border.only(bottom=ft.BorderSide(0.5, BORDER_ROW)),
+            border=selection_border(track.selected),
             border_radius=RADIUS_NONE,
             bgcolor=BG_LIST,
             animate=ft.Animation(MOTION_HOVER_MS, ft.AnimationCurve.EASE_OUT),
@@ -607,6 +615,7 @@ class SongRow(ft.Container):
         if self._last_selected != track.selected:
             self._last_selected = track.selected
             self._chk.value = track.selected
+            self.border = selection_border(track.selected)
             dirty = True
 
         album = track.album or "—"
