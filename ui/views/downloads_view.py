@@ -33,7 +33,8 @@ from ui.theme.fonts import (
 from ui.theme.icons import PIcons, app_icon, app_icon_button
 from ui.theme.tokens import (
     ACCENT, BG_LIST, BG_PANEL, BG_SURFACE, BORDER_MUTED, BORDER_ROW, ERROR_COL,
-    RADIUS_INPUT, SUCCESS, TEXT_DIM, TEXT_MUTED, TEXT_PRIMARY,
+    FS_META, RADIUS_SHARP, SPACE_0, SPACE_1, SPACE_2, SPACE_3, SPACE_4,
+    SUCCESS, TEXT_MUTED, TEXT_PRIMARY,
 )
 from ui.dialogs.recovery_panel import (
     AlternativeSearchPanel,
@@ -151,20 +152,20 @@ class DownloadsView(ft.Container):
         )
         destination = ft.Container(
             bgcolor=BG_PANEL, border=ft.Border.all(1, BORDER_MUTED),
-            border_radius=RADIUS_INPUT, padding=ft.Padding.symmetric(horizontal=14, vertical=8),
+            border_radius=RADIUS_SHARP, padding=ft.Padding.symmetric(horizontal=14, vertical=8),
             content=ft.Row(controls=[
                 app_icon(PIcons.FOLDER, size=16, color=TEXT_MUTED),
                 app_text("Destino", size=11, color=TEXT_MUTED, font_family=mono_family("light")),
                 self._dir_text,
                 self._open_dir_btn, self._pick_dir_btn, self._reset_dir_btn,
-            ], spacing=10, vertical_alignment=ft.CrossAxisAlignment.CENTER),
+            ], spacing=SPACE_3, vertical_alignment=ft.CrossAxisAlignment.CENTER),
         )
         self._dir_text.expand = True
 
         # progreso global (tarjeta .press solo mientras hay cola o resultado reciente)
         self._progress_icon = app_icon(PIcons.DOWNLOAD_SIMPLE, size=22, color=ACCENT)
         self._progress = ft.ProgressBar(
-            value=0, color=ACCENT, bgcolor=BORDER_MUTED, height=3, border_radius=2,
+            value=0, color=ACCENT, bgcolor=BORDER_MUTED, height=3, border_radius=RADIUS_SHARP,
         )
         self._progress_text = app_text("", size=11, color=TEXT_MUTED, font_family=mono_family("light"))
         self._current_text = app_text("", size=12, color=TEXT_PRIMARY, font_family=FONT_TEXT,
@@ -172,7 +173,7 @@ class DownloadsView(ft.Container):
         self._progress_area = ft.Container(
             bgcolor=BG_PANEL,
             border=ft.Border.all(1, BORDER_MUTED),
-            border_radius=RADIUS_INPUT,
+            border_radius=RADIUS_SHARP,
             padding=ft.Padding.symmetric(horizontal=14, vertical=10),
             visible=False,
             content=ft.Row(
@@ -180,20 +181,20 @@ class DownloadsView(ft.Container):
                     self._progress_icon,
                     ft.Column(
                         controls=[self._current_text, self._progress, self._progress_text],
-                        spacing=5,
+                        spacing=SPACE_1,
                         expand=True,
                     ),
                 ],
-                spacing=14,
+                spacing=SPACE_4,
                 vertical_alignment=ft.CrossAxisAlignment.CENTER,
             ),
         )
 
         # estado A: cola activa (una fila por pista)
-        self._queue_list = ft.ListView(expand=True, spacing=6, padding=0)
+        self._queue_list = ft.ListView(expand=True, spacing=SPACE_2, padding=SPACE_0)
         self._queue_section = ft.Column(
             controls=[section_label("EN PROCESO"), self._queue_list],
-            spacing=8, expand=True, visible=False,
+            spacing=SPACE_2, expand=True, visible=False,
         )
 
         # estado B: historial de la carpeta
@@ -208,26 +209,26 @@ class DownloadsView(ft.Container):
             "Indexar a Biblioteca", PIcons.PLUS, self._on_index, height=36,
         )
         self._index_btn.visible = self.library_state is not None
-        self._history_list = ft.ListView(expand=True, spacing=0, padding=0)
+        self._history_list = ft.ListView(expand=True, spacing=SPACE_0, padding=SPACE_0)
         self._history_empty = ft.Container(
             expand=True, alignment=ft.Alignment.CENTER,
             content=ft.Column(controls=[
-                app_icon(PIcons.DOWNLOAD_SIMPLE, size=48, color=TEXT_DIM),
+                app_icon(PIcons.DOWNLOAD_SIMPLE, size=48, color=TEXT_MUTED),
                 app_text("Sin descargas todavía", size=13, color=TEXT_PRIMARY,
                          font_family=FONT_HEADLINE_BOLD),
                 app_text("Selecciona pistas en Gestión o descarga una playlist desde Biblioteca",
                          size=11, color=TEXT_MUTED, font_family=FONT_TEXT,
                          text_align=ft.TextAlign.CENTER),
-            ], horizontal_alignment=ft.CrossAxisAlignment.CENTER, spacing=8),
+            ], horizontal_alignment=ft.CrossAxisAlignment.CENTER, spacing=SPACE_2),
         )
-        self._done_col = ft.Column(spacing=2)
-        self._failed_col = ft.Column(spacing=2)
-        self._missing_col = ft.Column(spacing=2)
+        self._done_col = ft.Column(spacing=SPACE_1)
+        self._failed_col = ft.Column(spacing=SPACE_1)
+        self._missing_col = ft.Column(spacing=SPACE_1)
         self._results_panel = ft.Column(controls=[
             self._done_col,
             self._failed_col,
             self._missing_col,
-        ], spacing=10, visible=False)
+        ], spacing=SPACE_3, visible=False)
         self._history_stack = ft.Stack(
             controls=[self._history_list, self._history_empty], expand=True,
             fit=ft.StackFit.EXPAND,
@@ -238,10 +239,10 @@ class DownloadsView(ft.Container):
                 ft.Container(expand=True),
                 self._play_all_btn,
                 self._index_btn,
-            ], spacing=8, vertical_alignment=ft.CrossAxisAlignment.CENTER),
+            ], spacing=SPACE_2, vertical_alignment=ft.CrossAxisAlignment.CENTER),
             self._results_panel,
             self._history_stack,
-        ], spacing=8, expand=True)
+        ], spacing=SPACE_2, expand=True)
 
         header = ft.Row(
             controls=[
@@ -252,7 +253,7 @@ class DownloadsView(ft.Container):
                 self._cancel_btn,
                 self._start_btn,
             ],
-            spacing=10,
+            spacing=SPACE_3,
             vertical_alignment=ft.CrossAxisAlignment.CENTER,
         )
 
@@ -272,7 +273,7 @@ class DownloadsView(ft.Container):
                 self._progress_area,
                 self._queue_section,
                 self._history_section,
-            ], spacing=10, expand=True),
+            ], spacing=SPACE_3, expand=True),
             padding=ft.Padding.all(16), expand=True,
         )
 
@@ -411,9 +412,9 @@ class DownloadsView(ft.Container):
         self._item_widgets = []
         rows: list[ft.Control] = []
         for item in items:
-            bar = ft.ProgressBar(value=0, color=ACCENT, bgcolor=BORDER_MUTED, height=3, border_radius=2)
-            pct = app_text("", size=10, color=TEXT_MUTED, font_family=mono_family("light"))
-            icon = app_icon(PIcons.CLOCK, size=18, color=TEXT_DIM)
+            bar = ft.ProgressBar(value=0, color=ACCENT, bgcolor=BORDER_MUTED, height=3, border_radius=RADIUS_SHARP)
+            pct = app_text("", size=FS_META, color=TEXT_MUTED, font_family=mono_family("light"))
+            icon = app_icon(PIcons.CLOCK, size=18, color=TEXT_MUTED)
             row = ft.Container(
                 border=ft.Border.only(bottom=ft.BorderSide(1, BORDER_ROW)),
                 padding=ft.Padding.symmetric(horizontal=10, vertical=8),
@@ -423,9 +424,9 @@ class DownloadsView(ft.Container):
                         app_text(item["title"], size=12, color=TEXT_PRIMARY, font_family=FONT_TEXT,
                                  max_lines=1, overflow=ft.TextOverflow.ELLIPSIS),
                         bar,
-                    ], spacing=6, expand=True),
+                    ], spacing=SPACE_2, expand=True),
                     ft.Container(width=48, alignment=ft.Alignment.CENTER_RIGHT, content=pct),
-                ], spacing=10, vertical_alignment=ft.CrossAxisAlignment.CENTER),
+                ], spacing=SPACE_3, vertical_alignment=ft.CrossAxisAlignment.CENTER),
             )
             row._isolated = True
             rows.append(row)
@@ -468,7 +469,7 @@ class DownloadsView(ft.Container):
                 icon.font_family = FONT_PHOSPHOR
             else:
                 bar.value, pct.value = 0, ""
-                icon.value, icon.color = PIcons.CLOCK, TEXT_DIM
+                icon.value, icon.color = PIcons.CLOCK, TEXT_MUTED
                 icon.font_family = FONT_PHOSPHOR
 
     # ── refresco ───────────────────────────────────────────────────────
@@ -528,7 +529,7 @@ class DownloadsView(ft.Container):
                  ft.Text(indexed_text, opacity=1.0, font_family=FONT_HEADLINE)],
                 alignment=ft.MainAxisAlignment.CENTER,
                 tight=True,
-                spacing=8,
+                spacing=SPACE_2,
             )
         self._index_btn.disabled = indexed or running
 
@@ -720,7 +721,7 @@ class DownloadsView(ft.Container):
             border=ft.Border.only(bottom=ft.BorderSide(1, BORDER_MUTED)),
             content=ft.Row(
                 controls=controls,
-                spacing=8,
+                spacing=SPACE_2,
                 vertical_alignment=ft.CrossAxisAlignment.CENTER,
             ),
         )

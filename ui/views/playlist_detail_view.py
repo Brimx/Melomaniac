@@ -40,7 +40,8 @@ from ui.components.song_row import (
 from ui.components.skeletons import LibrarySkeletonRow
 from ui.theme.tokens import (
     ACCENT, BG_HOVER, BG_LIST, BG_SURFACE, BORDER_LIGHT, BORDER_MUTED, BORDER_ROW,
-    RADIUS_INPUT, SKELETON_DARK, TEXT_DIM, TEXT_MUTED, TEXT_PRIMARY,
+    DECOR_LINE, FS_META, RADIUS_SHARP, RADIUS_SM, SKELETON_DARK,
+    SPACE_0, SPACE_1, SPACE_2, SPACE_4, TEXT_MUTED, TEXT_PRIMARY,
     MOTION_HOVER_MS,
 )
 from ui.dialogs.recovery_panel import AlternativeSearchPanel, RecoveryCandidate
@@ -111,7 +112,7 @@ class PlaylistDetailView(ft.Container):
         cover_box = ft.Container(
             width=cover_size,
             height=cover_size,
-            border_radius=8,
+            border_radius=RADIUS_SM,
             bgcolor=SKELETON_DARK,
             border=ft.Border.all(1, BORDER_MUTED),
             clip_behavior=ft.ClipBehavior.ANTI_ALIAS,
@@ -131,7 +132,7 @@ class PlaylistDetailView(ft.Container):
 
         kicker = app_text(
             str(summary.platform or "").upper(),
-            size=10,
+            size=FS_META,
             color=TEXT_MUTED,
             font_family=mono_family("regular"),
         )
@@ -206,24 +207,24 @@ class PlaylistDetailView(ft.Container):
             actions = [self._play_all_btn, self._shuffle_btn, self._download_btn, self._select_mode_btn]
         if summary.external_url:
             actions.append(self._open_btn)
-        actions_row = ft.Row(controls=actions, spacing=8, wrap=True)
+        actions_row = ft.Row(controls=actions, spacing=SPACE_2, wrap=True)
 
         header = ft.Container(
             bgcolor=BG_SURFACE,
             border=ft.Border.all(0.8, BORDER_MUTED),
-            border_radius=12,
+            border_radius=RADIUS_SM,
             padding=ft.Padding.all(14),
             content=ft.Row(
                 controls=[
                     cover,
                     ft.Column(
                         controls=[kicker, self._title, self._count, self._desc, actions_row],
-                        spacing=5,
+                        spacing=SPACE_1,
                         expand=True,
                         alignment=ft.MainAxisAlignment.CENTER,
                     ),
                 ],
-                spacing=16,
+                spacing=SPACE_4,
                 vertical_alignment=ft.CrossAxisAlignment.END,
             ),
         )
@@ -236,7 +237,7 @@ class PlaylistDetailView(ft.Container):
                 ft.ControlState.DEFAULT: BG_SURFACE,
             },
             check_color=TEXT_PRIMARY,
-            border_side=ft.BorderSide(1.5, TEXT_DIM),
+            border_side=ft.BorderSide(1.5, DECOR_LINE),
             on_change=self._on_select_all_change,
         )
         self._selected_count_label = app_text(
@@ -259,7 +260,7 @@ class PlaylistDetailView(ft.Container):
             visible=False,
             bgcolor=BG_SURFACE,
             border=ft.Border.all(0.8, ACCENT),
-            border_radius=RADIUS_INPUT,
+            border_radius=RADIUS_SHARP,
             padding=ft.Padding.symmetric(horizontal=12, vertical=6),
             content=ft.Row(
                 controls=[
@@ -272,7 +273,7 @@ class PlaylistDetailView(ft.Container):
                     self._batch_download_btn,
                     self._batch_cancel_btn,
                 ],
-                spacing=8,
+                spacing=SPACE_2,
                 vertical_alignment=ft.CrossAxisAlignment.CENTER,
             ),
         )
@@ -286,7 +287,7 @@ class PlaylistDetailView(ft.Container):
             item_extent=ITEM_H,
             cache_extent=ITEM_H * 8,
             expand=True,
-            spacing=0,
+            spacing=SPACE_0,
         )
         self._skeleton_wrap = ft.Container(content=self._skeleton_list, expand=True, visible=True)
         self._sync_skeleton_count()
@@ -294,14 +295,14 @@ class PlaylistDetailView(ft.Container):
             item_extent=ITEM_H,
             cache_extent=ITEM_H * 8,
             expand=True,
-            spacing=0,
+            spacing=SPACE_0,
             visible=False,
         )
-        self._error_box = ft.Container(visible=False, bgcolor=BG_SURFACE, border=ft.Border.all(0.8, BORDER_MUTED), border_radius=10, padding=ft.Padding.all(12), content=ft.Column(controls=[
+        self._error_box = ft.Container(visible=False, bgcolor=BG_SURFACE, border=ft.Border.all(0.8, BORDER_MUTED), border_radius=RADIUS_SM, padding=ft.Padding.all(12), content=ft.Column(controls=[
             app_text("No se pudo cargar", size=13, color=TEXT_PRIMARY, font_family=FONT_HEADLINE_BOLD),
             app_text("", size=11, color=TEXT_MUTED, font_family=FONT_TEXT),
             _ghost_btn("Reintentar", PIcons.ARROWS_CLOCKWISE, lambda e: self.reload()),
-        ], spacing=8))
+        ], spacing=SPACE_2))
 
         tracks_header = ft.Container(
             height=30,
@@ -310,40 +311,40 @@ class PlaylistDetailView(ft.Container):
             content=ft.Row(
                 controls=[
                     ft.Container(
-                        content=app_text("#", size=10, color=TEXT_MUTED, font_family=mono_family("regular")),
+                        content=app_text("#", size=FS_META, color=TEXT_MUTED, font_family=mono_family("regular")),
                         width=28,
                         alignment=ft.Alignment.CENTER,
                     ),
                     ft.Container(width=48),
                     ft.Container(
-                        content=app_text("TÍTULO", size=10, color=TEXT_MUTED, font_family=mono_family("regular")),
+                        content=app_text("TÍTULO", size=FS_META, color=TEXT_MUTED, font_family=mono_family("regular")),
                         expand=3,
                         alignment=ft.Alignment.CENTER_LEFT,
                     ),
                     ft.Container(
-                        content=app_text("ÁLBUM", size=10, color=TEXT_MUTED, font_family=mono_family("regular")),
+                        content=app_text("ÁLBUM", size=FS_META, color=TEXT_MUTED, font_family=mono_family("regular")),
                         expand=2,
                         alignment=ft.Alignment.CENTER_LEFT,
                     ),
                     ft.Container(
-                        content=app_text("DUR.", size=10, color=TEXT_MUTED, font_family=mono_family("regular")),
+                        content=app_text("DUR.", size=FS_META, color=TEXT_MUTED, font_family=mono_family("regular")),
                         width=48,
                         alignment=ft.Alignment.CENTER,
                     ),
                     ft.Container(width=68),
                 ],
-                spacing=16,
+                spacing=SPACE_4,
                 vertical_alignment=ft.CrossAxisAlignment.CENTER,
             ),
         )
 
         body = ft.Column(controls=[
-            ft.Row(controls=[app_icon_button(PIcons.ARROW_LEFT, size=16, icon_color=TEXT_MUTED, on_click=lambda e: on_back(), width=28, height=28), app_text("Volver", size=12, color=TEXT_MUTED)], spacing=4),
+            ft.Row(controls=[app_icon_button(PIcons.ARROW_LEFT, size=16, icon_color=TEXT_MUTED, on_click=lambda e: on_back(), width=28, height=28), app_text("Volver", size=12, color=TEXT_MUTED)], spacing=SPACE_1),
             header,
             self._batch_bar,
             tracks_header,
             ft.Stack(controls=[self._skeleton_wrap, self._list_view, self._error_box], expand=True),
-        ], spacing=8, expand=True)
+        ], spacing=SPACE_2, expand=True)
 
         self.content = ft.Container(content=body, padding=ft.Padding.all(12), expand=True)
         # kick load

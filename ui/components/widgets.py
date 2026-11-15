@@ -46,7 +46,7 @@ from ui.theme.fonts import (
 from ui.theme.icons import app_icon, PIcons
 
 from ui.theme.tokens import (
-    TEXT_PRIMARY, TEXT_MUTED, TEXT_DIM,
+    TEXT_PRIMARY, TEXT_MUTED,
     ACCENT, ACCENT_HOVER, ACCENT_DIM, ACCENT_HALO, BG_HOVER,
     BG_DEEP, BG_SURFACE, BORDER_ROW, BORDER_CONTROL,
     SUCCESS, ERROR_COL, WARNING, BORDER_MUTED, BORDER_LIGHT,
@@ -55,6 +55,7 @@ from ui.theme.tokens import (
     PAPER_LIFT, PAPER_LIFT_SM, PAPER_CANTO_PX,
     FOCUS_RING_WIDTH, FOCUS_RING_OFFSET, SELECTION_BAR_W,
     FS_META, RADIUS_SHARP, RADIUS_SM, HANKO, BG_INSET,
+    SPACE_0, SPACE_1, SPACE_2, SPACE_3, SPACE_5,
     MOTION_HOVER_MS, MOTION_PRESS_MS,
 )
 
@@ -161,7 +162,7 @@ def _as_icon(value, height: float | None = None) -> ft.Control:
     """
     if isinstance(value, str) and len(value) == 1 and ord(value) >= 0xE000:
         return ft.Container(
-            content=app_icon(value, size=16, color=TEXT_DIM),
+            content=app_icon(value, size=16, color=TEXT_MUTED),
             alignment=ft.Alignment.CENTER,
             width=20, height=height,
         )
@@ -206,9 +207,9 @@ def build_input_decoration_theme() -> ft.InputDecorationTheme:
         fill_color=BG_INPUT,
         dense=True,
         content_padding=ft.Padding.symmetric(horizontal=12, vertical=8),
-        hint_style=ft.TextStyle(color=TEXT_DIM, size=11),
-        label_style=ft.TextStyle(color=TEXT_MUTED, size=10, font_family=FONT_HEADLINE),
-        floating_label_style=ft.TextStyle(color=ACCENT, size=10, font_family=FONT_HEADLINE),
+        hint_style=ft.TextStyle(color=TEXT_MUTED, size=11),
+        label_style=ft.TextStyle(color=TEXT_MUTED, size=FS_META, font_family=FONT_HEADLINE),
+        floating_label_style=ft.TextStyle(color=ACCENT, size=FS_META, font_family=FONT_HEADLINE),
     )
 
 
@@ -303,10 +304,10 @@ def app_text_field(
         filled=kwargs.pop("filled", True),
         fill_color=kwargs.pop("fill_color", _bg),
         border=border,
-        hint_style=kwargs.pop("hint_style", ft.TextStyle(color=TEXT_DIM, size=11)),
+        hint_style=kwargs.pop("hint_style", ft.TextStyle(color=TEXT_MUTED, size=11)),
         label_style=kwargs.pop(
             "label_style",
-            ft.TextStyle(color=TEXT_MUTED, size=10, font_family=FONT_HEADLINE),
+            ft.TextStyle(color=TEXT_MUTED, size=FS_META, font_family=FONT_HEADLINE),
         ),
         text_style=text_style or ft.TextStyle(color=TEXT_PRIMARY, size=12, font_family=FONT_TEXT),
         text_size=kwargs.pop("text_size", 12),
@@ -331,7 +332,7 @@ def dialog_action(
             [app_icon(icon, size=16, color=color), ft.Text(text, color=color, font_family=FONT_HEADLINE)],
             alignment=ft.MainAxisAlignment.CENTER,
             tight=True,
-            spacing=6,
+            spacing=SPACE_2,
         )
         return ft.TextButton(
             content=content,
@@ -367,7 +368,7 @@ def app_dialog(
                 ico_ctrl,
                 ft.Text(title, size=14, color=TEXT_PRIMARY, font_family=FONT_HEADLINE_BOLD),
             ],
-            spacing=8,
+            spacing=SPACE_2,
         )
     else:
         title_ctrl = title
@@ -409,7 +410,7 @@ def organize_dropdown(
         border=_br if _br is not None else input_border(_bc, _fbc, RADIUS_SHARP),
         label_style=kwargs.pop(
             "label_style",
-            ft.TextStyle(color=TEXT_MUTED, size=10, font_family=FONT_HEADLINE),
+            ft.TextStyle(color=TEXT_MUTED, size=FS_META, font_family=FONT_HEADLINE),
         ),
         text_style=kwargs.pop(
             "text_style",
@@ -501,12 +502,12 @@ def status_banner(
     )
     row_controls: list[ft.Control] = [
         icon_ctrl,
-        ft.Text(message, size=10, color=accent, font_family=mono_family("light"), opacity=1.0),
+        ft.Text(message, size=FS_META, color=accent, font_family=mono_family("light"), opacity=1.0),
     ]
     if action is not None:
         row_controls.extend([ft.Container(expand=True), action])
     return ft.Container(
-        content=ft.Row(row_controls, spacing=6,
+        content=ft.Row(row_controls, spacing=SPACE_2,
                        vertical_alignment=ft.CrossAxisAlignment.CENTER),
         bgcolor=WARN_BG if kind == "warning" else BG_PANEL,
         border=ft.Border.all(0.8, WARN_BORDER if kind == "warning" else accent),
@@ -540,7 +541,7 @@ def _section_label(text: str) -> ft.Text:
         uppercase se perciben aglomeradas.
     """
     return ft.Text(
-        text, size=9, color=TEXT_DIM,
+        text, size=FS_META, color=TEXT_MUTED,
         font_family=FONT_HEADLINE_BOLD,
         style=ft.TextStyle(letter_spacing=1.4),
         opacity=1.0,
@@ -599,7 +600,7 @@ def _primary_btn(
             alignment=ft.MainAxisAlignment.CENTER,
             vertical_alignment=ft.CrossAxisAlignment.CENTER,
             tight=True,
-            spacing=8,
+            spacing=SPACE_2,
         )
         btn_icon = None
     else:
@@ -678,7 +679,7 @@ def _ghost_btn(text: str, icon: str | None, on_click, width=None, height=None, d
             alignment=ft.MainAxisAlignment.CENTER,
             vertical_alignment=ft.CrossAxisAlignment.CENTER,
             tight=True,
-            spacing=8,
+            spacing=SPACE_2,
         )
         btn_icon = None
     else:
@@ -771,11 +772,11 @@ def _status_icon(status: str) -> ft.Control:
         "searching":            (PIcons.ARROWS_CLOCKWISE, ACCENT,    False),
         "transferred":          (PIcons.CHECK_CIRCLE,     SUCCESS,   True),
         "error":                (PIcons.WARNING_CIRCLE,   ERROR_COL, True),
-        "pending":              (PIcons.CLOCK,            TEXT_DIM,  False),
+        "pending":              (PIcons.CLOCK,            TEXT_MUTED, False),
         "local_pending":        (PIcons.FOLDER,           WARNING,   False),
         "revision_necesaria":   (PIcons.WARNING,          WARNING,   True),
     }
-    ico, col, fill = icons.get(status, (PIcons.CLOCK, TEXT_DIM, False))
+    ico, col, fill = icons.get(status, (PIcons.CLOCK, TEXT_MUTED, False))
     return app_icon(ico, color=col, size=15, fill=fill)
 
 
@@ -941,7 +942,7 @@ def status_chip(
     return ft.Container(
         content=ft.Row(
             controls,
-            spacing=4,
+            spacing=SPACE_1,
             tight=True,
             vertical_alignment=ft.CrossAxisAlignment.CENTER,
         ),
@@ -1105,7 +1106,7 @@ def tab_underline(
             animate=ft.Animation(MOTION_HOVER_MS, ft.AnimationCurve.EASE_OUT),
         )
 
-    return ft.Row([_tab(k, l) for k, l in items], spacing=20, tight=True)
+    return ft.Row([_tab(k, l) for k, l in items], spacing=SPACE_5, tight=True)
 
 
 def table_header(columns: Sequence[str | tuple[str, int | None]]) -> ft.Container:
@@ -1115,7 +1116,7 @@ def table_header(columns: Sequence[str | tuple[str, int | None]]) -> ft.Containe
         label, expand = (col, 1) if isinstance(col, str) else col
         cells.append(ft.Container(content=kicker(label), expand=expand))
     return ft.Container(
-        content=ft.Row(cells, spacing=12, vertical_alignment=ft.CrossAxisAlignment.CENTER),
+        content=ft.Row(cells, spacing=SPACE_3, vertical_alignment=ft.CrossAxisAlignment.CENTER),
         padding=ft.Padding.symmetric(horizontal=12, vertical=8),
         border=ft.Border(bottom=ft.BorderSide(1, BORDER_ROW)),
     )
@@ -1139,7 +1140,7 @@ def empty_state(
         controls.append(_ghost_btn(action_label, None, on_action, height=32))
     return ft.Column(
         controls,
-        spacing=8,
+        spacing=SPACE_2,
         horizontal_alignment=ft.CrossAxisAlignment.START,
         tight=True,
     )
@@ -1158,7 +1159,7 @@ def hanko_seal(glyph: str, size: float = 18) -> ft.Container:
         width=size,
         height=size,
         bgcolor=HANKO,
-        border_radius=2,
+        border_radius=RADIUS_SHARP,
         alignment=ft.Alignment.CENTER,
     )
 
@@ -1181,15 +1182,15 @@ def collapsible_drawer(
 
     header = ft.Container(
         content=ft.Row(
-            [kicker(title), ft.Text(subtitle, size=11, color=TEXT_DIM, font_family=FONT), ft.Container(expand=True), caret],
-            spacing=10,
+            [kicker(title), ft.Text(subtitle, size=11, color=TEXT_MUTED, font_family=FONT), ft.Container(expand=True), caret],
+            spacing=SPACE_3,
             vertical_alignment=ft.CrossAxisAlignment.CENTER,
         ),
         ink=True,
         on_click=_toggle,
     )
     return ft.Container(
-        content=ft.Column([header, body], spacing=0, tight=True),
+        content=ft.Column([header, body], spacing=SPACE_0, tight=True),
         padding=ft.Padding.symmetric(horizontal=12, vertical=8),
         border=ft.Border.all(1, BORDER_ROW),
         border_radius=RADIUS_SHARP,
@@ -1213,7 +1214,7 @@ def platform_select(
                 ft.Text(cur_label, size=12, color=TEXT_PRIMARY, font_family=FONT_MEDIUM),
                 app_icon(PIcons.CARET_DOWN, size=14, color=TEXT_MUTED),
             ],
-            spacing=8,
+            spacing=SPACE_2,
             tight=True,
             vertical_alignment=ft.CrossAxisAlignment.CENTER,
         ),
@@ -1230,7 +1231,7 @@ def platform_select(
                 content=ft.Row(
                     [app_icon(g, size=16, color=ACCENT if k == value else TEXT_MUTED),
                      ft.Text(l, size=12, color=TEXT_PRIMARY, font_family=FONT)],
-                    spacing=8,
+                    spacing=SPACE_2,
                 ),
                 on_click=lambda e, key=k: on_change(key),
             )

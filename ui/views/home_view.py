@@ -53,12 +53,12 @@ from ui.theme.tokens import (
     PAPER_LIFT_SM,
     RADIUS_SHARP,
     SEAL_COLOR,
+    SPACE_0,
     SPACE_1,
     SPACE_2,
     SPACE_3,
     SPACE_4,
     SPACE_5,
-    TEXT_DIM,
     TEXT_MUTED,
     TEXT_PRIMARY,
 )
@@ -302,7 +302,7 @@ class HomeView(ft.Container):
                                     ft.Container(expand=True),
                                     self._cont_dur_txt,
                                 ],
-                                spacing=0,
+                                spacing=SPACE_0,
                             ),
                             ft.Container(height=2),
                             ft.Row(
@@ -310,7 +310,7 @@ class HomeView(ft.Container):
                                 spacing=SPACE_2,
                             ),
                         ],
-                        spacing=3,
+                        spacing=SPACE_1,
                         expand=True,
                         tight=True,
                     ),
@@ -338,7 +338,7 @@ class HomeView(ft.Container):
         )
 
         # 02 Estado rápido de 3 conexiones (36 px por fila)
-        self._conn_rows_col = ft.Column(spacing=0, tight=True)
+        self._conn_rows_col = ft.Column(spacing=SPACE_0, tight=True)
         conn_col = ft.Column(
             controls=[
                 _section_header(
@@ -442,7 +442,7 @@ class HomeView(ft.Container):
                     ),
                 ),
             ],
-            spacing=0,
+            spacing=SPACE_0,
             scroll=ft.ScrollMode.AUTO,
             expand=True,
         )
@@ -460,7 +460,7 @@ class HomeView(ft.Container):
             width=18,
             height=18,
             bgcolor=SEAL_COLOR,
-            border_radius=2,
+            border_radius=RADIUS_SHARP,
             rotate=ft.Rotate(-0.07),
             alignment=ft.Alignment.CENTER,
             content=ft.Text(
@@ -703,7 +703,7 @@ class HomeView(ft.Container):
                                     overflow=ft.TextOverflow.ELLIPSIS,
                                 ),
                             ],
-                            spacing=0,
+                            spacing=SPACE_0,
                             expand=True,
                             tight=True,
                             alignment=ft.MainAxisAlignment.CENTER,
@@ -751,7 +751,7 @@ class HomeView(ft.Container):
                 padding=ft.Padding.symmetric(horizontal=SPACE_4, vertical=SPACE_3),
                 content=ft.Row(
                     controls=[
-                        app_icon(PIcons.DISC, size=20, color=TEXT_DIM),
+                        app_icon(PIcons.DISC, size=20, color=TEXT_MUTED),
                         ft.Text(
                             "Aún no hay estantes en memoria. Sincroniza una plataforma en Biblioteca.",
                             size=FS_SM,

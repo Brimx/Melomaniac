@@ -8,8 +8,9 @@ from ui.theme.icons import PIcons, app_icon
 from ui.theme.tokens import (
     BG_PANEL, BG_HOVER, BORDER_LIGHT, BORDER_MUTED,
     ACCENT, SUCCESS, ERROR_COL,
-    TEXT_PRIMARY, TEXT_MUTED, TEXT_DIM,
-    MOTION_PANEL_MS,
+    TEXT_PRIMARY, TEXT_MUTED, DECOR_LINE,
+    FS_META, MOTION_PANEL_MS,
+    RADIUS_SHARP, RADIUS_SM, SPACE_0, SPACE_1,
 )
 
 _TELE_HANDLE_H      = 35
@@ -36,10 +37,10 @@ class TelemetryDrawer:
         self.sidebar_width = sidebar_width
         self._open         = False
 
-        self._d_log   = ft.ListView(spacing=0, expand=True)
-        self._o_log   = ft.ListView(spacing=0, expand=True)
-        self._d_pm    = ft.ListView(spacing=0, expand=True)
-        self._o_pm    = ft.ListView(spacing=0, expand=True)
+        self._d_log   = ft.ListView(spacing=SPACE_0, expand=True)
+        self._o_log   = ft.ListView(spacing=SPACE_0, expand=True)
+        self._d_pm    = ft.ListView(spacing=SPACE_0, expand=True)
+        self._o_pm    = ft.ListView(spacing=SPACE_0, expand=True)
         self._d_pm_ph = self._mk_placeholder()
         self._o_pm_ph = self._mk_placeholder()
         self._d_cnts = self._mk_cnts()
@@ -61,7 +62,7 @@ class TelemetryDrawer:
             content=d_body,
             bgcolor=BG_PANEL,
             border=ft.Border.all(0.8, BORDER_LIGHT),
-            border_radius=8,
+            border_radius=RADIUS_SM,
             clip_behavior=ft.ClipBehavior.ANTI_ALIAS,
             height=_TELE_PANEL_H,
             min_height=220,
@@ -87,17 +88,17 @@ class TelemetryDrawer:
             animate_size=_TELE_ANIM,
         )
 
-        self._arrow = app_icon(PIcons.ARROW_RIGHT, color=TEXT_DIM, size=14)
+        self._arrow = app_icon(PIcons.ARROW_RIGHT, color=DECOR_LINE, size=14)
         self.handle = ft.Container(
             content=ft.Row(
                 controls=[
-                    ft.Container(width=15, height=2, bgcolor=TEXT_DIM, border_radius=2, opacity=0.5),
+                    ft.Container(width=15, height=2, bgcolor=DECOR_LINE, border_radius=RADIUS_SHARP, opacity=0.5),
                     ft.Container(width=5),
-                    ft.Container(width=15, height=2, bgcolor=TEXT_DIM, border_radius=2, opacity=0.5),
+                    ft.Container(width=15, height=2, bgcolor=DECOR_LINE, border_radius=RADIUS_SHARP, opacity=0.5),
                     ft.Container(width=6),
                     self._arrow,
                 ],
-                spacing=0,
+                spacing=SPACE_0,
                 alignment=ft.MainAxisAlignment.CENTER,
                 vertical_alignment=ft.CrossAxisAlignment.CENTER,
             ),
@@ -119,7 +120,7 @@ class TelemetryDrawer:
     @staticmethod
     def _mk_placeholder() -> ft.Text:
         """Placeholder único para Post-Mortem vacío. Evita duplicar ft.Text."""
-        return ft.Text("Sin errores registrados", size=10, color=TEXT_DIM,
+        return ft.Text("Sin errores registrados", size=FS_META, color=TEXT_MUTED,
                        font_family=FONT_TEXT, opacity=0.6,
                        text_align=ft.TextAlign.CENTER)
 
@@ -148,10 +149,10 @@ class TelemetryDrawer:
     def _build_body(self, cnts, log_list, pm_list, pm_ph) -> tuple:
         def _crow(label, val_node):
             return ft.Row([
-                ft.Text(label, size=9, color=TEXT_DIM, font_family=FONT_HEADLINE, opacity=1.0),
+                ft.Text(label, size=FS_META, color=TEXT_MUTED, font_family=FONT_HEADLINE, opacity=1.0),
                 ft.Container(expand=True),
                 val_node,
-            ], spacing=0)
+            ], spacing=SPACE_0)
 
         panel_monitor = ft.Container(
             content=ft.Column([
@@ -160,7 +161,7 @@ class TelemetryDrawer:
                 _crow("Procesadas",     cnts["processed"]),
                 _crow("Confirmadas",    cnts["confirmed"]),
                 _crow("Rechazadas API", cnts["rejected"]),
-            ], spacing=5),
+            ], spacing=SPACE_1),
             padding=ft.Padding.symmetric(horizontal=10, vertical=8),
             expand=True, visible=(self._DEFAULT_TAB == 0),
         )
@@ -172,10 +173,10 @@ class TelemetryDrawer:
         export_btn = ft.Container(
             content=ft.Row([
                 app_icon(PIcons.DOWNLOAD_SIMPLE, size=11, color=ACCENT),
-                ft.Text("Exportar a TXT", size=10, color=ACCENT, font_family=FONT_HEADLINE, opacity=1.0),
-            ], spacing=4, tight=True),
+                ft.Text("Exportar a TXT", size=FS_META, color=ACCENT, font_family=FONT_HEADLINE, opacity=1.0),
+            ], spacing=SPACE_1, tight=True),
             padding=ft.Padding.symmetric(horizontal=8, vertical=4),
-            border_radius=6,
+            border_radius=RADIUS_SM,
             border=ft.Border.all(0.8, ACCENT),
             on_click=lambda _: self._do_export(),
             ink=True,
@@ -190,7 +191,7 @@ class TelemetryDrawer:
                     content=ft.Row([export_btn], alignment=ft.MainAxisAlignment.END),
                     padding=ft.Padding.only(right=4, bottom=4, top=2),
                 ),
-            ], spacing=0, expand=True),
+            ], spacing=SPACE_0, expand=True),
             padding=ft.Padding.symmetric(horizontal=6, vertical=6),
             expand=True, visible=(self._DEFAULT_TAB == 2),
         )
@@ -201,8 +202,8 @@ class TelemetryDrawer:
             active = (i == self._DEFAULT_TAB)
             btn = ft.Container(
                 content=ft.Text(
-                    label, size=10,
-                    color=TEXT_PRIMARY if active else TEXT_DIM,
+                    label, size=FS_META,
+                    color=TEXT_PRIMARY if active else TEXT_MUTED,
                     font_family=(FONT_HEADLINE_SEMI if active else FONT_HEADLINE),
                     opacity=1.0,
                 ),
@@ -233,11 +234,11 @@ class TelemetryDrawer:
             btn.on_click = _make_on_click(i, panels, tab_btns)
 
         tab_row = ft.Container(
-            content=ft.Row(tab_btns, spacing=2),
+            content=ft.Row(tab_btns, spacing=SPACE_1),
             border=ft.Border(bottom=ft.BorderSide(0.8, BORDER_MUTED)),
             padding=ft.Padding.only(left=6, right=6, top=4, bottom=0),
         )
-        body = ft.Column(controls=[tab_row, ft.Stack(controls=panels, expand=True)], spacing=0, expand=True)
+        body = ft.Column(controls=[tab_row, ft.Stack(controls=panels, expand=True)], spacing=SPACE_0, expand=True)
         return body, panels, tab_btns
 
     def _switch_to_tab(self, idx: int, panels: list, btns: list) -> None:
@@ -245,7 +246,7 @@ class TelemetryDrawer:
             is_sel = (j == idx)
             p.visible        = is_sel
             b.bgcolor        = BG_HOVER if is_sel else ft.Colors.TRANSPARENT
-            b.content.color  = TEXT_PRIMARY if is_sel else TEXT_DIM
+            b.content.color  = TEXT_PRIMARY if is_sel else TEXT_MUTED
             b.content.font_family = FONT_HEADLINE_SEMI if is_sel else FONT_HEADLINE
             b.border = ft.Border(bottom=ft.BorderSide(
                 1.5 if is_sel else 0, ACCENT if is_sel else ft.Colors.TRANSPARENT
@@ -363,7 +364,7 @@ class TelemetryDrawer:
                 col = (SUCCESS if "[SUCCESS]" in line else ERROR_COL if "[ERROR]" in line else TEXT_MUTED)
                 lst.controls.append(
                     ft.Text(
-                        f"› {line}", size=9, color=col,
+                        f"› {line}", size=FS_META, color=col,
                         font_family=mono_family(), opacity=1.0,
                         max_lines=1, overflow=ft.TextOverflow.ELLIPSIS,
                         tooltip=line,
@@ -403,5 +404,5 @@ class TelemetryDrawer:
                 if reason:
                     label += f"  ·  {reason[:48]}"
                 lst.controls.append(
-                    ft.Text(label, size=9, color=ERROR_COL, font_family=mono_family(), opacity=1.0)
+                    ft.Text(label, size=FS_META, color=ERROR_COL, font_family=mono_family(), opacity=1.0)
                 )
