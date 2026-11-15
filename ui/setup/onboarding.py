@@ -29,7 +29,7 @@ from ui.theme.tokens import (
     ACCENT, BG_DEEP, BG_SURFACE, BORDER_MUTED, MOTION_ENTER_MS, MOTION_PANEL_MS,
     ONBOARDING_CARD_ALPHA, ONBOARDING_CARD_H, ONBOARDING_CARD_W,
     ONBOARDING_SLIDE, ONBOARDING_STAGGER_MS, PLAYER_PROGRESS_ANIM_MS, PLAYER_PROGRESS_H,
-    RADIUS_DIALOG, RADIUS_INPUT, SUCCESS, TEXT_MUTED, TEXT_PRIMARY, WARNING,
+    RADIUS_SHARP, RADIUS_SM, SPACE_1, SPACE_2, SPACE_3, SUCCESS, TEXT_MUTED, TEXT_PRIMARY, WARNING,
 )
 from ui.components.widgets import (
     _ghost_btn,
@@ -61,15 +61,15 @@ def _feature(icon: str, title: str, text: str) -> ft.Control:
     """Fila icono + título + descripción, común a todos los pasos."""
     return ft.Row(controls=[
         ft.Container(
-            width=36, height=36, border_radius=RADIUS_INPUT,
+            width=36, height=36, border_radius=RADIUS_SHARP,
             border=ft.Border.all(0.8, BORDER_MUTED), alignment=ft.Alignment.CENTER,
             content=app_icon(icon, size=18, color=ACCENT),
         ),
         ft.Column(controls=[
             app_text(title, size=13, color=TEXT_PRIMARY, font_family=FONT_HEADLINE),
             app_text(text, size=11, color=TEXT_MUTED, font_family=FONT_TEXT),
-        ], spacing=4, expand=True),
-    ], spacing=14, vertical_alignment=ft.CrossAxisAlignment.CENTER)
+        ], spacing=SPACE_1, expand=True),
+    ], spacing=SPACE_3, vertical_alignment=ft.CrossAxisAlignment.CENTER)
 
 
 # ── pasos ──────────────────────────────────────────────────────────────
@@ -130,7 +130,7 @@ def _step_prefs(view: "OnboardingView") -> list[ft.Control]:
         app_icon(PIcons.FOLDER, size=18, color=TEXT_MUTED),
         view.dir_text,
         _ghost_btn("Cambiar", PIcons.PENCIL_SIMPLE, view.pick_dir, width=120, height=36),
-    ], spacing=8, vertical_alignment=ft.CrossAxisAlignment.CENTER)
+    ], spacing=SPACE_2, vertical_alignment=ft.CrossAxisAlignment.CENTER)
     return [
         app_text("Carpeta donde se guardan las descargas", size=11, color=TEXT_MUTED,
                  font_family=FONT_TEXT),
@@ -208,7 +208,7 @@ def _step_system(view: "OnboardingView") -> list[ft.Control]:
                     app_text("Gestionado por el instalador de Windows (Menú Inicio y Escritorio)",
                              size=11, color=TEXT_MUTED, font_family=FONT_TEXT),
                 ],
-                spacing=8,
+                spacing=SPACE_2,
                 vertical_alignment=ft.CrossAxisAlignment.CENTER,
             )
         elif st.installed and st.is_current:
@@ -219,7 +219,7 @@ def _step_system(view: "OnboardingView") -> list[ft.Control]:
                     ft.Container(width=8),
                     _ghost_btn("Reinstalar", PIcons.ARROWS_CLOCKWISE, _on_click_install, width=120, height=36),
                 ],
-                spacing=8,
+                spacing=SPACE_2,
                 vertical_alignment=ft.CrossAxisAlignment.CENTER,
             )
         elif st.installed and not st.is_current:
@@ -228,7 +228,7 @@ def _step_system(view: "OnboardingView") -> list[ft.Control]:
                     _primary_btn("Actualizar acceso directo", PIcons.ARROWS_CLOCKWISE, _on_click_install, width=220, height=38),
                     app_text("Apunta a una ruta anterior", size=11, color=WARNING, font_family=FONT_TEXT),
                 ],
-                spacing=8,
+                spacing=SPACE_2,
                 vertical_alignment=ft.CrossAxisAlignment.CENTER,
             )
         else:
@@ -237,7 +237,7 @@ def _step_system(view: "OnboardingView") -> list[ft.Control]:
                     _primary_btn("Crear acceso directo", PIcons.PLUS, _on_click_install, width=200, height=38),
                     app_text("Opcional: puedes crearlo o cambiarlo en Config", size=11, color=TEXT_MUTED, font_family=FONT_TEXT),
                 ],
-                spacing=8,
+                spacing=SPACE_2,
                 vertical_alignment=ft.CrossAxisAlignment.CENTER,
             )
         try:
@@ -354,18 +354,18 @@ class OnboardingView(ft.Container):
         self._title = app_text("", size=22, color=TEXT_PRIMARY, font_family=FONT_HEADLINE)
         self._subtitle = app_text("", size=12, color=TEXT_MUTED, font_family=FONT_TEXT)
         self._icon = app_icon(PIcons.CIRCLE, size=26, color=ACCENT)
-        self._items = ft.Column(spacing=14)
+        self._items = ft.Column(spacing=SPACE_3)
         self._body = ft.Container(
             expand=True, opacity=1, offset=ft.Offset(0, 0),
             animate_opacity=ft.Animation(MOTION_ENTER_MS, ft.AnimationCurve.EASE_IN_OUT),
             animate_offset=ft.Animation(MOTION_ENTER_MS, ft.AnimationCurve.EASE_IN_OUT),
             content=ft.Column(controls=[
-                ft.Row(controls=[self._icon, self._title], spacing=12,
+                ft.Row(controls=[self._icon, self._title], spacing=SPACE_3,
                        vertical_alignment=ft.CrossAxisAlignment.CENTER),
                 self._subtitle,
                 ft.Container(height=8),
                 self._items,
-            ], spacing=4),
+            ], spacing=SPACE_1),
         )
         self._skip_btn = _ghost_btn("Omitir", PIcons.SKIP_FORWARD, self._on_skip, width=120, height=40)
         self._back_btn = _ghost_btn("Anterior", PIcons.ARROW_LEFT, self._on_back, width=130, height=40)
@@ -374,7 +374,7 @@ class OnboardingView(ft.Container):
         card = ft.Container(
             width=ONBOARDING_CARD_W, height=ONBOARDING_CARD_H,
             bgcolor=ft.Colors.with_opacity(ONBOARDING_CARD_ALPHA, BG_SURFACE),
-            border=ft.Border.all(0.8, BORDER_MUTED), border_radius=RADIUS_DIALOG,
+            border=ft.Border.all(0.8, BORDER_MUTED), border_radius=RADIUS_SM,
             padding=ft.Padding.all(_PAD),
             content=ft.Column(controls=[
                 ft.Row(controls=[
@@ -384,13 +384,13 @@ class OnboardingView(ft.Container):
                         content=self._fill,
                     ),
                     self._counter,
-                ], spacing=12, vertical_alignment=ft.CrossAxisAlignment.CENTER),
+                ], spacing=SPACE_3, vertical_alignment=ft.CrossAxisAlignment.CENTER),
                 ft.Container(height=12),
                 self._body,
                 ft.Row(controls=[
                     self._skip_btn, ft.Container(expand=True), self._back_btn, self._next_slot,
-                ], spacing=8, vertical_alignment=ft.CrossAxisAlignment.CENTER),
-            ], spacing=8),
+                ], spacing=SPACE_2, vertical_alignment=ft.CrossAxisAlignment.CENTER),
+            ], spacing=SPACE_2),
         )
         self._stack = ft.Stack(
             expand=True, fit=ft.StackFit.EXPAND,

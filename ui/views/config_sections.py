@@ -38,11 +38,15 @@ from ui.theme.tokens import (
     BORDER_MUTED,
     BORDER_ROW,
     ERROR_COL,
+    FS_META,
     MOTION_PANEL_MS,
-    RADIUS_BUTTON,
-    RADIUS_INPUT,
+    RADIUS_SHARP,
+    RADIUS_SM,
+    SPACE_1,
+    SPACE_2,
+    SPACE_3,
+    SPACE_4,
     SUCCESS,
-    TEXT_DIM,
     TEXT_MUTED,
     TEXT_PRIMARY,
     WARNING,
@@ -60,49 +64,53 @@ CONFIG_SECTIONS: tuple[tuple[str, str, str, str], ...] = (
     ("acerca", "08", "Acerca de", PIcons.INFO),
 )
 
+def _swatch(*codes: str) -> tuple[str, ...]:
+    return tuple(f"#{c}" for c in codes)
+
+
 # Paletas del demo («Sala de escucha» + 6 temas) con sus 4 muestras estáticas.
 THEMES: tuple[dict[str, Any], ...] = (
     {
         "id": "sala",
         "name": "Sala de escucha",
         "note": "Índigo sobre negro. El original.",
-        "sw": ("#FF000000", "#FF161622", "#FF4F8BFF", "#FFF2F6FF"),
+        "sw": (BG_DEEP, BG_LIST, ACCENT, TEXT_PRIMARY),
     },
     {
         "id": "bermellon",
         "name": "Bermellón",
         "note": "Sello rojo sobre tinta cálida.",
-        "sw": ("#FF0A0605", "#FF201714", "#FFF0614E", "#FFFBF1EC"),
+        "sw": _swatch("FF0A0605", "FF201714", "FFF0614E", "FFFBF1EC"),
     },
     {
         "id": "matcha",
         "name": "Matcha",
         "note": "Verde té sobre negro bosque.",
-        "sw": ("#FF040806", "#FF15211A", "#FF7CCB8C", "#FFF0F8F2"),
+        "sw": _swatch("FF040806", "FF15211A", "FF7CCB8C", "FFF0F8F2"),
     },
     {
         "id": "valvula",
         "name": "Válvula",
         "note": "Ámbar de amplificador a válvulas.",
-        "sw": ("#FF090603", "#FF21160C", "#FFF2A93B", "#FFFFF6E8"),
+        "sw": _swatch("FF090603", "FF21160C", "FFF2A93B", "FFFFF6E8"),
     },
     {
         "id": "glicina",
         "name": "Glicina",
         "note": "Violeta suave sobre noche.",
-        "sw": ("#FF06040A", "#FF1C1529", "#FFA78BFA", "#FFF5F1FF"),
+        "sw": _swatch("FF06040A", "FF1C1529", "FFA78BFA", "FFF5F1FF"),
     },
     {
         "id": "hielo",
         "name": "Hielo",
         "note": "Cian frío sobre pizarra.",
-        "sw": ("#FF03080A", "#FF12222B", "#FF5CC8D7", "#FFEEF9FC"),
+        "sw": _swatch("FF03080A", "FF12222B", "FF5CC8D7", "FFEEF9FC"),
     },
     {
         "id": "washi",
         "name": "Washi",
         "note": "Tema claro: tinta índigo sobre papel.",
-        "sw": ("#FFF6F1E6", "#FFF1EBDC", "#FF2F5D8A", "#FF1B1814"),
+        "sw": _swatch("FFF6F1E6", "FFF1EBDC", "FF2F5D8A", "FF1B1814"),
     },
 )
 
@@ -135,10 +143,10 @@ def cfg_card(
     return ft.Container(
         bgcolor=BG_SURFACE,
         border=ft.Border.all(0.8, BORDER_MUTED),
-        border_radius=RADIUS_INPUT,
+        border_radius=RADIUS_SHARP,
         padding=ft.Padding.symmetric(horizontal=16, vertical=14),
         opacity=0.72 if muted_card else 1.0,
-        content=ft.Column(controls=body, spacing=6),
+        content=ft.Column(controls=body, spacing=SPACE_2),
     )
 
 
@@ -157,10 +165,10 @@ def cfg_row(
         left.append(app_text(desc, size=11, color=TEXT_MUTED, font_family=FONT_TEXT))
     if reason:
         left.append(
-            app_text(f"No disponible: {reason}", size=10, color=WARNING, font_family=FONT_TEXT)
+            app_text(f"No disponible: {reason}", size=FS_META, color=WARNING, font_family=FONT_TEXT)
         )
     row_controls: list[ft.Control] = [
-        ft.Column(controls=left, spacing=2, expand=True),
+        ft.Column(controls=left, spacing=SPACE_1, expand=True),
     ]
     if control is not None:
         row_controls.append(control)
@@ -168,7 +176,7 @@ def cfg_row(
         padding=ft.Padding.symmetric(vertical=4),
         content=ft.Row(
             controls=row_controls,
-            spacing=12,
+            spacing=SPACE_3,
             vertical_alignment=ft.CrossAxisAlignment.CENTER,
         ),
     )
@@ -183,9 +191,9 @@ def cfg_badge(label: str, kind: str = "muted") -> ft.Container:
     }.get(kind, TEXT_MUTED)
     return ft.Container(
         border=ft.Border.all(0.8, color),
-        border_radius=6,
+        border_radius=RADIUS_SM,
         padding=ft.Padding.symmetric(horizontal=7, vertical=2),
-        content=app_text(label.upper(), size=9, color=color, font_family=mono_family("light")),
+        content=app_text(label.upper(), size=FS_META, color=color, font_family=mono_family("light")),
     )
 
 
@@ -231,7 +239,7 @@ def build_conexiones_section(view: Any) -> list[ft.Control]:
 
         actions = ft.Row(
             controls=[spinner, verify_btn, wizard_btn],
-            spacing=8,
+            spacing=SPACE_2,
             wrap=True,
             vertical_alignment=ft.CrossAxisAlignment.CENTER,
         )
@@ -243,20 +251,20 @@ def build_conexiones_section(view: Any) -> list[ft.Control]:
                         app_text(plat, size=14, color=TEXT_PRIMARY, font_family=FONT_HEADLINE_BOLD),
                         badge_host,
                     ],
-                    spacing=8,
+                    spacing=SPACE_2,
                     wrap=True,
                     vertical_alignment=ft.CrossAxisAlignment.CENTER,
                 ),
                 meta_text,
                 actions,
             ],
-            spacing=8,
+            spacing=SPACE_2,
         )
         provider_cards.append(
             ft.Container(
                 bgcolor=BG_SURFACE,
                 border=ft.Border.all(0.8, BORDER_MUTED),
-                border_radius=RADIUS_INPUT,
+                border_radius=RADIUS_SHARP,
                 padding=ft.Padding.symmetric(horizontal=16, vertical=14),
                 content=info_col,
             )
@@ -386,7 +394,7 @@ def build_reproduccion_section(view: Any) -> list[ft.Control]:
             cfg_row(
                 "Volumen inicial",
                 "Ajusta el nivel de salida del reproductor integrado.",
-                ft.Row(controls=[vol_slider, view._vol_label], spacing=6, vertical_alignment=ft.CrossAxisAlignment.CENTER),
+                ft.Row(controls=[vol_slider, view._vol_label], spacing=SPACE_2, vertical_alignment=ft.CrossAxisAlignment.CENTER),
             ),
             cfg_row(
                 "Reproducir sin descargar",
@@ -509,7 +517,7 @@ def build_descargas_section(view: Any) -> list[ft.Control]:
                     _ghost_btn("Cambiar", PIcons.PENCIL_SIMPLE, view._on_pick_dir, width=115, height=34),
                     view._dir_reset_btn,
                 ],
-                spacing=8,
+                spacing=SPACE_2,
                 vertical_alignment=ft.CrossAxisAlignment.CENTER,
             ),
             cfg_row(
@@ -553,7 +561,7 @@ def build_descargas_section(view: Any) -> list[ft.Control]:
 
 def build_biblioteca_section(view: Any) -> list[ft.Control]:
     """Carpetas locales (quitar con confirmación), portadas y vista."""
-    view._local_folders_col = ft.Column(spacing=4)
+    view._local_folders_col = ft.Column(spacing=SPACE_1)
     view._render_local_folders_list()
     view._reindex_btn = _ghost_btn(
         "Reindexar", PIcons.ARROWS_CLOCKWISE, view._on_reindex_folders, width=130, height=34,
@@ -570,7 +578,7 @@ def build_biblioteca_section(view: Any) -> list[ft.Control]:
                     _ghost_btn("Añadir carpeta", PIcons.FOLDER_PLUS, view._on_add_local_folder, width=155, height=34),
                     view._reindex_btn,
                 ],
-                spacing=8,
+                spacing=SPACE_2,
                 wrap=True,
                 vertical_alignment=ft.CrossAxisAlignment.CENTER,
             ),
@@ -608,7 +616,7 @@ def build_biblioteca_section(view: Any) -> list[ft.Control]:
                 "",
                 ft.Row(
                     controls=[view._cache_text, view._cache_btn],
-                    spacing=10,
+                    spacing=SPACE_3,
                     vertical_alignment=ft.CrossAxisAlignment.CENTER,
                 ),
             ),
@@ -650,21 +658,21 @@ def _build_queue_preview(mode: str, *, reduce_motion: bool) -> tuple[ft.Containe
         top=6,
         bgcolor=BG_PANEL,
         border=ft.Border.all(1.0, ACCENT),
-        border_radius=6,
+        border_radius=RADIUS_SM,
         alignment=ft.Alignment.CENTER,
         offset=(0.0, 0.0) if is_overlay else (0.12, 0.0),
         animate_offset=anim,
-        content=app_text("Cola", size=10, color=ACCENT, font_family=mono_family("light")),
+        content=app_text("Cola", size=FS_META, color=ACCENT, font_family=mono_family("light")),
     )
     blocks = ft.Row(
         controls=[
             ft.Container(
                 expand=True, height=48, bgcolor=BG_LIST,
-                border=ft.Border.all(0.6, BORDER_MUTED), border_radius=6,
+                border=ft.Border.all(0.6, BORDER_MUTED), border_radius=RADIUS_SM,
             )
             for _ in range(3)
         ],
-        spacing=6,
+        spacing=SPACE_2,
         right=10 if is_overlay else 80,
         left=10,
         top=14,
@@ -674,7 +682,7 @@ def _build_queue_preview(mode: str, *, reduce_motion: bool) -> tuple[ft.Containe
         height=78,
         bgcolor=BG_DEEP,
         border=ft.Border.all(0.8, BORDER_MUTED),
-        border_radius=RADIUS_INPUT,
+        border_radius=RADIUS_SHARP,
         clip_behavior=ft.ClipBehavior.HARD_EDGE,
         content=ft.Stack(controls=[blocks, panel], expand=True),
     )
@@ -768,17 +776,17 @@ def build_apariencia_section(view: Any) -> list[ft.Control]:
             controls=[
                 ft.Container(
                     width=14, height=14, bgcolor=col,
-                    border=ft.Border.all(0.6, BORDER_LIGHT), border_radius=3,
+                    border=ft.Border.all(0.6, BORDER_LIGHT), border_radius=RADIUS_SHARP,
                 )
                 for col in th["sw"]
             ],
-            spacing=4,
+            spacing=SPACE_1,
         )
         tile = ft.Container(
             width=220,
             bgcolor=BG_LIST,
             border=ft.Border.all(0.8, ACCENT if th["id"] == current_theme else BORDER_MUTED),
-            border_radius=RADIUS_INPUT,
+            border_radius=RADIUS_SHARP,
             padding=ft.Padding.symmetric(horizontal=10, vertical=10),
             content=ft.Column(
                 controls=[
@@ -786,12 +794,12 @@ def build_apariencia_section(view: Any) -> list[ft.Control]:
                         controls=[
                             ft.Radio(value=th["id"], label=th["name"], active_color=ACCENT),
                         ],
-                        spacing=4,
+                        spacing=SPACE_1,
                     ),
                     swatches,
-                    app_text(th["note"], size=10, color=TEXT_MUTED, font_family=FONT_TEXT, max_lines=2),
+                    app_text(th["note"], size=FS_META, color=TEXT_MUTED, font_family=FONT_TEXT, max_lines=2),
                 ],
-                spacing=6,
+                spacing=SPACE_2,
             ),
         )
         theme_tiles.append(tile)
@@ -800,7 +808,7 @@ def build_apariencia_section(view: Any) -> list[ft.Control]:
     view._theme_group = ft.RadioGroup(
         value=current_theme,
         on_change=view._on_theme_change,
-        content=ft.Row(controls=theme_tiles, wrap=True, spacing=10, run_spacing=10),
+        content=ft.Row(controls=theme_tiles, wrap=True, spacing=SPACE_3, run_spacing=SPACE_3),
     )
 
     tema_card = cfg_card(
@@ -905,7 +913,7 @@ def build_datos_section(view: Any) -> list[ft.Control]:
                         view._search_cache_text,
                         _ghost_btn("Vaciar", PIcons.TRASH, view._on_clear_search_cache, width=110, height=34),
                     ],
-                    spacing=10,
+                    spacing=SPACE_3,
                     vertical_alignment=ft.CrossAxisAlignment.CENTER,
                 ),
             ),
@@ -914,7 +922,7 @@ def build_datos_section(view: Any) -> list[ft.Control]:
                 "Metadatos cacheados por ruta, fecha de modificación y tamaño.",
                 ft.Row(
                     controls=[view._local_index_text, view._rebuild_index_btn],
-                    spacing=10,
+                    spacing=SPACE_3,
                     vertical_alignment=ft.CrossAxisAlignment.CENTER,
                 ),
             ),
@@ -952,7 +960,7 @@ def build_datos_section(view: Any) -> list[ft.Control]:
                 ft.Text("Restablecer", color=ERROR_COL, font_family=FONT_HEADLINE, opacity=1.0),
             ],
             tight=True,
-            spacing=6,
+            spacing=SPACE_2,
             alignment=ft.MainAxisAlignment.CENTER,
         ),
         height=34,
@@ -962,7 +970,7 @@ def build_datos_section(view: Any) -> list[ft.Control]:
                 ft.ControlState.DEFAULT: ft.BorderSide(0.8, ERROR_COL),
                 ft.ControlState.HOVERED: ft.BorderSide(1.2, ERROR_COL),
             },
-            shape=ft.RoundedRectangleBorder(radius=RADIUS_BUTTON),
+            shape=ft.RoundedRectangleBorder(radius=RADIUS_SHARP),
             padding=ft.Padding.symmetric(horizontal=14, vertical=6),
         ),
     )
@@ -989,7 +997,7 @@ def _shortcut_rows() -> list[ft.Control]:
         kbd = ft.Container(
             bgcolor=BG_LIST,
             border=ft.Border.all(0.8, BORDER_LIGHT),
-            border_radius=6,
+            border_radius=RADIUS_SM,
             padding=ft.Padding.symmetric(horizontal=8, vertical=3),
             content=app_text(sc.hint(), size=11, color=TEXT_PRIMARY, font_family=mono_family("light")),
         )
@@ -1005,7 +1013,7 @@ def build_acerca_section(view: Any, *, wide: bool = False) -> list[ft.Control]:
     view._update_check_btn = _ghost_btn(
         "Comprobar", PIcons.ARROWS_CLOCKWISE, view._on_check_updates, width=130, height=34,
     )
-    view._update_result_col = ft.Column(spacing=6)
+    view._update_result_col = ft.Column(spacing=SPACE_2)
 
     env_str = (
         f"Python {sys.version_info.major}.{sys.version_info.minor} · "
@@ -1049,13 +1057,13 @@ def build_acerca_section(view: Any, *, wide: bool = False) -> list[ft.Control]:
         "Comprobando estado…", size=11, color=TEXT_PRIMARY, font_family=FONT_TEXT,
     )
     view._shortcut_location_text = app_text(
-        "", size=10, color=TEXT_MUTED, font_family=mono_family("light"),
+        "", size=FS_META, color=TEXT_MUTED, font_family=mono_family("light"),
         max_lines=1, overflow=ft.TextOverflow.ELLIPSIS, visible=False,
     )
     view._shortcut_warning_text = app_text(
         "", size=11, color=WARNING, font_family=FONT_TEXT, visible=False,
     )
-    view._shortcut_actions_row = ft.Row(spacing=8, wrap=True, vertical_alignment=ft.CrossAxisAlignment.CENTER)
+    view._shortcut_actions_row = ft.Row(spacing=SPACE_2, wrap=True, vertical_alignment=ft.CrossAxisAlignment.CENTER)
 
     shortcut_card = cfg_card(
         "Sistema y acceso directo",
@@ -1077,10 +1085,10 @@ def build_acerca_section(view: Any, *, wide: bool = False) -> list[ft.Control]:
         return [
             ft.Row(
                 controls=[
-                    ft.Column(controls=[about_card, shortcut_card], spacing=12, expand=3),
-                    ft.Column(controls=[shortcuts_panel], spacing=12, expand=2),
+                    ft.Column(controls=[about_card, shortcut_card], spacing=SPACE_3, expand=3),
+                    ft.Column(controls=[shortcuts_panel], spacing=SPACE_3, expand=2),
                 ],
-                spacing=16,
+                spacing=SPACE_4,
                 vertical_alignment=ft.CrossAxisAlignment.START,
             )
         ]
@@ -1088,7 +1096,7 @@ def build_acerca_section(view: Any, *, wide: bool = False) -> list[ft.Control]:
     shortcuts_disclosure = ft.Container(
         bgcolor=BG_SURFACE,
         border=ft.Border.all(0.8, BORDER_MUTED),
-        border_radius=RADIUS_INPUT,
+        border_radius=RADIUS_SHARP,
         padding=ft.Padding.symmetric(horizontal=8, vertical=4),
         content=ft.ExpansionTile(
             title=app_text(f"Atajos de teclado ({len(SHORTCUTS)})", size=13, color=TEXT_PRIMARY, font_family=FONT_HEADLINE),
@@ -1099,7 +1107,7 @@ def build_acerca_section(view: Any, *, wide: bool = False) -> list[ft.Control]:
             controls=[
                 ft.Container(
                     padding=ft.Padding.symmetric(horizontal=10, vertical=6),
-                    content=ft.Column(controls=_shortcut_rows(), spacing=4),
+                    content=ft.Column(controls=_shortcut_rows(), spacing=SPACE_1),
                 )
             ],
         ),

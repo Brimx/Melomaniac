@@ -38,7 +38,7 @@ from ui.theme.tokens import (
     ONBOARDING_DISC_MASK_MARGIN,
     ONBOARDING_DISC_SEAL,
     ONBOARDING_DISC_SPECS,
-    TEXT_DIM,
+    DECOR_LINE,
 )
 
 _HIGHLIGHT_TEX_SIZE = 512
@@ -76,7 +76,7 @@ def _disc_geometry(
     r = max(w, h) * r_frac
     ox = w * cx_frac
     oy = h * cy_frac
-    ink = ACCENT if use_accent else TEXT_DIM
+    ink = ACCENT if use_accent else DECOR_LINE
     return ox, oy, r, groove_alpha, rpm, ink
 
 
@@ -92,7 +92,7 @@ def _build_static_disc(ox: float, oy: float, r: float, groove_alpha: float, ink:
         ),
         cv.Circle(
             c, c, r - 2.5,
-            ft.Paint(color=ft.Colors.with_opacity(0.22, TEXT_DIM), stroke_width=1, style=ft.PaintingStyle.STROKE),
+            ft.Paint(color=ft.Colors.with_opacity(0.22, DECOR_LINE), stroke_width=1, style=ft.PaintingStyle.STROKE),
         ),
     ]
     rr = r * 0.31
@@ -102,7 +102,7 @@ def _build_static_disc(ox: float, oy: float, r: float, groove_alpha: float, ink:
             cv.Circle(
                 c, c, rr,
                 ft.Paint(
-                    color=ft.Colors.with_opacity(groove_alpha, ink if k % 2 else TEXT_DIM),
+                    color=ft.Colors.with_opacity(groove_alpha, ink if k % 2 else DECOR_LINE),
                     stroke_width=1,
                     style=ft.PaintingStyle.STROKE,
                 ),
@@ -119,7 +119,7 @@ def _build_static_disc(ox: float, oy: float, r: float, groove_alpha: float, ink:
     shapes.append(
         cv.Circle(
             c, c, r * 0.30 * 0.24,
-            ft.Paint(color=ft.Colors.with_opacity(0.26, TEXT_DIM), stroke_width=1, style=ft.PaintingStyle.STROKE),
+            ft.Paint(color=ft.Colors.with_opacity(0.26, DECOR_LINE), stroke_width=1, style=ft.PaintingStyle.STROKE),
         )
     )
     return cv.Canvas(width=size, height=size, shapes=shapes, left=ox - c, top=oy - c)
@@ -250,7 +250,7 @@ class OnboardingBackground(cv.Canvas):
                 lines.append(cv.Line(
                     pts[i][0], pts[i][1], pts[j][0], pts[j][1],
                     ft.Paint(
-                        color=ft.Colors.with_opacity(alpha, TEXT_DIM if (i + j) % 3 else ACCENT),
+                        color=ft.Colors.with_opacity(alpha, DECOR_LINE if (i + j) % 3 else ACCENT),
                         stroke_width=1,
                         stroke_dash_pattern=ONBOARDING_BG_DASHES[(i + j) % len(ONBOARDING_BG_DASHES)],
                         style=ft.PaintingStyle.STROKE,
