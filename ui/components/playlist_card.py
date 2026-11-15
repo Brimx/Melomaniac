@@ -5,23 +5,23 @@ Reusa tokens OLED, Shimmer opcional, sin controles raros.
 
 from __future__ import annotations
 
-import math
 from typing import Any, Callable, Optional, Sequence
 
 import flet as ft
 
 from core.library_models import LibraryLoadState, PlaylistSummary
-from services import settings_store
 from ui.theme.fonts import FONT_HEADLINE_BOLD, FONT_TEXT, font_family_for, mono_family
 from ui.theme.icons import PIcons
 from ui.components.song_row import _thumb_content_for
 from ui.theme.tokens import (
-    ACCENT, BG_DEEP, BG_HOVER, BG_SURFACE, BORDER_LIGHT, BORDER_MUTED,
+    ACCENT, BG_DEEP, BG_HOVER, PAPER_BG, BG_SURFACE, BORDER_CONTROL, BORDER_LIGHT, BORDER_MUTED,
     ERROR_COL, FS_META, MOTION_HOVER_MS, RADIUS_SHARP, RADIUS_SM,
     SKELETON_DARK, SPACE_0, SPACE_1, SPACE_2, TEXT_MUTED, TEXT_PRIMARY, WARNING,
 )
 from ui.components.widgets import (
+    apply_paper_relief,
     control_page,
+    obi_strip,
     open_external,
     safe_update,
 )
@@ -41,16 +41,8 @@ _OBI_LABELS = {
 
 
 def _should_show_obi() -> bool:
-    getter = getattr(settings_store, "get_show_platform_obi", None)
-    if callable(getter):
-        try:
-            return bool(getter())
-        except Exception:
-            return True
-    try:
-        return bool(settings_store.load_settings().get("show_platform_obi", True))
-    except Exception:
-        return True
+    """Devuelve True por defecto sin E/S síncrona; la vista padre pasa `show_obi`."""
+    return True
 
 
 def _obi_label_for(platform: str, explicit: Optional[str] = None) -> str:
@@ -63,27 +55,11 @@ def _obi_label_for(platform: str, explicit: Optional[str] = None) -> str:
 
 
 def _build_obi_strip(label: str, cover_size: int = 140) -> ft.Control:
-    """Lomo obi vertical sobre el borde izquierdo de la portada (estilo demo)."""
-    strip_len = max(72, int(cover_size * 0.72))
-    strip_w = 15
-    return ft.Container(
-        width=strip_len,
-        height=strip_w,
-        bgcolor=TEXT_PRIMARY,
-        border=ft.Border.only(bottom=ft.BorderSide(1, ft.Colors.with_opacity(0.35, BG_DEEP))),
-        alignment=ft.Alignment.CENTER,
-        rotate=ft.Rotate(-math.pi / 2),
-        left=-(strip_len - strip_w) / 2,
-        top=(cover_size - strip_w) / 2,
-        content=ft.Text(
-            label,
-            size=FS_META,
-            color=BG_SURFACE,
-            font_family=mono_family("regular"),
-            max_lines=1,
-            no_wrap=True,
-        ),
-    )
+    """Lomo obi de papel sobre el borde izquierdo de la portada."""
+    strip = obi_strip(label, height=cover_size, bgcolor=PAPER_BG, text_color=BG_DEEP)
+    strip.left = 0
+    strip.top = 0
+    return strip
 
 
 def _cover_single(url: str, size: int = 140) -> ft.Container:
@@ -136,6 +112,7 @@ class PlaylistCard(ft.Container):
         extra_actions: Optional[Sequence[ContextMenuAction]] = None,
         obi_label: Optional[str] = None,
         subtitle_line2: Optional[str] = None,
+        show_obi: bool = True,
     ):
         self.summary = summary
         self._on_tap = on_tap
@@ -161,7 +138,7 @@ class PlaylistCard(ft.Container):
 
         stack_controls: list[ft.Control] = [self._cover_box]
         obi_text = _obi_label_for(summary.platform, obi_label)
-        if _should_show_obi() and obi_text:
+        if show_obi and obi_text:
             stack_controls.append(_build_obi_strip(obi_text, cover_size=cover_size))
         if badge is not None:
             stack_controls.append(ft.Container(content=badge, alignment=ft.Alignment.TOP_RIGHT, padding=ft.Padding.all(6)))
@@ -235,7 +212,6 @@ class PlaylistCard(ft.Container):
             content=content,
             width=160,
             bgcolor=BG_SURFACE,
-            border=ft.Border.all(0.8, BORDER_MUTED),
             border_radius=RADIUS_SM,
             padding=ft.Padding.all(10),
             ink=True,
@@ -244,6 +220,7 @@ class PlaylistCard(ft.Container):
             animate_scale=ft.Animation(MOTION_HOVER_MS, ft.AnimationCurve.EASE_OUT),
             on_hover=self._on_hover,
         )
+        apply_paper_relief(self)
         self._isolated = True
 
     def context_actions(self) -> list[ContextMenuAction]:
@@ -321,7 +298,7 @@ class PlaylistCard(ft.Container):
         hovering = e.data == "true" or e.data is True
         self.bgcolor = BG_HOVER if hovering else BG_SURFACE
         self.scale = 1.02 if hovering else 1.0
-        self.border = ft.Border.all(0.8, ACCENT if hovering else BORDER_MUTED)
+        apply_paper_relief(self, border_color=ACCENT if hovering else BORDER_CONTROL)
         if hasattr(self, "_cover_box"):
             self._cover_box.border = ft.Border.all(1, BORDER_LIGHT if hovering else BORDER_MUTED)
         safe_update(self)

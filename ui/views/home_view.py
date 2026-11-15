@@ -3,12 +3,15 @@
 from __future__ import annotations
 
 from datetime import datetime
+import os
 from typing import Any, Callable, Optional
 
 import flet as ft
 
 from core.config import LOCAL_LIBRARY_LABEL, PLATFORM_ORDER
 from core.library_models import PlaylistSummary
+from core.models import Track
+from services import settings_store
 from ui.components.song_row import _thumb_content_for
 from ui.components.widgets import (
     _ghost_btn,
@@ -143,6 +146,7 @@ class HomeView(ft.Container):
         self._home_dirty = False
         self._subscribed_lib = None
         self._subscribed_player = None
+        self._last_playback: dict[str, Any] | None = self._load_last_playback()
 
         self._build_ui()
         self._bind_sources()
@@ -181,6 +185,7 @@ class HomeView(ft.Container):
             self._subscribed_player = player_bar
 
     def will_unmount(self) -> None:
+        self._persist_last_playback()
         if self._subscribed_player is not None:
             if hasattr(self._subscribed_player, "unsubscribe"):
                 self._subscribed_player.unsubscribe(self._on_player_change)
@@ -196,12 +201,16 @@ class HomeView(ft.Container):
         self.refresh(update=True)
 
     def _on_player_change(self) -> None:
+        self._capture_last_playback(persist=True)
         if not self.visible:
             self._home_dirty = True
             return
         self._sync_continuar(update=True)
 
     def _on_player_position(self, pos_ms: int, dur_ms: int) -> None:
+        if self._last_playback is not None:
+            self._last_playback["position_ms"] = int(pos_ms or 0)
+            self._last_playback["duration_ms"] = int(dur_ms or 0)
         if not self.visible:
             return
         self._sync_progress_bar(pos_ms, dur_ms, update=True)
@@ -602,10 +611,87 @@ class HomeView(ft.Container):
             " · ".join(parts) if parts else "Listo para transferir, explorar o escuchar."
         )
 
-    def _sync_continuar(self, *, update: bool = True) -> None:
+    def _load_last_playback(self) -> dict[str, Any] | None:
+        getter = getattr(settings_store, "get_last_playback", None)
+        if callable(getter):
+            try:
+                val = getter()
+                return dict(val) if isinstance(val, dict) and (val.get("title") or val.get("name")) else None
+            except Exception:
+                return None
+        try:
+            data = settings_store.load_settings().get("last_playback")
+            if isinstance(data, dict) and (data.get("title") or data.get("name")):
+                return dict(data)
+        except Exception:
+            pass
+        return None
+
+    def _capture_last_playback(self, *, persist: bool = False) -> None:
         pb = self.player_bar
         current = getattr(getattr(pb, "queue", None), "current", None) if pb is not None else None
         if current is None:
+            return
+        title = getattr(current, "title", "") or getattr(current, "name", "")
+        if not title:
+            return
+        prev_id = (self._last_playback or {}).get("id")
+        prev_title = (self._last_playback or {}).get("title")
+        cur_id = getattr(current, "id", "") or ""
+        snap = {
+            "id": cur_id,
+            "title": title,
+            "artist": getattr(current, "artist", "") or "",
+            "album": getattr(current, "album", "") or "",
+            "duration": getattr(current, "duration", "") or "",
+            "img_url": getattr(current, "img_url", "") or "",
+            "platform": getattr(current, "platform", "") or "LOCAL",
+            "source_path": getattr(current, "source_path", "") or "",
+            "position_ms": int(getattr(pb, "position_ms", 0) or 0),
+            "duration_ms": int(getattr(pb, "duration_ms", 0) or 0),
+        }
+        self._last_playback = snap
+        if persist and (cur_id != prev_id or title != prev_title):
+            self._persist_last_playback()
+
+    def _persist_last_playback(self) -> None:
+        if not self._last_playback:
+            return
+        setter = getattr(settings_store, "set_last_playback", None)
+        if callable(setter):
+            try:
+                setter(dict(self._last_playback))
+            except Exception:
+                pass
+            return
+        try:
+            data = settings_store.load_settings()
+            data["last_playback"] = dict(self._last_playback)
+            settings_store.save_settings(data)
+        except Exception:
+            pass
+
+    def _sync_continuar(self, *, update: bool = True) -> None:
+        pb = self.player_bar
+        current = getattr(getattr(pb, "queue", None), "current", None) if pb is not None else None
+        if current is None and self._last_playback is not None:
+            saved = self._last_playback
+            self._cont_kicker.value = "ÚLTIMA PISTA"
+            self._cont_title.value = saved.get("title") or "Pista guardada"
+            artist = saved.get("artist") or ""
+            album = saved.get("album") or ""
+            self._cont_sub.value = f"{artist} · {album}".strip(" ·") or "Audio local"
+            self._cont_cover_wrap.content = _thumb_content_for(saved.get("img_url") or "", box=HOME_CONTINUAR_ART, icon_size=32)
+            plat = saved.get("platform") or "LOCAL"
+            self._cont_obi_wrap.content = obi_strip(_OBI_LABELS.get(plat, plat[:8]))
+            self._sync_progress_bar(int(saved.get("position_ms") or 0), int(saved.get("duration_ms") or 0), update=False)
+            self._cont_scene_btn.visible = False
+            can_resume = bool(saved.get("source_path") and os.path.isfile(str(saved["source_path"])))
+            self._set_primary_btn_label(
+                "Continuar" if can_resume else "Explorar Biblioteca",
+                PIcons.PLAY if can_resume else PIcons.BOOKS,
+            )
+        elif current is None:
             self._cont_kicker.value = "TOCADISCOS EN REPOSO"
             self._cont_title.value = "Nada reproduciéndose"
             self._cont_sub.value = "Elige una pista en Biblioteca o Gestión."
@@ -843,7 +929,25 @@ class HomeView(ft.Container):
     def _on_continuar_click(self, _e=None) -> None:
         pb = self.player_bar
         current = getattr(getattr(pb, "queue", None), "current", None) if pb is not None else None
-        if current is None or pb is None:
+        if current is None:
+            saved = self._last_playback
+            src = str(saved.get("source_path") or "") if saved else ""
+            if pb is not None and src and os.path.isfile(src) and hasattr(pb, "play_track"):
+                tr = Track(
+                    id=str(saved.get("id") or src),
+                    name=str(saved.get("title") or "Pista"),
+                    artist=str(saved.get("artist") or ""),
+                    album=str(saved.get("album") or ""),
+                    duration=str(saved.get("duration") or ""),
+                    img_url=str(saved.get("img_url") or ""),
+                    platform=str(saved.get("platform") or "Local"),
+                    source_path=src,
+                )
+                pb.play_track(tr)
+                pos_ms = int(saved.get("position_ms") or 0)
+                if pos_ms > 0 and hasattr(pb, "seek_ms"):
+                    pb.seek_ms(pos_ms)
+                return
             self._go(1)
             return
         toggle = getattr(pb, "toggle_play_pause", None) or getattr(

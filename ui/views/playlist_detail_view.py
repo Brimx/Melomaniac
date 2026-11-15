@@ -39,8 +39,8 @@ from ui.components.song_row import (
 )
 from ui.components.skeletons import LibrarySkeletonRow
 from ui.theme.tokens import (
-    ACCENT, BG_HOVER, BG_LIST, BG_SURFACE, BORDER_LIGHT, BORDER_MUTED, BORDER_ROW,
-    DECOR_LINE, FS_META, RADIUS_SHARP, RADIUS_SM, SKELETON_DARK,
+    ACCENT, BG_DEEP, BG_HOVER, BG_LIST, BG_SURFACE, BORDER_LIGHT, BORDER_MUTED, BORDER_ROW,
+    DECOR_LINE, FS_META, PAPER_BG, RADIUS_SHARP, RADIUS_SM, SKELETON_DARK,
     SPACE_0, SPACE_1, SPACE_2, SPACE_4, TEXT_MUTED, TEXT_PRIMARY,
     MOTION_HOVER_MS,
 )
@@ -52,7 +52,9 @@ from ui.components.widgets import (
     app_text,
     close_dialog,
     dialog_action,
+    kicker,
     notify,
+    obi_strip,
     open_external,
     organize_dropdown,
     safe_update,
@@ -105,7 +107,7 @@ class PlaylistDetailView(ft.Container):
         self._manifest_base_name: str = ""
 
         # header
-        from ui.components.playlist_card import _build_obi_strip, _obi_label_for, _should_show_obi
+        from ui.components.playlist_card import _obi_label_for, _should_show_obi
 
         cover_size = 140
         cover_url = summary.cover_urls[0] if summary.cover_urls else ""
@@ -122,7 +124,10 @@ class PlaylistDetailView(ft.Container):
         cover_layers: list[ft.Control] = [cover_box]
         obi_text = _obi_label_for(summary.platform)
         if _should_show_obi() and obi_text:
-            cover_layers.append(_build_obi_strip(obi_text, cover_size=cover_size))
+            strip = obi_strip(obi_text, height=cover_size, bgcolor=PAPER_BG, text_color=BG_DEEP)
+            strip.left = 0
+            strip.top = 0
+            cover_layers.append(strip)
         cover = ft.Stack(
             width=cover_size,
             height=cover_size,
@@ -130,12 +135,7 @@ class PlaylistDetailView(ft.Container):
             controls=cover_layers,
         )
 
-        kicker = app_text(
-            str(summary.platform or "").upper(),
-            size=FS_META,
-            color=TEXT_MUTED,
-            font_family=mono_family("regular"),
-        )
+        header_kicker = kicker(str(summary.platform or ""))
         self._title = app_text(summary.name, size=20, color=TEXT_PRIMARY, font_family=FONT_HEADLINE_BOLD)
         self._desc = app_text(summary.description or "", size=11, color=TEXT_MUTED, font_family=FONT_TEXT, max_lines=3, overflow=ft.TextOverflow.ELLIPSIS) if summary.description else ft.Container()
         count_label = f"{summary.track_count} canciones" if summary.track_count is not None else "Conteo al abrir"
@@ -218,7 +218,7 @@ class PlaylistDetailView(ft.Container):
                 controls=[
                     cover,
                     ft.Column(
-                        controls=[kicker, self._title, self._count, self._desc, actions_row],
+                        controls=[header_kicker, self._title, self._count, self._desc, actions_row],
                         spacing=SPACE_1,
                         expand=True,
                         alignment=ft.MainAxisAlignment.CENTER,
@@ -304,34 +304,37 @@ class PlaylistDetailView(ft.Container):
             _ghost_btn("Reintentar", PIcons.ARROWS_CLOCKWISE, lambda e: self.reload()),
         ], spacing=SPACE_2))
 
+        self._header_chk_spacer = ft.Container(width=32, visible=self._selection_mode)
         tracks_header = ft.Container(
             height=30,
             padding=ft.Padding.symmetric(horizontal=12),
-            border=ft.Border.only(bottom=ft.BorderSide(0.8, BORDER_MUTED)),
+            border=ft.Border.only(bottom=ft.BorderSide(1, BORDER_ROW)),
             content=ft.Row(
                 controls=[
+                    self._header_chk_spacer,
                     ft.Container(
-                        content=app_text("#", size=FS_META, color=TEXT_MUTED, font_family=mono_family("regular")),
+                        content=kicker("#"),
                         width=28,
                         alignment=ft.Alignment.CENTER,
                     ),
                     ft.Container(width=48),
                     ft.Container(
-                        content=app_text("TÍTULO", size=FS_META, color=TEXT_MUTED, font_family=mono_family("regular")),
+                        content=kicker("TÍTULO"),
                         expand=3,
                         alignment=ft.Alignment.CENTER_LEFT,
                     ),
                     ft.Container(
-                        content=app_text("ÁLBUM", size=FS_META, color=TEXT_MUTED, font_family=mono_family("regular")),
+                        content=kicker("ÁLBUM"),
                         expand=2,
                         alignment=ft.Alignment.CENTER_LEFT,
                     ),
                     ft.Container(
-                        content=app_text("DUR.", size=FS_META, color=TEXT_MUTED, font_family=mono_family("regular")),
+                        content=kicker("DUR."),
                         width=48,
                         alignment=ft.Alignment.CENTER,
                     ),
-                    ft.Container(width=68),
+                    ft.Container(width=32),
+                    ft.Container(width=28),
                 ],
                 spacing=SPACE_4,
                 vertical_alignment=ft.CrossAxisAlignment.CENTER,
@@ -1128,8 +1131,9 @@ class PlaylistDetailView(ft.Container):
             if row is not None:
                 self._apply_row_visual_state(row, selected=is_sel)
         self._batch_bar.visible = target
+        self._header_chk_spacer.visible = target
         self._sync_selection_ui(notify_ui=False)
-        for ctrl in (self._batch_bar, self._list_view):
+        for ctrl in (self._batch_bar, self._header_chk_spacer, self._list_view):
             try:
                 ctrl.update()
             except Exception:

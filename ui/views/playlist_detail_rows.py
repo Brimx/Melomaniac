@@ -12,7 +12,7 @@ from core.models import Track
 from engine.downloader import open_in_file_manager
 from ui.components.context_menu import ContextMenuAction, build_context_menu_button, wrap_with_context_menu
 from ui.components.song_row import ITEM_H, _thumb_content_for
-from ui.components.widgets import safe_update
+from ui.components.widgets import safe_update, selection_border
 from ui.theme.fonts import font_family_for, mono_family
 from ui.theme.icons import PIcons, app_icon
 from ui.theme.tokens import (
@@ -24,6 +24,7 @@ from ui.theme.tokens import (
     DECOR_LINE,
     MOTION_HOVER_MS,
     OVERLAY_14,
+    RADIUS_NONE,
     RADIUS_PILL,
     RADIUS_SM,
     SKELETON_DARK,
@@ -40,14 +41,7 @@ def apply_row_visual_state(
     """Actualiza el fondo y borde izquierdo de una fila de detalle según selección."""
     del hovering
     row.bgcolor = BG_HOVER if selected else BG_LIST
-    row.border = (
-        ft.Border.only(
-            left=ft.BorderSide(2.5, ACCENT),
-            bottom=ft.BorderSide(0.5, BORDER_ROW),
-        )
-        if selected
-        else ft.Border.only(bottom=ft.BorderSide(0.5, BORDER_ROW))
-    )
+    row.border = selection_border(selected)
 
 
 def build_track_context_actions(
@@ -272,14 +266,8 @@ def build_detail_track_row(
     row = ft.Container(
         height=ITEM_H,
         bgcolor=BG_HOVER if is_selected else BG_LIST,
-        border=(
-            ft.Border.only(
-                left=ft.BorderSide(2.5, ACCENT),
-                bottom=ft.BorderSide(0.5, BORDER_ROW),
-            )
-            if is_selected
-            else ft.Border.only(bottom=ft.BorderSide(0.5, BORDER_ROW))
-        ),
+        border=selection_border(is_selected),
+        border_radius=RADIUS_NONE,
         padding=ft.Padding.symmetric(horizontal=12, vertical=8),
         animate_opacity=ft.Animation(MOTION_HOVER_MS, ft.AnimationCurve.EASE_OUT),
         content=wrap_with_context_menu(
