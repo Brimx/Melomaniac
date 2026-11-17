@@ -20,9 +20,9 @@ from ui.components.playlist_card import PlaylistCard
 from ui.views.playlist_detail_view import PlaylistDetailView
 from ui.theme.tokens import (
     ACCENT, ACCENT_HALO, BG_HOVER, BG_LIST, BG_PANEL, BG_SURFACE,
-    BORDER_LIGHT, BORDER_MUTED, ERROR_COL, FS_META, FS_PAGE, MOTION_HOVER_MS,
-    RADIUS_PILL, RADIUS_SHARP, RADIUS_SM, SPACE_0, SPACE_1, SPACE_2, SPACE_3,
-    SPACE_5, SUCCESS, TEXT_MUTED, TEXT_PRIMARY,
+    BORDER_CONTROL, BORDER_LIGHT, BORDER_MUTED, ERROR_COL, FS_META, FS_PAGE,
+    MOTION_HOVER_MS, RADIUS_PILL, RADIUS_SHARP, RADIUS_SM, SPACE_0, SPACE_1,
+    SPACE_2, SPACE_3, SPACE_5, SUCCESS, TEXT_MUTED, TEXT_PRIMARY,
 )
 from ui.theme.icons import PIcons, app_icon, app_icon_button
 from ui.components.widgets import (
@@ -121,10 +121,12 @@ class LibraryView(ft.Container):
         for tab_key, tab_lbl in (("carpetas", "Carpetas"), ("playlists", "Playlists")):
             btn = ft.Container(
                 content=app_text(tab_lbl, size=11, color=TEXT_PRIMARY, font_family=FONT_HEADLINE),
-                padding=ft.Padding.symmetric(horizontal=10, vertical=6),
+                height=34,
+                alignment=ft.Alignment.CENTER,
+                padding=ft.Padding.symmetric(horizontal=SPACE_3),
                 border_radius=RADIUS_SHARP,
                 bgcolor=ACCENT_HALO if self._local_tab == tab_key else BG_SURFACE,
-                border=ft.Border.all(0.8, ACCENT if self._local_tab == tab_key else BORDER_MUTED),
+                border=ft.Border.all(0.8, ACCENT if self._local_tab == tab_key else BORDER_CONTROL),
                 ink=True,
                 on_click=lambda _e, k=tab_key: self._set_local_tab(k),
             )
@@ -149,10 +151,12 @@ class LibraryView(ft.Container):
             active = fkey in self._active_filters
             chip = ft.Container(
                 content=app_text(flbl, size=11, color=TEXT_PRIMARY if active else TEXT_MUTED, font_family=FONT_HEADLINE),
-                padding=ft.Padding.symmetric(horizontal=10, vertical=6),
-                border_radius=RADIUS_PILL,
+                height=34,
+                alignment=ft.Alignment.CENTER,
+                padding=ft.Padding.symmetric(horizontal=SPACE_3),
+                border_radius=RADIUS_SHARP,
                 bgcolor=ACCENT_HALO if active else BG_SURFACE,
-                border=ft.Border.all(0.8, ACCENT if active else BORDER_MUTED),
+                border=ft.Border.all(0.8, ACCENT if active else BORDER_CONTROL),
                 ink=True,
                 on_click=lambda _e, k=fkey: self._toggle_filter(k),
             )
@@ -334,7 +338,7 @@ class LibraryView(ft.Container):
         for k, btn in self._local_tab_btns.items():
             active = k == tab_key
             btn.bgcolor = ACCENT_HALO if active else BG_SURFACE
-            btn.border = ft.Border.all(0.8, ACCENT if active else BORDER_MUTED)
+            btn.border = ft.Border.all(0.8, ACCENT if active else BORDER_CONTROL)
         self._refresh()
 
     def _on_search_change(self, e) -> None:
@@ -349,7 +353,7 @@ class LibraryView(ft.Container):
         for k, chip in self._filter_chip_btns.items():
             active = k in self._active_filters
             chip.bgcolor = ACCENT_HALO if active else BG_SURFACE
-            chip.border = ft.Border.all(0.8, ACCENT if active else BORDER_MUTED)
+            chip.border = ft.Border.all(0.8, ACCENT if active else BORDER_CONTROL)
             if isinstance(chip.content, ft.Text):
                 chip.content.color = TEXT_PRIMARY if active else TEXT_MUTED
         self._refresh()
@@ -367,7 +371,7 @@ class LibraryView(ft.Container):
             self._search_field.value = ""
         for chip in self._filter_chip_btns.values():
             chip.bgcolor = BG_SURFACE
-            chip.border = ft.Border.all(0.8, BORDER_MUTED)
+            chip.border = ft.Border.all(0.8, BORDER_CONTROL)
             if isinstance(chip.content, ft.Text):
                 chip.content.color = TEXT_MUTED
         self._refresh()
