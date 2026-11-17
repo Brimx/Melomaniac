@@ -165,31 +165,16 @@ class LibraryView(ft.Container):
             lambda _e: self._cycle_sort_mode(),
             height=34,
         )
-        self._lib_bar_left = ft.Row(
+        self._lib_bar = ft.Row(
             controls=[
                 self._local_seg,
                 self._search_field,
                 *self._filter_chip_btns.values(),
-            ],
-            spacing=SPACE_2,
-            run_spacing=SPACE_2,
-            wrap=True,
-            vertical_alignment=ft.CrossAxisAlignment.CENTER,
-            expand=True,
-        )
-        self._lib_bar_right = ft.Row(
-            controls=[
+                ft.Container(expand=True),
                 self._result_count_text,
                 self._sort_btn,
             ],
             spacing=SPACE_2,
-            tight=True,
-            vertical_alignment=ft.CrossAxisAlignment.CENTER,
-        )
-        self._lib_bar = ft.Row(
-            controls=[self._lib_bar_left, self._lib_bar_right],
-            spacing=SPACE_2,
-            alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
             vertical_alignment=ft.CrossAxisAlignment.CENTER,
         )
         self._local_legend = ft.Text(
