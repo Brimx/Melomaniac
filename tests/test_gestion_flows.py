@@ -110,7 +110,15 @@ class TestGestionFlows(unittest.TestCase):
         self.assertTrue(ui._merge_btn.visible)
         self.assertFalse(ui._contextual_bar.visible)
         self.assertFalse(ui._col_headers.visible)
+        self.assertFalse(ui._load_btn.visible)
+        self.assertFalse(ui._sidebar_actions_section.visible)
+        self.assertFalse(ui._telemetry.container.visible)
         self.assertEqual(ui._url_toggle_label.value, "Avanzado")
+
+        ui._apply_url_mode(True)
+        self.assertTrue(ui._load_btn.visible)
+        ui._apply_url_mode(False)
+        self.assertFalse(ui._load_btn.visible)
 
         # Idle: barra contextual completamente oculta
         idle_states = compute_contextual_actions_state(state)
@@ -128,7 +136,26 @@ class TestGestionFlows(unittest.TestCase):
             self.assertFalse(remote_states[key]["disabled"], key)
         ui._on_state_changed()
         self.assertTrue(ui._contextual_bar.visible)
+        self.assertTrue(ui._sidebar_actions_section.visible)
         self.assertTrue(ui._col_headers.visible)
+        self.assertFalse(ui._mode_seg.visible)
+        self.assertFalse(ui._status_chips_row.visible)
+
+        # Tras finalizar transferencia: chips de estado y registro visibles
+        state.tracks[0].transfer_status = "revision_necesaria"
+        state.last_report = types.SimpleNamespace(
+            missing=[],
+            destination="YouTube Music",
+            confirmed=1,
+            detected=1,
+            elapsed_s=1.0,
+            title="Test",
+        )
+        ui._on_state_changed()
+        self.assertTrue(ui._status_chips_row.visible)
+        self.assertTrue(ui._telemetry.container.visible)
+        state.last_report = None
+        state.tracks[0].transfer_status = "pending"
 
         # Carpeta local con audio en disco: Descargar oculto
         state.load_local_tracks(

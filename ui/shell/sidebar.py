@@ -7,8 +7,10 @@ import asyncio
 import flet as ft
 
 from core.config import EXPORT_DEST_LABEL
+from core.models import LoadState, TransferState
 from core.state import AppState
 from ui.components.widgets import (
+    _ghost_btn,
     _primary_btn,
     app_text,
     app_text_field,
@@ -52,6 +54,24 @@ SOURCE_PLATFORM_OPTIONS: list[tuple[str, str, str]] = [
     ("Archivo Local", "Archivo Local", PIcons.FOLDER),
     ("Pegar Texto", "Pegar Texto", PIcons.LIST_BULLETS),
 ]
+
+
+def platform_icon(name: str) -> str:
+    """Devuelve el icono Phosphor correspondiente a la plataforma o fuente."""
+    low = (name or "").lower()
+    if "youtube" in low:
+        return PIcons.YOUTUBE_LOGO
+    if "apple" in low:
+        return PIcons.APPLE_LOGO
+    if "spotify" in low:
+        return PIcons.SPOTIFY_LOGO
+    if "export" in low:
+        return PIcons.EXPORT
+    if "pegar" in low:
+        return PIcons.LIST_BULLETS
+    if "local" in low or "archivo" in low:
+        return PIcons.FOLDER
+    return PIcons.MUSIC_NOTES
 
 
 def _make_source_selector(ui, current: str, on_select) -> ft.Container:
@@ -244,6 +264,7 @@ def build_sidebar(ui) -> None:
     ui._load_btn = _primary_btn(
         "Cargar", PIcons.DOWNLOAD_SIMPLE, ui._on_load, width=236, height=40
     )
+    ui._load_btn.visible = False
 
     ui._playlist_section = ft.Column(
         [
@@ -319,12 +340,104 @@ def build_sidebar(ui) -> None:
         padding=ft.Padding.symmetric(horizontal=SPACE_2, vertical=SPACE_1),
     )
 
+    def _on_sidebar_dest_click(_e=None) -> None:
+        if getattr(s, "load_state", LoadState.IDLE) != LoadState.READY or not getattr(s, "tracks", None):
+            return
+        if getattr(s, "transfer_state", TransferState.IDLE) == TransferState.RUNNING:
+            return
+        ui._on_transfer(None)
+
+    ui._route_dst_icon = app_icon(
+        platform_icon(s.destination), size=16, color=TEXT_MUTED
+    )
+    ui._route_dst_text = ft.Text(
+        s.destination or "Elegir al transferir",
+        size=FS_SM,
+        color=TEXT_PRIMARY,
+        font_family=FONT_HEADLINE,
+        max_lines=1,
+        overflow=ft.TextOverflow.ELLIPSIS,
+    )
+    ui._route_dst_btn = ft.Container(
+        content=ft.Row(
+            controls=[
+                ui._route_dst_icon,
+                ft.Column(
+                    controls=[kicker("DESTINO"), ui._route_dst_text],
+                    spacing=SPACE_0,
+                    tight=True,
+                    expand=True,
+                ),
+                app_icon(PIcons.CARET_DOWN, size=14, color=TEXT_MUTED),
+            ],
+            spacing=SPACE_2,
+            vertical_alignment=ft.CrossAxisAlignment.CENTER,
+        ),
+        bgcolor=BG_SURFACE,
+        border=ft.Border.all(0.8, BORDER_CONTROL),
+        border_radius=RADIUS_SHARP,
+        padding=ft.Padding.symmetric(horizontal=SPACE_3, vertical=SPACE_2),
+        tooltip="Elegir plataforma destino y transferir",
+        on_click=_on_sidebar_dest_click,
+        ink=True,
+    )
+
+    ui._transfer_btn = _primary_btn(
+        "Transferir",
+        PIcons.ARROWS_LEFT_RIGHT,
+        ui._on_transfer,
+        width=236,
+        height=40,
+        disabled=True,
+    )
+    ui._transfer_btn.tooltip = "Elegir destino y transferir la selección"
+    ui._footer_transfer_btn = ui._transfer_btn
+    ui._ctx_transfer_btn = ui._transfer_btn
+
+    ui._ctx_export_btn = _ghost_btn(
+        "Exportar",
+        PIcons.EXPORT,
+        lambda _: asyncio.create_task(ui._open_export_dialog()),
+        height=36,
+    )
+    ui._ctx_export_btn.expand = True
+    ui._ctx_download_btn = _ghost_btn(
+        "Descargar",
+        PIcons.DOWNLOAD_SIMPLE,
+        lambda _: ui._on_batch_download(),
+        height=36,
+    )
+    ui._ctx_download_btn.expand = True
+
+    ui._sidebar_actions_divider = ft.Divider(
+        height=1,
+        color=BORDER_ROW,
+        thickness=0.5,
+        visible=False,
+    )
+    ui._sidebar_actions_section = ft.Column(
+        controls=[
+            kicker("ACCIONES"),
+            ui._route_dst_btn,
+            ui._transfer_btn,
+            ft.Row(
+                controls=[ui._ctx_export_btn, ui._ctx_download_btn],
+                spacing=SPACE_2,
+            ),
+        ],
+        spacing=SPACE_2,
+        visible=False,
+    )
+
     sidebar_col = ft.Column(
         controls=[
             platform_section,
             ui._playlist_divider,
             ui._playlist_section,
             ui._rl_banner,
+            ft.Container(expand=True),
+            ui._sidebar_actions_divider,
+            ui._sidebar_actions_section,
         ],
         spacing=SPACE_3,
         scroll=ft.ScrollMode.ADAPTIVE,

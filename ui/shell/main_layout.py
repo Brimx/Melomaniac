@@ -25,7 +25,7 @@ from ui.components.widgets import (
     table_header,
 )
 from ui.shell.nav_rail import build_nav_rail
-from ui.shell.sidebar import build_sidebar
+from ui.shell.sidebar import build_sidebar, platform_icon
 from ui.theme.fonts import FONT_HEADLINE, FONT_HEADLINE_BOLD, FONT_TEXT, mono_family
 from ui.theme.icons import PIcons, app_icon, app_icon_button
 from ui.theme.tokens import (
@@ -60,24 +60,6 @@ from ui.theme.tokens import (
     TEXT_MUTED,
     TEXT_PRIMARY,
 )
-
-
-def _platform_icon(name: str) -> str:
-    """Devuelve el icono Phosphor correspondiente a la plataforma o fuente."""
-    low = (name or "").lower()
-    if "youtube" in low:
-        return PIcons.YOUTUBE_LOGO
-    if "apple" in low:
-        return PIcons.APPLE_LOGO
-    if "spotify" in low:
-        return PIcons.SPOTIFY_LOGO
-    if "export" in low:
-        return PIcons.EXPORT
-    if "pegar" in low:
-        return PIcons.LIST_BULLETS
-    if "local" in low or "archivo" in low:
-        return PIcons.FOLDER
-    return PIcons.MUSIC_NOTES
 
 
 class _RegistroDrawer:
@@ -206,7 +188,7 @@ class _RegistroDrawer:
         processed: int,
         ok: int,
         not_found: int,
-        errors: int,
+        errors: int = 0,
         *,
         eta_str: str = "",
         active_platform: str = "",
@@ -256,27 +238,37 @@ class _RegistroDrawer:
         destination: str = "",
         confirmed: int = 0,
         attempted: int = 0,
+        detected: int | None = None,
+        elapsed_s: float = 0.0,
+        title: str = "",
         playlist_url: str = "",
     ) -> None:
+        del elapsed_s, title
+        total_attempted = int(detected if detected is not None else attempted)
         rows = list(failed_tracks or ())
         self._pm_rows = rows
         self._pm_meta = {
             "destination": destination,
             "confirmed": confirmed,
-            "attempted": attempted,
+            "attempted": total_attempted,
             "playlist_url": playlist_url,
         }
         if not rows:
             self._pm_text.value = (
-                f"Destino: {destination or '—'} · Confirmadas: {confirmed}/{attempted} · Sin fallos."
+                f"Destino: {destination or '—'} · Confirmadas: {confirmed}/{total_attempted} · Sin fallos."
             )
         else:
+            def _row_field(item, key: str, default: str = "") -> str:
+                if isinstance(item, dict):
+                    return str(item.get(key, default) or default)
+                return str(getattr(item, key, default) or default)
+
             preview = [
-                f"• {r.get('name', '?')} — {r.get('artist', '?')} ({r.get('reason', 'sin detalle')})"
+                f"• {_row_field(r, 'name', '?')} — {_row_field(r, 'artist', '?')} ({_row_field(r, 'reason', 'sin detalle')})"
                 for r in rows[:20]
             ]
             self._pm_text.value = (
-                f"Destino: {destination or '—'} · Confirmadas: {confirmed}/{attempted} · "
+                f"Destino: {destination or '—'} · Confirmadas: {confirmed}/{total_attempted} · "
                 f"Fallidas: {len(rows)}\n" + "\n".join(preview)
             )
         self._pm_export_btn.visible = bool(rows) and self._tab == "postmortem"
@@ -392,6 +384,7 @@ class LayoutController:
         self._ui = ui
         self._last_chip_counts: tuple[int, int, int] | None = None
         self._last_footer_btn_label: str = "Transferir"
+        self._telemetry_manual_open: bool | None = None
 
     def _make_order_segmented(self, current: str, on_change=None) -> ft.Control:
         """SegmentedButton para elegir Artista-Título vs Título-Artista."""
@@ -461,13 +454,14 @@ class LayoutController:
     def _build_content(self) -> None:
         ui = self._ui
         self._build_mode_bar()
-        ui._footer_bar = self._build_footer_bar()
+        ui._footer_bar = None
         header_bar = self._build_content_header()
         ui._contextual_bar = self._build_contextual_bar()
         ui._catalog_panel = ui._catalog.build_catalog_panel()
         ui._col_headers = self._build_col_headers()
         self._build_list_and_preview_panels()
         ui._telemetry = _RegistroDrawer(ui.page)
+        ui._telemetry.container.visible = False
         self._assemble_content_area(header_bar, ui._col_headers)
 
     def _build_contextual_bar(self) -> ft.Container:
@@ -482,40 +476,22 @@ class LayoutController:
         ui._ctx_reorganize_btn = _ghost_btn(
             "Reorganizar", PIcons.ARROWS_CLOCKWISE, ui._on_reorganize, height=34, disabled=True
         )
-        ui._ctx_download_btn = _ghost_btn(
-            "Descargar", PIcons.DOWNLOAD_SIMPLE, lambda _: ui._on_batch_download(), height=34
-        )
-        ui._ctx_export_btn = _ghost_btn(
-            "Exportar",
-            PIcons.EXPORT,
-            lambda _: asyncio.create_task(ui._open_export_dialog()),
-            height=34,
-        )
-        ui._ctx_transfer_btn = ui._footer_transfer_btn
-        ui._transfer_btn = ui._footer_transfer_btn
         ui._organize_btn = ui._ctx_organize_btn
         ui._split_btn = ui._ctx_split_btn
         ui._reorganize_btn = ui._ctx_reorganize_btn
         ui._ctx_action_buttons = {
-            "transfer": ui._footer_transfer_btn,
+            "transfer": ui._transfer_btn,
             "organize": ui._ctx_organize_btn,
             "split": ui._ctx_split_btn,
             "reorganize": ui._ctx_reorganize_btn,
             "download": ui._ctx_download_btn,
             "export": ui._ctx_export_btn,
         }
-        # Colocar Exportar y Descargar en el pie junto al primario Transferir
-        footer_row = ui._footer_bar.content
-        footer_row.controls = [
-            footer_row.controls[0],
-            ui._ctx_export_btn,
-            ui._ctx_download_btn,
-            ui._footer_transfer_btn,
-        ]
 
         actions_row = ft.Row(
             controls=[
                 ui._mode_seg,
+                ui._merge_btn,
                 ui._ctx_organize_btn,
                 ui._ctx_reorganize_btn,
                 ui._ctx_split_btn,
@@ -526,6 +502,7 @@ class LayoutController:
             wrap=True,
             vertical_alignment=ft.CrossAxisAlignment.CENTER,
         )
+        ui._mode_seg.visible = False
         ui._status_chips_row = ft.Row(
             controls=[
                 status_chip("0 LISTA", kind="ok"),
@@ -534,6 +511,7 @@ class LayoutController:
             ],
             spacing=SPACE_1,
             vertical_alignment=ft.CrossAxisAlignment.CENTER,
+            visible=False,
         )
         right_row = ft.Row(
             controls=[
@@ -582,6 +560,12 @@ class LayoutController:
         if bar is not None:
             catalog_open = bool(getattr(self._ui, "_catalog_open", False))
             bar.visible = any_visible and not catalog_open
+        sb_sec = getattr(self._ui, "_sidebar_actions_section", None)
+        sb_div = getattr(self._ui, "_sidebar_actions_divider", None)
+        if sb_sec is not None:
+            sb_sec.visible = any_visible
+        if sb_div is not None:
+            sb_div.visible = any_visible
         self._sync_workflow_ui(states)
 
     def _build_content_header(self) -> ft.Container:
@@ -752,91 +736,14 @@ class LayoutController:
             width=28,
             height=28,
         )
-
-        ui._route_src_icon = app_icon(
-            _platform_icon(ui.state.source), size=18, color=ACCENT
-        )
-        ui._route_dst_icon = app_icon(
-            _platform_icon(ui.state.destination), size=18, color=TEXT_MUTED
-        )
-        ui._route_src_text = ft.Text(
-            f"{ui.state.source} · Sin cargar",
-            size=FS_SM,
-            color=TEXT_PRIMARY,
-            font_family=FONT_HEADLINE,
-            max_lines=1,
-            overflow=ft.TextOverflow.ELLIPSIS,
-        )
-        ui._route_pipe_text = ft.Text(
-            "0 pistas",
-            size=FS_META,
-            color=TEXT_MUTED,
-            font_family=mono_family("light"),
-        )
-        ui._route_dst_text = ft.Text(
-            ui.state.destination or "Elegir al transferir",
-            size=FS_SM,
-            color=TEXT_PRIMARY,
-            font_family=FONT_HEADLINE,
-            max_lines=1,
-            overflow=ft.TextOverflow.ELLIPSIS,
-        )
-        src_card = ft.Container(
-            content=ft.Row(
-                controls=[
-                    ui._route_src_icon,
-                    ft.Column(
-                        controls=[kicker("ORIGEN"), ui._route_src_text],
-                        spacing=SPACE_0,
-                        tight=True,
-                        expand=True,
-                    ),
-                ],
-                spacing=SPACE_2,
-                vertical_alignment=ft.CrossAxisAlignment.CENTER,
-            ),
-            bgcolor=BG_SURFACE,
-            border=ft.Border.all(0.8, BORDER_ROW),
-            border_radius=RADIUS_SHARP,
-            padding=ft.Padding.symmetric(horizontal=SPACE_3, vertical=SPACE_2),
-            expand=True,
-        )
-        mid_arrow = ft.Column(
-            controls=[
-                app_icon(PIcons.ARROW_RIGHT, size=16, color=ACCENT),
-                ui._route_pipe_text,
-            ],
-            spacing=SPACE_0,
-            horizontal_alignment=ft.CrossAxisAlignment.CENTER,
-            tight=True,
-        )
-        ui._route_dst_btn = ft.Container(
-            content=ft.Row(
-                controls=[
-                    ui._route_dst_icon,
-                    ft.Column(
-                        controls=[kicker("DESTINO"), ui._route_dst_text],
-                        spacing=SPACE_0,
-                        tight=True,
-                        expand=True,
-                    ),
-                    app_icon(PIcons.CARET_DOWN, size=14, color=TEXT_MUTED),
-                ],
-                spacing=SPACE_2,
-                vertical_alignment=ft.CrossAxisAlignment.CENTER,
-            ),
-            bgcolor=BG_SURFACE,
-            border=ft.Border.all(0.8, BORDER_CONTROL),
-            border_radius=RADIUS_SHARP,
-            padding=ft.Padding.symmetric(horizontal=SPACE_3, vertical=SPACE_2),
-            tooltip="Elegir plataforma destino y transferir",
-            on_click=self._on_route_dest_click,
-            expand=True,
-        )
-        ui._route_bar = ft.Row(
-            controls=[src_card, mid_arrow, ui._route_dst_btn],
-            spacing=SPACE_3,
-            vertical_alignment=ft.CrossAxisAlignment.CENTER,
+        ui._telemetry_toggle_btn = app_icon_button(
+            glyph=PIcons.LIST_DASHES,
+            icon_color=DECOR_LINE,
+            size=16,
+            tooltip="Mostrar u ocultar registro de actividad",
+            on_click=self._toggle_telemetry_manual,
+            width=28,
+            height=28,
         )
 
         title_row = ft.Row(
@@ -855,9 +762,9 @@ class LayoutController:
                     expand=True,
                 ),
                 ui._auth_strip,
-                ui._merge_btn,
                 ui._catalog_search_btn,
                 ui._segment_dd,
+                ui._telemetry_toggle_btn,
                 ui._clear_session_btn,
             ],
             spacing=SPACE_2,
@@ -865,22 +772,20 @@ class LayoutController:
         )
         return ft.Container(
             content=ft.Column(
-                controls=[ui._steps_strip, title_row, ui._route_bar],
+                controls=[ui._steps_strip, title_row],
                 spacing=SPACE_2,
                 tight=True,
             ),
         )
 
-    def _on_route_dest_click(self, _e=None) -> None:
-        ui = self._ui
-        s = ui.state
-        if getattr(s, "load_state", LoadState.IDLE) != LoadState.READY or not getattr(
-            s, "tracks", None
-        ):
+    def _toggle_telemetry_manual(self, _e=None) -> None:
+        tel = getattr(self._ui, "_telemetry", None)
+        if tel is None:
             return
-        if getattr(s, "transfer_state", TransferState.IDLE) == TransferState.RUNNING:
-            return
-        ui._on_transfer(None)
+        cur = bool(tel.container.visible)
+        self._telemetry_manual_open = not cur
+        tel.container.visible = not cur
+        safe_update(tel.container)
 
     def _build_col_headers(self) -> ft.Container:
         ui = self._ui
@@ -1167,56 +1072,6 @@ class LayoutController:
         )
         ui._mode_bar = None
 
-    def _build_footer_bar(self) -> ft.Container:
-        """Pie fijo de 56 px con resumen de selección/estado y acción primaria."""
-        ui = self._ui
-        ui._footer_summary = ft.Text(
-            "Sin pistas cargadas · Elige una plataforma o archivo local",
-            size=FS_SM,
-            color=TEXT_PRIMARY,
-            font_family=FONT_HEADLINE_BOLD,
-            max_lines=1,
-            overflow=ft.TextOverflow.ELLIPSIS,
-            opacity=1.0,
-        )
-        ui._footer_sub = ft.Text(
-            f"Destino: {ui.state.destination}",
-            size=FS_META,
-            color=TEXT_MUTED,
-            font_family=FONT_TEXT,
-            max_lines=1,
-            overflow=ft.TextOverflow.ELLIPSIS,
-            opacity=1.0,
-        )
-        ui._footer_transfer_btn = _primary_btn(
-            "Transferir",
-            PIcons.ARROWS_LEFT_RIGHT,
-            ui._on_transfer,
-            height=36,
-            disabled=True,
-        )
-        ui._footer_transfer_btn.tooltip = "Elegir destino y transferir la selección"
-        return ft.Container(
-            height=56,
-            bgcolor=BG_PANEL,
-            border=ft.Border.only(top=ft.BorderSide(1, BORDER_CONTROL)),
-            padding=ft.Padding.symmetric(horizontal=SPACE_4, vertical=SPACE_2),
-            content=ft.Row(
-                controls=[
-                    ft.Column(
-                        controls=[ui._footer_summary, ui._footer_sub],
-                        spacing=SPACE_1,
-                        alignment=ft.MainAxisAlignment.CENTER,
-                        expand=True,
-                    ),
-                    ui._footer_transfer_btn,
-                ],
-                spacing=SPACE_3,
-                vertical_alignment=ft.CrossAxisAlignment.CENTER,
-            ),
-            visible=True,
-        )
-
     def _sync_workflow_ui(self, states: dict[str, dict[str, object]] | None = None) -> None:
         """Sincroniza tira de pasos, ruta origen->destino, chips y pie fijo 56 px."""
         ui = self._ui
@@ -1257,23 +1112,12 @@ class LayoutController:
                     num_txt.color = TEXT_MUTED
                     lbl_txt.color = TEXT_MUTED
 
-        # 2. Ruta origen -> destino
-        src_name = getattr(s, "source", "") or "Origen"
-        pl_name = getattr(s, "playlist_name", "") or "Sin cargar"
+        # 2. Destino en sidebar
         dst_name = getattr(s, "destination", "") or "Elegir al transferir"
-        route_src_icon = getattr(ui, "_route_src_icon", None)
-        if route_src_icon is not None:
-            route_src_icon.value = _platform_icon(src_name)
         route_dst_icon = getattr(ui, "_route_dst_icon", None)
         if route_dst_icon is not None:
-            route_dst_icon.value = _platform_icon(dst_name)
+            route_dst_icon.value = platform_icon(dst_name)
             route_dst_icon.color = ACCENT if has_tracks else TEXT_MUTED
-        route_src = getattr(ui, "_route_src_text", None)
-        if route_src is not None:
-            route_src.value = f"{src_name} · {pl_name}" if has_tracks else f"{src_name} · Sin playlist"
-        route_pipe = getattr(ui, "_route_pipe_text", None)
-        if route_pipe is not None:
-            route_pipe.value = f"{len(tracks)} pistas" if has_tracks else "0 pistas"
         route_dst = getattr(ui, "_route_dst_text", None)
         if route_dst is not None:
             route_dst.value = dst_name
@@ -1283,7 +1127,7 @@ class LayoutController:
                 0.8, ACCENT if has_tracks and not is_transferring else BORDER_CONTROL
             )
 
-        # 3. Chips LISTA / REVISAR / SIN MATCH
+        # 3. Chips LISTA / REVISAR / SIN MATCH (solo tras transferencia o incidencias)
         rev_cnt = sum(
             1 for t in tracks if getattr(t, "transfer_status", "pending") == "revision_necesaria"
         )
@@ -1293,15 +1137,50 @@ class LayoutController:
             if getattr(t, "transfer_status", "pending") in ("not_found", "error")
         )
         ok_cnt = max(0, len(tracks) - rev_cnt - no_cnt)
+        has_xfer_result = (
+            has_report
+            or transfer_state in (TransferState.DONE, TransferState.ERROR)
+            or rev_cnt > 0
+            or no_cnt > 0
+        )
         chips_row = getattr(ui, "_status_chips_row", None)
         counts = (ok_cnt, rev_cnt, no_cnt)
-        if chips_row is not None and self._last_chip_counts != counts:
-            self._last_chip_counts = counts
-            chips_row.controls = [
-                status_chip(f"{ok_cnt} LISTA", kind="ok" if ok_cnt else "neutral"),
-                status_chip(f"{rev_cnt} REVISAR", kind="warn" if rev_cnt else "neutral"),
-                status_chip(f"{no_cnt} SIN MATCH", kind="err" if no_cnt else "neutral"),
-            ]
+        if chips_row is not None:
+            chips_row.visible = has_xfer_result
+            if has_xfer_result and self._last_chip_counts != counts:
+                self._last_chip_counts = counts
+                chips_row.controls = [
+                    status_chip(f"{ok_cnt} LISTA", kind="ok" if ok_cnt else "neutral"),
+                    status_chip(f"{rev_cnt} REVISAR", kind="warn" if rev_cnt else "neutral"),
+                    status_chip(f"{no_cnt} SIN MATCH", kind="err" if no_cnt else "neutral"),
+                ]
+
+        # 3b. Selector Lista | Doble | Preview solo si hay transformación/vista doble
+        mode_seg = getattr(ui, "_mode_seg", None)
+        if mode_seg is not None:
+            src_tracks = list(getattr(s, "source_tracks", []) or [])
+            has_dual_result = (
+                bool(getattr(s, "segments", None))
+                or bool(getattr(s, "show_dual", False))
+                or getattr(s, "dual_mode", "lista") in ("doble", "preview")
+                or (
+                    len(tracks) == len(src_tracks)
+                    and [t.id for t in tracks] != [t.id for t in src_tracks]
+                )
+            )
+            mode_seg.visible = has_dual_result
+
+        # 3c. Registro visible solo si hay actividad/reporte o apertura manual
+        tel = getattr(ui, "_telemetry", None)
+        if tel is not None:
+            if self._telemetry_manual_open is not None:
+                tel.container.visible = self._telemetry_manual_open and not catalog_open
+            else:
+                tel.container.visible = (
+                    is_transferring
+                    or has_report
+                    or transfer_state in (TransferState.DONE, TransferState.ERROR)
+                ) and not catalog_open
 
         # 4. Subcabecera de lista editable solo en vista doble/preview
         subheader = getattr(ui, "_lista_subheader", None)
@@ -1309,42 +1188,7 @@ class LayoutController:
         if subheader is not None and preview_panel is not None:
             subheader.visible = bool(getattr(preview_panel, "visible", False))
 
-        # 5. Pie fijo 56 px
-        footer_bar = getattr(ui, "_footer_bar", None)
-        if footer_bar is not None:
-            footer_bar.visible = not catalog_open
-        footer_summary = getattr(ui, "_footer_summary", None)
-        if footer_summary is not None:
-            if load_state in (LoadState.LOADING_META, LoadState.LOADING_TRACKS):
-                footer_summary.value = "Cargando pistas…"
-                footer_summary.color = TEXT_MUTED
-            elif load_state == LoadState.ERROR:
-                footer_summary.value = "Error al cargar · Revisa origen o sesión"
-                footer_summary.color = ERROR_COL
-            elif has_tracks:
-                sel_cnt = sum(1 for t in tracks if getattr(t, "selected", False))
-                total_ms = sum(int(getattr(t, "duration_ms", 0) or 0) for t in tracks)
-                dur_part = ""
-                if total_ms > 0:
-                    mins = total_ms // 60000
-                    dur_part = f" · {mins} min"
-                parts = [f"{sel_cnt} de {len(tracks)} seleccionadas{dur_part}"]
-                if rev_cnt:
-                    parts.append(f"{rev_cnt} revisar")
-                if no_cnt:
-                    parts.append(f"{no_cnt} sin match")
-                footer_summary.value = " · ".join(parts)
-                footer_summary.color = TEXT_PRIMARY
-            else:
-                footer_summary.value = "Sin pistas cargadas · Elige una plataforma o archivo local"
-                footer_summary.color = TEXT_MUTED
-
-        footer_sub = getattr(ui, "_footer_sub", None)
-        if footer_sub is not None:
-            dual_mode = getattr(s, "dual_mode", "lista")
-            mode_note = " · Solo vista previa" if dual_mode == "preview" else ""
-            footer_sub.value = f"Destino: {dst_name}{mode_note}"
-
+        # 5. Botón Transferir en sidebar
         footer_btn = getattr(ui, "_footer_transfer_btn", None)
         if footer_btn is not None:
             spec = (states or {}).get("transfer") or {}
@@ -1393,7 +1237,6 @@ class LayoutController:
                     ui._catalog_panel,
                     col_headers,
                     ui._list_area,
-                    ui._footer_bar,
                     ui._telemetry.container,
                 ],
                 spacing=SPACE_2,

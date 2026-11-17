@@ -529,6 +529,11 @@ class PlaylistManagerUI:
                     pq.set_open(True)
 
             self.player_bar._on_open_lyrics = _open_lyrics_from_bar
+            if hasattr(self.player_bar, "restore_last_playback"):
+                try:
+                    self.player_bar.restore_last_playback()
+                except Exception:
+                    pass
         self._mount_home_view()
         self._inject_config_dependencies()
         self._setup_keyboard_and_regions()
@@ -1352,9 +1357,11 @@ class PlaylistManagerUI:
         self._apply_url_mode(not self._url_mode)
 
     def _apply_url_mode(self, enabled: bool) -> None:
-        """Muestra el campo de ID solo en modo avanzado; el selector, si no."""
+        """Muestra el campo de ID y «Cargar» solo en modo avanzado; el selector, si no."""
         self._url_mode = bool(enabled)
         self._id_field.visible = self._url_mode
+        if hasattr(self, "_load_btn"):
+            self._load_btn.visible = self._url_mode
         self._url_toggle_label.value = (
             "Elegir de la biblioteca" if self._url_mode else "Avanzado"
         )
@@ -1366,7 +1373,9 @@ class PlaylistManagerUI:
             # Se releen las opciones: mientras estaba en modo URL pudo
             # cambiar el origen o terminar una sincronización en Biblioteca.
             self._refresh_playlist_picker(self.state.source)
-        for ctrl in (self._id_field, self._url_toggle_label, self._use_url_btn):
+        for ctrl in (self._id_field, self._url_toggle_label, self._use_url_btn, getattr(self, "_load_btn", None)):
+            if ctrl is None:
+                continue
             try:
                 ctrl.update()
             except Exception:
