@@ -28,6 +28,7 @@ class PlayableTrack:
     duration_ms: int = 0
     bitrate_kbps: int | None = None
     sample_rate: int | None = None
+    is_stream: bool = False
 
     @property
     def badge_text(self) -> str:
@@ -354,4 +355,31 @@ def build_playable_track(path: str, track: Track | None = None) -> PlayableTrack
         duration_ms=duration_ms,
         bitrate_kbps=int(bitrate_kbps) if bitrate_kbps else None,
         sample_rate=int(sample_rate) if sample_rate else None,
+    )
+
+
+def build_stream_playable_track(
+    stream_url: str,
+    track: Track,
+    info: dict | None = None,
+) -> PlayableTrack | None:
+    """Construye un ``PlayableTrack`` remoto (streaming sin descarga)."""
+    url = str(stream_url or "").strip()
+    if not url.startswith(("http://", "https://")):
+        return None
+    meta = info if isinstance(info, dict) else {}
+    container = str(meta.get("ext") or "stream").lower()
+    codec = str(meta.get("acodec") or container or "opus").lower()
+    duration_ms = int(meta.get("duration_ms") or track.duration_ms or 0)
+    abr = meta.get("abr")
+    asr = meta.get("asr")
+    return PlayableTrack(
+        track=track,
+        path=url,
+        container=container,
+        codec=codec,
+        duration_ms=duration_ms,
+        bitrate_kbps=int(abr) if abr else None,
+        sample_rate=int(asr) if asr else None,
+        is_stream=True,
     )

@@ -1326,6 +1326,24 @@ class PlaylistDetailView(ft.Container):
     def _track_context_actions(self, track: Track, index: int, action_icon: ft.Control | None = None) -> list[ContextMenuAction]:
         return build_track_context_actions(self, track, index, action_icon)
 
+    def _stream_single_track(self, track: Track) -> None:
+        """Resuelve y reproduce una pista remota vía yt-dlp sin guardarla en disco."""
+        pb = self.player_bar
+        if pb is None or not hasattr(pb, "play_remote_track"):
+            return
+
+        async def _run() -> None:
+            notify(self._page_ref, f"Resolviendo audio: {track.name}…")
+            await pb.play_remote_track(track)
+
+        try:
+            self._page_ref.run_task(_run)
+        except Exception:
+            try:
+                asyncio.create_task(_run())
+            except Exception:
+                pass
+
     def _play_single_track(self, track: Track, index: int) -> None:
         """Reproduce una sola pista local en el reproductor encolando la lista."""
         if not track.source_path or not os.path.isfile(track.source_path):

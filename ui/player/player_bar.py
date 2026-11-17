@@ -22,7 +22,14 @@ import flet as ft
 import flet_audio as fta
 
 from core.models import Track
-from core.playback import PlayableTrack, PlayQueue, RepeatMode, build_playable_track
+from core.playback import (
+    PlayableTrack,
+    PlayQueue,
+    RepeatMode,
+    build_playable_track,
+    build_stream_playable_track,
+)
+from engine.download_search import resolve_stream_info
 from services.mpris_service import MPRISService
 from services import settings_store
 from ui.theme.fonts import (
@@ -148,6 +155,11 @@ class PlayerBar(ft.Container):
         self._scrubbing: bool = False
         self._scrub_ms: int = 0
         self._ticker_task: asyncio.Task | None = None
+        self._fade_task: asyncio.Task | None = None
+        self._xfade_audio: fta.Audio | None = None
+        self._crossfade_triggered: bool = False
+        self._pause_fading: bool = False
+        self._pending_seek_ms: int = 0
         self._disposed: bool = False
 
         # Instrumentación de cadencia de on_position_change
@@ -160,6 +172,36 @@ class PlayerBar(ft.Container):
         self._build_ui()
         self._sync_ui()
 
+    def _register_audio_service(self, audio: fta.Audio) -> None:
+        services = getattr(self._page_ref, "services", None)
+        if isinstance(services, list) and audio not in services:
+            services.append(audio)
+        registry = getattr(self._page_ref, "_services", None)
+        reg_list = getattr(registry, "_services", None)
+        if (
+            registry is not None
+            and isinstance(reg_list, list)
+            and audio not in reg_list
+            and hasattr(registry, "register_service")
+        ):
+            try:
+                registry.register_service(audio)
+            except Exception:
+                pass
+
+    def _create_audio_instance(self) -> fta.Audio:
+        audio = fta.Audio(
+            volume=0.0 if self._muted else self._volume,
+            release_mode=fta.ReleaseMode.STOP,
+            on_loaded=self._on_audio_loaded,
+            on_duration_change=self._on_duration_change,
+            on_state_change=self._on_state_change,
+            on_position_change=self._on_position_change,
+            on_seek_complete=self._on_seek_complete,
+        )
+        self._register_audio_service(audio)
+        return audio
+
     def _ensure_audio(self, src: str | None = None) -> fta.Audio:
         """Devuelve la instancia única de ``fta.Audio`` y actualiza ``src`` si se indica.
 
@@ -168,30 +210,7 @@ class PlayerBar(ft.Container):
         """
         audio = self.audio
         if audio is None:
-            audio = fta.Audio(
-                volume=0.0 if self._muted else self._volume,
-                release_mode=fta.ReleaseMode.STOP,
-                on_loaded=self._on_audio_loaded,
-                on_duration_change=self._on_duration_change,
-                on_state_change=self._on_state_change,
-                on_position_change=self._on_position_change,
-                on_seek_complete=self._on_seek_complete,
-            )
-            services = getattr(self._page_ref, "services", None)
-            if isinstance(services, list) and audio not in services:
-                services.append(audio)
-            registry = getattr(self._page_ref, "_services", None)
-            reg_list = getattr(registry, "_services", None)
-            if (
-                registry is not None
-                and isinstance(reg_list, list)
-                and audio not in reg_list
-                and hasattr(registry, "register_service")
-            ):
-                try:
-                    registry.register_service(audio)
-                except Exception:
-                    pass
+            audio = self._create_audio_instance()
             self.audio = audio
 
         if src is not None:
@@ -203,6 +222,12 @@ class PlayerBar(ft.Container):
             except Exception as exc:  # noqa: BLE001
                 self._log(f"[AUDIO] No se pudo actualizar el servicio: {exc}")
         return audio
+
+    def _ensure_xfade_audio(self) -> fta.Audio:
+        """Crea bajo demanda el segundo deck para crossfade."""
+        if self._xfade_audio is None:
+            self._xfade_audio = self._create_audio_instance()
+        return self._xfade_audio
 
     def _log(self, msg: str) -> None:
         """Traza del reproductor hacia el log de la app (diagnóstico)."""
@@ -360,6 +385,41 @@ class PlayerBar(ft.Container):
             self.queue.enqueue(playable, play_now=True)
         self._load_and_play_current()
 
+    def play_stream(
+        self,
+        stream_url: str,
+        track: Track,
+        info: dict | None = None,
+        *,
+        enqueue_only: bool = False,
+    ) -> bool:
+        """Reproduce o encola una pista remota por streaming sin descargar."""
+        playable = build_stream_playable_track(stream_url, track, info)
+        if playable is None:
+            notify(self._page_ref, "URL de streaming inválida", kind="error")
+            return False
+        was_empty = self.queue.current is None
+        self.queue.enqueue(playable, play_now=(not enqueue_only) or was_empty)
+        if not enqueue_only or was_empty:
+            self._load_and_play_current()
+        else:
+            self._sync_ui()
+            self._notify_listeners()
+        return True
+
+    async def play_remote_track(self, track: Track) -> bool:
+        """Resuelve con yt-dlp el stream de ``track`` sin descargar y lo reproduce."""
+        if not bool(getattr(settings_store, "get_stream_without_download", lambda: True)()):
+            notify(self._page_ref, "Activa «Reproducir sin descargar» en Configuración", kind="warn")
+            return False
+        info = await asyncio.to_thread(resolve_stream_info, track)
+        url = str(info.get("url") or "")
+        if not url:
+            err = str(info.get("error") or "No se pudo resolver el audio")
+            notify(self._page_ref, err, kind="error")
+            return False
+        return self.play_stream(url, track, info)
+
     def play_file(self, path: str, track: Track | None = None) -> bool:
         playable = build_playable_track(path, track)
         if playable is None:
@@ -430,26 +490,265 @@ class PlayerBar(ft.Container):
         self.queue.clear()
         self._stop_playback()
 
+    def _cancel_fade(self) -> None:
+        task = getattr(self, "_fade_task", None)
+        if task is not None and not task.done():
+            task.cancel()
+        self._fade_task = None
+        self._pause_fading = False
+
+    def _spawn_ui_task(self, coro) -> asyncio.Task | None:
+        try:
+            return asyncio.create_task(coro)
+        except RuntimeError:
+            try:
+                self._page_ref.run_task(lambda: coro)
+            except Exception:
+                try:
+                    coro.close()
+                except Exception:
+                    pass
+            return None
+
+    def _start_fade_in(self, audio: fta.Audio, duration_s: float) -> None:
+        self._cancel_fade()
+        steps = 20
+        step_s = max(0.02, float(duration_s) / steps)
+
+        async def _fade() -> None:
+            try:
+                for i in range(1, steps + 1):
+                    await asyncio.sleep(step_s)
+                    if self._disposed or self.audio is not audio or self._audio_state != fta.AudioState.PLAYING:
+                        return
+                    target = 0.0 if self._muted else self._volume
+                    audio.volume = round(target * (i / steps), 4)
+                    try:
+                        audio.update()
+                    except Exception:
+                        return
+            except asyncio.CancelledError:
+                return
+
+        self._fade_task = self._spawn_ui_task(_fade())
+
+    def _start_fade_out_pause(self, audio: fta.Audio, duration_s: float) -> None:
+        self._cancel_fade()
+        self._pause_fading = True
+        steps = 12
+        fade_len = min(0.45, max(0.12, float(duration_s) * 0.35))
+        step_s = fade_len / steps
+        start_vol = float(getattr(audio, "volume", self._volume) or 0.0)
+
+        async def _fade_out() -> None:
+            try:
+                for i in range(1, steps + 1):
+                    await asyncio.sleep(step_s)
+                    if self._disposed or self._audio_state != fta.AudioState.PAUSED:
+                        return
+                    audio.volume = round(max(0.0, start_vol * (1.0 - (i / steps))), 4)
+                    try:
+                        audio.update()
+                    except Exception:
+                        break
+                self._schedule_audio(audio.pause)
+                audio.volume = 0.0 if self._muted else self._volume
+                try:
+                    audio.update()
+                except Exception:
+                    pass
+            except asyncio.CancelledError:
+                return
+            finally:
+                self._pause_fading = False
+
+        self._fade_task = self._spawn_ui_task(_fade_out())
+
+    @staticmethod
+    def _playable_src(item: PlayableTrack | None) -> str | None:
+        if item is None:
+            return None
+        if bool(getattr(item, "is_stream", False)) or str(item.path).startswith(("http://", "https://")):
+            return str(item.path)
+        abs_path = os.path.abspath(item.path)
+        return abs_path if os.path.isfile(abs_path) else None
+
+    def _begin_crossfade_to_next(self, fade_s: int) -> bool:
+        """Crossfade real entre el deck activo y el siguiente tema en la cola."""
+        if self._disposed or fade_s <= 0 or self.audio is None:
+            return False
+        nxt = self.queue.next()
+        if nxt is None:
+            self._stop_playback()
+            return True
+        next_src = self._playable_src(nxt)
+        if not next_src:
+            self._load_and_play_current()
+            return True
+
+        self._cancel_fade()
+        self._crossfade_triggered = True
+        outgoing = self.audio
+        incoming = self._ensure_xfade_audio()
+        self.audio = incoming
+        self._xfade_audio = outgoing
+
+        self._pending_seek_ms = 0
+        self._position_ms = 0
+        self._duration_ms = max(0, int(nxt.duration_ms or 0))
+        incoming.src = next_src
+        incoming.volume = 0.0
+        incoming.release_mode = fta.ReleaseMode.STOP
+        try:
+            incoming.update()
+        except Exception as exc:  # noqa: BLE001
+            self._log(f"[AUDIO] No se pudo preparar crossfade: {exc}")
+
+        self._audio_state = fta.AudioState.PLAYING
+        self._schedule_audio(incoming.play, 0)
+
+        steps = 20
+        step_s = max(0.03, float(fade_s) / steps)
+        out_start = float(getattr(outgoing, "volume", 0.0) or 0.0)
+
+        async def _xfade() -> None:
+            try:
+                for i in range(1, steps + 1):
+                    await asyncio.sleep(step_s)
+                    if self._disposed or self.audio is not incoming:
+                        return
+                    frac = i / steps
+                    target = 0.0 if self._muted else self._volume
+                    outgoing.volume = round(max(0.0, out_start * (1.0 - frac)), 4)
+                    incoming.volume = round(target * frac, 4)
+                    try:
+                        outgoing.update()
+                        incoming.update()
+                    except Exception:
+                        break
+                self._schedule_audio(outgoing.pause)
+                self._crossfade_triggered = False
+            except asyncio.CancelledError:
+                return
+
+        self._fade_task = self._spawn_ui_task(_xfade())
+        self._ensure_ticker()
+        self._sync_ui()
+        self._notify_listeners()
+        self._notify_mpris_playing(nxt)
+        self._persist_playback_state()
+        return True
+
+    def _persist_playback_state(self) -> None:
+        if not bool(getattr(settings_store, "get_resume_on_open", lambda: False)()):
+            return
+        cur = self.queue.current
+        if cur is None or bool(getattr(cur, "is_stream", False)):
+            return
+        abs_path = os.path.abspath(cur.path)
+        if not os.path.isfile(abs_path):
+            return
+        q_paths = [
+            os.path.abspath(it.path)
+            for it in self.queue.ordered_tracks()[:50]
+            if not getattr(it, "is_stream", False) and os.path.isfile(it.path)
+        ]
+        if abs_path not in q_paths:
+            q_paths.insert(0, abs_path)
+        setter = getattr(settings_store, "set_last_playback", None)
+        if callable(setter):
+            try:
+                setter({
+                    "path": abs_path,
+                    "position_ms": max(0, int(self._position_ms)),
+                    "queue_paths": q_paths,
+                })
+            except Exception:
+                pass
+
+    def restore_last_playback(self) -> bool:
+        """Restaura la última pista y posición en pausa si ``resume_on_open`` está activo."""
+        if not bool(getattr(settings_store, "get_resume_on_open", lambda: False)()):
+            return False
+        getter = getattr(settings_store, "get_last_playback", None)
+        saved = getter() if callable(getter) else {}
+        if not isinstance(saved, dict):
+            return False
+        last_path = str(saved.get("path") or "")
+        if not last_path or not os.path.isfile(last_path):
+            return False
+        abs_last = os.path.abspath(last_path)
+        raw_paths = saved.get("queue_paths") or [abs_last]
+        playables: list[PlayableTrack] = []
+        start_idx = 0
+        for p in raw_paths:
+            if not p or not os.path.isfile(str(p)):
+                continue
+            pt = build_playable_track(str(p))
+            if pt is not None:
+                if os.path.abspath(pt.path) == abs_last:
+                    start_idx = len(playables)
+                playables.append(pt)
+        if not playables:
+            pt = build_playable_track(abs_last)
+            if pt is None:
+                return False
+            playables = [pt]
+            start_idx = 0
+        self.queue.set_tracks(playables, start_index=start_idx)
+        cur = self.queue.current
+        if cur is None:
+            return False
+        pos_ms = max(0, int(saved.get("position_ms") or 0))
+        dur_ms = max(0, int(cur.duration_ms or 0))
+        if dur_ms > 0:
+            pos_ms = min(pos_ms, max(0, dur_ms - 1000))
+        self._position_ms = pos_ms
+        self._pending_seek_ms = pos_ms
+        self._duration_ms = dur_ms
+        self._audio_state = fta.AudioState.PAUSED
+        self._ensure_audio(os.path.abspath(cur.path))
+        self._sync_ui()
+        self._notify_listeners()
+        return True
+
     def _load_and_play_current(self) -> None:
         cur = self.queue.current
         if cur is None:
             self._stop_playback()
             return
-        abs_path = os.path.abspath(cur.path)
-        if not os.path.isfile(abs_path):
-            notify(self._page_ref, f"Archivo no encontrado: {os.path.basename(abs_path)}", kind="error")
+        src = self._playable_src(cur)
+        if not src:
+            notify(self._page_ref, f"Archivo no encontrado: {os.path.basename(cur.path)}", kind="error")
             return
+        self._cancel_fade()
+        self._crossfade_triggered = False
+        self._pending_seek_ms = 0
         self._position_ms = 0
         self._duration_ms = max(0, int(cur.duration_ms or 0))
-        audio = self._ensure_audio(abs_path)
+        audio = self._ensure_audio(src)
+        fade_s = int(getattr(settings_store, "get_fade_seconds", lambda: 0)() or 0)
+        use_fade = fade_s > 0 and not self._muted and self._volume > 0.0
+        if use_fade:
+            audio.volume = 0.0
+            try:
+                audio.update()
+            except Exception:
+                pass
         self._audio_state = fta.AudioState.PLAYING
         self._schedule_audio(audio.play, 0)
+        if use_fade:
+            self._start_fade_in(audio, fade_s)
         self._ensure_ticker()
         self._sync_ui()
         self._notify_listeners()
         self._notify_mpris_playing(cur)
+        self._persist_playback_state()
 
     def _stop_playback(self) -> None:
+        self._cancel_fade()
+        self._crossfade_triggered = False
+        self._pending_seek_ms = 0
         self._audio_state = fta.AudioState.STOPPED
         self._position_ms = 0
         self._duration_ms = 0
@@ -463,6 +762,8 @@ class PlayerBar(ft.Container):
 
     def release(self) -> None:
         """Libera el decodificador nativo y detiene el ticker (hard_cleanup)."""
+        self._persist_playback_state()
+        self._cancel_fade()
         self._stop_ticker()
         if self._now_playing_scene is not None:
             try:
@@ -471,19 +772,19 @@ class PlayerBar(ft.Container):
                 pass
         if self._dbus_mpris is not None:
             self._dbus_mpris.stop()
-        audio = self.audio
         self._disposed = True
-        if audio is None:
-            return
-        try:
-            res = audio.release()
-            if asyncio.iscoroutine(res):
-                try:
-                    asyncio.get_running_loop().create_task(res)
-                except RuntimeError:
-                    res.close()
-        except Exception as exc:  # noqa: BLE001
-            self._log(f"[AUDIO] No se pudo liberar el servicio: {exc}")
+        for audio in (self.audio, self._xfade_audio):
+            if audio is None:
+                continue
+            try:
+                res = audio.release()
+                if asyncio.iscoroutine(res):
+                    try:
+                        asyncio.get_running_loop().create_task(res)
+                    except RuntimeError:
+                        res.close()
+            except Exception as exc:  # noqa: BLE001
+                self._log(f"[AUDIO] No se pudo liberar el servicio: {exc}")
 
     # ── eventos de controles ───────────────────────────────────────────
 
@@ -494,13 +795,34 @@ class PlayerBar(ft.Container):
                 self.queue.select(0)
                 self._load_and_play_current()
             return
+        fade_s = int(getattr(settings_store, "get_fade_seconds", lambda: 0)() or 0)
         if self._audio_state == fta.AudioState.PLAYING:
             self._audio_state = fta.AudioState.PAUSED
-            self._call_audio("pause")
             self._stop_ticker()
+            self._persist_playback_state()
+            if fade_s > 0 and self.audio is not None and not self._muted and self._volume > 0.0:
+                self._start_fade_out_pause(self.audio, fade_s)
+            else:
+                self._call_audio("pause")
         elif self._audio_state == fta.AudioState.PAUSED:
+            self._cancel_fade()
             self._audio_state = fta.AudioState.PLAYING
-            self._call_audio("resume")
+            audio = self.audio
+            use_fade = fade_s > 0 and audio is not None and not self._muted and self._volume > 0.0
+            if use_fade and audio is not None:
+                audio.volume = 0.0
+                try:
+                    audio.update()
+                except Exception:
+                    pass
+            if self._pending_seek_ms > 0 and audio is not None:
+                seek_pos = self._pending_seek_ms
+                self._pending_seek_ms = 0
+                self._schedule_audio(audio.play, seek_pos)
+            else:
+                self._call_audio("resume")
+            if use_fade and audio is not None:
+                self._start_fade_in(audio, min(1.0, float(fade_s)))
             self._ensure_ticker()
         else:
             self._load_and_play_current()
@@ -533,6 +855,15 @@ class PlayerBar(ft.Container):
 
     def _on_next_click(self, _e=None) -> None:
         if not self.queue.order:
+            return
+        fade_s = int(getattr(settings_store, "get_fade_seconds", lambda: 0)() or 0)
+        if (
+            fade_s > 0
+            and self._audio_state == fta.AudioState.PLAYING
+            and not self._muted
+            and self._volume > 0.0
+            and self._begin_crossfade_to_next(fade_s)
+        ):
             return
         target = self.queue.next()
         if target is not None:
@@ -621,9 +952,11 @@ class PlayerBar(ft.Container):
         pos = getattr(e, "local_position", None)
         x = float(getattr(pos, "x", 0.0) or 0.0)
         target_ms = self._x_to_ms(x)
+        self._pending_seek_ms = 0
         self._position_ms = target_ms
         self._call_audio("seek", target_ms)
         self._update_progress_visual(target_ms)
+        self._persist_playback_state()
 
     def _on_scrub_start(self, _e) -> None:
         if self.queue.current is None or self._duration_ms <= 0:
@@ -646,16 +979,24 @@ class PlayerBar(ft.Container):
             return
         target_ms = self._scrub_ms
         self._scrubbing = False
+        self._pending_seek_ms = 0
         self._position_ms = target_ms
         self._progress_fill.animate = ft.Animation(
             PLAYER_PROGRESS_ANIM_MS, ft.AnimationCurve.EASE_IN_OUT
         )
         self._call_audio("seek", target_ms)
         self._update_progress_visual(target_ms)
+        self._persist_playback_state()
 
     # ── callbacks del servicio Audio e instrumentación ─────────────────
 
-    def _on_audio_loaded(self, _e) -> None:
+    def _is_active_audio_event(self, e) -> bool:
+        ctrl = getattr(e, "control", None)
+        return ctrl is None or ctrl is self.audio
+
+    def _on_audio_loaded(self, e) -> None:
+        if not self._is_active_audio_event(e):
+            return
         async def _probe_duration() -> None:
             audio = self.audio
             if audio is None:
@@ -676,6 +1017,8 @@ class PlayerBar(ft.Container):
             pass
 
     def _on_duration_change(self, e: fta.AudioDurationChangeEvent) -> None:
+        if not self._is_active_audio_event(e):
+            return
         ms = _to_ms(getattr(e, "duration", None))
         if ms > 0:
             self._duration_ms = ms
@@ -683,6 +1026,8 @@ class PlayerBar(ft.Container):
                 self._update_progress_visual(self._position_ms)
 
     def _on_position_change(self, e: fta.AudioPositionChangeEvent) -> None:
+        if not self._is_active_audio_event(e):
+            return
         pos_ms = _to_ms(getattr(e, "position", None))
         self._record_position_cadence(pos_ms)
         self._position_ms = pos_ms
@@ -719,6 +1064,8 @@ class PlayerBar(ft.Container):
             self._update_progress_visual(self._position_ms)
 
     def _on_state_change(self, e: fta.AudioStateChangeEvent) -> None:
+        if not self._is_active_audio_event(e):
+            return
         state = getattr(e, "state", None)
         if isinstance(state, str):
             try:
@@ -790,6 +1137,18 @@ class PlayerBar(ft.Container):
                     pass
                 if not self._scrubbing:
                     self._update_progress_visual(self._position_ms)
+                fade_s = int(getattr(settings_store, "get_fade_seconds", lambda: 0)() or 0)
+                if (
+                    fade_s > 0
+                    and not self._crossfade_triggered
+                    and not self._muted
+                    and self._volume > 0.0
+                    and self.queue.repeat != RepeatMode.ONE
+                    and self._duration_ms > (fade_s * 1000 + 500)
+                    and self._position_ms >= self._duration_ms - (fade_s * 1000)
+                ):
+                    if self._begin_crossfade_to_next(fade_s):
+                        break
         except asyncio.CancelledError:
             return
 
@@ -832,7 +1191,8 @@ class PlayerBar(ft.Container):
         if cur is not None:
             tr = cur.track
             title = tr.name or os.path.basename(cur.path)
-            artist = tr.artist or "Archivo local"
+            fallback_artist = "Streaming" if getattr(cur, "is_stream", False) else "Archivo local"
+            artist = tr.artist or fallback_artist
             self._title_txt.value = title
             self._title_txt.font_family = font_family_for(title, "bold")
             self._artist_txt.value = artist

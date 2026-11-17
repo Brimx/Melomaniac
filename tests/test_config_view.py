@@ -221,14 +221,12 @@ class ConfigViewTests(unittest.TestCase):
         self.assertEqual(settings_store.get_lyrics_provider(), "off")
 
         view.select_section("accesibilidad", update=False)
-        view._on_queue_mode_change(SimpleNamespace(control=SimpleNamespace(selected=["overlay"])))
-        self.assertEqual(settings_store.get_queue_mode(), "overlay")
-        self.assertEqual(view._queue_preview_blocks.right, 10)
+        self.assertIsNone(view._queue_preview_blocks)
 
         view.select_section("apariencia", update=False)
         view._on_theme_change(SimpleNamespace(control=SimpleNamespace(value="washi")))
         self.assertEqual(settings_store.get_theme(), "washi")
-        self.assertGreaterEqual(on_change.call_count, 4)
+        self.assertGreaterEqual(on_change.call_count, 3)
 
 
 class ConfigViewAsyncTests(unittest.IsolatedAsyncioTestCase):

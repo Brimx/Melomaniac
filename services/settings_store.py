@@ -41,6 +41,10 @@ _KEY_ENHANCED_FOCUS = "enhanced_focus"
 _KEY_THEME = "theme"
 _KEY_BG_TEXTURE = "bg_texture"
 _KEY_PREFERRED_BROWSER = "preferred_browser"
+_KEY_FADE_SECONDS = "fade_seconds"
+_KEY_RESUME_ON_OPEN = "resume_on_open"
+_KEY_STREAM_WITHOUT_DOWNLOAD = "stream_without_download"
+_KEY_LAST_PLAYBACK = "last_playback"
 
 _VALID_REPEAT = ("off", "all", "one")
 _VALID_QUEUE_TABS = ("cola", "letra")
@@ -173,6 +177,67 @@ def set_mute(muted: bool) -> None:
     """Persiste el estado de silencio del reproductor."""
     data = load_settings()
     data[_KEY_MUTE] = bool(muted)
+    save_settings(data)
+
+
+def get_fade_seconds() -> int:
+    """Duración del fundido de audio en segundos (0, 1, 2 o 3; por defecto 0)."""
+    raw = load_settings().get(_KEY_FADE_SECONDS, 0)
+    try:
+        val = int(raw)
+    except (TypeError, ValueError):
+        return 0
+    return val if val in (0, 1, 2, 3) else 0
+
+
+def set_fade_seconds(seconds: int) -> None:
+    """Persiste la duración del fundido de audio (0, 1, 2 o 3 segundos)."""
+    data = load_settings()
+    try:
+        val = int(seconds)
+    except (TypeError, ValueError):
+        val = 0
+    data[_KEY_FADE_SECONDS] = val if val in (0, 1, 2, 3) else 0
+    save_settings(data)
+
+
+def get_resume_on_open() -> bool:
+    """Si debe recordarse la última pista y posición al abrir (por defecto False)."""
+    return bool(load_settings().get(_KEY_RESUME_ON_OPEN, False))
+
+
+def set_resume_on_open(enabled: bool) -> None:
+    """Persiste si se debe reanudar la última pista al abrir."""
+    data = load_settings()
+    data[_KEY_RESUME_ON_OPEN] = bool(enabled)
+    save_settings(data)
+
+
+def get_stream_without_download() -> bool:
+    """Si las pistas remotas se reproducen por streaming sin descargar (por defecto True)."""
+    return bool(load_settings().get(_KEY_STREAM_WITHOUT_DOWNLOAD, True))
+
+
+def set_stream_without_download(enabled: bool) -> None:
+    """Persiste la preferencia de reproducción sin descarga."""
+    data = load_settings()
+    data[_KEY_STREAM_WITHOUT_DOWNLOAD] = bool(enabled)
+    save_settings(data)
+
+
+def get_last_playback() -> dict[str, Any]:
+    """Devuelve el último estado de reproducción guardado para reanudar."""
+    raw = load_settings().get(_KEY_LAST_PLAYBACK)
+    return dict(raw) if isinstance(raw, dict) else {}
+
+
+def set_last_playback(payload: dict[str, Any] | None) -> None:
+    """Guarda o limpia la última pista, cola local y posición en milisegundos."""
+    data = load_settings()
+    if payload:
+        data[_KEY_LAST_PLAYBACK] = dict(payload)
+    else:
+        data.pop(_KEY_LAST_PLAYBACK, None)
     save_settings(data)
 
 

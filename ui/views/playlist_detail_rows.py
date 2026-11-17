@@ -10,6 +10,7 @@ import flet as ft
 
 from core.models import Track
 from engine.downloader import open_in_file_manager
+from services import settings_store
 from ui.components.context_menu import ContextMenuAction, build_context_menu_button, wrap_with_context_menu
 from ui.components.song_row import ITEM_H, _thumb_content_for
 from ui.components.widgets import safe_update, selection_border
@@ -79,6 +80,18 @@ def build_track_context_actions(
             ),
         ])
     else:
+        if (
+            view.player_bar is not None
+            and hasattr(view, "_stream_single_track")
+            and bool(getattr(settings_store, "get_stream_without_download", lambda: True)())
+        ):
+            actions.append(
+                ContextMenuAction(
+                    "Reproducir sin descargar",
+                    icon=PIcons.PLAY,
+                    on_click=lambda: view._stream_single_track(track),
+                )
+            )
         actions.extend([
             ContextMenuAction(
                 "Descargar canción",

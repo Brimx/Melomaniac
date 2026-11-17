@@ -400,14 +400,25 @@ def build_reproduccion_section(view: Any) -> list[ft.Control]:
             cfg_row(
                 "Reproducir sin descargar",
                 "Escucha una pista de plataforma resolviéndola en YouTube; no guarda nada.",
-                _disabled_switch(True),
-                reason="Siempre activo en la reproducción de pistas remotas.",
+                app_switch(
+                    value=settings_store.get_stream_without_download(),
+                    on_change=lambda e: view._persist_bool(
+                        settings_store.set_stream_without_download, e.control.value
+                    ),
+                ),
             ),
             cfg_row(
                 "Fundido entre pistas",
-                "",
-                _disabled_dropdown("Fundido", "off", "Desactivado", width=160),
-                reason="flet-audio 1.1.2 usa una sola pista de audio sin mezcla.",
+                "Suaviza la entrada de cada pista ajustando el volumen gradualmente.",
+                organize_dropdown(
+                    [("0", "Desactivado"), ("1", "1 s"), ("2", "2 s"), ("3", "3 s")],
+                    str(settings_store.get_fade_seconds()),
+                    "Fundido",
+                    width=160,
+                    on_select=lambda e: settings_store.set_fade_seconds(
+                        int(getattr(e.control, "value", 0) or 0)
+                    ),
+                ),
             ),
             cfg_row(
                 "Normalizar volumen",
@@ -432,8 +443,12 @@ def build_reproduccion_section(view: Any) -> list[ft.Control]:
             cfg_row(
                 "Reanudar al abrir",
                 "Recuerda la última pista y posición.",
-                _disabled_switch(False),
-                reason="Próximamente · aún no se persiste la pista al cerrar.",
+                app_switch(
+                    value=settings_store.get_resume_on_open(),
+                    on_change=lambda e: view._persist_bool(
+                        settings_store.set_resume_on_open, e.control.value
+                    ),
+                ),
             ),
         ],
     )
@@ -727,26 +742,10 @@ def build_accesibilidad_section(view: Any) -> list[ft.Control]:
         ],
     )
 
-    qmode = settings_store.get_queue_mode()
-    preview_mode = "push" if qmode != "overlay" else "push"
-    stage, panel, blocks = _build_queue_preview(preview_mode, reduce_motion=reduce_val)
-    view._queue_preview_stage = stage
-    view._queue_preview_panel = panel
-    view._queue_preview_blocks = blocks
-
-    cola_card = cfg_card(
-        "Panel de cola",
-        "Cómo se comporta al abrirlo desde la barra inferior.",
-        [
-            cfg_row(
-                "Modo",
-                "Empuje desplaza el contenido sin encoger tarjetas al abrirlo; al cerrarlo queda oculto.",
-                status_chip("Empuje / Oculto", kind="accent"),
-            ),
-            stage,
-        ],
-    )
-    return [movimiento_card, foco_card, cola_card]
+    view._queue_preview_stage = None
+    view._queue_preview_panel = None
+    view._queue_preview_blocks = None
+    return [movimiento_card, foco_card]
 
 
 # ── Sección 06: Apariencia ─────────────────────────────────────────────

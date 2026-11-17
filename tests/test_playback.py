@@ -292,6 +292,110 @@ class TestPlayerBarEnsureAudio(unittest.TestCase):
             self.assertEqual(play_calls[1], (bar.audio.play, (0,)))
             self.assertEqual(len(page.services), 1)
 
+    def test_play_stream_and_resume_on_open_persistence(self) -> None:
+        import tempfile
+        from types import SimpleNamespace
+        from unittest.mock import patch
+        from core.playback import build_stream_playable_track
+        from services import settings_store
+        from ui.player.player_bar import PlayerBar
+
+        tr = Track(
+            id="yt1",
+            name="Remote Song",
+            artist="Remote Artist",
+            album="Remote Album",
+            duration="3:00",
+            img_url="",
+            platform="YouTube Music",
+            duration_ms=180_000,
+        )
+        stream_pt = build_stream_playable_track(
+            "https://example.com/audio.webm",
+            tr,
+            {"ext": "webm", "acodec": "opus", "abr": 128, "asr": 48000},
+        )
+        self.assertIsNotNone(stream_pt)
+        self.assertTrue(stream_pt.is_stream)
+
+        page = SimpleNamespace(services=[])
+        bar = PlayerBar(page)
+        play_calls: list[tuple[object, tuple]] = []
+        bar._schedule_audio = lambda fn, *args, **kwargs: play_calls.append((fn, args))  # type: ignore[method-assign]
+
+        self.assertTrue(bar.play_stream("https://example.com/audio.webm", tr))
+        self.assertEqual(bar.audio.src, "https://example.com/audio.webm")
+        self.assertEqual(play_calls[-1], (bar.audio.play, (0,)))
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            s_path = Path(tmpdir) / "settings.json"
+            audio_file = Path(tmpdir) / "saved.mp3"
+            audio_file.write_bytes(b"ID3")
+            with patch.object(settings_store, "SETTINGS_JSON", s_path):
+                settings_store.set_fade_seconds(2)
+                self.assertEqual(settings_store.get_fade_seconds(), 2)
+                settings_store.set_stream_without_download(False)
+                self.assertFalse(settings_store.get_stream_without_download())
+                settings_store.set_resume_on_open(True)
+                self.assertTrue(settings_store.get_resume_on_open())
+
+                bar.play_file(str(audio_file))
+                bar._position_ms = 42_000
+                bar._persist_playback_state()
+
+                bar2 = PlayerBar(SimpleNamespace(services=[]))
+                bar2._schedule_audio = lambda fn, *args, **kwargs: None  # type: ignore[method-assign]
+                self.assertTrue(bar2.restore_last_playback())
+                self.assertIsNotNone(bar2.queue.current)
+                self.assertEqual(bar2.position_ms, 42_000)
+                self.assertEqual(bar2._pending_seek_ms, 42_000)
+
+    def test_resolve_stream_info_uses_ytdlp_without_download(self) -> None:
+        from unittest.mock import patch
+        from engine.download_search import resolve_stream_info
+
+        captured: dict = {}
+
+        class _FakeYDL:
+            def __init__(self, opts):
+                captured["opts"] = opts
+                self.cookiejar = None
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *args):
+                return False
+
+            def extract_info(self, url, download=True):
+                captured["url"] = url
+                captured["download"] = download
+                return {
+                    "url": "https://cdn.example/stream.opus",
+                    "ext": "webm",
+                    "acodec": "opus",
+                    "abr": 160,
+                    "asr": 48000,
+                    "duration": 185,
+                }
+
+        tr = Track(
+            id="yt9",
+            name="Test Song",
+            artist="Test Artist",
+            album="",
+            duration="3:05",
+            img_url="",
+            platform="YouTube Music",
+            source_url="https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+        )
+        with patch("engine.download_search.yt_dlp.YoutubeDL", _FakeYDL):
+            res = resolve_stream_info(tr)
+        self.assertEqual(res["error"], "")
+        self.assertEqual(res["url"], "https://cdn.example/stream.opus")
+        self.assertFalse(captured["download"])
+        self.assertEqual(captured["opts"]["format"], "bestaudio/best")
+
 
 if __name__ == "__main__":
     unittest.main()

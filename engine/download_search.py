@@ -203,3 +203,74 @@ def search_candidates(track: Any, timeout_s: int = 30) -> dict[str, Any]:
         }
     candidates.sort(key=lambda c: c["score"], reverse=True)
     return {"query": query, "candidates": candidates, "error": ""}
+
+
+def resolve_stream_info(track: Any, timeout_s: int = 20) -> dict[str, Any]:
+    """Resuelve una URL directa de audio en YouTube sin descargar el archivo.
+
+    Síncrono: el caller debe invocarlo dentro de ``asyncio.to_thread``.
+    """
+    vid = _youtube_video_id(track)
+    watch_url = f"https://www.youtube.com/watch?v={vid}" if vid else ""
+    if not watch_url:
+        search = search_candidates(track, timeout_s=timeout_s)
+        candidates = search.get("candidates") or []
+        if not candidates:
+            return {"url": "", "error": search.get("error") or "Sin resultados en YouTube"}
+        watch_url = str(candidates[0].get("url") or "")
+    if not watch_url:
+        return {"url": "", "error": "URL de reproducción no disponible"}
+
+    opts: dict[str, Any] = {
+        "quiet": True,
+        "no_warnings": True,
+        "noplaylist": True,
+        "format": "bestaudio/best",
+        "socket_timeout": timeout_s,
+        "extractor_args": {"youtube": {"player_client": [YOUTUBE_PLAYER_CLIENT]}},
+    }
+    jar = _load_cookie_jar()
+    try:
+        with yt_dlp.YoutubeDL(opts) as ydl:
+            if jar is not None:
+                ydl.cookiejar = jar
+            info = ydl.extract_info(watch_url, download=False)
+    except Exception as exc:  # yt-dlp lanza DownloadError y variantes
+        return {"url": "", "error": f"No se pudo resolver el stream: {exc}"}
+
+    if not isinstance(info, dict):
+        return {"url": "", "error": "Respuesta inválida de yt-dlp"}
+
+    stream_url = str(info.get("url") or "")
+    chosen: dict[str, Any] = info
+    if not stream_url:
+        fmts = [
+            f for f in (info.get("formats") or [])
+            if isinstance(f, dict) and f.get("url")
+        ]
+        audio_only = [
+            f for f in fmts
+            if (f.get("acodec") or "none") != "none" and (f.get("vcodec") or "none") == "none"
+        ]
+        pool = audio_only or fmts
+        if pool:
+            chosen = max(pool, key=lambda f: float(f.get("abr") or f.get("tbr") or 0.0))
+            stream_url = str(chosen.get("url") or "")
+
+    if not stream_url:
+        return {"url": "", "error": "No se encontró flujo de audio reproducible"}
+
+    duration_s = float(info.get("duration") or 0.0)
+    duration_ms = int(duration_s * 1000) if duration_s > 0 else int(getattr(track, "duration_ms", 0) or 0)
+    abr_raw = chosen.get("abr") or info.get("abr")
+    asr_raw = chosen.get("asr") or info.get("asr")
+    return {
+        "url": stream_url,
+        "ext": str(chosen.get("ext") or info.get("ext") or "webm").lower(),
+        "acodec": str(chosen.get("acodec") or info.get("acodec") or "opus").lower(),
+        "abr": int(round(float(abr_raw))) if abr_raw else None,
+        "asr": int(asr_raw) if asr_raw else None,
+        "duration_ms": duration_ms,
+        "webpage_url": watch_url,
+        "error": "",
+    }
