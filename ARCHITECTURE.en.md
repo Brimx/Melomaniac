@@ -77,11 +77,13 @@ Melomaniac/
 │   ├── browser_session.py         # In-memory browser cookie extraction
 │   ├── circuit_breaker.py         # RateLimitError and monotonic cooldowns
 │   ├── cover_cache.py             # Atomic artwork cache storage on disk
+│   ├── cover_warmer.py            # Background artwork prefetch into the cache
 │   ├── covers.py                  # Multi-source album artwork resolution pipeline
 │   ├── desktop_integration.py     # .desktop/.lnk launchers and binary auto-sync
 │   ├── library_state.py           # Library synchronization and state management
 │   ├── local_index.py             # Facade over local index and manifests
 │   ├── mpris_service.py           # Linux D-Bus MPRIS service for media controls
+│   ├── playlist_cache.py          # Disk cache for platform playlists (TTL)
 │   ├── settings_store.py          # User settings persistence
 │   └── update_checker.py          # Update checking against GitHub Releases
 ├── ui/
@@ -90,7 +92,7 @@ Melomaniac/
 │   ├── dialogs/                   # organize_panel.py, division_dialogs.py, playlist_meta_dialog.py, transfer_*, export_dialog.py, merge_dialog.py, recovery_panel.py
 │   ├── setup/                     # auth_manager.py, config_wizard.py, wizard_forms.py, onboarding.py, onboarding_bg.py
 │   ├── views/                     # library_view.py, playlist_detail_*, downloads_view.py, download_recovery.py, config_view.py
-│   ├── player/                    # player_bar.py, bar_layout.py, player_queue.py, player_mpris.py
+│   ├── player/                    # player_bar.py, bar_layout.py, player_queue.py, now_playing_scene.py, player_mpris.py
 │   └── shell/                     # main_ui.py, main_layout.py, main_actions.py, catalog_panel.py, nav_rail.py, sidebar.py, keymap.py
 ├── resources/fonts/               # Stack Sans and IBM Plex fonts; optional CJK
 ├── scripts/                       # Standalone packaging and portable bundle

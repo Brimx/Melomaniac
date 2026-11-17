@@ -309,12 +309,6 @@ class PlayerBar(ft.Container):
         if self._now_playing_scene is not None:
             self._now_playing_scene.close()
 
-    def toggle_now_playing_scene(self) -> None:
-        if self._now_playing_scene is not None and self._now_playing_scene.is_open:
-            self._now_playing_scene.close()
-        else:
-            self.open_now_playing_scene()
-
     def _open_lyrics_panel(self) -> None:
         if callable(self._on_open_lyrics):
             self._on_open_lyrics()

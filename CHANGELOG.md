@@ -12,6 +12,13 @@
 - **Manifiesto por playlist:** se escribe una sola vez al cerrar la sesión en lugar de reescribir el archivo por cada pista (E/S síncrona en el hilo de la UI y O(n²)), y se elimina la rama muerta de `_run_downloads` que duplicaba la inicialización de la sesión.
 - **Acciones de lote:** «Reproducir» y «Descargar» de la selección múltiple comprueban el archivo en disco con `os.path.isfile`; la caché `_has_file_by_id` daba por bueno un archivo ya borrado.
 
+### Reproducción, portadas y caché
+
+- **Caché de playlists de plataforma:** `services/playlist_cache.py` guarda metadatos y pistas en `config/playlist_cache/` (TTL de 600 s, tope de 200 archivos con poda de los más antiguos). Reabrir una playlist dentro del TTL ya no pagina la API; una entrada vencida se sirve al instante y se refresca en segundo plano (stale-while-revalidate), conservando la copia anterior si el refresco falla. La sincronización de Biblioteca fuerza la descarga (`use_cache=False`) para no importar un manifiesto desactualizado.
+- **Portadas persistentes y nítidas:** `services/cover_cache.py` memoriza el índice por archivo+mtime y expone data URIs ya cacheados, y `services/cover_warmer.py` descarga en segundo plano las portadas que faltan. Las miniaturas grandes (≥96 px) suben las URLs del CDN de Google a `=s1000` y usan el data URI local cuando existe; las filas pequeñas conservan el bitmap de 120 px para no multiplicar el tráfico. En la escena Reproduciendo las portadas locales se re-extraen del audio a alta resolución en vez de ampliar el data URI de 96 px de las filas.
+- **Escena Reproduciendo:** se retira el botón duplicado de la barra (el acceso queda en el clic de la miniatura), el layout fija 540 px para la columna izquierda, portada de 340 px y columna derecha de 680 px, y añade junto al volumen un botón para ocultar o mostrar Letra y Cola, persistido como `scene_right_panel_open` (visible por defecto).
+- **Cola con portada:** las filas del panel de cola muestran la portada de 40 px, como el resto de listas.
+
 ## 4.10.0 — 2026-11-13 · Bloque 2 de gestión, Flet 1.1.2, arquitectura modular y reconocimiento cruzado
 
 > Consolida el **Bloque 2 — Flujos de gestión** (`2.1`–`2.11`), el pulido UX de Gestión (`3.5`), la actualización a **Flet `1.1.2`**, la modularización de la capa UI/core/services por composición, el panel de cola lateral `D26`, optimizaciones de rendimiento y el reconocimiento cruzado sin descargas duplicadas.

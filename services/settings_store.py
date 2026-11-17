@@ -34,6 +34,7 @@ _KEY_LYRICS_SAVE_LRC = "lyrics_save_lrc"
 _KEY_LYRICS_EMBED_TAGS = "lyrics_embed_tags"
 _KEY_SCENE_SHOW_DISC = "scene_show_disc"
 _KEY_SCENE_AMBIENT_BG = "scene_ambient_bg"
+_KEY_SCENE_RIGHT_OPEN = "scene_right_panel_open"
 _KEY_MPRIS_ENABLED = "mpris_enabled"
 _KEY_REDUCE_MOTION = "reduce_motion"
 _KEY_ENHANCED_FOCUS = "enhanced_focus"
@@ -337,6 +338,16 @@ def get_scene_ambient_bg() -> bool:
 def set_scene_ambient_bg(enabled: bool) -> None:
     """Persiste el fondo ambiental en la escena Reproduciendo."""
     _set_bool(_KEY_SCENE_AMBIENT_BG, enabled)
+
+
+def get_scene_right_open() -> bool:
+    """Si la escena Reproduciendo muestra el panel derecho (Letra/Cola)."""
+    return _get_bool(_KEY_SCENE_RIGHT_OPEN, True)
+
+
+def set_scene_right_open(enabled: bool) -> None:
+    """Persiste la visibilidad del panel derecho en la escena Reproduciendo."""
+    _set_bool(_KEY_SCENE_RIGHT_OPEN, enabled)
 
 
 # ── Reproducción, Accesibilidad, Apariencia y Conexiones ───────────────

@@ -368,7 +368,7 @@ class TestLibraryStateManifestIntegration(unittest.IsolatedAsyncioTestCase):
                 def __init__(self) -> None:
                     self.calls = []
 
-                async def fetch_playlist(self, platform: str, playlist_id: str, progress_cb=None):
+                async def fetch_playlist(self, platform: str, playlist_id: str, progress_cb=None, use_cache=True):
                     self.calls.append((platform, playlist_id))
                     meta = PlaylistMeta(name="Roadtrip Mix", description="Solo metadatos")
                     tracks = [

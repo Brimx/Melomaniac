@@ -38,6 +38,11 @@ RATE_LIMIT_BACKOFF_STEPS: int = 10
 # Persistencia de la caché de búsquedas: agrupa escrituras para no reescribir
 # el JSON completo tras cada pista. El cierre de transferencia fuerza el flush.
 SEARCH_CACHE_FLUSH_EVERY: int = 25
+# Caché en disco de playlists de plataforma (`services/playlist_cache.py`).
+# Dentro del TTL se sirve sin red; vencida se devuelve al instante y se
+# refresca en segundo plano. El tope de archivos se poda al guardar.
+PLAYLIST_CACHE_TTL_S: int = 600
+PLAYLIST_CACHE_MAX_FILES: int = 200
 # Errores de red consecutivos tras agotar reintentos antes de abortar el lote.
 TRANSFER_MAX_CONSECUTIVE_ERRORS: int = 8
 

@@ -5,6 +5,7 @@ Archivos hash en config/cover_cache/ + índice JSON atómico. Deduplica por URL,
 
 from __future__ import annotations
 
+import base64
 import hashlib
 import json
 import mimetypes
@@ -22,6 +23,14 @@ from services.authentication import CONFIG_DIR, ensure_config_dir
 CACHE_DIR = CONFIG_DIR / "cover_cache"
 INDEX_JSON = CACHE_DIR / "index.json"
 
+# El índice se lee una vez por mtime/tamaño: `cached_path_for_url` se llama por
+# cada miniatura y releer el JSON completo en cada fila es O(n) por fila.
+_INDEX_MEMO: tuple[Path, int, int, dict] | None = None
+
+# Data URIs ya construidos, por archivo+mtime: evita releer y recodificar en
+# cada repintado de una miniatura grande.
+_DATA_URI_MEMO: dict[tuple[str, int, int], str] = {}
+
 # Ext por MIME
 MIME_EXT = {
     "image/jpeg": ".jpg",
@@ -33,13 +42,28 @@ MIME_EXT = {
 
 
 def _index_load() -> dict:
-    if not INDEX_JSON.exists():
-        return {}
+    global _INDEX_MEMO
+    path = Path(INDEX_JSON)
     try:
-        raw = json.loads(INDEX_JSON.read_text(encoding="utf-8"))
-        return raw if isinstance(raw, dict) else {}
-    except Exception:
+        st = path.stat()
+    except OSError:
+        _INDEX_MEMO = None
         return {}
+    memo = _INDEX_MEMO
+    if (
+        memo is not None
+        and memo[0] == path
+        and memo[1] == st.st_mtime_ns
+        and memo[2] == st.st_size
+    ):
+        return memo[3]
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+        idx = raw if isinstance(raw, dict) else {}
+    except Exception:
+        idx = {}
+    _INDEX_MEMO = (path, st.st_mtime_ns, st.st_size, idx)
+    return idx
 
 
 def _index_save(idx: dict) -> None:
@@ -59,6 +83,37 @@ def _index_save(idx: dict) -> None:
 
 def _hash_url(url: str) -> str:
     return hashlib.sha1(url.encode("utf-8")).hexdigest()[:20]
+
+
+def cached_data_uri(url: str) -> Optional[str]:
+    """Data URI de la portada ya cacheada, o ``None`` si no está en disco.
+
+    ``ft.Image`` acepta URL, asset, base64 o bytes, pero no rutas absolutas
+    (``flet/controls/core/image.py``), así que la portada en disco solo llega a
+    la UI como data URI. Se usa en miniaturas grandes y en la escena
+    Reproduciendo: leer de disco evita volver a pedir la imagen a la red.
+    """
+    path = cached_path_for_url(url)
+    if path is None or not path.is_file():
+        return None
+    try:
+        st = path.stat()
+        key = (str(path), st.st_mtime_ns, st.st_size)
+    except OSError:
+        return None
+    hit = _DATA_URI_MEMO.get(key)
+    if hit is not None:
+        return hit
+    try:
+        raw = path.read_bytes()
+    except OSError:
+        return None
+    mime = mimetypes.guess_type(path.name)[0] or "image/jpeg"
+    uri = f"data:{mime};base64," + base64.b64encode(raw).decode("ascii")
+    if len(_DATA_URI_MEMO) >= 256:
+        _DATA_URI_MEMO.clear()
+    _DATA_URI_MEMO[key] = uri
+    return uri
 
 
 def cached_path_for_url(url: str) -> Optional[Path]:

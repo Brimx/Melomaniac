@@ -26,11 +26,11 @@ from ui.theme.fonts import (
     FONT_TEXT, font_family_for, mono_family,
 )
 from ui.theme.icons import PIcons, app_icon, app_icon_button
-from ui.components.song_row import ITEM_H
+from ui.components.song_row import ITEM_H, _thumb_content_for
 from ui.theme.tokens import (
     ACCENT, ACCENT_HALO, BG_PANEL, BG_SURFACE, BORDER_MUTED,
     CHIP_BG, DECOR_LINE, FS_META, MOTION_ENTER_MS, MOTION_HOVER_MS,
-    MOTION_PANEL_MS, PLAYER_QUEUE_W, RADIUS_SHARP,
+    MOTION_PANEL_MS, PLAYER_QUEUE_W, RADIUS_SHARP, RADIUS_SM,
     SPACE_0, SPACE_1, SPACE_2, SPACE_3, SPACE_4,
     TEXT_MUTED, TEXT_PRIMARY,
 )
@@ -207,6 +207,15 @@ def build_queue_row(
         ),
     )
 
+    thumb = ft.Container(
+        width=40,
+        height=40,
+        border_radius=RADIUS_SM,
+        bgcolor=BG_SURFACE,
+        clip_behavior=ft.ClipBehavior.ANTI_ALIAS,
+        content=_thumb_content_for(tr.img_url, box=40, icon_size=16),
+    )
+
     fmt_chip = ft.Container(
         bgcolor=CHIP_BG,
         border=ft.Border.all(0.6, BORDER_MUTED),
@@ -241,7 +250,7 @@ def build_queue_row(
         padding=ft.Padding.symmetric(horizontal=6, vertical=4),
         margin=ft.Margin.only(bottom=4),
         content=ft.Row(
-            controls=[*leading_controls, lead_btn, meta, fmt_chip, remove_btn],
+            controls=[*leading_controls, lead_btn, thumb, meta, fmt_chip, remove_btn],
             spacing=SPACE_2,
             vertical_alignment=ft.CrossAxisAlignment.CENTER,
         ),

@@ -82,6 +82,7 @@ from services.authentication import (
     load_runtime_env,
 )
 from services.circuit_breaker import CircuitBreaker
+from services import playlist_cache
 from services.platforms._common import GLOBAL_API_SEMAPHORE
 from services.platforms.apple import AppleClient
 from services.platforms.spotify import SpotifyClient
@@ -130,6 +131,9 @@ class MusicApiService:
         self._search_flights = SingleFlight()
         self._search_cache_dirty: int = 0
         self._shutdown_cleaned: bool = False
+        # Claves (platform, playlist_id) cuyo caché se está refrescando en
+        # segundo plano; evita lanzar dos refrescos de la misma playlist.
+        self._playlist_refreshing: set[tuple[str, str]] = set()
         self.auth_manager = None
 
         _am_ua = (
@@ -286,13 +290,55 @@ class MusicApiService:
         platform: str,
         playlist_id: str,
         progress_cb: Optional[Callable[[int, int, str], None]] = None,
+        use_cache: bool = True,
     ) -> tuple[PlaylistMeta, list[Track]]:
+        """
+        Carga una playlist de plataforma usando el caché en disco.
+
+        Con ``use_cache``: una entrada fresca se devuelve sin red; una vencida
+        se devuelve al instante y se refresca en segundo plano; si la red falla
+        se conserva la copia anterior. ``use_cache=False`` fuerza la descarga
+        (sincronización de Biblioteca) y actualiza la copia en disco.
+        """
         client = self._require_client(platform)
-        self._cb[platform].check_or_raise()
         playlist_id = normalize_playlist_id(platform, playlist_id)
         if not playlist_id:
             raise ValueError("Playlist sin identificador")
-        return await asyncio.to_thread(client.fetch_playlist, playlist_id, progress_cb)
+        cached = playlist_cache.load(platform, playlist_id) if use_cache else None
+        if cached is not None:
+            if not cached.is_fresh():
+                self._schedule_playlist_refresh(platform, playlist_id, client)
+            return cached.meta, cached.tracks
+        # El breaker protege llamadas de red: una copia en disco se sirve
+        # aunque la plataforma esté en cooldown.
+        self._cb[platform].check_or_raise()
+        meta, tracks = await asyncio.to_thread(
+            client.fetch_playlist, playlist_id, progress_cb
+        )
+        await asyncio.to_thread(playlist_cache.save, platform, playlist_id, meta, tracks)
+        return meta, tracks
+
+    def _schedule_playlist_refresh(self, platform: str, playlist_id: str, client) -> None:
+        """Refresca en segundo plano una entrada vencida del caché de playlists."""
+        key = (platform, playlist_id)
+        if key in self._playlist_refreshing:
+            return
+        self._playlist_refreshing.add(key)
+        task = asyncio.create_task(
+            self._refresh_playlist_cache(platform, playlist_id, client)
+        )
+        task.add_done_callback(lambda _t, k=key: self._playlist_refreshing.discard(k))
+
+    async def _refresh_playlist_cache(self, platform: str, playlist_id: str, client) -> None:
+        """Descarga y guarda la playlist sin propagar errores al llamador."""
+        try:
+            self._cb[platform].check_or_raise()
+            meta, tracks = await asyncio.to_thread(client.fetch_playlist, playlist_id, None)
+            await asyncio.to_thread(
+                playlist_cache.save, platform, playlist_id, meta, tracks
+            )
+        except Exception:  # pylint: disable=broad-exception-caught
+            pass
 
     # ── Biblioteca: listado de playlists (solo metadatos) ───────────────
 

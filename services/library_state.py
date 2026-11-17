@@ -232,7 +232,7 @@ class LibraryState:
         if not pid:
             raise ValueError("Playlist sin identificador válido")
 
-        meta, tracks = await self.service.fetch_playlist(platform, pid, None)
+        meta, tracks = await self.service.fetch_playlist(platform, pid, None, use_cache=False)
         meta_name = str(getattr(meta, "name", "") or "") if meta is not None else ""
         meta_desc = str(getattr(meta, "description", "") or "") if meta is not None else ""
         resolved_name = name or meta_name or f"Playlist {pid}"

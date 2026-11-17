@@ -39,6 +39,8 @@ from typing import Any, Callable, Optional, Sequence
 import flet as ft
 
 from core.models import Track
+from engine.covers import upscale_cover_url
+from services import cover_cache, cover_warmer
 from ui.theme.fonts import font_family_for, mono_family
 from ui.theme.icons import PIcons, app_icon
 from ui.theme.tokens import (
@@ -67,6 +69,9 @@ from ui.components.widgets import (
 
 
 
+_DISK_CACHE_MIN_BOX = 96
+
+
 def _thumb_content_for(
     img_url: str, *, box: int | None = None, icon_size: int = 18,
 ) -> ft.Control:
@@ -78,8 +83,30 @@ def _thumb_content_for(
     del contenedor que la recorta) la imagen ocupa exactamente ese cuadrado y
     COVER la centra siempre. ``box=None`` deja el tamaño intrínseco para los
     usos que no recortan.
+
+    ``upscale_cover_url`` sube las portadas de CDN de Google (YouTube Music,
+    ``=w120-h120-l90-rj``) a ``=s1000``: sin eso un recuadro grande amplía un
+    bitmap de 120 px y se ve borroso. Es no-op para el resto de URLs.
+
+    Las miniaturas grandes (``box >= _DISK_CACHE_MIN_BOX``) usan el caché de
+    disco como data URI cuando ya está y encolan la descarga si no: ``ft.Image``
+    no acepta rutas absolutas, así que la portada local solo puede viajar como
+    data URI. Las filas pequeñas (48/55 px, cientos por lista) quedan en la URL
+    de red para no inflar el árbol con base64.
     """
     if img_url:
+        # Subir resolución solo donde se nota: en filas de 40–55 px el bitmap
+        # original alcanza y pedir 1000 px multiplicaría el tráfico de la lista.
+        if not box or box >= _DISK_CACHE_MIN_BOX:
+            src = upscale_cover_url(img_url)
+        else:
+            src = img_url
+        if box and box >= _DISK_CACHE_MIN_BOX and src.startswith(("http://", "https://")):
+            cached = cover_cache.cached_data_uri(src)
+            if cached:
+                src = cached
+            else:
+                cover_warmer.request(src)
         size = (
             {
                 "width": box,
@@ -91,7 +118,7 @@ def _thumb_content_for(
             else {}
         )
         return ft.Image(
-            src=img_url,
+            src=src,
             fit=ft.BoxFit.COVER,
             gapless_playback=True,
             filter_quality=ft.FilterQuality.MEDIUM,

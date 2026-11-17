@@ -17,6 +17,8 @@ miniatura de ``PlayerBar``:
 from __future__ import annotations
 
 import asyncio
+import base64
+import io
 import math
 import os
 from pathlib import Path
@@ -29,6 +31,8 @@ import flet.canvas as cv
 from PIL import Image
 
 from core.playback import PlayableTrack, RepeatMode
+from engine.covers import upscale_cover_url
+from engine.parsers import local_cover_data_uri
 from services import cover_cache, settings_store
 from ui.components.song_row import ITEM_H, _thumb_content_for
 from ui.components.widgets import (
@@ -94,9 +98,11 @@ from ui.theme.tokens import (
 _OLED_MAX_Y = 0.0136
 _AMBIENT_FADE_MS = 24_000
 _DISC_ROTATION_MS = 1_800
-_COVER_SIZE = 252
-_DISC_SIZE = 228
-_DISC_PEEK = 58
+_COVER_SIZE = 340
+_DISC_SIZE = 300
+_DISC_PEEK = 72
+_LEFT_COL_W = 540
+_RIGHT_COL_W = 680
 _ASCII_RAMP = " .:-=+*#%@"
 _ASCII_COLS = 96
 _ASCII_ROWS = 48
@@ -140,17 +146,48 @@ def cap_oled_luminance(rgb: tuple[int, int, int], *, max_y: float = _OLED_MAX_Y)
     return f"#FF{cand[0]:02x}{cand[1]:02x}{cand[2]:02x}"
 
 
-def extract_ambient_pair(image_path: str | Path) -> tuple[str, str] | None:
-    """Extrae 2 colores dominantes con mayor separación de tono y tope OLED.
-
-    Devuelve ``None`` si la portada no existe, falla o es prácticamente acromática
-    (p. ej. blanco y negro), caso en que el ambiente permanece apagado.
-    """
-    path = Path(image_path)
+def _open_cover(source: str | Path | bytes) -> Any:
+    """Abre una portada desde bytes (data URI decodificado) o una ruta local."""
+    if isinstance(source, (bytes, bytearray)):
+        try:
+            return Image.open(io.BytesIO(bytes(source)))
+        except Exception:
+            return None
+    path = Path(source)
     if not path.is_file():
         return None
     try:
-        with Image.open(path) as img:
+        return Image.open(path)
+    except Exception:
+        return None
+
+
+def _decode_data_uri(data_uri: str) -> bytes | None:
+    """Decodifica un ``data:image/...`` a bytes (``None`` si viene malformado)."""
+    try:
+        header, _, payload = data_uri.partition(",")
+        if not payload:
+            return None
+        if ";base64" in header:
+            return base64.b64decode(payload)
+        return unquote(payload).encode("latin-1")
+    except Exception:
+        return None
+
+
+def extract_ambient_pair(image: str | Path | bytes) -> tuple[str, str] | None:
+    """Extrae 2 colores dominantes con mayor separación de tono y tope OLED.
+
+    Acepta una ruta local o los bytes de una portada (el caso de las pistas
+    locales, cuyo ``img_url`` es un data URI). Devuelve ``None`` si la portada
+    no existe, falla o es prácticamente acromática (p. ej. blanco y negro),
+    caso en que el ambiente permanece apagado.
+    """
+    opened = _open_cover(image)
+    if opened is None:
+        return None
+    try:
+        with opened as img:
             quant = (
                 img.convert("RGB")
                 .resize((64, 64), Image.Resampling.BILINEAR)
@@ -199,17 +236,17 @@ _ASCII_OLED_COLOR = cap_oled_luminance((200, 200, 200))
 
 
 def extract_ascii_art(
-    image_path: str | Path,
+    image: str | Path | bytes,
     *,
     cols: int = _ASCII_COLS,
     rows: int = _ASCII_ROWS,
 ) -> str | None:
-    """Genera representación ASCII estática ``cols×rows`` desde portada local."""
-    path = Path(image_path)
-    if not path.is_file():
+    """Genera representación ASCII estática ``cols×rows`` desde una portada local."""
+    opened = _open_cover(image)
+    if opened is None:
         return None
     try:
-        with Image.open(path) as img:
+        with opened as img:
             gray = img.convert("L").resize((cols, rows), Image.Resampling.LANCZOS)
             px = gray.load()
     except Exception:
@@ -223,10 +260,12 @@ def extract_ascii_art(
     )
 
 
-def _resolve_local_cover(img_url: str) -> Path | None:
-    raw = (img_url or "").strip()
+def _resolve_local_cover(img_url: str) -> bytes | Path | None:
+    raw = upscale_cover_url((img_url or "").strip())
     if not raw:
         return None
+    if raw.startswith("data:"):
+        return _decode_data_uri(raw)
     if raw.startswith("file://"):
         parsed = urlparse(raw)
         p = Path(unquote(parsed.path))
@@ -240,6 +279,22 @@ def _resolve_local_cover(img_url: str) -> Path | None:
     if bool(getattr(settings_store, "get_covers_online", lambda: True)()):
         return cover_cache.ensure_cached(raw)
     return None
+
+
+def _display_cover_src(img_url: str, audio_path: str = "") -> str:
+    """Fuente de la portada a resolución de la escena.
+
+    - URL de CDN de Google: se sube a ``=s1000`` con ``upscale_cover_url``.
+    - data URI local (96 px de las filas): se re-extrae del audio a alta
+      resolución; ampliar el data URI de fila se ve borroso.
+    - Ruta local o asset: se devuelve tal cual.
+    """
+    src = (img_url or "").strip()
+    if src.startswith("data:") and audio_path:
+        hi = local_cover_data_uri(audio_path, target_px=_COVER_SIZE * 2)
+        if hi:
+            return hi
+    return upscale_cover_url(src)
 
 
 class _VinylDisc(ft.Stack):
@@ -386,6 +441,7 @@ class NowPlayingScene(ft.Container):
         self._show_disc_setting = True
         self._show_amb_setting = True
         self._reduce_motion_setting = False
+        self._show_right_setting = True
         self._reload_motion_settings()
         self._track_width = 360.0
         self._scrubbing = False
@@ -591,8 +647,18 @@ class NowPlayingScene(ft.Container):
             on_change_end=self._on_volume_change_end,
         )
 
+        self._right_toggle_btn = app_icon_button(
+            PIcons.SIDEBAR_SIMPLE,
+            size=18,
+            icon_color=TEXT_MUTED,
+            tooltip="Mostrar / ocultar Letra y Cola",
+            on_click=lambda _e: self._toggle_right_panel(),
+            width=34,
+            height=34,
+        )
+
         left_col = ft.Container(
-            width=400,
+            width=_LEFT_COL_W,
             alignment=ft.Alignment.CENTER,
             content=ft.Column(
                 controls=[
@@ -622,7 +688,7 @@ class NowPlayingScene(ft.Container):
                         vertical_alignment=ft.CrossAxisAlignment.CENTER,
                     ),
                     ft.Row(
-                        controls=[self._mute_btn, self._vol_slider],
+                        controls=[self._mute_btn, self._vol_slider, self._right_toggle_btn],
                         spacing=SPACE_2,
                         vertical_alignment=ft.CrossAxisAlignment.CENTER,
                     ),
@@ -684,8 +750,8 @@ class NowPlayingScene(ft.Container):
         )
         self._letra_view.visible = (self._active_tab == _TAB_LETRA)
 
-        right_col = ft.Container(
-            expand=True,
+        self._right_col = ft.Container(
+            width=_RIGHT_COL_W,
             padding=ft.Padding.symmetric(vertical=24),
             content=ft.Column(
                 controls=[
@@ -720,9 +786,10 @@ class NowPlayingScene(ft.Container):
             expand=True,
             padding=ft.Padding.symmetric(horizontal=56, vertical=28),
             content=ft.Row(
-                controls=[left_col, right_col],
+                controls=[left_col, self._right_col],
                 spacing=SPACE_7,
                 expand=True,
+                alignment=ft.MainAxisAlignment.CENTER,
                 vertical_alignment=ft.CrossAxisAlignment.CENTER,
             ),
         )
@@ -830,6 +897,9 @@ class NowPlayingScene(ft.Container):
         self._show_disc_setting = bool(_read_setting("get_scene_show_disc", "scene_show_disc", True))
         self._show_amb_setting = bool(_read_setting("get_scene_ambient_bg", "scene_ambient_bg", True))
         self._reduce_motion_setting = bool(_read_setting("get_reduce_motion", "reduce_motion", False))
+        self._show_right_setting = bool(
+            _read_setting("get_scene_right_open", "scene_right_panel_open", True)
+        )
 
     def open(self) -> None:
         if self._disposed:
@@ -850,6 +920,7 @@ class NowPlayingScene(ft.Container):
         self.visible = True
         self.opacity = 1.0 if reduce else 0.0
         self.refresh()
+        self._apply_right_panel()
         self._letra_view.set_active_visibility(self._active_tab == _TAB_LETRA)
         self._safe_page_update()
 
@@ -969,6 +1040,27 @@ class NowPlayingScene(ft.Container):
                 else:
                     self._amb_cycling = False
         self._safe_update()
+
+    def _toggle_right_panel(self) -> None:
+        """Muestra u oculta el panel derecho (Letra/Cola) y persiste la elección."""
+        self._show_right_setting = not self._show_right_setting
+        setter = getattr(settings_store, "set_scene_right_open", None)
+        if callable(setter):
+            try:
+                setter(self._show_right_setting)
+            except Exception:
+                pass
+        self._apply_right_panel()
+
+    def _apply_right_panel(self) -> None:
+        self._right_col.visible = self._show_right_setting
+        active = self._show_right_setting
+        self._right_toggle_btn.icon_text.color = ACCENT if active else TEXT_MUTED
+        self._right_toggle_btn.icon_text.font_family = (
+            FONT_PHOSPHOR_FILL if active else FONT_PHOSPHOR
+        )
+        safe_update(self._right_col)
+        safe_update(self._right_toggle_btn)
 
     def _apply_ambient_pair(self, pair: tuple[str, str] | None) -> None:
         self._amb_active_pair = pair
@@ -1130,7 +1222,9 @@ class NowPlayingScene(ft.Container):
                 if tr.img_url != self._rendered_cover_url:
                     self._rendered_cover_url = tr.img_url
                     self._cover_thumb.content = _thumb_content_for(
-                        tr.img_url, box=_COVER_SIZE, icon_size=56
+                        _display_cover_src(tr.img_url, cur.path),
+                        box=_COVER_SIZE,
+                        icon_size=56,
                     )
                     safe_update(self._cover_thumb)
                 self._format_badge_txt.value = cur.badge_text

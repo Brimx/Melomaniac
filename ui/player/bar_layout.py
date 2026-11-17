@@ -295,15 +295,6 @@ def _build_volume_and_queue_section(bar) -> ft.Row:
         width=32,
         height=32,
     )
-    bar._scene_btn = app_icon_button(
-        glyph=PIcons.ARROW_SQUARE_OUT,
-        size=18,
-        icon_color=TEXT_MUTED,
-        tooltip="Escena Reproduciendo",
-        on_click=lambda _e: bar.toggle_now_playing_scene(),
-        width=32,
-        height=32,
-    )
     bar._queue_icon = app_icon(PIcons.QUEUE, size=16, color=TEXT_PRIMARY)
     bar._queue_count_txt = app_text(
         "0",
@@ -342,7 +333,7 @@ def _build_volume_and_queue_section(bar) -> ft.Row:
     )
 
     return ft.Row(
-        controls=[vol_row, bar._lyrics_btn, bar._scene_btn, bar._queue_btn],
+        controls=[vol_row, bar._lyrics_btn, bar._queue_btn],
         spacing=SPACE_1,
         vertical_alignment=ft.CrossAxisAlignment.CENTER,
         tight=True,

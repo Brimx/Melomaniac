@@ -508,6 +508,25 @@ def _folder_cover(folder: str) -> str:
     return ""
 
 
+def local_cover_data_uri(audio_path: str, *, target_px: int = 512) -> str:
+    """Portada local en alta resolución (sidecar o incrustada) como data URI.
+
+    ``build_local_tracks`` normaliza a 96 px porque solo alimenta miniaturas de
+    fila; la escena Reproduciendo pinta la portada a cientos de píxeles y
+    ampliar ese data URI se ve borroso. Aquí se re-extrae desde el archivo a
+    ``target_px`` para el consumidor que necesita más detalle.
+    """
+    if not audio_path or not os.path.isfile(audio_path):
+        return ""
+    folder = os.path.dirname(os.path.abspath(audio_path))
+    sidecar = _folder_cover(folder)
+    if sidecar:
+        uri = _sidecar_data_uri(sidecar, target_px=target_px)
+        if uri:
+            return uri
+    return _extract_embedded_cover(audio_path, target_px=target_px)
+
+
 def build_local_tracks(
     pairs: list[str | os.PathLike | tuple[str, str] | tuple[str, str, str]],
     *,
