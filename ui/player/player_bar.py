@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+import threading
 import time
 from dataclasses import replace
 from datetime import datetime
@@ -27,8 +28,10 @@ from core.playback import (
     PlayableTrack,
     PlayQueue,
     RepeatMode,
+    build_pending_stream_track,
     build_playable_track,
     build_stream_playable_track,
+    build_playable_for_track,
 )
 from engine.download_search import resolve_stream_info
 from services.mpris_service import MPRISService
@@ -67,6 +70,7 @@ from ui.player.bar_layout import build_player_bar_layout
 from ui.player.player_mpris import MprisController
 
 _TICKER_INTERVAL_S = 0.25
+_POSITION_BACKSTEP_MS = 1500
 _DEFAULT_TRACK_WIDTH = 240.0
 _POS_LOG_ENV = "MELOMANIAC_AUDIO_POS_LOG"
 _DEFAULT_POS_LOG_PATH = "/tmp/melomaniac_audio_pos.log"
@@ -162,9 +166,12 @@ class PlayerBar(ft.Container):
         self._pending_seek_ms: int | None = None
         self._bg_tasks: set[asyncio.Task] = set()
         self._persist_task: asyncio.Task | None = None
+        self._persist_seq: int = 0
+        self._persist_lock = threading.Lock()
         self._stream_req_seq: int = 0
         self._expected_playing_stream: PlayableTrack | None = None
-        self._retried_stream_keys: set[int] = set()
+        self._stream_retry_count: int = 0
+        self._stream_fail_streak: int = 0
         self._disposed: bool = False
 
         # Instrumentación de cadencia de on_position_change
@@ -484,6 +491,36 @@ class PlayerBar(ft.Container):
         self._load_and_play_current()
         return len(playables)
 
+    def play_tracks(
+        self,
+        tracks: list[Track],
+        *,
+        start_index: int = 0,
+        include_remote: bool | None = None,
+    ) -> int:
+        """Encola la playlist completa: archivos locales y pistas remotas por streaming.
+
+        Las pistas sin archivo entran como pendientes y se resuelven con yt-dlp
+        cuando les toca sonar. ``start_index`` se interpreta sobre ``tracks``.
+        """
+        if include_remote is None:
+            include_remote = bool(getattr(settings_store, "get_stream_without_download", lambda: True)())
+        playables: list[PlayableTrack] = []
+        start_pos = 0
+        for idx, tr in enumerate(tracks):
+            pt = build_playable_for_track(tr, include_remote=include_remote)
+            if pt is None:
+                continue
+            if idx <= start_index:
+                start_pos = len(playables)
+            playables.append(pt)
+        if not playables:
+            notify(self._page_ref, "No hay pistas reproducibles", kind="error")
+            return 0
+        self.queue.set_tracks(playables, start_index=start_pos)
+        self._load_and_play_current()
+        return len(playables)
+
     def select_queue_index(self, queue_pos: int) -> None:
         target = self.queue.select(queue_pos)
         if target is not None:
@@ -595,12 +632,14 @@ class PlayerBar(ft.Container):
         """Crossfade real entre el deck activo y el siguiente tema en la cola."""
         if self._disposed or fade_s <= 0 or self.audio is None or not self.queue.has_next():
             return False
+        nxt_peek = self.queue.peek_next()
+        if nxt_peek is None or (nxt_peek.is_stream and nxt_peek.is_stream_expired()):
+            return False
+        if not self._playable_src(nxt_peek):
+            return False
         nxt = self.queue.next()
         if nxt is None:
             self._stop_playback()
-            return True
-        if nxt.is_stream and nxt.is_stream_expired():
-            self._load_and_play_current()
             return True
         next_src = self._playable_src(nxt)
         if not next_src:
@@ -654,7 +693,8 @@ class PlayerBar(ft.Container):
             finally:
                 if not self._disposed and self.audio is not outgoing:
                     self._schedule_audio(outgoing.pause)
-                self._crossfade_triggered = False
+                if self._fade_task is asyncio.current_task():
+                    self._crossfade_triggered = False
 
         self._fade_task = self._spawn_ui_task(_xfade())
         self._ensure_ticker()
@@ -664,37 +704,122 @@ class PlayerBar(ft.Container):
         self._persist_playback_state()
         return True
 
+    @staticmethod
+    def _serialize_playback_item(item: PlayableTrack) -> dict | None:
+        if bool(getattr(item, "is_stream", False)):
+            t = item.track
+            if not str(getattr(t, "name", "") or "").strip():
+                return None
+            return {
+                "kind": "stream",
+                "id": str(getattr(t, "id", "") or ""),
+                "name": str(getattr(t, "name", "") or ""),
+                "artist": str(getattr(t, "artist", "") or ""),
+                "album": str(getattr(t, "album", "") or ""),
+                "duration": str(getattr(t, "duration", "") or ""),
+                "img_url": str(getattr(t, "img_url", "") or ""),
+                "platform": str(getattr(t, "platform", "") or ""),
+                "duration_ms": max(0, int(item.duration_ms or getattr(t, "duration_ms", 0) or 0)),
+                "isrc": getattr(t, "isrc", None),
+                "source_url": str(getattr(t, "source_url", "") or ""),
+            }
+        if not item.path:
+            return None
+        return {"kind": "local", "path": os.path.abspath(item.path)}
+
+    @staticmethod
+    def _deserialize_playback_item(raw: dict) -> PlayableTrack | None:
+        if not isinstance(raw, dict):
+            return None
+        kind = str(raw.get("kind") or "").lower()
+        if kind == "stream":
+            name = str(raw.get("name") or "").strip()
+            if not name:
+                return None
+            try:
+                dur_ms = max(0, int(raw.get("duration_ms") or 0))
+            except (TypeError, ValueError):
+                dur_ms = 0
+            tr = Track(
+                id=str(raw.get("id") or ""),
+                name=name,
+                artist=str(raw.get("artist") or ""),
+                album=str(raw.get("album") or ""),
+                duration=str(raw.get("duration") or ""),
+                img_url=str(raw.get("img_url") or ""),
+                platform=str(raw.get("platform") or ""),
+                duration_ms=dur_ms,
+                isrc=raw.get("isrc"),
+                source_url=str(raw.get("source_url") or ""),
+            )
+            return build_pending_stream_track(tr)
+        path_val = str(raw.get("path") or "")
+        if not path_val or not os.path.isfile(path_val):
+            return None
+        return build_playable_track(path_val)
+
     def _persist_playback_state(self, *, sync: bool = False) -> None:
         if not bool(getattr(settings_store, "get_resume_on_open", lambda: False)()):
             return
         cur = self.queue.current
-        if cur is None or bool(getattr(cur, "is_stream", False)) or not cur.path:
+        if cur is None:
             return
-        abs_path = os.path.abspath(cur.path)
-        candidate_paths = [
-            os.path.abspath(it.path)
-            for it in self.queue.ordered_tracks()[:50]
-            if not getattr(it, "is_stream", False) and it.path
-        ]
+        cur_item = self._serialize_playback_item(cur)
+        if cur_item is None:
+            return
+        cur_is_stream = bool(getattr(cur, "is_stream", False))
+        abs_path = "" if cur_is_stream else os.path.abspath(cur.path)
+
+        ordered = self.queue.ordered_tracks()[:50]
+        raw_items: list[tuple[bool, dict]] = []
+        for it in ordered:
+            serialized = self._serialize_playback_item(it)
+            if serialized is not None:
+                raw_items.append((it is cur, serialized))
+        if not any(is_cur for is_cur, _ in raw_items):
+            raw_items.insert(0, (True, cur_item))
+
         pos_ms = max(0, int(self._position_ms))
         setter = getattr(settings_store, "set_last_playback", None)
         if not callable(setter):
             return
 
+        self._persist_seq += 1
+        seq = self._persist_seq
+
         def _write() -> None:
-            if not os.path.isfile(abs_path):
-                return
-            q_paths = [p for p in candidate_paths if os.path.isfile(p)]
-            if abs_path not in q_paths:
-                q_paths.insert(0, abs_path)
-            try:
-                setter({
-                    "path": abs_path,
-                    "position_ms": pos_ms,
-                    "queue_paths": q_paths,
-                })
-            except Exception:
-                pass
+            with self._persist_lock:
+                if seq < self._persist_seq:
+                    return
+                if not cur_is_stream and not os.path.isfile(abs_path):
+                    return
+                valid_items: list[dict] = []
+                q_paths: list[str] = []
+                cur_index = 0
+                for is_cur, entry in raw_items:
+                    if entry.get("kind") == "local":
+                        p = str(entry.get("path") or "")
+                        if not p or not os.path.isfile(p):
+                            continue
+                        q_paths.append(p)
+                    if is_cur:
+                        cur_index = len(valid_items)
+                    valid_items.append(entry)
+                if not valid_items:
+                    return
+                if seq < self._persist_seq:
+                    return
+                try:
+                    setter({
+                        "path": abs_path,
+                        "position_ms": pos_ms,
+                        "queue_paths": q_paths,
+                        "current": cur_item,
+                        "queue_items": valid_items,
+                        "current_index": cur_index,
+                    })
+                except Exception:
+                    pass
 
         if sync:
             _write()
@@ -724,36 +849,72 @@ class PlayerBar(ft.Container):
         saved = getter() if callable(getter) else {}
         if not isinstance(saved, dict):
             return False
-        last_path = str(saved.get("path") or "")
-        if not last_path or not os.path.isfile(last_path):
-            return False
         try:
             raw_pos = saved.get("position_ms") or 0
             pos_ms = 0 if isinstance(raw_pos, bool) else max(0, int(raw_pos))
         except (TypeError, ValueError):
             pos_ms = 0
-        abs_last = os.path.abspath(last_path)
-        raw_q = saved.get("queue_paths")
-        raw_paths = raw_q if isinstance(raw_q, list) and raw_q else [abs_last]
+
         playables: list[PlayableTrack] = []
         start_idx = 0
-        for p in raw_paths:
-            if not isinstance(p, (str, os.PathLike)):
-                continue
-            p_str = str(p)
-            if not p_str or not os.path.isfile(p_str):
-                continue
-            pt = build_playable_track(p_str)
-            if pt is not None:
-                if os.path.abspath(pt.path) == abs_last:
-                    start_idx = len(playables)
-                playables.append(pt)
-        if not playables:
-            pt = build_playable_track(abs_last)
-            if pt is None:
+        raw_items = saved.get("queue_items")
+        raw_current = saved.get("current")
+        if isinstance(raw_items, list) or isinstance(raw_current, dict):
+            try:
+                raw_idx = saved.get("current_index")
+                want_idx = None if raw_idx is None or isinstance(raw_idx, bool) else int(raw_idx)
+            except (TypeError, ValueError):
+                want_idx = None
+            idx_map: dict[int, int] = {}
+            for orig_i, entry in enumerate(raw_items or []):
+                pt = self._deserialize_playback_item(entry)
+                if pt is not None:
+                    idx_map[orig_i] = len(playables)
+                    playables.append(pt)
+            if want_idx is not None and want_idx in idx_map:
+                start_idx = idx_map[want_idx]
+            elif not playables and isinstance(raw_current, dict):
+                pt = self._deserialize_playback_item(raw_current)
+                if pt is not None:
+                    playables = [pt]
+                    start_idx = 0
+            elif playables and isinstance(raw_current, dict):
+                cur_id = str(raw_current.get("id") or "")
+                cur_path = os.path.abspath(str(raw_current.get("path") or "")) if raw_current.get("path") else ""
+                for i, pt in enumerate(playables):
+                    if cur_path and not pt.is_stream and os.path.abspath(pt.path) == cur_path:
+                        start_idx = i
+                        break
+                    if cur_id and pt.is_stream and pt.track.id == cur_id:
+                        start_idx = i
+                        break
+        else:
+            last_path = str(saved.get("path") or "")
+            if not last_path or not os.path.isfile(last_path):
                 return False
-            playables = [pt]
-            start_idx = 0
+            abs_last = os.path.abspath(last_path)
+            raw_q = saved.get("queue_paths")
+            raw_paths = raw_q if isinstance(raw_q, list) and raw_q else [abs_last]
+            for p in raw_paths:
+                if not isinstance(p, (str, os.PathLike)):
+                    continue
+                p_str = str(p)
+                if not p_str or not os.path.isfile(p_str):
+                    continue
+                pt = build_playable_track(p_str)
+                if pt is not None:
+                    if os.path.abspath(pt.path) == abs_last:
+                        start_idx = len(playables)
+                    playables.append(pt)
+            if not playables:
+                pt = build_playable_track(abs_last)
+                if pt is None:
+                    return False
+                playables = [pt]
+                start_idx = 0
+
+        if not playables:
+            return False
         self.queue.set_tracks(playables, start_index=start_idx)
         cur = self.queue.current
         if cur is None:
@@ -765,34 +926,56 @@ class PlayerBar(ft.Container):
         self._pending_seek_ms = pos_ms
         self._duration_ms = dur_ms
         self._audio_state = fta.AudioState.PAUSED
-        self._ensure_audio(os.path.abspath(cur.path))
+        self._ensure_audio(None if cur.is_stream else os.path.abspath(cur.path))
         self._sync_ui()
         self._notify_listeners()
         return True
 
-    async def _refresh_stream_and_play(self, item: PlayableTrack, req_seq: int) -> None:
+    def _skip_unresolvable(self, message: str) -> None:
+        """Una pista remota no se pudo resolver: avisa y salta a la siguiente de la cola."""
+        notify(self._page_ref, message, kind="error")
+        self._stream_fail_streak += 1
+        if (
+            self._stream_fail_streak >= max(1, len(self.queue.order))
+            or self.queue.repeat == RepeatMode.ONE
+            or self.queue.next() is None
+        ):
+            self._stream_fail_streak = 0
+            self._stop_playback()
+            return
+        self._load_and_play_current()
+
+    async def _refresh_stream_and_play(
+        self,
+        item: PlayableTrack,
+        req_seq: int,
+        *,
+        seek_ms: int = 0,
+        is_retry: bool = False,
+    ) -> None:
         info = await asyncio.to_thread(resolve_stream_info, item.track)
         if self._disposed or req_seq != self._stream_req_seq or self.queue.current is not item:
             return
         url = str(info.get("url") or "")
         if not url:
-            err = str(info.get("error") or "No se pudo renovar el streaming")
-            notify(self._page_ref, err, kind="error")
-            self._stop_playback()
+            err = str(info.get("error") or "No se pudo resolver el audio")
+            self._skip_unresolvable(f"{item.track.name}: {err}")
             return
         fresh = build_stream_playable_track(url, item.track, info)
         if fresh is None:
-            notify(self._page_ref, "URL de streaming inválida", kind="error")
-            self._stop_playback()
+            self._skip_unresolvable(f"{item.track.name}: URL de streaming inválida")
             return
+        self._stream_fail_streak = 0
         idx = self.queue._find_track_index(item)
         if idx >= 0:
             self.queue.tracks[idx] = fresh
-        self._load_and_play_current()
+        self._load_and_play_current(seek_ms=seek_ms, _is_retry=is_retry)
 
-    def _load_and_play_current(self) -> None:
+    def _load_and_play_current(self, *, seek_ms: int = 0, _is_retry: bool = False) -> None:
         self._stream_req_seq += 1
         req_seq = self._stream_req_seq
+        if not _is_retry:
+            self._stream_retry_count = 0
         visited_positions: set[int] = set()
         max_attempts = max(1, len(self.queue.order))
         cur: PlayableTrack | None = None
@@ -803,16 +986,28 @@ class PlayerBar(ft.Container):
             if cur is None:
                 self._stop_playback()
                 return
+            if cur.is_stream and cur.is_pending and cur.track.source_path and os.path.isfile(cur.track.source_path):
+                promoted = build_playable_track(cur.track.source_path, cur.track)
+                if promoted is not None:
+                    idx = self.queue._find_track_index(cur)
+                    if idx >= 0:
+                        self.queue.tracks[idx] = promoted
+                    cur = promoted
             if cur.is_stream and cur.is_stream_expired():
                 self._cancel_fade()
                 self._pending_seek_ms = None
                 self._expected_playing_stream = None
-                self._position_ms = 0
+                self._position_ms = max(0, int(seek_ms or 0))
                 self._duration_ms = max(0, int(cur.duration_ms or 0))
+                if self._audio_state == fta.AudioState.PLAYING:
+                    # El audio anterior no debe seguir sonando mientras se resuelve el siguiente.
+                    self._call_audio("pause")
                 self._audio_state = fta.AudioState.STOPPED
                 self._sync_ui()
                 self._notify_listeners()
-                self._spawn_ui_task(self._refresh_stream_and_play(cur, req_seq))
+                self._spawn_ui_task(
+                    self._refresh_stream_and_play(cur, req_seq, seek_ms=seek_ms, is_retry=_is_retry)
+                )
                 return
             src = self._playable_src(cur)
             if src:
@@ -833,8 +1028,14 @@ class PlayerBar(ft.Container):
         self._cancel_fade()
         self._pending_seek_ms = None
         self._expected_playing_stream = cur if cur.is_stream else None
-        self._position_ms = 0
-        self._duration_ms = max(0, int(cur.duration_ms or 0))
+        if not cur.is_stream:
+            self._stream_fail_streak = 0
+        dur_ms = max(0, int(cur.duration_ms or 0))
+        start_pos = max(0, int(seek_ms or 0))
+        if dur_ms > 0:
+            start_pos = min(start_pos, max(0, dur_ms - 1000))
+        self._position_ms = start_pos
+        self._duration_ms = dur_ms
         audio = self._ensure_audio(src)
         fade_s = int(getattr(settings_store, "get_fade_seconds", lambda: 0)() or 0)
         use_fade = fade_s > 0 and not self._muted and self._volume > 0.0
@@ -845,7 +1046,7 @@ class PlayerBar(ft.Container):
             except Exception:
                 pass
         self._audio_state = fta.AudioState.PLAYING
-        self._schedule_audio(audio.play, 0)
+        self._schedule_audio(audio.play, start_pos)
         if use_fade:
             self._start_fade_in(audio, fade_s)
         self._ensure_ticker()
@@ -929,6 +1130,15 @@ class PlayerBar(ft.Container):
             else:
                 self._call_audio("pause")
         elif self._audio_state == fta.AudioState.PAUSED:
+            if cur.is_stream and cur.is_stream_expired():
+                resume_pos = (
+                    int(self._pending_seek_ms)
+                    if self._pending_seek_ms is not None
+                    else max(0, int(self._position_ms))
+                )
+                self._pending_seek_ms = None
+                self._load_and_play_current(seek_ms=resume_pos)
+                return
             self._cancel_fade()
             self._audio_state = fta.AudioState.PLAYING
             self._expected_playing_stream = cur if cur.is_stream else None
@@ -970,6 +1180,11 @@ class PlayerBar(ft.Container):
                 self._pending_seek_ms = None
                 self._call_audio("seek", 0)
             if self._audio_state != fta.AudioState.PLAYING:
+                cur_prev = self.queue.current
+                if cur_prev is not None and cur_prev.is_stream and cur_prev.is_stream_expired():
+                    self._pending_seek_ms = None
+                    self._load_and_play_current(seek_ms=0)
+                    return
                 self._audio_state = fta.AudioState.PLAYING
                 if self._pending_seek_ms is not None:
                     self._pending_seek_ms = None
@@ -1176,11 +1391,26 @@ class PlayerBar(ft.Container):
             return
         pos_ms = _to_ms(getattr(e, "position", None))
         self._record_position_cadence(pos_ms)
+        if self._ticker_alive() and self._audio_state == fta.AudioState.PLAYING:
+            # Con el ticker activo, él es la única fuente de posición: mezclar los
+            # eventos del plugin (que llegan con otro desfase, sobre todo en
+            # streaming) hacía saltar el contador 2 s → 1 s → 2 s.
+            if self._dbus_mpris is not None:
+                self._dbus_mpris.set_position(self._position_ms)
+            return
         self._position_ms = pos_ms
         if not self._scrubbing:
             self._update_progress_visual(pos_ms)
         if self._dbus_mpris is not None:
             self._dbus_mpris.set_position(pos_ms)
+
+    def _ticker_alive(self) -> bool:
+        return self._ticker_task is not None and not self._ticker_task.done()
+
+    def _accept_polled_position(self, ms: int) -> bool:
+        """Descarta lecturas que retroceden unos instantes (jitter) sin ser un seek."""
+        back = self._position_ms - ms
+        return not (0 < back < _POSITION_BACKSTEP_MS)
 
     def _record_position_cadence(self, pos_ms: int) -> None:
         log_path = _resolve_pos_log_path()
@@ -1226,15 +1456,25 @@ class PlayerBar(ft.Container):
             and prev_state == fta.AudioState.PLAYING
             and self._expected_playing_stream is not None
             and self.queue.current is self._expected_playing_stream
-            and self._position_ms == 0
         ):
             stream_item = self._expected_playing_stream
-            key = id(stream_item.track)
-            if key not in self._retried_stream_keys:
-                self._retried_stream_keys.add(key)
+            dur_ms = max(0, int(self._duration_ms or stream_item.duration_ms or 0))
+            pos_ms = max(0, int(self._position_ms or 0))
+            is_startup_drop = pos_ms == 0
+            is_mid_track_drop = dur_ms > 0 and 0 < pos_ms < max(0, dur_ms - 3000)
+            if (is_startup_drop or is_mid_track_drop) and self._stream_retry_count < 1:
+                self._stream_retry_count += 1
                 self._expected_playing_stream = None
                 self._stream_req_seq += 1
-                self._spawn_ui_task(self._refresh_stream_and_play(stream_item, self._stream_req_seq))
+                resume_ms = pos_ms if is_mid_track_drop else 0
+                self._spawn_ui_task(
+                    self._refresh_stream_and_play(
+                        stream_item,
+                        self._stream_req_seq,
+                        seek_ms=resume_ms,
+                        is_retry=True,
+                    )
+                )
                 return
         self._audio_state = state
         self._notify_mpris()
@@ -1299,7 +1539,7 @@ class PlayerBar(ft.Container):
                     ):
                         continue
                     ms = _to_ms(pos)
-                    if ms >= 0:
+                    if ms >= 0 and self._accept_polled_position(ms):
                         self._position_ms = ms
                     if self._duration_ms <= 0:
                         dur = await audio.get_duration()

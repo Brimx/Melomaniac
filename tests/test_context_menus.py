@@ -679,6 +679,7 @@ class TestPlaylistDetailViewFeatures(unittest.TestCase):
                 )
 
                 with patch.object(settings_store, "get_download_dir", return_value=str(dl_dir)), \
+                     patch.object(settings_store, "get_stream_without_download", return_value=False), \
                      patch.object(settings_store, "get_local_folders", return_value=[str(other_local)]):
                     async def _loader():
                         return types.SimpleNamespace(name="Mi Manifiesto"), [t1, t2, t3, t4]

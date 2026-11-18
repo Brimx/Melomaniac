@@ -8,8 +8,8 @@ from typing import Optional
 
 import flet as ft
 
-from core.config import LOCAL_LIBRARY_LABEL
 from core.models import Track
+from core.playback import is_remote_track
 from engine.downloader import open_in_file_manager
 from services import settings_store
 from ui.components.context_menu import ContextMenuAction, build_context_menu_button, wrap_with_context_menu
@@ -35,6 +35,17 @@ from ui.theme.tokens import (
     TEXT_MUTED,
     TEXT_PRIMARY,
 )
+
+
+def _can_stream_track(view, track: Track) -> bool:
+    is_local_or_manifest = bool(getattr(view, "_is_local", False)) or bool(getattr(view, "_is_manifest", False))
+    return (
+        not is_local_or_manifest
+        and is_remote_track(track)
+        and getattr(view, "player_bar", None) is not None
+        and hasattr(view, "_stream_single_track")
+        and bool(getattr(settings_store, "get_stream_without_download", lambda: True)())
+    )
 
 
 def apply_row_visual_state(
@@ -81,16 +92,7 @@ def build_track_context_actions(
             ),
         ])
     else:
-        is_local_or_manifest = bool(getattr(view, "_is_local", False)) or bool(getattr(view, "_is_manifest", False))
-        track_plat = str(getattr(track, "platform", "") or "").strip()
-        is_local_track = track_plat in ("", "local", "Archivo Local", "Pegar Texto", LOCAL_LIBRARY_LABEL)
-        if (
-            not is_local_or_manifest
-            and not is_local_track
-            and view.player_bar is not None
-            and hasattr(view, "_stream_single_track")
-            and bool(getattr(settings_store, "get_stream_without_download", lambda: True)())
-        ):
+        if _can_stream_track(view, track):
             actions.append(
                 ContextMenuAction(
                     "Reproducir sin descargar",
@@ -299,6 +301,16 @@ def build_detail_track_row(
     view._row_containers[id(track)] = row
     row._isolated = True
 
+    def _trigger_row_click() -> None:
+        if track.source_path and os.path.isfile(track.source_path):
+            view._play_single_track(track, index)
+        elif _can_stream_track(view, track):
+            view._stream_single_track(track)
+        elif bool(getattr(view, "_is_local", False)) and not bool(getattr(view, "_is_manifest", False)):
+            view._play_single_track(track, index)
+        else:
+            view._download_single_track(track, action_icon)
+
     def _on_click(_e) -> None:
         if view._selection_mode:
             view.toggle_track_selection(track)
@@ -307,21 +319,15 @@ def build_detail_track_row(
         async def _press_and_act() -> None:
             try:
                 row.opacity = 0.85
-                row.update()
+                safe_update(row)
                 try:
                     await asyncio.sleep(0.08)
                 except asyncio.CancelledError:
                     raise
             finally:
-                try:
-                    row.opacity = 1.0
-                    row.update()
-                except Exception:
-                    pass
-            if track.source_path and os.path.isfile(track.source_path):
-                view._play_single_track(track, index)
-            else:
-                view._download_single_track(track, action_icon)
+                row.opacity = 1.0
+                safe_update(row)
+            _trigger_row_click()
 
         try:
             task = asyncio.create_task(_press_and_act())
@@ -332,10 +338,7 @@ def build_detail_track_row(
                 row.opacity = 1.0
             except Exception:
                 pass
-            if track.source_path and os.path.isfile(track.source_path):
-                view._play_single_track(track, index)
-            else:
-                view._download_single_track(track, action_icon)
+            _trigger_row_click()
 
     row.on_click = _on_click
     return row

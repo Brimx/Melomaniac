@@ -19,6 +19,7 @@ import flet as ft
 from core.config import AUDIO_FORMATS, DEFAULT_AUDIO_FORMAT, LOCAL_LIBRARY_LABEL
 from core.library_models import PlaylistSummary
 from core.models import Track, TransferState, filter_tracks
+from core.playback import is_remote_track
 from engine.downloader import open_in_file_manager
 from services import settings_store
 from ui.views.download_recovery import (
@@ -815,14 +816,38 @@ class PlaylistDetailView(ft.Container):
             self._has_file_by_id = {}
             return 0
 
+    def _stream_enabled(self) -> bool:
+        return bool(getattr(settings_store, "get_stream_without_download", lambda: True)())
+
+    def _has_disk_file(self, track: Track) -> bool:
+        return bool(track.source_path and os.path.isfile(track.source_path))
+
+    def _playable_context(self) -> tuple[list[Track], bool]:
+        """Pistas a encolar al reproducir la playlist y si incluyen remotas por streaming.
+
+        Con streaming activo la cola refleja la playlist completa: las pistas sin
+        archivo entran como pendientes y se resuelven cuando les toca sonar.
+        """
+        local = [t for t in self._tracks if self._has_disk_file(t)]
+        if not self._stream_enabled():
+            return local, False
+        full = [t for t in self._tracks if self._has_disk_file(t) or is_remote_track(t)]
+        has_remote = any(not self._has_disk_file(t) for t in full)
+        return (full, True) if has_remote else (local, False)
+
     def _update_header_play_count(self, has_file_map: Optional[dict[int, bool]] = None) -> None:
-        """Actualiza el botón Reproducir y Aleatorio en la cabecera según las pistas disponibles en disco."""
+        """Actualiza el botón Reproducir y Aleatorio en la cabecera según las pistas reproducibles."""
         if self._play_all_btn is None:
             return
         file_map = has_file_map if has_file_map is not None else self._has_file_by_id
         downloaded = sum(1 for t in self._tracks if file_map.get(id(t), False))
         total = len(self._tracks)
-        if downloaded > 0:
+        streamable = (
+            sum(1 for t in self._tracks if not file_map.get(id(t), False) and is_remote_track(t))
+            if self._stream_enabled() else 0
+        )
+        playable = downloaded + streamable
+        if playable > 0:
             self._play_all_btn.visible = True
             self._play_all_btn.disabled = False
             self._shuffle_btn.visible = True
@@ -830,8 +855,8 @@ class PlaylistDetailView(ft.Container):
             try:
                 txt = (
                     "Reproducir"
-                    if (downloaded == total or (self._is_local and not self._is_manifest))
-                    else f"Reproducir ({downloaded})"
+                    if (playable == total or (self._is_local and not self._is_manifest))
+                    else f"Reproducir ({playable})"
                 )
                 set_button_text(self._play_all_btn, txt)
             except Exception:
@@ -1055,26 +1080,27 @@ class PlaylistDetailView(ft.Container):
                 self._downloading_track_ids.discard(tid)
 
     def _on_play_all(self, _e=None) -> None:
-        """Reproduce todas las pistas locales disponibles en el reproductor."""
-        items = [
-            (t.source_path, t)
-            for t in self._tracks
-            if t.source_path and os.path.isfile(t.source_path)
-        ]
+        """Reproduce la playlist: locales en disco y, con streaming activo, también las remotas."""
+        tracks, with_remote = self._playable_context()
+        pb = self.player_bar
+        if with_remote and pb is not None and hasattr(pb, "play_tracks"):
+            n = pb.play_tracks(tracks, start_index=0, include_remote=True)
+            if n:
+                notify(self._page_ref, f"Reproduciendo {n} canciones")
+            return
+        items = [(t.source_path, t) for t in tracks if self._has_disk_file(t)]
         if not items:
             notify(self._page_ref, "No hay archivos disponibles en disco", kind="error")
             return
-        if self.player_bar is not None and hasattr(self.player_bar, "play_files"):
-            self.player_bar.play_files(items, start_index=0)
+        if pb is not None and hasattr(pb, "play_files"):
+            pb.play_files(items, start_index=0)
             notify(self._page_ref, f"Reproduciendo {len(items)} canciones")
-        elif self.player_bar is not None and hasattr(self.player_bar, "play_file"):
-            self.player_bar.play_file(items[0][0])
+        elif pb is not None and hasattr(pb, "play_file"):
+            pb.play_file(items[0][0])
 
     def _on_shuffle_play(self, _e=None) -> None:
         """Activa el modo aleatorio y reproduce desde una pista al azar."""
-        playable_tracks = [
-            t for t in self._tracks if t.source_path and os.path.isfile(t.source_path)
-        ]
+        playable_tracks, with_remote = self._playable_context()
         if not playable_tracks:
             notify(self._page_ref, "No hay archivos disponibles en disco", kind="error")
             return
@@ -1082,6 +1108,23 @@ class PlaylistDetailView(ft.Container):
         if pb is None:
             return
         q = getattr(pb, "queue", None)
+        if with_remote and hasattr(pb, "play_tracks"):
+            if q is not None and hasattr(q, "set_shuffle") and getattr(q, "shuffle", False) is not True:
+                q.set_shuffle(True)
+            setter = getattr(settings_store, "set_shuffle", None)
+            if callable(setter):
+                try:
+                    setter(True)
+                except Exception:
+                    pass
+            n = pb.play_tracks(
+                playable_tracks,
+                start_index=random.randrange(len(playable_tracks)),
+                include_remote=True,
+            )
+            if n:
+                notify(self._page_ref, f"Reproduciendo {n} canciones en aleatorio")
+            return
         start_idx: int | None = None
         used_context_shuffle = False
         if q is not None and hasattr(q, "shuffle_from_context"):
@@ -1411,9 +1454,26 @@ class PlaylistDetailView(ft.Container):
         return build_track_context_actions(self, track, index, action_icon)
 
     def _stream_single_track(self, track: Track) -> None:
-        """Resuelve y reproduce una pista remota vía yt-dlp sin guardarla en disco."""
+        """Reproduce una pista remota por streaming con la playlist completa en la cola."""
         pb = self.player_bar
-        if pb is None or not hasattr(pb, "play_remote_track"):
+        if pb is None:
+            return
+        if hasattr(pb, "play_tracks"):
+            tracks, _with_remote = self._playable_context()
+            if track in tracks:
+                async def _run_ctx() -> None:
+                    notify(self._page_ref, f"Resolviendo audio: {track.name}…")
+                    pb.play_tracks(tracks, start_index=tracks.index(track), include_remote=True)
+
+                try:
+                    self._page_ref.run_task(_run_ctx)
+                except Exception:
+                    try:
+                        asyncio.create_task(_run_ctx())
+                    except Exception as exc:  # noqa: BLE001
+                        notify(self._page_ref, f"No se pudo iniciar la reproducción remota: {exc}", kind="error")
+                return
+        if not hasattr(pb, "play_remote_track"):
             return
 
         async def _run() -> None:
@@ -1432,6 +1492,11 @@ class PlaylistDetailView(ft.Container):
         """Reproduce una sola pista local en el reproductor encolando la lista."""
         if not track.source_path or not os.path.isfile(track.source_path):
             notify(self._page_ref, "Archivo no encontrado en disco", kind="error")
+            return
+        pb = self.player_bar
+        tracks, with_remote = self._playable_context()
+        if with_remote and pb is not None and hasattr(pb, "play_tracks") and track in tracks:
+            pb.play_tracks(tracks, start_index=tracks.index(track), include_remote=True)
             return
         items = [(t.source_path, t) for t in self._tracks if t.source_path and os.path.isfile(t.source_path)]
         if self.player_bar is not None and hasattr(self.player_bar, "play_files") and items:

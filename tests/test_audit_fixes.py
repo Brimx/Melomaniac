@@ -399,5 +399,119 @@ class TestContextMenuLibraryAndSettingsCoercion(unittest.TestCase):
         asyncio.run(_run())
 
 
+    def test_play_all_queues_whole_playlist_with_remote_tracks(self) -> None:
+        from core.library_models import PlaylistSummary
+        from ui.views.playlist_detail_view import PlaylistDetailView
+
+        audio_path = Path(self._tmp.name) / "downloaded.mp3"
+        audio_path.write_bytes(b"ID3")
+        t_dl = Track("1", "Descargada", "A", "", "3:00", "", "Spotify", source_path=str(audio_path))
+        t_remote = Track("2", "Remota", "B", "", "3:00", "", "Spotify")
+        summary = PlaylistSummary(platform="Spotify", id="pl1", name="Mix", track_count=2)
+        player_bar = MagicMock()
+        player_bar.play_tracks.return_value = 2
+
+        async def _loader():
+            return None, [t_dl, t_remote]
+
+        async def _run() -> None:
+            with patch.object(settings_store, "get_download_dir", return_value=self._tmp.name), \
+                 patch.object(settings_store, "get_local_folders", return_value=[]), \
+                 patch.object(settings_store, "get_stream_without_download", return_value=True):
+                view = PlaylistDetailView(
+                    _mock_page(), summary, MagicMock(), on_back=lambda: None,
+                    loader=_loader, player_bar=player_bar,
+                )
+                try:
+                    await view.reload()
+                    self.assertTrue(view._play_all_btn.visible)
+                    view._on_play_all()
+                    player_bar.play_tracks.assert_called_once()
+                    args, kwargs = player_bar.play_tracks.call_args
+                    self.assertEqual([t.id for t in args[0]], ["1", "2"])
+                    self.assertTrue(kwargs["include_remote"])
+                    player_bar.play_files.assert_not_called()
+
+                    # Con streaming apagado solo se encolan los archivos en disco
+                    player_bar.reset_mock()
+                    with patch.object(settings_store, "get_stream_without_download", return_value=False):
+                        view._on_play_all()
+                    player_bar.play_tracks.assert_not_called()
+                    items = player_bar.play_files.call_args[0][0]
+                    self.assertEqual([t.id for _p, t in items], ["1"])
+                finally:
+                    view.will_unmount()
+
+        asyncio.run(_run())
+
+    def test_row_click_streams_when_enabled_and_respects_local_and_manifest(self) -> None:
+        from ui.views.playlist_detail_rows import build_detail_track_row
+
+        async def _run() -> None:
+            tr_remote = Track(
+                id="r1", name="Remote", artist="Artist", album="Alb",
+                duration="3:00", img_url="", platform="Spotify",
+            )
+            tr_missing_local = Track(
+                id="l1", name="Missing", artist="Artist", album="Alb",
+                duration="3:00", img_url="", platform="Local", source_path="/nonexistent/missing.mp3",
+            )
+
+            def _make_view(*, is_local: bool, is_manifest: bool) -> MagicMock:
+                view = MagicMock()
+                view._is_local = is_local
+                view._is_manifest = is_manifest
+                view._selection_mode = False
+                view._selected_ids = set()
+                view._has_file_by_id = {}
+                view._row_containers = {}
+                view._press_tasks = set()
+                view._page_ref = _mock_page()
+                view.player_bar = MagicMock()
+                view.app_state = MagicMock()
+                view.app_state.download_done = []
+                view.app_state.download_state = TransferState.IDLE
+                view.app_state.download_active_ids = set()
+                view.app_state.download_paused = False
+                view.app_state.download_items = []
+                return view
+
+            # Plataforma con stream activo -> reproduce sin descargar
+            v_stream = _make_view(is_local=False, is_manifest=False)
+            with patch.object(settings_store, "get_stream_without_download", return_value=True):
+                row = build_detail_track_row(v_stream, tr_remote, 1)
+                row.on_click(None)
+                await asyncio.sleep(0.12)
+            v_stream._stream_single_track.assert_called_once_with(tr_remote)
+            v_stream._download_single_track.assert_not_called()
+
+            # Streaming desactivado -> descarga
+            v_dl = _make_view(is_local=False, is_manifest=False)
+            with patch.object(settings_store, "get_stream_without_download", return_value=False):
+                row = build_detail_track_row(v_dl, tr_remote, 1)
+                row.on_click(None)
+                await asyncio.sleep(0.12)
+            v_dl._download_single_track.assert_called_once()
+            v_dl._stream_single_track.assert_not_called()
+
+            # Manifiesto local -> descarga aunque streaming esté activo
+            v_man = _make_view(is_local=True, is_manifest=True)
+            with patch.object(settings_store, "get_stream_without_download", return_value=True):
+                row = build_detail_track_row(v_man, tr_remote, 1)
+                row.on_click(None)
+                await asyncio.sleep(0.12)
+            v_man._download_single_track.assert_called_once()
+            v_man._stream_single_track.assert_not_called()
+
+            # Carpeta local con archivo ausente -> notifica en vez de descargar de YouTube
+            v_loc = _make_view(is_local=True, is_manifest=False)
+            row = build_detail_track_row(v_loc, tr_missing_local, 1)
+            row.on_click(None)
+            await asyncio.sleep(0.12)
+            v_loc._play_single_track.assert_called_once_with(tr_missing_local, 1)
+            v_loc._download_single_track.assert_not_called()
+
+        asyncio.run(_run())
+
 if __name__ == "__main__":
     unittest.main()

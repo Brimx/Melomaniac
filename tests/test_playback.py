@@ -13,6 +13,7 @@ import subprocess
 import sys
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 
 from core.models import Track
 from core.playback import PlayableTrack, PlayQueue, RepeatMode
@@ -513,6 +514,78 @@ class TestPlayerBarLifecycleAndEdgeCases(unittest.IsolatedAsyncioTestCase):
         self.assertIn(outgoing.release, released_fns)
         bar.release()
 
+    async def test_position_events_do_not_fight_ticker_and_backsteps_are_ignored(self) -> None:
+        import flet_audio as fta
+
+        bar, _calls = self._make_bar()
+        bar._audio_state = fta.AudioState.PLAYING
+        bar._position_ms = 2000
+        bar._ticker_task = asyncio.create_task(asyncio.sleep(10))
+        try:
+            # Con el ticker vivo, un evento atrasado del plugin no mueve el contador
+            bar._on_position_change(SimpleNamespace(control=None, position=1000))
+            self.assertEqual(bar._position_ms, 2000)
+        finally:
+            bar._ticker_task.cancel()
+            bar._ticker_task = None
+
+        # Sin ticker, el evento sí actualiza
+        bar._on_position_change(SimpleNamespace(control=None, position=3000))
+        self.assertEqual(bar._position_ms, 3000)
+
+        # Lecturas que retroceden menos de 1.5 s son jitter; un salto grande es un seek
+        self.assertFalse(bar._accept_polled_position(2200))
+        self.assertTrue(bar._accept_polled_position(3500))
+        self.assertTrue(bar._accept_polled_position(500))
+
+    async def test_play_tracks_queues_full_playlist_and_resolves_pending_lazily(self) -> None:
+        from unittest.mock import patch
+
+        bar, _calls = self._make_bar()
+        files = self._make_files(2)
+        t_remote = Track(
+            "r1", "Remote", "Artist", "", "3:00", "", "Spotify", duration_ms=180_000,
+        )
+        resolved: list[str] = []
+
+        def _fake_resolve(tr):
+            resolved.append(tr.id)
+            return {"url": "https://cdn.example/r1.webm", "ext": "webm", "acodec": "opus", "error": ""}
+
+        with patch("ui.player.player_bar.resolve_stream_info", side_effect=_fake_resolve):
+            n = bar.play_tracks(
+                [files[0].track, t_remote, files[1].track], start_index=0, include_remote=True,
+            )
+            self.assertEqual(n, 3)
+            self.assertEqual(len(bar.queue.order), 3)
+            self.assertTrue(bar.queue.tracks[1].is_pending)
+            self.assertEqual(resolved, [])  # nada se resuelve hasta que toca sonar
+
+            bar._on_next_click()
+            await asyncio.sleep(0.1)
+
+        self.assertEqual(resolved, ["r1"])
+        self.assertFalse(bar.queue.current.is_pending)
+        self.assertEqual(bar.audio.src, "https://cdn.example/r1.webm")
+        self.assertEqual(len(bar.queue.order), 3)
+
+    async def test_unresolvable_remote_is_skipped_to_next_track(self) -> None:
+        from unittest.mock import patch
+
+        bar, _calls = self._make_bar()
+        files = self._make_files(1)
+        t_remote = Track("r2", "Broken", "Artist", "", "3:00", "", "Spotify")
+
+        with patch(
+            "ui.player.player_bar.resolve_stream_info",
+            return_value={"url": "", "error": "sin resultados"},
+        ):
+            bar.play_tracks([t_remote, files[0].track], include_remote=True)
+            await asyncio.sleep(0.1)
+
+        self.assertIs(bar.queue.current.track, files[0].track)
+        self.assertEqual(bar.audio.src, files[0].path)
+
     async def test_last_track_not_cut_off_by_crossfade_and_ticker_stays_alive(self) -> None:
         import flet_audio as fta
         from services import settings_store
@@ -738,6 +811,166 @@ class TestPlayerBarLifecycleAndEdgeCases(unittest.IsolatedAsyncioTestCase):
         err_res = search_candidates(empty_tr)
         self.assertEqual(err_res["candidates"], [])
         self.assertTrue(err_res["error"])
+
+    def test_crossfade_skips_pending_next_without_mutating_queue(self) -> None:
+        import flet_audio as fta
+        from core.config import LOCAL_LIBRARY_LABEL
+        from core.playback import build_pending_stream_track, is_remote_track
+
+        self.assertFalse(
+            is_remote_track(Track(id="loc1", name="Local", artist="A", album="", duration="3:00", img_url="", platform=LOCAL_LIBRARY_LABEL))
+        )
+        self.assertTrue(
+            is_remote_track(Track(id="rem1", name="Remote", artist="A", album="", duration="3:00", img_url="", platform="Spotify"))
+        )
+
+        bar, _calls = self._make_bar()
+        local_item = self._make_files(1)[0]
+        pending_tr = Track(
+            id="s_pend", name="Pending", artist="Artist", album="", duration="3:00", img_url="", platform="Spotify", duration_ms=180_000,
+        )
+        pending_item = build_pending_stream_track(pending_tr)
+        bar.queue.set_tracks([local_item, pending_item], start_index=0)
+        bar._load_and_play_current()
+        bar._audio_state = fta.AudioState.PLAYING
+
+        self.assertIs(bar.queue.peek_next(), pending_item)
+        self.assertFalse(bar._begin_crossfade_to_next(3))
+        self.assertIs(bar.queue.current, local_item)
+
+    async def test_double_next_cancellation_does_not_reset_new_crossfade_flag(self) -> None:
+        import flet_audio as fta
+        from services import settings_store
+
+        settings_store.set_fade_seconds(2)
+        bar, _calls = self._make_bar()
+        items = self._make_files(3)
+        bar.queue.set_tracks(items, start_index=0)
+        bar._load_and_play_current()
+        bar._audio_state = fta.AudioState.PLAYING
+
+        self.assertTrue(bar._begin_crossfade_to_next(2))
+        first_task = bar._fade_task
+        self.assertTrue(bar._crossfade_triggered)
+        self.assertIsNotNone(first_task)
+
+        # Segundo Siguiente inmediato reemplaza la tarea anterior antes de que termine su finally
+        bar._on_next_click()
+        await asyncio.sleep(0.05)
+        self.assertIsNot(bar._fade_task, first_task)
+        self.assertTrue(bar._crossfade_triggered)
+        bar.release()
+
+    async def test_stream_last_playback_persists_restores_and_respects_sequence_order(self) -> None:
+        import flet_audio as fta
+        from unittest.mock import patch
+        from services import settings_store
+        from core.playback import build_stream_playable_track
+
+        settings_store.set_resume_on_open(True)
+        bar, _calls = self._make_bar()
+        local_item = self._make_files(1)[0]
+        stream_tr = Track(
+            id="st_res", name="Restorable Stream", artist="Artist", album="Alb",
+            duration="3:00", img_url="", platform="Spotify", duration_ms=180_000,
+        )
+        stream_item = build_stream_playable_track("https://cdn.example/old.opus", stream_tr)
+        self.assertIsNotNone(stream_item)
+        bar.queue.set_tracks([local_item, stream_item], start_index=1)
+        bar._position_ms = 55_000
+        bar._persist_playback_state(sync=True)
+
+        saved = settings_store.get_last_playback()
+        self.assertEqual(saved.get("position_ms"), 55_000)
+        self.assertEqual(len(saved.get("queue_items") or []), 2)
+        self.assertEqual(saved.get("current_index"), 1)
+
+        # Restaurar en nueva instancia restaura pista remota como pendiente y resuelve al pulsar Play
+        bar2, calls2 = self._make_bar()
+        self.assertTrue(bar2.restore_last_playback())
+        self.assertEqual(bar2._audio_state, fta.AudioState.PAUSED)
+        self.assertIsNotNone(bar2.queue.current)
+        self.assertTrue(bar2.queue.current.is_stream)
+        self.assertTrue(bar2.queue.current.is_pending)
+        self.assertEqual(bar2.position_ms, 55_000)
+
+        with patch(
+            "ui.player.player_bar.resolve_stream_info",
+            return_value={"url": "https://cdn.example/fresh.opus", "ext": "webm", "acodec": "opus", "duration_ms": 180_000, "error": ""},
+        ):
+            bar2._on_play_pause_click()
+            await asyncio.sleep(0.05)
+        self.assertEqual(bar2.audio.src, "https://cdn.example/fresh.opus")
+        self.assertEqual(calls2[-1], (bar2.audio.play, (55_000,)))
+
+        # Orden monótono: una escritura más nueva no se pisa por secuencia vieja
+        bar2._position_ms = 12_000
+        bar2._persist_playback_state(sync=True)
+        stale_seq = bar2._persist_seq
+        bar2._position_ms = 80_000
+        bar2._persist_playback_state(sync=True)
+        self.assertGreater(bar2._persist_seq, stale_seq)
+        self.assertEqual(settings_store.get_last_playback().get("position_ms"), 80_000)
+        bar2.release()
+
+    async def test_stream_retry_resets_on_fresh_load_and_recovers_mid_track_drop(self) -> None:
+        import flet_audio as fta
+        from unittest.mock import patch
+        from core.playback import build_stream_playable_track
+
+        bar, calls = self._make_bar()
+        tr = Track(
+            id="st_mid", name="Mid Drop", artist="Artist", album="",
+            duration="3:00", img_url="", platform="YouTube Music", duration_ms=180_000,
+        )
+        initial = build_stream_playable_track("https://cdn.example/v1.opus", tr)
+        self.assertIsNotNone(initial)
+        bar.queue.set_tracks([initial], start_index=0)
+        bar._load_and_play_current()
+        bar._position_ms = 45_000
+
+        with patch(
+            "ui.player.player_bar.resolve_stream_info",
+            return_value={"url": "https://cdn.example/v2.opus", "ext": "webm", "acodec": "opus", "duration_ms": 180_000, "error": ""},
+        ):
+            bar._on_state_change(SimpleNamespace(control=bar.audio, state=fta.AudioState.STOPPED))
+            await asyncio.sleep(0.05)
+
+        self.assertEqual(bar.audio.src, "https://cdn.example/v2.opus")
+        self.assertEqual(calls[-1], (bar.audio.play, (45_000,)))
+        self.assertEqual(bar._stream_retry_count, 1)
+
+        # Segundo fallo consecutivo en la misma carga no reintenta en bucle
+        calls.clear()
+        bar._position_ms = 50_000
+        bar._on_state_change(SimpleNamespace(control=bar.audio, state=fta.AudioState.STOPPED))
+        await asyncio.sleep(0.02)
+        self.assertEqual(bar._audio_state, fta.AudioState.STOPPED)
+
+        # Una carga nueva (_is_retry=False) resetea el contador incluso para el mismo id(track)
+        bar._load_and_play_current()
+        self.assertEqual(bar._stream_retry_count, 0)
+        bar.release()
+
+    def test_pending_stream_promotes_to_local_when_file_appears_on_disk(self) -> None:
+        from unittest.mock import patch
+        from core.playback import build_pending_stream_track
+
+        bar, _calls = self._make_bar()
+        audio_path = self._make_files(1)[0].path
+        tr = Track(
+            id="prom_1", name="Downloaded Meanwhile", artist="Artist", album="",
+            duration="3:00", img_url="", platform="Spotify", duration_ms=180_000, source_path=audio_path,
+        )
+        pending = build_pending_stream_track(tr)
+        bar.queue.set_tracks([pending], start_index=0)
+
+        with patch("ui.player.player_bar.resolve_stream_info") as mock_resolve:
+            bar._load_and_play_current()
+        mock_resolve.assert_not_called()
+        self.assertIsNotNone(bar.queue.current)
+        self.assertFalse(bar.queue.current.is_stream)
+        self.assertEqual(bar.audio.src, audio_path)
 
 
 if __name__ == "__main__":

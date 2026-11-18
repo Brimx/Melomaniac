@@ -16,6 +16,7 @@ from enum import Enum, auto
 from typing import Iterable
 from urllib.parse import parse_qs, urlparse
 
+from core.config import LOCAL_LIBRARY_LABEL
 from core.models import Track
 
 
@@ -33,11 +34,14 @@ class PlayableTrack:
     is_stream: bool = False
     resolved_at: float = 0.0
     expires_at: float = 0.0
+    is_pending: bool = False
 
     def is_stream_expired(self, *, now: float | None = None, margin_s: float = 120.0) -> bool:
-        """Indica si una URL de streaming caducó o está próxima a caducar."""
+        """Indica si una URL de streaming caducó, está por caducar o aún no se resolvió."""
         if not self.is_stream:
             return False
+        if self.is_pending:
+            return True
         cur_ts = time.time() if now is None else float(now)
         if self.expires_at > 0:
             return cur_ts >= (self.expires_at - margin_s)
@@ -136,17 +140,22 @@ class PlayQueue:
     def shuffle_from_context(
         self,
         tracks: Iterable[PlayableTrack | Track],
+        *,
+        include_remote: bool = False,
     ) -> PlayableTrack | None:
-        """Encola pistas de un contexto (playlist/carpeta), activa shuffle y elige inicio aleatorio."""
+        """Encola pistas de un contexto (playlist/carpeta), activa shuffle y elige inicio aleatorio.
+
+        Con ``include_remote`` las pistas sin archivo entran como pendientes de
+        resolver por streaming, de modo que la cola refleja la playlist completa.
+        """
         playables: list[PlayableTrack] = []
         for item in tracks:
             if isinstance(item, PlayableTrack):
                 playables.append(item)
             elif isinstance(item, Track):
-                if item.source_path:
-                    built = build_playable_track(item.source_path, item)
-                    if built is not None:
-                        playables.append(built)
+                built = build_playable_for_track(item, include_remote=include_remote)
+                if built is not None:
+                    playables.append(built)
 
         self.shuffle = True
         if not playables:
@@ -234,6 +243,18 @@ class PlayQueue:
         if self.repeat in (RepeatMode.ONE, RepeatMode.ALL):
             return True
         return self.pos + 1 < len(self.order)
+
+    def peek_next(self) -> PlayableTrack | None:
+        """Devuelve la siguiente pista sin mutar la posición ni el historial."""
+        if not self.order or self.pos < 0:
+            return None
+        if self.repeat == RepeatMode.ONE:
+            return self.current
+        if self.pos + 1 < len(self.order):
+            return self.tracks[self.order[self.pos + 1]]
+        if self.repeat == RepeatMode.ALL:
+            return self.tracks[self.order[0]]
+        return None
 
     def next(self) -> PlayableTrack | None:
         if not self.order or self.pos < 0:
@@ -379,6 +400,37 @@ def build_playable_track(path: str, track: Track | None = None) -> PlayableTrack
         bitrate_kbps=int(bitrate_kbps) if bitrate_kbps else None,
         sample_rate=int(sample_rate) if sample_rate else None,
     )
+
+
+def build_pending_stream_track(track: Track) -> PlayableTrack:
+    """Marcador de una pista remota cuyo stream se resolverá al llegar su turno en la cola."""
+    return PlayableTrack(
+        track=track,
+        path="",
+        container="stream",
+        codec="",
+        duration_ms=int(track.duration_ms or 0),
+        is_stream=True,
+        is_pending=True,
+    )
+
+
+def is_remote_track(track: Track) -> bool:
+    """True si la pista pertenece a una plataforma de streaming (no a disco local)."""
+    return str(getattr(track, "platform", "") or "").strip() not in (
+        "", "local", LOCAL_LIBRARY_LABEL, "Archivo Local", "Pegar Texto",
+    )
+
+
+def build_playable_for_track(track: Track, *, include_remote: bool = False) -> PlayableTrack | None:
+    """Archivo local si existe; si no, pista pendiente de streaming (solo con ``include_remote``)."""
+    if track.source_path and os.path.isfile(track.source_path):
+        built = build_playable_track(track.source_path, track)
+        if built is not None:
+            return built
+    if include_remote and is_remote_track(track):
+        return build_pending_stream_track(track)
+    return None
 
 
 def build_stream_playable_track(
