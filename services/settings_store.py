@@ -164,17 +164,19 @@ def _get_choice(key: str, default: str, valid: tuple[str, ...]) -> str:
 
 def _set_choice(key: str, value: str, default: str, valid: tuple[str, ...]) -> None:
     val = str(value or "").strip().lower()
-    data = load_settings()
-    data[key] = val if val in valid else default
-    save_settings(data)
+    with _LOCK:
+        data = load_settings()
+        data[key] = val if val in valid else default
+        save_settings(data)
 
 
 def reset_settings(*, preserve_onboarding: bool = True) -> None:
     """Restablece las preferencias del usuario sin tocar credenciales ni descargas."""
-    data: dict[str, Any] = {}
-    if preserve_onboarding and get_onboarding_done():
-        data[_KEY_ONBOARDING_DONE] = True
-    save_settings(data)
+    with _LOCK:
+        data: dict[str, Any] = {}
+        if preserve_onboarding and get_onboarding_done():
+            data[_KEY_ONBOARDING_DONE] = True
+        save_settings(data)
 
 
 def get_download_dir() -> str:
@@ -184,13 +186,14 @@ def get_download_dir() -> str:
 
 def set_download_dir(path: str | Path) -> None:
     """Guarda la carpeta de descargas; una ruta vacía restablece la por defecto."""
-    data = load_settings()
     value = str(Path(path).expanduser()) if path else ""
-    if value:
-        data[_KEY_DOWNLOAD_DIR] = value
-    else:
-        data.pop(_KEY_DOWNLOAD_DIR, None)
-    save_settings(data)
+    with _LOCK:
+        data = load_settings()
+        if value:
+            data[_KEY_DOWNLOAD_DIR] = value
+        else:
+            data.pop(_KEY_DOWNLOAD_DIR, None)
+        save_settings(data)
 
 
 def get_local_folders() -> list[str]:
@@ -202,25 +205,27 @@ def get_local_folders() -> list[str]:
 def add_local_folder(path: str | Path) -> bool:
     """Agrega una carpeta a la Biblioteca. Devuelve False si ya estaba."""
     value = str(Path(path).expanduser())
-    folders = get_local_folders()
-    if value in folders:
-        return False
-    data = load_settings()
-    data[_KEY_LOCAL_FOLDERS] = [*folders, value]
-    save_settings(data)
-    return True
+    with _LOCK:
+        folders = get_local_folders()
+        if value in folders:
+            return False
+        data = load_settings()
+        data[_KEY_LOCAL_FOLDERS] = [*folders, value]
+        save_settings(data)
+        return True
 
 
 def remove_local_folder(path: str | Path) -> bool:
     """Quita una carpeta de la Biblioteca. Devuelve False si no estaba."""
     value = str(Path(path).expanduser())
-    folders = get_local_folders()
-    if value not in folders:
-        return False
-    data = load_settings()
-    data[_KEY_LOCAL_FOLDERS] = [f for f in folders if f != value]
-    save_settings(data)
-    return True
+    with _LOCK:
+        folders = get_local_folders()
+        if value not in folders:
+            return False
+        data = load_settings()
+        data[_KEY_LOCAL_FOLDERS] = [f for f in folders if f != value]
+        save_settings(data)
+        return True
 
 
 def get_volume() -> float:
@@ -234,13 +239,14 @@ def get_volume() -> float:
 
 def set_volume(volume: float) -> None:
     """Persiste el volumen del reproductor entre 0.0 y 1.0."""
-    data = load_settings()
     try:
         val = max(0.0, min(1.0, float(volume)))
     except (TypeError, ValueError):
         val = 1.0
-    data[_KEY_VOLUME] = round(val, 4)
-    save_settings(data)
+    with _LOCK:
+        data = load_settings()
+        data[_KEY_VOLUME] = round(val, 4)
+        save_settings(data)
 
 
 def get_mute() -> bool:
@@ -336,9 +342,10 @@ def set_download_format(fmt: str) -> None:
     from core.config import AUDIO_FORMATS, DEFAULT_AUDIO_FORMAT
 
     value = str(fmt or "").lower()
-    data = load_settings()
-    data[_KEY_DOWNLOAD_FORMAT] = value if value in AUDIO_FORMATS else DEFAULT_AUDIO_FORMAT
-    save_settings(data)
+    with _LOCK:
+        data = load_settings()
+        data[_KEY_DOWNLOAD_FORMAT] = value if value in AUDIO_FORMATS else DEFAULT_AUDIO_FORMAT
+        save_settings(data)
 
 
 def get_covers_online() -> bool:
@@ -541,13 +548,14 @@ def get_preferred_browser() -> str:
 
 def set_preferred_browser(browser_label: str) -> None:
     """Persiste el navegador/perfil preferido (vacío restablece a automático)."""
-    data = load_settings()
     val = str(browser_label or "").strip()
-    if val and val != "__auto__":
-        data[_KEY_PREFERRED_BROWSER] = val
-    else:
-        data.pop(_KEY_PREFERRED_BROWSER, None)
-    save_settings(data)
+    with _LOCK:
+        data = load_settings()
+        if val and val != "__auto__":
+            data[_KEY_PREFERRED_BROWSER] = val
+        else:
+            data.pop(_KEY_PREFERRED_BROWSER, None)
+        save_settings(data)
 
 
 def get_library_sort_order() -> str:
