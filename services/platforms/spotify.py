@@ -143,15 +143,15 @@ class SpotifyClient:
         for source, dump in candidates:
             try:
                 cookies = dump.get("cookies") if isinstance(dump, dict) else None
-                if not isinstance(cookies, dict) or not cookies.get("sp_dc") or not cookies.get("sp_key"):
-                    last_err = "config/spotify_cookies.json: falta sp_dc o sp_key"
+                if not isinstance(cookies, dict) or not cookies.get("sp_dc"):
+                    last_err = "config/spotify_cookies.json: falta sp_dc"
                     continue
+                cookie_map = {"sp_dc": str(cookies["sp_dc"])}
+                if cookies.get("sp_key"):
+                    cookie_map["sp_key"] = str(cookies["sp_key"])
                 payload = {
                     "identifier": str(dump.get("identifier") or "browser"),
-                    "cookies": {
-                        "sp_dc": str(cookies["sp_dc"]),
-                        "sp_key": str(cookies["sp_key"]),
-                    },
+                    "cookies": cookie_map,
                 }
                 cfg = Config(logger=NoopLogger())
                 login = Login.from_cookies(payload, cfg)
@@ -238,6 +238,7 @@ class SpotifyClient:
                     album=alb.get("name", "Unknown"),
                     duration=f"{int(ms/60000)}:{int((ms/1000)%60):02d}" if ms else "0:00",
                     img_url=img_url, platform="Spotify",
+                    duration_ms=int(ms or 0),
                     isrc=self._extract_spotify_isrc(t),
                     release_date=rel_sp,
                     source_url=f"https://open.spotify.com/track/{tid}" if tid else "",
@@ -845,8 +846,12 @@ class SpotifyClient:
             async with GLOBAL_API_SEMAPHORE:
                 try:
                     items = await asyncio.to_thread(self._sp_search_items, q)
+                except RateLimitError:
+                    raise
                 except Exception as exc:  # pylint: disable=broad-exception-caught
                     self.auth_error = str(exc)
+                    if self._sp_is_rate_limited(exc):
+                        raise RateLimitError("Spotify", 60) from exc
                     raise
             if not items:
                 continue
@@ -942,7 +947,20 @@ class SpotifyClient:
             if self._sp_is_rate_limited(exc):
                 raise RateLimitError("Spotify", 60) from exc
             raise
-        rejected = self._sp_add_tracks(pl, ids)
+        try:
+            rejected = self._sp_add_tracks(pl, ids)
+        except Exception as exc:  # pylint: disable=broad-exception-caught
+            # La playlist ya existe aunque un lote posterior falle: adjunta el
+            # contexto para enlazarla y reportar qué pistas quedaron pendientes.
+            try:
+                confirmed = list(getattr(exc, "confirmed_ids", []))
+                confirmed_set = set(confirmed)
+                setattr(exc, "playlist_id", pl_id)
+                setattr(exc, "confirmed_ids", confirmed)
+                setattr(exc, "pending_ids", [i for i in ids if i not in confirmed_set])
+            except Exception:
+                pass
+            raise
         return True, pl_id, len(ids) - len(rejected), rejected
 
     @staticmethod
@@ -1007,6 +1025,7 @@ class SpotifyClient:
         if song is None:
             song = Song(pl)
         rejected: list[str] = []
+        confirmed: list[str] = []
         starts = list(range(0, len(ids), SPOTIFY_ADD_CHUNK))
         for index, start in enumerate(starts):
             chunk = ids[start:start + SPOTIFY_ADD_CHUNK]
@@ -1014,14 +1033,17 @@ class SpotifyClient:
             for attempt in range(4):
                 try:
                     song.add_songs_to_playlist(chunk)
+                    confirmed.extend(chunk)
                     break
                 except Exception as exc:  # pylint: disable=broad-exception-caught
                     rl = SpotifyClient._sp_is_rate_limited(exc)
                     if attempt >= 3:
                         if rl:
-                            raise RateLimitError("Spotify", 60) from exc
-                        rejected.extend(ids[start:])
-                        return rejected
+                            rl_exc = RateLimitError("Spotify", 60)
+                            setattr(rl_exc, "confirmed_ids", list(confirmed))
+                            raise rl_exc from exc
+                        rejected.extend(chunk)
+                        break
                     time.sleep(wait)
                     wait *= 2
                     if rl:

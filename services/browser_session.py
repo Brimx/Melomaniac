@@ -601,16 +601,16 @@ def spotify_candidates(preferred_source: str | None = None) -> Iterator[tuple[st
                 host_l == "spotify.com" or host_l.endswith(".spotify.com")
             ):
                 sp_cookies[name] = val
-        if sp_cookies.get("sp_dc") and sp_cookies.get("sp_key"):
+        if sp_cookies.get("sp_dc"):
+            cookie_dump = {"sp_dc": sp_cookies["sp_dc"]}
+            if sp_cookies.get("sp_key"):
+                cookie_dump["sp_key"] = sp_cookies["sp_key"]
             items.append(
                 (
                     prof.label,
                     {
                         "identifier": "browser",
-                        "cookies": {
-                            "sp_dc": sp_cookies["sp_dc"],
-                            "sp_key": sp_cookies["sp_key"],
-                        },
+                        "cookies": cookie_dump,
                     },
                 )
             )
@@ -619,17 +619,17 @@ def spotify_candidates(preferred_source: str | None = None) -> Iterator[tuple[st
     cookies = sc.get("cookies", {})
     if isinstance(cookies, str):
         cookies = parse_cookie_header(cookies)
-    if isinstance(cookies, dict) and cookies.get("sp_dc") and cookies.get("sp_key"):
+    if isinstance(cookies, dict) and cookies.get("sp_dc"):
         ident = str(sc.get("identifier", "") or "").strip() or "manual"
+        cookie_dump = {"sp_dc": str(cookies["sp_dc"]).strip()}
+        if cookies.get("sp_key"):
+            cookie_dump["sp_key"] = str(cookies["sp_key"]).strip()
         items.append(
             (
                 "config/spotify_cookies.json",
                 {
                     "identifier": ident,
-                    "cookies": {
-                        "sp_dc": str(cookies["sp_dc"]).strip(),
-                        "sp_key": str(cookies["sp_key"]).strip(),
-                    },
+                    "cookies": cookie_dump,
                 },
             )
         )
