@@ -26,13 +26,15 @@ _queue: Optional["asyncio.Queue[str]"] = None
 _loop: Optional[asyncio.AbstractEventLoop] = None
 _pending: set[str] = set()
 _done: set[str] = set()
+_drain_task: Optional[asyncio.Task] = None
+_in_flight_tasks: set[asyncio.Task] = set()
 _started = False
 _lock = threading.Lock()
 
 
 def _ensure_worker() -> None:
     """Arranca el worker una sola vez, dentro del loop de eventos en curso."""
-    global _queue, _loop, _started
+    global _queue, _loop, _drain_task, _started
     if _started:
         return
     try:
@@ -45,7 +47,7 @@ def _ensure_worker() -> None:
         _queue = asyncio.Queue()
         _loop = loop
         _started = True
-        loop.create_task(_drain())
+        _drain_task = loop.create_task(_drain())
 
 
 def request(url: str) -> None:
@@ -73,15 +75,20 @@ async def _drain() -> None:
     assert _queue is not None
 
     async def _one(url: str) -> None:
+        ok = False
         async with sem:
             try:
-                await asyncio.to_thread(cover_cache.ensure_cached, url)
+                cached = await asyncio.to_thread(cover_cache.ensure_cached, url)
+                ok = cached is not None
             except Exception:
-                pass
+                ok = False
             finally:
                 _pending.discard(url)
-                _done.add(url)
+                if ok:
+                    _done.add(url)
 
     while True:
         url = await _queue.get()
-        asyncio.create_task(_one(url))
+        t = asyncio.create_task(_one(url))
+        _in_flight_tasks.add(t)
+        t.add_done_callback(_in_flight_tasks.discard)
