@@ -15,6 +15,7 @@ from bisect import bisect_right
 from collections.abc import Callable
 import inspect
 import os
+import threading
 from typing import Any
 
 import flet as ft
@@ -41,6 +42,7 @@ from ui.components.widgets import (
     is_mounted,
     safe_update,
     section_label,
+    spawn_task,
     tab_underline,
 )
 
@@ -116,11 +118,8 @@ def _active_line_index(lines: list[Any], position_ms: int, lyrics_svc: Any = Non
 def _schedule_coro(page: ft.Page | None, coro: Any) -> None:
     if not asyncio.iscoroutine(coro):
         return
-    try:
-        asyncio.get_running_loop().create_task(coro)
+    if spawn_task(coro) is not None:
         return
-    except RuntimeError:
-        pass
     run_task = getattr(page, "run_task", None)
     if callable(run_task):
         try:
@@ -326,16 +325,46 @@ class LyricsPane(ft.Container):
         sub_pos = getattr(player_bar, "subscribe_position", None)
         if callable(sub_pos):
             sub_pos(self._on_position)
+        self._lyrics_prefs = (_lyrics_enabled(), settings_store.get_lyrics_provider())
+        self._ui_tid = threading.get_ident()
+        try:
+            self._ui_loop = asyncio.get_running_loop()
+        except RuntimeError:
+            self._ui_loop = None
+        if hasattr(settings_store, "subscribe"):
+            settings_store.subscribe(self._on_lyrics_settings_changed)
         self._render_state("empty")
 
     @property
     def actively_visible(self) -> bool:
         return self._actively_visible
 
+    def _apply_lyrics_settings_change(self) -> None:
+        cur_prefs = (_lyrics_enabled(), settings_store.get_lyrics_provider())
+        if cur_prefs == self._lyrics_prefs:
+            return
+        self._lyrics_prefs = cur_prefs
+        self._cache.clear()
+        self._loaded_key = None
+        self.refresh_track(force_reload=True)
+
+    def _on_lyrics_settings_changed(self) -> None:
+        if threading.get_ident() == self._ui_tid:
+            self._apply_lyrics_settings_change()
+            return
+        loop = self._ui_loop
+        if loop is not None and not loop.is_closed():
+            try:
+                loop.call_soon_threadsafe(self._apply_lyrics_settings_change)
+            except RuntimeError:
+                pass
+
     def dispose(self) -> None:
         unsub_pos = getattr(self.player_bar, "unsubscribe_position", None)
         if callable(unsub_pos):
             unsub_pos(self._on_position)
+        if hasattr(settings_store, "unsubscribe"):
+            settings_store.unsubscribe(self._on_lyrics_settings_changed)
 
     def set_active_visibility(self, visible_flag: bool) -> None:
         self._actively_visible = bool(visible_flag)
@@ -459,15 +488,15 @@ class LyricsPane(ft.Container):
                 self._cache[key] = res
             self._apply_result(res)
 
-        try:
-            asyncio.get_running_loop().create_task(_load())
-        except RuntimeError:
+        if spawn_task(_load()) is None:
             run_task = getattr(self._page_ref, "run_task", None)
             if callable(run_task):
                 try:
                     run_task(_load)
                 except Exception:
                     self._render_state("none")
+            else:
+                self._render_state("none")
 
     def _apply_result(self, res: Any) -> None:
         self._result = res
