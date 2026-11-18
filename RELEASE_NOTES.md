@@ -1,6 +1,16 @@
 # Release Notes — Melomaniac
 
-Notas enfocadas en **qué cambió para el usuario**, no en detalles internos. La versión de trabajo documentada es `4.11.0`. El detalle técnico está en [`CHANGELOG.md`](CHANGELOG.md). La descarga de la versión estable (ZIP portátil, binarios de Linux y Windows) está en los assets del release de GitHub.
+Notas enfocadas en **qué cambió para el usuario**, no en detalles internos. La versión de trabajo documentada es `4.11.1`. El detalle técnico está en [`CHANGELOG.md`](CHANGELOG.md). La descarga de la versión estable (ZIP portátil, binarios de Linux y Windows) está en los assets del release de GitHub.
+
+---
+
+## v4.11.1 — Fiabilidad de transferencias, descargas y onboarding (2026-11-18)
+
+**Mejoras y correcciones:**
+- **Reproducción por streaming y Biblioteca:** soporte para reproducir playlists completas en streaming sin descargar y actualización automática de la Biblioteca al terminar las descargas.
+- **Transferencias y coincidencia más precisas:** bloqueo de cambios de playlist/destino mientras hay una transferencia activa, rechazo estricto de coincidencias dudosas (`< 85%`) para pistas locales, eliminación de falsos positivos en títulos asiáticos, con artista vacío o con palabras de cover/karaoke/tributo, y mejor manejo de límites (`429`) y errores de sesión en YouTube, Apple Music y Spotify sin crear playlists parciales ni perder el enlace de playlists creadas a medias.
+- **Descargas más seguras:** serialización de descargas paralelas con el mismo nombre de archivo, filtro de directos y vídeos largos también en enlaces directos de YouTube, respeto del formato pedido al omitir existentes y reanudación más limpia tras pausar.
+- **Onboarding y sesión de Spotify:** detección de sesiones abiertas de Spotify también cuando solo está presente `sp_dc`, chips con el estado de sesión detectado directamente en la bienvenida, mensaje de verificación en curso en el asistente y restauración correcta de los atajos de teclado al cerrar el onboarding.
 
 ---
 

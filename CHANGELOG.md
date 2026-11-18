@@ -1,5 +1,25 @@
 # Changelog
 
+## 4.11.1 — 2026-11-18 · Fiabilidad de transferencias, matching, descargas y onboarding
+
+> Versión de mantenimiento con correcciones de concurrencia, coincidencia entre plataformas, descargas, streaming en Biblioteca y detección de sesiones en el onboarding acumuladas desde `4.11.0`.
+
+### Transferencias, matching y plataformas
+
+- **Sesión y destino inmutables (`AppState` / `TransferRunner`):** bloqueo de reentrada y de `load_playlist`, `load_local_tracks`, `merge_sources` y `reset_session` mientras `transfer_state == RUNNING`; captura local de destino, selección y título al iniciar `transfer_playlist`, y marshaling de `_progress` en `load_playlist` al event loop con `call_soon_threadsafe`.
+- **Umbrales y validación de coincidencia (`engine/match.py`):** `_fuzzy_flags_elastic` marca `low_confidence` por debajo de `85%` (incluida la banda `40–69` sin salvamento), `_transfer_one` rechaza realmente las pistas locales `< 85%` también en caché sin enviarlas a `create_playlist`, `validar_match` elimina el bypass L0, exige título/artista no vacíos en L1 y evalúa `_LETHAL_WORDS` antes de L1; `score_spotify_match` neutraliza el delta de duración si falta alguna duración y los fetchers de YouTube/Spotify pueblan `duration_ms`.
+- **Rate limits, auth y verificación:** mapeo de `429/423` a `RateLimitError` en los hunters de YouTube y Spotify; inspección de resultados tras `asyncio.gather` para abortar ante el primer `RateLimitError` o `401/403` sin crear playlists parciales; fallo rápido en `_am_request` ante `429` delegando el cooldown al `CircuitBreaker`, propagación de `RateLimitError`/`AppleAuthError` en `_apple_playlist_total` y `_am_delete`, y `CircuitBreaker.trip()` thread-safe desde `to_thread` con expiración por tiempo.
+- **Lotes parciales, ISRC y reportes:** `_sp_add_tracks` continúa con el resto de lotes ante fallos no-429 y `_sp_create` adjunta `playlist_id`/`confirmed_ids`/`pending_ids`; normalización con `normalize_isrc` en el prelookup Apple; racha `TRANSFER_MAX_CONSECUTIVE_ERRORS` limitada a errores de red/timeout/5xx; deduplicación de `dest_ids` con mapeo múltiple por ID; e indicador `verification_pending` («Pendiente») cuando falla la lectura de verificación tras crear en YouTube.
+
+### Reproducción, descargas y Biblioteca
+
+- **Streaming de playlists completas y refresco de Biblioteca:** `PlayQueue` y `PlayerBar` soportan reproducción continua de playlists remotas por streaming sin descarga previa, y `LibraryView` se refresca automáticamente al completarse las descargas.
+- **Descargas paralelas e índice local:** serialización por `(target_dir, stem)` en `download_audio` y limpieza de temporales de procesos ya detenidos; filtro de directos y duración máxima también en URL directa de YouTube; `resume_downloads()` limpia `download_paused` tras cerrar la sesión previa; y el cruce previo en `download_flow` respeta el formato pedido, propaga `source_path` a alias y lee `LocalIndex.snapshot_files()` bajo `RLock`.
+
+### Onboarding y sesiones
+
+- **Detección de Spotify y feedback en vivo:** `spotify_candidates` y `SpotifyClient` aceptan sesiones abiertas con `sp_dc` sin exigir `sp_key`; el paso «Conectar plataformas» de `OnboardingView` muestra en vivo el estado de sesión detectado; `ConfigWizard` indica «Verificando sesión del navegador…» mientras corre el preflight inicial y se refresca al terminar; y `_restore_key_handler` restaura los atajos globales comparando con `==` sobre la referencia instalada.
+
 ## 4.11.0 — 2026-11-17 · Sala de escucha, Reproduciendo, Letras, Streaming y Caché
 
 > Cierra la migración visual **Sala de escucha**, incorpora **Inicio**, **Biblioteca** renovada, **Configuración** en 8 secciones, **Letras sincronizadas**, **escena Reproduciendo**, **streaming sin descargar**, **crossfade**, **cachés persistentes** de playlists/portadas y las correcciones de estabilidad y ciclo de vida acumuladas desde `4.10.0`.
