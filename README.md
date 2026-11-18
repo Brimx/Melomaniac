@@ -22,22 +22,37 @@ Aplicación de escritorio para **transferir playlists entre YouTube Music, Apple
 
 - 🔄 **Transferencia entre plataformas** — Reconstruye listas entre YouTube Music, Apple Music y Spotify desde una playlist en streaming, un archivo local (`M3U/M3U8`, `PLS`, `WPL`, `XSPF`, `CSV`, `TXT`), un archivo de audio o texto pegado.
 - 🎯 **Motor de coincidencia** — Matching multi-fase con RapidFuzz, ISRC exacto (Apple Music), duración y flag explícito. Incluye transliteración cirílica, deduplicación de consultas y reporte Post-Mortem para resolver pistas dudosas.
-- 📚 **Biblioteca unificada** — Tus playlists en streaming y tus carpetas locales en una sola vista; desde cualquier carpeta local puedes crear una playlist en streaming.
-- 🎵 **Reproductor integrado** — Barra inferior para archivos locales (MP3, FLAC, M4A, Opus, WAV) con cola reordenable, shuffle/repeat, volumen persistente e integración MPRIS en Linux (teclas multimedia y widgets como Waybar o GNOME).
+- 🏠 **Inicio y Biblioteca** — Accesos rápidos, reanudación de reproducción, playlists recientes, búsqueda y filtros. Reúne playlists sincronizadas, carpetas locales, descargas y manifiestos importados sin audio.
+- 🔎 **Catálogo y gestión** — Busca canciones, álbumes y artistas; fusiona fuentes, añade pistas a playlists, transfiere y exporta desde Gestión o la Biblioteca.
+- 🎵 **Reproductor integrado** — Barra global, cola reordenable, shuffle/repeat, letras sincronizadas, MPRIS en Linux y escena Reproduciendo. Reproduce archivos locales y pistas remotas sin descargarlas; incluye crossfade y reanudación de la última pista local.
 - ⬇️ **Descargas (uso personal)** — Guarda audio con `yt-dlp` en MP3, M4A, Opus, FLAC o WAV, con metadatos, carátula a 800 px, pausa y reanudación de la pista en curso, y una subcarpeta por playlist con su orden original. Requiere `ffmpeg`.
 - 🔎 **Panel de resultados** — Al terminar una descarga ves qué se descargó, qué ya existía, qué falló y qué faltó; puedes rebuscar la pista en YouTube, elegir otro candidato o reintentar en otro formato.
-- 🛠️ **Organización y exportación** — Vistas Lista/Doble/Preview, ordenación y agrupación por artista, álbum o fecha, división manual en 2–5 bloques y exportación a `TXT`, `CSV`, `M3U`, `M3U8` o `XSPF`.
+- 🛠️ **Organización y exportación** — Vistas Lista/Doble/Preview, ordenación y agrupación por artista, álbum o fecha, división manual en 2–5 bloques y exportación a `TXT`, `CSV`, `M3U`, `M3U8`, `PLS`, `WPL`, `XSPF` o XML.
 - 🌐 **Sesión desde el navegador** — En la mayoría de los casos no hay nada que configurar: detecta tu sesión activa de Firefox/Chromium en memoria. Credenciales manuales disponibles vía asistente integrado.
-- 🖥️ **Integración con el sistema** — En binarios (AppImage/instalador), crea el acceso directo en el menú de aplicaciones o el Escritorio, lo auto-actualiza al cambiar de versión y comprueba nuevas releases desde Config.
+- 🖥️ **Configuración e integración** — Ocho secciones de ajustes, comprobación de nuevas releases, caché persistente de playlists y portadas. En binarios crea y actualiza el acceso directo del sistema.
+
+## Capturas
+
+| Inicio | Gestión |
+|---|---|
+| ![Inicio de Melomaniac](https://raw.githubusercontent.com/Brimx/Melomaniac/main/assets/screenshots/inicio.png) | ![Gestión de playlists](https://raw.githubusercontent.com/Brimx/Melomaniac/main/assets/screenshots/gestion.png) |
+
+| Biblioteca | Detalle de playlist y letras |
+|---|---|
+| ![Biblioteca musical](https://raw.githubusercontent.com/Brimx/Melomaniac/main/assets/screenshots/biblioteca.png) | ![Detalle de playlist con letras sincronizadas](https://raw.githubusercontent.com/Brimx/Melomaniac/main/assets/screenshots/detalle-playlist-letras.png) |
+
+| Descargas | Reproduciendo |
+|---|---|
+| ![Descargas](https://raw.githubusercontent.com/Brimx/Melomaniac/main/assets/screenshots/descargas.png) | ![Escena Reproduciendo](https://raw.githubusercontent.com/Brimx/Melomaniac/main/assets/screenshots/reproduciendo.png) |
 
 ## Roadmap
 
-La versión actual es **4.11.0**. Las próximas prioridades documentadas son:
+La versión documentada es **4.11.0**. El resumen del roadmap es:
 
-- **4.12.0+ · Personalización y experiencia:** temas visuales del demo, accesibilidad (escala de interfaz/letra y énfasis de foco), búsqueda dedicada y mejoras continuas.
-- **Después · Funciones nuevas:** historial de actividad y escucha, favoritos y, con esas señales, una primera versión de Discover.
+- **Siguiente · Cerrar el Bloque 3:** favoritos en Biblioteca, duración total en tarjetas, ajustes de accesibilidad pendientes (escala de interfaz y texto, densidad y foco visible) y decidir/implementar una vista dedicada de Buscar.
+- **Después · Nuevas capacidades:** workspace de playlists, historiales de actividad y escucha, estadísticas, edición de metadatos locales y Discover, que depende de favoritos e historial.
 
-Es una orientación de trabajo, no un calendario cerrado; las prioridades pueden cambiar según avance el proyecto.
+El Bloque 3 ya incluye Inicio, Biblioteca renovada, Gestión contextual, Configuración, About y la migración visual Sala de escucha. El orden es orientativo; el roadmap completo está en las notas de producto del proyecto.
 
 ---
 

@@ -22,22 +22,37 @@ Desktop application to **transfer playlists between YouTube Music, Apple Music, 
 
 - 🔄 **Cross-platform transfers** — Rebuild playlists between YouTube Music, Apple Music, and Spotify from a streaming playlist, a local file (`M3U/M3U8`, `PLS`, `WPL`, `XSPF`, `CSV`, `TXT`), an audio file, or pasted text.
 - 🎯 **Matching engine** — Multi-stage matching with RapidFuzz, exact ISRC (Apple Music), duration, and explicit flags. Includes Cyrillic transliteration, query deduplication, and a Post-Mortem report to resolve ambiguous tracks.
-- 📚 **Unified Library** — Your streaming playlists and local folders in a single view; from any local folder you can create a streaming playlist.
-- 🎵 **Integrated player** — Bottom bar for local files (MP3, FLAC, M4A, Opus, WAV) with reorderable queue, shuffle/repeat, persistent volume, and MPRIS integration on Linux (media keys and widgets such as Waybar or GNOME).
+- 🏠 **Home and Library** — Quick actions, playback resume, recent playlists, search, and filters. Brings together synced playlists, local folders, downloads, and imported manifests without audio.
+- 🔎 **Catalog and playlist management** — Search songs, albums, and artists; merge sources, add tracks to playlists, transfer, and export from Management or the Library.
+- 🎵 **Integrated player** — Global player bar, reorderable queue, shuffle/repeat, synchronized lyrics, MPRIS on Linux, and a Now Playing scene. Plays local files and remote tracks without downloading, with crossfade and resume of the last local track.
 - ⬇️ **Downloads (personal use)** — Save audio with `yt-dlp` in MP3, M4A, Opus, FLAC, or WAV, with metadata, 800 px artwork, pause and resume of the track in progress, and one subfolder per playlist keeping its original order. Requires `ffmpeg`.
 - 🔎 **Results panel** — When a batch finishes you see what was downloaded, what already existed, what failed, and what was missing; you can re-search the track on YouTube, pick another candidate, or retry in another format.
-- 🛠️ **Organization and export** — List/Dual/Preview views, sorting and grouping by artist, album, or date, manual splits into 2–5 blocks, and export to `TXT`, `CSV`, `M3U`, `M3U8`, or `XSPF`.
+- 🛠️ **Organization and export** — List/Dual/Preview views, sorting and grouping by artist, album, or date, manual splits into 2–5 blocks, and export to `TXT`, `CSV`, `M3U`, `M3U8`, `PLS`, `WPL`, `XSPF`, or XML.
 - 🌐 **Browser session** — In most cases there is nothing to configure: it detects your active Firefox/Chromium session in memory. Manual credentials are available through the built-in wizard.
-- 🖥️ **System integration** — In binaries (AppImage/installer), it creates the shortcut in the app menu or Desktop, auto-updates it across versions, and checks for new releases from Config.
+- 🖥️ **Settings and system integration** — Eight settings sections, release checks, persistent playlist and artwork caches. Packaged builds create and update the system shortcut.
+
+## Screenshots
+
+| Home | Management |
+|---|---|
+| ![Melomaniac Home](https://raw.githubusercontent.com/Brimx/Melomaniac/main/assets/screenshots/inicio.png) | ![Playlist management](https://raw.githubusercontent.com/Brimx/Melomaniac/main/assets/screenshots/gestion.png) |
+
+| Library | Playlist details and lyrics |
+|---|---|
+| ![Music Library](https://raw.githubusercontent.com/Brimx/Melomaniac/main/assets/screenshots/biblioteca.png) | ![Playlist details with synchronized lyrics](https://raw.githubusercontent.com/Brimx/Melomaniac/main/assets/screenshots/detalle-playlist-letras.png) |
+
+| Downloads | Now Playing |
+|---|---|
+| ![Downloads](https://raw.githubusercontent.com/Brimx/Melomaniac/main/assets/screenshots/descargas.png) | ![Now Playing scene](https://raw.githubusercontent.com/Brimx/Melomaniac/main/assets/screenshots/reproduciendo.png) |
 
 ## Roadmap
 
-The current release is **4.11.0**. The documented next priorities are:
+The documented version is **4.11.0**. The roadmap summary is:
 
-- **4.12.0+ · Personalization and UX:** demo color themes, accessibility (UI/font scaling and enhanced focus ring), dedicated search, and continuous refinements.
-- **Later · New capabilities:** activity and listening history, favorites, and then an initial version of Discover built on those signals.
+- **Next · Complete Block 3:** Library favorites, total duration on playlist cards, remaining accessibility settings (UI and text scaling, density, and visible keyboard focus), and a decision/implementation for a dedicated Search view.
+- **Later · New capabilities:** playlist workspace, activity and listening histories, statistics, local metadata editing, and Discover, which depends on favorites and listening history.
 
-This is a direction of work, not a fixed schedule; priorities may change as the project progresses.
+Block 3 already includes Home, the redesigned Library, contextual Management, Settings, About, and the Listening Room visual migration. The order is indicative; see the project roadmap notes for the full plan.
 
 ---
 
