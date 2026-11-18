@@ -153,6 +153,10 @@ class TransferReportDialog:
         if missing:
             controls.append(kicker(f"FALTANTES · {len(missing)}"))
             controls.append(self._build_sections(missing))
+        elif getattr(self.report, "verification_pending", False):
+            controls.append(self._build_warning_banner(
+                "Playlist creada, pero no se pudo verificar cuántas pistas entraron."
+            ))
         elif self.report.confirmed < self.report.detected:
             controls.append(self._build_warning_banner(
                 f"No se registraron incidencias, pero faltan "
@@ -266,8 +270,13 @@ class TransferReportDialog:
             )
 
         missing = len(self.report.missing)
+        verif_pending = bool(getattr(self.report, "verification_pending", False))
         return ft.Row([
-            _stat("Confirmadas", str(self.report.confirmed), SUCCESS),
+            _stat(
+                "Confirmadas",
+                "Pendiente" if verif_pending else str(self.report.confirmed),
+                WARNING if verif_pending else SUCCESS,
+            ),
             _stat("Detectadas", str(self.report.detected), ACCENT),
             _stat("Tiempo", format_elapsed(self.report.elapsed_s), TEXT_PRIMARY),
             _stat("Faltantes", str(missing), WARNING if missing else SUCCESS),

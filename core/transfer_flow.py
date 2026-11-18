@@ -23,21 +23,49 @@ from services.authentication import TRANSFER_HISTORY_JSONL, youtube_http_status
 from core.models import SearchResult, Track, TransferState
 from datetime import datetime
 from services.circuit_breaker import RateLimitError
-from engine.normalizer import clean_metadata
+from engine.normalizer import clean_metadata, normalize_isrc
 
 
 # Sentinela interno: la pista no llegó a procesarse porque el lote abortó.
 _TRANSFER_ABORTED = object()
 
 
+def _extract_http_status(exc: BaseException) -> Optional[int]:
+    status = getattr(exc, "status_code", None)
+    if isinstance(status, int):
+        return status
+    resp = getattr(exc, "response", None)
+    resp_status = getattr(resp, "status_code", None)
+    if isinstance(resp_status, int):
+        return resp_status
+    return youtube_http_status(exc)
+
+
 def _is_auth_error(exc: BaseException) -> bool:
     """Detecta errores HTTP 401/403 sin depender de un solo tipo de cliente."""
-    if getattr(exc, "status_code", None) in (401, 403):
+    return _extract_http_status(exc) in (401, 403)
+
+
+def _is_network_error(exc: BaseException) -> bool:
+    """Distingue fallos transitorios de red/5xx de errores locales de parseo/código."""
+    if isinstance(exc, (TimeoutError, ConnectionError, OSError)):
         return True
-    resp = getattr(exc, "response", None)
-    if getattr(resp, "status_code", None) in (401, 403):
+    mod = type(exc).__module__ or ""
+    name = type(exc).__name__
+    if mod.startswith(("httpx", "requests", "urllib3", "httpcore")) and (
+        "Timeout" in name or "Connect" in name or "Network" in name
+        or "Transport" in name or "Request" in name or "Proxy" in name
+        or "SSL" in name or "ReadError" in name
+    ):
         return True
-    return youtube_http_status(exc) in (401, 403)
+    status = _extract_http_status(exc)
+    if status is not None:
+        return status >= 500
+    msg = str(exc).lower()
+    return any(
+        tok in msg
+        for tok in ("timed out", "timeout", "connection", "temporarily unavailable", "502", "503", "504")
+    )
 
 
 class TransferRunner:
@@ -102,7 +130,8 @@ class TransferRunner:
         self._state.notify()
 
         dest_ids: list[str]          = []
-        dest_id_to_track: dict[str, Track] = {}
+        dest_id_to_tracks: dict[str, list[Track]] = {}
+        verification_pending = False
         completed_count = 0
         # BatchedNotifier: notifica cada 10 items para no saturar UI (regla 6)
         BATCH_SIZE = 10
@@ -132,6 +161,51 @@ class TransferRunner:
 
         transfer_sem = asyncio.Semaphore(get_transfer_concurrency(dest))
 
+        def _classify_match(track: Track, match: SearchResult, *, from_cache: bool) -> Optional[str]:
+            suffix = " (caché)" if from_cache else ""
+            if match.track_id and match.needs_review:
+                track.transfer_status = "revision_necesaria"
+                track.failure_reason = f"Confianza fuzzy <{FUZZY_REVISION_THRESHOLD}% (título/artista){suffix}"
+                if track not in self._state.pending_review_tracks:
+                    self._state.pending_review_tracks.append(track)
+                self._state._log(
+                    f"[WARN]  ⚠ Revisión necesaria (fuzzy <{FUZZY_REVISION_THRESHOLD}%{suffix}): {track.name[:42]}"
+                )
+            elif match.track_id and match.low_confidence:
+                if getattr(track, "platform", "") == "local":
+                    track.transfer_status = "not_found"
+                    track.failure_reason = f"Similitud <{FUZZY_IDEAL}% (umbral local estricto){suffix}"
+                    self._state._log(
+                        f"[WARN]  ✗ Local · fuzzy <{FUZZY_IDEAL}% rechazado{suffix}: {track.name[:42]}"
+                    )
+                    if track not in self._state.failed_tracks:
+                        self._state.failed_tracks.append(track)
+                else:
+                    track.transfer_status = "found"
+                    self._state.count_processed += 1
+                    self._state._log(
+                        f"[INFO]  Hunter · fuzzy <{FUZZY_IDEAL}% (aceptado{suffix}): {track.name[:42]}"
+                    )
+            elif match.track_id:
+                track.transfer_status = "found"
+                self._state.count_processed += 1
+                if not from_cache:
+                    self._state._log(f"[SUCCESS] ✓ Encontrada: {track.name[:42]}")
+            else:
+                track.transfer_status = "not_found"
+                track.failure_reason = (
+                    track.failure_reason or "Sin resultados (caché)"
+                    if from_cache
+                    else "Sin resultados en la API del destino"
+                )
+                if not from_cache:
+                    self._state._log(f"[ERROR]   ✗ No encontrada: {track.name[:42]}")
+                if track not in self._state.failed_tracks:
+                    self._state.failed_tracks.append(track)
+            if from_cache:
+                self._state._log(f"[INFO]  ⚡ Caché: {track.name[:42]}")
+            return match.track_id if track.transfer_status == "found" else None
+
         async def _transfer_one(track: Track) -> Optional[str] | object:
             nonlocal completed_count, batch_pending
 
@@ -159,25 +233,11 @@ class TransferRunner:
                 cached = unwrap_search_result(self._state.service.search_cache[cache_key])
                 if cached.isrc:
                     track.isrc = cached.isrc
-                if not cached.track_id:
-                    track.transfer_status = "not_found"
-                    track.failure_reason  = track.failure_reason or "Sin resultados (caché)"
-                    if track not in self._state.failed_tracks:
-                        self._state.failed_tracks.append(track)
-                elif cached.needs_review:
-                    track.transfer_status = "revision_necesaria"
-                    track.failure_reason  = "Fuzzy <40% (caché)"
-                    if track not in self._state.pending_review_tracks:
-                        self._state.pending_review_tracks.append(track)
-                    self._state._log(f"[WARN]  ⚠ Revisión (caché): {track.name[:42]}")
-                else:
-                    track.transfer_status = "found"
-                    self._state.count_processed += 1
-                self._state._log(f"[INFO]  ⚡ Caché: {track.name[:42]}")
+                chosen_id = _classify_match(track, cached, from_cache=True)
                 completed_count += 1
                 self._state.transfer_progress = completed_count
                 _batched_notify()
-                return cached.track_id if cached.track_id and not cached.needs_review else None
+                return chosen_id
 
             track.transfer_status = "searching"
             self._state._log(f"[INFO]  🔍 Buscando: {track.name[:42]}")
@@ -205,6 +265,11 @@ class TransferRunner:
                     if auth_rejected or _is_auth_error(exc):
                         abort_event.set()
                         raise
+                    if not _is_network_error(exc):
+                        completed_count += 1
+                        self._state.transfer_progress = completed_count
+                        _batched_notify()
+                        raise
                     last_exc = exc
                     wait_s = 2 ** attempt
                     if attempt < 2:
@@ -230,39 +295,13 @@ class TransferRunner:
                 track.isrc = match.isrc
             self._state.service.mark_search_cache_dirty()
 
-            if match.track_id and match.needs_review:
-                track.transfer_status = "revision_necesaria"
-                track.failure_reason  = f"Confianza fuzzy <{FUZZY_REVISION_THRESHOLD}% (título/artista)"
-                if track not in self._state.pending_review_tracks:
-                    self._state.pending_review_tracks.append(track)
-                self._state._log(f"[WARN]  ⚠ Revisión necesaria (fuzzy <{FUZZY_REVISION_THRESHOLD}%): {track.name[:42]}")
-            elif match.track_id and match.low_confidence:
-                if getattr(track, 'platform', '') == 'local':
-                    track.transfer_status = "not_found"
-                    track.failure_reason  = f"Similitud <{FUZZY_IDEAL}% (umbral local estricto)"
-                    self._state._log(f"[WARN]  ✗ Local · fuzzy <{FUZZY_IDEAL}% rechazado: {track.name[:42]}")
-                    if track not in self._state.failed_tracks:
-                        self._state.failed_tracks.append(track)
-                else:
-                    track.transfer_status = "found"
-                    self._state.count_processed += 1
-                    self._state._log(f"[INFO]  Hunter · fuzzy <{FUZZY_IDEAL}% (aceptado): {track.name[:42]}")
-            elif match.track_id:
-                track.transfer_status = "found"
-                self._state.count_processed += 1
-                self._state._log(f"[SUCCESS] ✓ Encontrada: {track.name[:42]}")
-            else:
-                track.transfer_status = "not_found"
-                track.failure_reason  = "Sin resultados en la API del destino"
-                self._state._log(f"[ERROR]   ✗ No encontrada: {track.name[:42]}")
-                if track not in self._state.failed_tracks:
-                    self._state.failed_tracks.append(track)
+            chosen_id = _classify_match(track, match, from_cache=False)
 
             completed_count += 1
             self._state.transfer_progress = completed_count
             _batched_notify()
 
-            return match.track_id if track.transfer_status == "found" else None
+            return chosen_id
 
         try:
             init_ok = await self._ensure_auth(dest)
@@ -272,13 +311,15 @@ class TransferRunner:
             # Resuelve primero los ISRC disponibles en lotes de 25. Los
             # faltantes no se cachean para que sigan al fallback fuzzy.
             if dest == "Apple Music":
-                exact_matches = await self._state.service.search_by_isrcs(
-                    [track.isrc for track in selected if track.isrc]
-                )
+                isrcs_to_lookup = [
+                    norm for norm in (normalize_isrc(t.isrc) for t in selected) if norm
+                ]
+                exact_matches = await self._state.service.search_by_isrcs(isrcs_to_lookup)
                 for track in selected:
-                    if not track.isrc:
+                    norm_isrc = normalize_isrc(track.isrc)
+                    if not norm_isrc:
                         continue
-                    exact = exact_matches.get(track.isrc)
+                    exact = exact_matches.get(norm_isrc)
                     if exact and exact.track_id:
                         self._state.service.search_cache[make_cache_key(
                             track.name, track.artist, dest
@@ -337,8 +378,9 @@ class TransferRunner:
                     if track not in self._state.transfer_error_tracks:
                         self._state.transfer_error_tracks.append(track)
                 elif result:
-                    dest_ids.append(result)
-                    dest_id_to_track[result] = track
+                    if result not in dest_id_to_tracks:
+                        dest_ids.append(result)
+                    dest_id_to_tracks.setdefault(result, []).append(track)
 
             if first_rate_limit is not None:
                 raise first_rate_limit
@@ -372,13 +414,21 @@ class TransferRunner:
                     dest, eff_title, dest_ids, eff_description
                 )
                 if ok:
-                    self._state.count_confirmed   = confirmed_count
-                    self._state.transfer_progress = confirmed_count
+                    if confirmed_count < 0:
+                        verification_pending = True
+                        self._state.count_confirmed = 0
+                        self._state.transfer_progress = len(dest_ids)
+                        self._state._log(
+                            f"[WARN]  ⚠ Playlist creada en {dest}, pero no se pudo "
+                            f"verificar qué pistas entraron."
+                        )
+                    else:
+                        self._state.count_confirmed   = confirmed_count
+                        self._state.transfer_progress = confirmed_count
                     if msg and msg != "Playlist creada":
                         self._state.last_created_playlist_id = msg
                     for vid in rejected_ids:
-                        t = dest_id_to_track.get(vid)
-                        if t:
+                        for t in dest_id_to_tracks.get(vid, ()):
                             t.transfer_status = "error"
                             t.failure_reason  = "La API del destino no confirmó la inserción"
                             self._state._log(f"[ERROR] ⚠ No insertada por API ({dest}): {t.name[:42]}")
@@ -390,7 +440,7 @@ class TransferRunner:
                         f"[SUCCESS] ✅ Transferencia completa · "
                         f"Detectadas: {self._state.count_detected} · "
                         f"Procesadas: {self._state.count_processed} · "
-                        f"Confirmadas: {self._state.count_confirmed} · "
+                        f"Confirmadas: {'pendiente' if verification_pending else self._state.count_confirmed} · "
                         f"Rechazadas API: {len(rejected_ids)} · "
                         f"No encontradas: {len(self._state.failed_tracks)}"
                     )
@@ -405,12 +455,12 @@ class TransferRunner:
 
         except RateLimitError as e:
             self._state.cb[e.platform].trip(e.retry_after)
-            self._absorb_partial_playlist(e, dest_id_to_track)
+            self._absorb_partial_playlist(e, dest_id_to_tracks)
             self._state._log(f"[ERROR] ⚠ Rate limit en {e.platform}: espera {e.retry_after}s")
             self._state.transfer_state = TransferState.ERROR
         except Exception as e:  # pylint: disable=broad-exception-caught
             self._record_auth_operation_failure(dest, e)
-            self._absorb_partial_playlist(e, dest_id_to_track)
+            self._absorb_partial_playlist(e, dest_id_to_tracks)
             self._state._log(f"[ERROR] ✗ Error general: {e}")
             self._state.transfer_state = TransferState.ERROR
         finally:
@@ -421,6 +471,7 @@ class TransferRunner:
                 tracks=selected,
                 title=eff_title,
                 description=eff_description,
+                verification_pending=verification_pending,
             )
             self._state.notify()
 
@@ -444,7 +495,7 @@ class TransferRunner:
             track.failure_reason = ""
 
     def _absorb_partial_playlist(self, exc: BaseException,
-                                 dest_id_to_track: dict[str, Track]) -> None:
+                                 dest_id_to_tracks: dict[str, list[Track]]) -> None:
         """Recupera el contexto de una playlist creada antes de un fallo.
 
         ``_am_create`` adjunta ``playlist_id``/``confirmed_ids``/``pending_ids``
@@ -459,15 +510,13 @@ class TransferRunner:
             return
         self._state.count_confirmed = len(confirmed_ids)
         for vid in getattr(exc, "pending_ids", []):
-            track = dest_id_to_track.get(vid)
-            if track is None:
-                continue
-            track.transfer_status = "error"
-            track.failure_reason = "Inserción interrumpida por error de API"
-            if track in self._state.failed_tracks:
-                self._state.failed_tracks.remove(track)
-            if track not in self._state.api_rejected_tracks:
-                self._state.api_rejected_tracks.append(track)
+            for track in dest_id_to_tracks.get(vid, ()):
+                track.transfer_status = "error"
+                track.failure_reason = "Inserción interrumpida por error de API"
+                if track in self._state.failed_tracks:
+                    self._state.failed_tracks.remove(track)
+                if track not in self._state.api_rejected_tracks:
+                    self._state.api_rejected_tracks.append(track)
 
     def _finalize_transfer_report(
         self,
@@ -477,6 +526,7 @@ class TransferRunner:
         tracks: Optional[list[Track]] = None,
         title: Optional[str] = None,
         description: Optional[str] = None,
+        verification_pending: bool = False,
     ) -> None:
         """Construye y persiste el reporte al cerrar la transferencia.
 
@@ -538,6 +588,7 @@ class TransferRunner:
             pending_review=self._state.pending_review_tracks,
             api_rejected=self._state.api_rejected_tracks,
             errored=errored,
+            verification_pending=verification_pending,
         )
         self._state.last_report = report
         try:

@@ -86,6 +86,7 @@ class TransferReport:
     processed: int
     confirmed: int
     issues: list[TransferIssue] = field(default_factory=list)
+    verification_pending: bool = False
 
     @property
     def missing(self) -> list[TransferIssue]:
@@ -100,7 +101,7 @@ class TransferReport:
         }
 
     def to_dict(self) -> dict:
-        return {
+        data = {
             "schema": 1,
             "started_at": self.started_at,
             "finished_at": self.finished_at,
@@ -113,6 +114,9 @@ class TransferReport:
             "counts": self.counts(),
             "issues": [issue.to_dict() for issue in self.issues],
         }
+        if self.verification_pending:
+            data["verification_pending"] = True
+        return data
 
 
 def _issue_key(track: Track) -> tuple:
@@ -141,6 +145,7 @@ def build_transfer_report(
     pending_review: Iterable[Track] = (),
     api_rejected: Iterable[Track] = (),
     errored: Iterable[Track] = (),
+    verification_pending: bool = False,
 ) -> TransferReport:
     """Construye el reporte deduplicado con prioridad de motivo.
 
@@ -193,6 +198,7 @@ def build_transfer_report(
         processed=processed,
         confirmed=confirmed,
         issues=ordered,
+        verification_pending=bool(verification_pending),
     )
 
 
