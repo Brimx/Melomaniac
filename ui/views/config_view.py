@@ -759,7 +759,13 @@ class ConfigView(ft.Container):
 
     def _on_preferred_browser_change(self, e=None) -> None:
         val = str(getattr(e.control, "value", "") or "")
-        settings_store.set_preferred_browser("" if val == "__auto__" else val)
+        pref = "" if val == "__auto__" else val
+        settings_store.set_preferred_browser(pref)
+        svc = self._resolve_service()
+        if svc is not None:
+            for attr in ("youtube_preferred_source", "apple_preferred_source", "spotify_preferred_source"):
+                if hasattr(svc, attr):
+                    setattr(svc, attr, pref or None)
         browser_session.clear_cache()
         self._changed()
 

@@ -673,15 +673,33 @@ def apple_candidates(preferred_source: str | None = None) -> Iterator[tuple[str,
     yield from _order_candidates(all_items, preferred_source)
 
 
+def _resolve_preferred_source(preferred_source: str | None) -> str | None:
+    if preferred_source:
+        return preferred_source
+    try:
+        from services import settings_store
+
+        saved = settings_store.get_preferred_browser()
+        return saved or None
+    except Exception:
+        return None
+
+
 def _order_candidates(
     items: list[tuple[str, dict]],
     preferred_source: str | None,
 ) -> Iterator[tuple[str, dict]]:
-    if not preferred_source:
+    pref_raw = _resolve_preferred_source(preferred_source)
+    if not pref_raw:
         yield from items
         return
-    preferred = [it for it in items if it[0] == preferred_source]
-    others = [it for it in items if it[0] != preferred_source]
+    pref_l = pref_raw.lower()
+    preferred = [
+        it for it in items
+        if it[0] == pref_raw or it[0].lower().startswith(f"{pref_l} ")
+    ]
+    pref_set = {id(it) for it in preferred}
+    others = [it for it in items if id(it) not in pref_set]
     yield from preferred
     yield from others
 
