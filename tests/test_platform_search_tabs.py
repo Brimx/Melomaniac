@@ -444,19 +444,17 @@ class AppleSearchAndOverviewTest(unittest.TestCase):
         self.assertEqual([t.id for t in overview["top_tracks"]], ["ts1"])
         self.assertEqual([a["id"] for a in overview["albums"]], ["999"])
 
-    def test_apple_add_tracks_to_playlist_batch_and_429_retry(self) -> None:
+    def test_apple_add_tracks_to_playlist_batch_and_429_fast_fail(self) -> None:
         svc = _make_service()
         svc._apple._am_rate_limiter = mock.MagicMock()
         post_calls = []
 
-        def _fake_post(url, json=None, timeout=15):
+        def _fake_post_ok(url, json=None, timeout=15):
             post_calls.append(json)
-            if len(post_calls) == 1:
-                return _http_response(429, {}, headers={"Retry-After": "2"})
             return _http_response(201, {})
 
         svc._apple._http_session = mock.MagicMock()
-        svc._apple._http_session.post.side_effect = _fake_post
+        svc._apple._http_session.post.side_effect = _fake_post_ok
 
         tracks = [
             Track(id="10", name="A", artist="X", album="", duration="", img_url="", platform="Apple Music"),
@@ -464,8 +462,17 @@ class AppleSearchAndOverviewTest(unittest.TestCase):
         ]
         added = asyncio.run(svc.add_tracks_to_playlist("Apple Music", "p.abc", tracks))
         self.assertEqual(added, 2)
-        svc._apple._am_rate_limiter.penalize.assert_called_once_with(2)
-        self.assertEqual(len(post_calls[1]["data"]), 2)
+        self.assertEqual(len(post_calls[0]["data"]), 2)
+
+        # Un 429 debe fallar rápido elevando RateLimitError para que lo gestione el breaker.
+        post_calls.clear()
+        svc._apple._http_session.post.side_effect = lambda *a, **kw: _http_response(
+            429, {}, headers={"Retry-After": "2"}
+        )
+        with self.assertRaises(RateLimitError) as ctx:
+            asyncio.run(svc.add_tracks_to_playlist("Apple Music", "p.abc", tracks))
+        self.assertEqual(ctx.exception.retry_after, 2)
+        svc._apple._am_rate_limiter.penalize.assert_not_called()
 
 
 class SpotifySearchAndOverviewTest(unittest.TestCase):

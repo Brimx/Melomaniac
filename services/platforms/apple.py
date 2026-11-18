@@ -98,18 +98,12 @@ class AppleClient:
         """Inicialización perezosa homogénea (Apple inicializa bajo demanda)."""
 
     def _am_request(self, method: str, url: str, **kwargs):
-        """Ejecuta una petición Apple con pausa preventiva y retry limitado."""
+        """Ejecuta una petición Apple respetando el limitador preventivo."""
         request = getattr(self._http_session, method.lower())
-        for attempt in range(2):
-            self._am_rate_limiter.wait_turn()
-            response = request(url, **kwargs)
-            if response.status_code == 429 and attempt == 0:
-                retry = self._retry_after_seconds(response)
-                self._am_rate_limiter.penalize(retry)
-                continue
-            self._am_check_status(response)
-            return response
-        raise RateLimitError("Apple Music", APPLE_REQUEST_PAUSE)
+        self._am_rate_limiter.wait_turn()
+        response = request(url, **kwargs)
+        self._am_check_status(response)
+        return response
 
     @staticmethod
     def _retry_after_seconds(response) -> int:
@@ -411,6 +405,8 @@ class AppleClient:
             if not data:
                 return 0
             return self._apple_track_count(data[0])
+        except (RateLimitError, AppleAuthError):
+            raise
         except Exception:
             return 0
 
@@ -985,6 +981,8 @@ class AppleClient:
             if r.status_code in (200, 204):
                 return True, pid
             return False, f"Apple {r.status_code}"
+        except (RateLimitError, AppleAuthError):
+            raise
         except Exception as exc:
             return False, str(exc)
 
