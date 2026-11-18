@@ -1,4 +1,4 @@
-# 🎵 Melomaniac v4.10.0
+# 🎵 Melomaniac v4.11.0
 
 [Español](README.md) · **English**
 
@@ -32,9 +32,9 @@ Desktop application to **transfer playlists between YouTube Music, Apple Music, 
 
 ## Roadmap
 
-The current release is **4.10.0**. The documented next priorities are:
+The current release is **4.11.0**. The documented next priorities are:
 
-- **4.11.0+ · User experience:** a Home page, a reorganized Library, Settings/About, and accessibility and search navigation improvements.
+- **4.12.0+ · Personalization and UX:** demo color themes, accessibility (UI/font scaling and enhanced focus ring), dedicated search, and continuous refinements.
 - **Later · New capabilities:** activity and listening history, favorites, and then an initial version of Discover built on those signals.
 
 This is a direction of work, not a fixed schedule; priorities may change as the project progresses.

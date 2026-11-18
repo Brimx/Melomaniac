@@ -1,6 +1,25 @@
 # Release Notes — Melomaniac
 
-Notas enfocadas en **qué cambió para el usuario**, no en detalles internos. La versión de trabajo documentada es `4.10.0`. El detalle técnico está en [`CHANGELOG.md`](CHANGELOG.md). La descarga de la versión estable (ZIP portátil, binarios de Linux y Windows) está en los assets del release de GitHub.
+Notas enfocadas en **qué cambió para el usuario**, no en detalles internos. La versión de trabajo documentada es `4.11.0`. El detalle técnico está en [`CHANGELOG.md`](CHANGELOG.md). La descarga de la versión estable (ZIP portátil, binarios de Linux y Windows) está en los assets del release de GitHub.
+
+---
+
+## v4.11.0 — Sala de escucha, Reproduciendo, Letras y Streaming (2026-11-17)
+
+**Novedades:**
+- **Nueva identidad «Sala de escucha» e Inicio:** vista **Inicio** con accesos rápidos y última reproducción, rail lateral colapsable, foco por regiones con atajos de teclado (`Ctrl+K`, `/`, `Q`, `M`, `Espacio`, `Esc`), onboarding con fondo animado de vinilo/constelación y estética uniforme en tarjetas, botones y diálogos.
+- **Escena Reproduciendo a pantalla completa:** abre al pulsar la miniatura del reproductor; incluye disco giratorio, tinte ambiental OLED extraído de la portada, portadas nítidas de alta resolución y panel lateral de `Cola` / `Letra` ocultable.
+- **Letras sincronizadas (LRCLIB):** letras en tiempo real en la pestaña `Letra` y en la escena **Reproduciendo**, con opción en Config para guardar archivos `.lrc` o incrustarlas en tus descargas.
+- **Reproducción sin descargar:** escucha pistas remotas directamente vía `yt-dlp` desde el menú contextual de Biblioteca y de las filas de Gestión sin guardar archivos en disco, descartando directos y verificando candidatos.
+- **Fundido (crossfade) y Reanudar al abrir:** transiciones suaves entre canciones (`1–3 s`), opción para recordar la última pista y posición al reabrir la app, y compatibilidad con orden persistente en Biblioteca.
+- **Biblioteca renovada:** tarjetas con lomo obi, búsqueda, filtros rápidos (`Con canciones`, `+100 pistas`, `Sincronizada hoy`), separación `Carpetas` / `Playlists` en Local y orden de estantes persistido entre Biblioteca y Config.
+- **Configuración completa (8 secciones) y aviso de actualizaciones:** secciones de Conexiones, Reproducción, Descargas, Biblioteca, Accesibilidad, Apariencia, Datos y Acerca de, con interruptor opcional para comprobar nuevas versiones al abrir.
+- **Caché de playlists y portadas:** apertura instantánea de playlists de plataforma ya visitadas (refresco en segundo plano) y caché persistente de carátulas en disco.
+
+**Correcciones y estabilidad:**
+- **Reproductor y crossfade:** corregido el cruce de audio al pausar/cambiar pista o limpiar la cola durante un fundido, corte temprano de la última canción, ticker detenido tras crossfade automático, restauración en posición `0`, tolerancia ante ajustes corruptos y salto limpio de archivos faltantes en disco.
+- **Descargas en cola:** encolar durante pausa o tras cancelar abre una sesión nueva sin pisar eventos; reanudar y reintentar conservan la carpeta y formato de cada pista; escritura única del manifiesto al cerrar la sesión.
+- **Gestión y Post-mortem:** «Fusionar playlists» disponible también sin playlist cargada, bloqueo del cambio de destino durante una transferencia en curso, motivos reales de fallo en Post-mortem con exportación JSON funcional y apertura directa desde «Ver Detalles».
 
 ---
 

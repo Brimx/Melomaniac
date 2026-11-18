@@ -1,8 +1,28 @@
 # Changelog
 
-## 4.11.0 — en preparación
+## 4.11.0 — 2026-11-17 · Sala de escucha, Reproduciendo, Letras, Streaming y Caché
 
-> Abierto al cerrar `4.10.0`. Recoge el trabajo que se acumula en `main` sin release; se cerrará con el bloque que corresponda y pasará a una versión estable propia.
+> Cierra la migración visual **Sala de escucha**, incorpora **Inicio**, **Biblioteca** renovada, **Configuración** en 8 secciones, **Letras sincronizadas**, **escena Reproduciendo**, **streaming sin descargar**, **crossfade**, **cachés persistentes** de playlists/portadas y las correcciones de estabilidad y ciclo de vida acumuladas desde `4.10.0`.
+
+### Interfaz «Sala de escucha», Inicio y Navegación
+
+- **Estética y tokens canónicos:** migración completa de vistas, diálogos, tarjetas y barra reproductora a `ui/theme/tokens.py` (radios afilados `RADIUS_SHARP`, relieve de papel, texto cálido, `app_switch` cuadrado, sello hanko y reveal ASCII acotado en skeletons respetando `reduce_motion`).
+- **Rail lateral e Inicio:** rail colapsable (`68/220 px`), nueva vista **Inicio** (`ui/views/home_view.py`) con accesos rápidos y última pista/reanudación, navegación por regiones con foco y atajos de teclado (`Ctrl+K`, `/`, `Q`, `M`, `Espacio`, `Esc`) sin interferir al escribir en campos de texto.
+- **Gestión reorganizada:** selector de origen, destino y acciones principales unificados en el sidebar; acceso directo a **Fusionar playlists** también en el estado vacío (`IDLE`); diálogo **Post-mortem** con motivos reales de fallo, apertura automática al pulsar «Ver Detalles» y exportación JSON a `config/transfer_reports/`.
+- **Onboarding:** bienvenida renovada con fondo animado `disco`/constelación sensible a foco y movimiento reducido, más paso actualizado de reproducción, streaming y fundido.
+
+### Reproducción, Escena Reproduciendo, Letras y Streaming
+
+- **Escena Reproduciendo (`NowPlayingScene`):** vista inmersiva a pantalla completa al pulsar la miniatura del reproductor, con vinilo giratorio, fondo ambiental OLED extraído de la portada, cola/letra lateral ocultable (`scene_right_panel_open`) y portadas locales re-extraídas a alta resolución.
+- **Letras sincronizadas:** backend `LRCLIB`, parser `.lrc` e incrustación/guardado opcional de letras (`.lrc` y etiquetas) al descargar; pestaña `Letra` en vivo en el panel lateral y en la escena, con invalidación de consultas obsoletas al cambiar de pista.
+- **Reproducción sin descargar (`yt-dlp`):** disponible desde el menú contextual de pistas remotas en Biblioteca y filas de Gestión (`SongRow`), con verificación de candidatos, descarte de directos/vídeos largos, detección de caducidad de URL (`expire=` / TTL) y re-resolución ante fallo de arranque o clics rápidos.
+- **Fundido / Crossfade y Reanudar al abrir:** crossfade real entre dos decks (`0–3 s`), pausa/parada limpia de ambos decks sin dejar el saliente sonando, ticker continuo tras crossfade automático, conservación de la última pista sin corte temprano y restauración segura de la última pista/posición local al abrir.
+
+### Biblioteca, Configuración y Cachés
+
+- **Biblioteca:** tarjetas de 160 px con lomo obi, búsqueda instantánea, filtros (`Con canciones`, `+100 pistas`, `Sincronizada hoy`) con reseteo al cambiar de fuente, pestañas `Carpetas` / `Playlists` en Local y orden de estantes (`Recientes`, `A a Z`, `Z a A`) persistido entre Biblioteca y Config.
+- **Caché persistente de playlists y portadas:** `services/playlist_cache.py` guarda playlists de plataforma (`TTL 600 s`, tope 200 archivos) con patrón *stale-while-revalidate*; `services/cover_cache.py` + `services/cover_warmer.py` memorizan el índice de portadas en disco y precargan en segundo plano.
+- **Configuración en 8 secciones:** `Conexiones`, `Reproducción`, `Descargas`, `Biblioteca`, `Accesibilidad`, `Apariencia`, `Datos` y `Acerca de` con `settings_store` cacheado en memoria (sin I/O repetido en el hilo de UI) y opción **Aviso al abrir** para comprobar nuevas releases en GitHub al iniciar.
 
 ### Descargas
 
