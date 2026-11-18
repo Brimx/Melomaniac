@@ -836,6 +836,11 @@ class LibraryView(ft.Container):
         )
         show_dialog(self._page_ref, dlg)
 
+    def refresh(self, *, update: bool = True) -> None:
+        """Refresca la vista al volver desde el rail sin pisar detalles abiertos."""
+        del update
+        self._refresh()
+
     def _refresh(self) -> None:
         # called via library_state notify
         if self._detail is not None:

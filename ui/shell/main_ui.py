@@ -471,6 +471,7 @@ class PlaylistManagerUI:
         self._report_dialog_shown:    bool  = False
         self._transfer_start:         float = 0.0
         self._completion_snack_shown: bool  = False
+        self._last_download_state:    TransferState = getattr(state, "download_state", TransferState.IDLE)
         self._pm_cleared_for_load:    bool  = False
         self._auth_manager                  = None
         self.on_show_welcome                = None  # inyectado por app.py
@@ -993,6 +994,17 @@ class PlaylistManagerUI:
         refresh_badge = getattr(self, "_refresh_rail_downloads_badge", None)
         if callable(refresh_badge):
             refresh_badge(update=True)
+        cur_dl_state = getattr(s, "download_state", TransferState.IDLE)
+        prev_dl_state = getattr(self, "_last_download_state", TransferState.IDLE)
+        if cur_dl_state != prev_dl_state:
+            self._last_download_state = cur_dl_state
+            if prev_dl_state == TransferState.RUNNING and cur_dl_state in (
+                TransferState.DONE,
+                TransferState.ERROR,
+            ):
+                lib_state = getattr(self, "library_state", None)
+                if lib_state is not None and hasattr(lib_state, "notify"):
+                    lib_state.notify()
         if getattr(self, "_current_module", 0) != 0:
             self._gestion_dirty = True
             self._sync_report_dialog(s)

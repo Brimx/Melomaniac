@@ -398,7 +398,6 @@ class TestContextMenuLibraryAndSettingsCoercion(unittest.TestCase):
 
         asyncio.run(_run())
 
-
     def test_play_all_queues_whole_playlist_with_remote_tracks(self) -> None:
         from core.library_models import PlaylistSummary
         from ui.views.playlist_detail_view import PlaylistDetailView
@@ -512,6 +511,26 @@ class TestContextMenuLibraryAndSettingsCoercion(unittest.TestCase):
             v_loc._download_single_track.assert_not_called()
 
         asyncio.run(_run())
+
+    def test_library_state_notified_on_download_completion(self) -> None:
+        from ui.shell.main_ui import PlaylistManagerUI
+        from ui.views.library_view import LibraryView
+
+        self.assertTrue(callable(getattr(LibraryView, "refresh", None)))
+        lib_state = MagicMock()
+        state = SimpleNamespace(download_state=TransferState.DONE, transfer_state=TransferState.IDLE)
+        fake_ui = SimpleNamespace(
+            state=state,
+            library_state=lib_state,
+            _last_download_state=TransferState.RUNNING,
+            _current_module=1,
+            _sync_report_dialog=MagicMock(),
+            page=MagicMock(),
+        )
+        PlaylistManagerUI._on_state_changed(fake_ui)
+        lib_state.notify.assert_called_once()
+        self.assertEqual(fake_ui._last_download_state, TransferState.DONE)
+
 
 if __name__ == "__main__":
     unittest.main()
