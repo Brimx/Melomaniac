@@ -617,13 +617,21 @@ class DownloadRunner:
             item = items[id(track)]
             fut = session["track_futures"].get(id(track))
 
+            def _apply_progress(pct: float) -> None:
+                item["percent"] = pct
+                _push()
+
             def _hook(info: dict) -> None:
                 if info.get("status") != "downloading":
                     return
                 total = info.get("total_bytes") or info.get("total_bytes_estimate") or 0
                 if total:
-                    item["percent"] = min(95.0, 100.0 * (info.get("downloaded_bytes") or 0) / total)
-                    loop.call_soon_threadsafe(_push)
+                    pct = min(95.0, 100.0 * (info.get("downloaded_bytes") or 0) / total)
+                    try:
+                        if not loop.is_closed():
+                            loop.call_soon_threadsafe(_apply_progress, pct)
+                    except RuntimeError:
+                        pass
 
             try:
                 async with semaphore:
