@@ -70,6 +70,7 @@ from core.models import (
     LoadState,
     TransferState,
     PlaylistMeta,
+    filter_tracks,
 )
 from core.transfer import TransferReport, normalize_playlist_id
 from engine.organizer import merge_playlists, sort_tracks, split_tracks
@@ -633,14 +634,10 @@ class AppState:
     def apply_search(self, query: str) -> None:
         self.search_query = query
         base_list = self._base_list()
-        if not query:
+        if not (query or "").strip():
             self.filtered = []
         else:
-            q = query.lower()
-            self.filtered = [
-                t for t in base_list
-                if q in t.name.lower() or q in t.artist.lower() or q in t.album.lower()
-            ]
+            self.filtered = filter_tracks(base_list, query)
         self.notify()
 
     def organize_sort(self, keys: list[str], reverse: bool = False, scope: str = "all") -> None:

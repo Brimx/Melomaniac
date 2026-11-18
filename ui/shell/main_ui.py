@@ -821,7 +821,9 @@ class PlaylistManagerUI:
             target = None
             if mod == 1:
                 lib = getattr(self, "_panel_biblioteca", None)
-                target = getattr(lib, "_search_field", None) or getattr(lib, "_search_input", None)
+                detail = getattr(lib, "_detail", None) if lib is not None else None
+                src = detail if detail is not None else lib
+                target = getattr(src, "_search_field", None) or getattr(src, "_search_input", None)
             elif mod == 0:
                 target = getattr(self, "_search_field", None)
             if target is not None and hasattr(target, "focus"):

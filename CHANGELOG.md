@@ -20,7 +20,7 @@
 
 ### Biblioteca, Configuración y Cachés
 
-- **Biblioteca:** tarjetas de 160 px con lomo obi, búsqueda instantánea, filtros (`Con canciones`, `+100 pistas`, `Sincronizada hoy`) con reseteo al cambiar de fuente, pestañas `Carpetas` / `Playlists` en Local y orden de estantes (`Recientes`, `A a Z`, `Z a A`) persistido entre Biblioteca y Config.
+- **Biblioteca:** tarjetas de 160 px con lomo obi, búsqueda instantánea de playlists y búsqueda por título/artista/álbum dentro de cualquier playlist o carpeta local (`PlaylistDetailView`), filtros (`Con canciones`, `+100 pistas`, `Sincronizada hoy`) con reseteo al cambiar de fuente, pestañas `Carpetas` / `Playlists` en Local y orden de estantes (`Recientes`, `A a Z`, `Z a A`) persistido entre Biblioteca y Config.
 - **Caché persistente de playlists y portadas:** `services/playlist_cache.py` guarda playlists de plataforma (`TTL 600 s`, tope 200 archivos) con patrón *stale-while-revalidate*; `services/cover_cache.py` + `services/cover_warmer.py` memorizan el índice de portadas en disco y precargan en segundo plano.
 - **Configuración en 8 secciones:** `Conexiones`, `Reproducción`, `Descargas`, `Biblioteca`, `Accesibilidad`, `Apariencia`, `Datos` y `Acerca de` con `settings_store` cacheado en memoria (sin I/O repetido en el hilo de UI) y opción **Aviso al abrir** para comprobar nuevas releases en GitHub al iniciar.
 

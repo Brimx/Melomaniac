@@ -349,6 +349,55 @@ class TestContextMenuLibraryAndSettingsCoercion(unittest.TestCase):
         PlaylistManagerUI._on_row_play(fake_ui, tr_remote)
         self.assertEqual(played_remote, ["2"])
 
+    def test_playlist_detail_search_filters_by_title_artist_album_and_focuses(self) -> None:
+        from core.config import LOCAL_LIBRARY_LABEL
+        from core.library_models import PlaylistSummary
+        from core.models import filter_tracks
+        from ui.views.playlist_detail_view import PlaylistDetailView
+
+        tracks = [
+            Track("1", "Bohemian Rhapsody", "Queen", "A Night at the Opera", "5:55", "", "Spotify"),
+            Track("2", "Time", "Pink Floyd", "The Dark Side of the Moon", "6:53", "", "Spotify"),
+            Track("3", "Stairway to Heaven", "Led Zeppelin", "Led Zeppelin IV", "8:02", "", "Spotify"),
+        ]
+        self.assertEqual([t.id for t in filter_tracks(tracks, "queen")], ["1"])
+        self.assertEqual([t.id for t in filter_tracks(tracks, "dark side")], ["2"])
+        self.assertEqual(len(filter_tracks(tracks, "   ")), 3)
+
+        page = _mock_page()
+        summary = PlaylistSummary(
+            platform=LOCAL_LIBRARY_LABEL,
+            id="/tmp/fake",
+            name="Mi carpeta",
+            track_count=3,
+        )
+
+        async def _loader():
+            return tracks
+
+        async def _run() -> None:
+            view = PlaylistDetailView(page, summary, service=None, on_back=lambda: None, loader=_loader)
+            await view.reload()
+            self.assertEqual(len(view._list_view.controls), 3)
+
+            view._on_search_change(SimpleNamespace(control=SimpleNamespace(value="pink floyd")))
+            self.assertEqual(len(view._list_view.controls), 1)
+            self.assertEqual(view._search_count.value, "1 de 3")
+            self.assertFalse(view._filter_empty_box.visible)
+
+            view._on_search_change(SimpleNamespace(control=SimpleNamespace(value="inexistente")))
+            self.assertEqual(len(view._list_view.controls), 0)
+            self.assertFalse(view._list_view.visible)
+            self.assertTrue(view._filter_empty_box.visible)
+
+            view._clear_search()
+            self.assertEqual(len(view._list_view.controls), 3)
+            self.assertTrue(view._list_view.visible)
+            self.assertFalse(view._filter_empty_box.visible)
+            self.assertEqual(view._search_count.value, "")
+
+        asyncio.run(_run())
+
 
 if __name__ == "__main__":
     unittest.main()

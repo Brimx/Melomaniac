@@ -24,7 +24,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import Enum, auto
-from typing import Optional
+from typing import Iterable, Optional
 
 
 @dataclass
@@ -172,3 +172,17 @@ class TransferState(Enum):
     RUNNING = auto()
     DONE    = auto()
     ERROR   = auto()
+
+
+def filter_tracks(tracks: Iterable[Track], query: str) -> list[Track]:
+    """Filtra pistas por título, artista o álbum (insensible a mayúsculas)."""
+    items = list(tracks)
+    q = (query or "").strip().casefold()
+    if not q:
+        return items
+    return [
+        t for t in items
+        if q in (t.name or "").casefold()
+        or q in (t.artist or "").casefold()
+        or q in (t.album or "").casefold()
+    ]

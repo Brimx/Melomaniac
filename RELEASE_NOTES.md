@@ -12,7 +12,7 @@ Notas enfocadas en **qué cambió para el usuario**, no en detalles internos. La
 - **Letras sincronizadas (LRCLIB):** letras en tiempo real en la pestaña `Letra` y en la escena **Reproduciendo**, con opción en Config para guardar archivos `.lrc` o incrustarlas en tus descargas.
 - **Reproducción sin descargar:** escucha pistas remotas directamente vía `yt-dlp` desde el menú contextual de Biblioteca y de las filas de Gestión sin guardar archivos en disco, descartando directos y verificando candidatos.
 - **Fundido (crossfade) y Reanudar al abrir:** transiciones suaves entre canciones (`1–3 s`), opción para recordar la última pista y posición al reabrir la app, y compatibilidad con orden persistente en Biblioteca.
-- **Biblioteca renovada:** tarjetas con lomo obi, búsqueda, filtros rápidos (`Con canciones`, `+100 pistas`, `Sincronizada hoy`), separación `Carpetas` / `Playlists` en Local y orden de estantes persistido entre Biblioteca y Config.
+- **Biblioteca renovada:** tarjetas con lomo obi, búsqueda de playlists y búsqueda por canción/artista/álbum dentro de cada playlist o carpeta (compatible con `Ctrl+K` / `/`), filtros rápidos (`Con canciones`, `+100 pistas`, `Sincronizada hoy`), separación `Carpetas` / `Playlists` en Local y orden de estantes persistido entre Biblioteca y Config.
 - **Configuración completa (8 secciones) y aviso de actualizaciones:** secciones de Conexiones, Reproducción, Descargas, Biblioteca, Accesibilidad, Apariencia, Datos y Acerca de, con interruptor opcional para comprobar nuevas versiones al abrir.
 - **Caché de playlists y portadas:** apertura instantánea de playlists de plataforma ya visitadas (refresco en segundo plano) y caché persistente de carátulas en disco.
 

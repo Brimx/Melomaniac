@@ -18,7 +18,7 @@ import flet as ft
 
 from core.config import AUDIO_FORMATS, DEFAULT_AUDIO_FORMAT, LOCAL_LIBRARY_LABEL
 from core.library_models import PlaylistSummary
-from core.models import Track, TransferState
+from core.models import Track, TransferState, filter_tracks
 from engine.downloader import open_in_file_manager
 from services import settings_store
 from ui.views.download_recovery import (
@@ -50,8 +50,10 @@ from ui.components.widgets import (
     _primary_btn,
     app_dialog,
     app_text,
+    app_text_field,
     close_dialog,
     dialog_action,
+    empty_state,
     kicker,
     notify,
     obi_strip,
@@ -105,6 +107,7 @@ class PlaylistDetailView(ft.Container):
         self._action_containers: dict[int, ft.Control] = {}
         self._downloading_track_ids: set[int] = set()
         self._manifest_base_name: str = ""
+        self._search_query: str = ""
 
         # header
         from ui.components.playlist_card import _obi_label_for, _should_show_obi
@@ -303,6 +306,29 @@ class PlaylistDetailView(ft.Container):
             app_text("", size=11, color=TEXT_MUTED, font_family=FONT_TEXT),
             _ghost_btn("Reintentar", PIcons.ARROWS_CLOCKWISE, lambda e: self.reload()),
         ], spacing=SPACE_2))
+        self._filter_empty_box = ft.Container(
+            visible=False,
+            bgcolor=BG_LIST,
+            padding=ft.Padding.all(SPACE_4),
+            alignment=ft.Alignment.CENTER_LEFT,
+            content=empty_state(
+                PIcons.MAGNIFYING_GLASS,
+                "Nada coincide",
+                "Prueba con otro título, artista o álbum.",
+                action_label="Limpiar búsqueda",
+                on_action=lambda _e: self._clear_search(),
+            ),
+        )
+        self._search_count = app_text("", size=11, color=TEXT_MUTED, font_family=mono_family("light"))
+        self._search_field = app_text_field(
+            value="",
+            hint_text="Buscar título, artista…",
+            prefix_icon=PIcons.MAGNIFYING_GLASS,
+            width=240,
+            height=34,
+            content_padding=ft.Padding.symmetric(horizontal=SPACE_2, vertical=0),
+            on_change=self._on_search_change,
+        )
 
         self._header_chk_spacer = ft.Container(width=32, visible=self._selection_mode)
         tracks_header = ft.Container(
@@ -341,12 +367,24 @@ class PlaylistDetailView(ft.Container):
             ),
         )
 
+        top_row = ft.Row(
+            controls=[
+                app_icon_button(PIcons.ARROW_LEFT, size=16, icon_color=TEXT_MUTED, on_click=lambda e: on_back(), width=28, height=28),
+                app_text("Volver", size=12, color=TEXT_MUTED),
+                ft.Container(expand=True),
+                self._search_count,
+                self._search_field,
+            ],
+            spacing=SPACE_2,
+            vertical_alignment=ft.CrossAxisAlignment.CENTER,
+        )
+
         body = ft.Column(controls=[
-            ft.Row(controls=[app_icon_button(PIcons.ARROW_LEFT, size=16, icon_color=TEXT_MUTED, on_click=lambda e: on_back(), width=28, height=28), app_text("Volver", size=12, color=TEXT_MUTED)], spacing=SPACE_1),
+            top_row,
             header,
             self._batch_bar,
             tracks_header,
-            ft.Stack(controls=[self._skeleton_wrap, self._list_view, self._error_box], expand=True),
+            ft.Stack(controls=[self._skeleton_wrap, self._list_view, self._filter_empty_box, self._error_box], expand=True),
         ], spacing=SPACE_2, expand=True)
 
         self.content = ft.Container(content=body, padding=ft.Padding.all(12), expand=True)
@@ -605,6 +643,7 @@ class PlaylistDetailView(ft.Container):
         self._sync_skeleton_count()
         self._skeleton_wrap.visible = True
         self._list_view.visible = False
+        self._filter_empty_box.visible = False
         self._error_box.visible = False
         self._ensure_skeletons_pulsing()
         try:
@@ -654,25 +693,9 @@ class PlaylistDetailView(ft.Container):
                 self._count.value = f"{len(tracks)} canciones • {self.summary.platform}"
             except Exception:
                 pass
-            initial_tracks = tracks[:_INITIAL_ROW_BATCH]
-            remaining_tracks = tracks[_INITIAL_ROW_BATCH:]
-            has_file_snapshot = dict(self._has_file_by_id)
-            self._list_view.controls = [
-                self._build_track_row(tr, i, has_file=has_file_snapshot.get(id(tr), False))
-                for i, tr in enumerate(initial_tracks, 1)
-            ]
             self._stop_skeleton_pulse()
             self._skeleton_wrap.visible = False
-            self._list_view.visible = True
-            if remaining_tracks and gen == self._load_gen and not self._unmounted:
-                self._batch_task = asyncio.create_task(
-                    self._append_remaining_rows(
-                        remaining_tracks,
-                        start_index=_INITIAL_ROW_BATCH + 1,
-                        gen=gen,
-                        has_file_map=has_file_snapshot,
-                    )
-                )
+            self._render_visible_tracks(gen=gen, update_ui=False)
         except Exception as exc:
             if gen != self._load_gen or self._unmounted:
                 return
@@ -1173,12 +1196,73 @@ class PlaylistDetailView(ft.Container):
         if id(track) not in self._selected_ids:
             self.toggle_track_selection(track)
 
-    def select_all(self, selected: bool = True) -> None:
-        """Selecciona o deselecciona todas las pistas cargadas."""
-        if selected:
-            self._selected_ids = {id(t) for t in self._tracks}
+    def _visible_tracks(self) -> list[Track]:
+        return filter_tracks(self._tracks, self._search_query)
+
+    def _on_search_change(self, e) -> None:
+        self._search_query = str(getattr(e.control, "value", "") or "")
+        if not self._loading:
+            self._render_visible_tracks(update_ui=True)
+
+    def _clear_search(self) -> None:
+        self._search_query = ""
+        self._search_field.value = ""
+        if not self._loading:
+            self._render_visible_tracks(update_ui=True)
         else:
-            self._selected_ids.clear()
+            safe_update(self._search_field)
+
+    def _render_visible_tracks(self, *, gen: int | None = None, update_ui: bool = True) -> None:
+        self._cancel_batch_task()
+        self._row_checkboxes.clear()
+        self._row_containers.clear()
+        self._action_containers.clear()
+        load_gen = self._load_gen if gen is None else gen
+        visible = self._visible_tracks()
+        has_query = bool(self._search_query.strip())
+        self._search_count.value = (
+            f"{len(visible)} de {len(self._tracks)}" if has_query and self._tracks else ""
+        )
+        if self._tracks and not visible and has_query:
+            self._list_view.controls.clear()
+            self._list_view.visible = False
+            self._filter_empty_box.visible = True
+        else:
+            self._filter_empty_box.visible = False
+            self._list_view.visible = True
+            has_file_snapshot = dict(self._has_file_by_id)
+            initial_tracks = visible[:_INITIAL_ROW_BATCH]
+            remaining_tracks = visible[_INITIAL_ROW_BATCH:]
+            self._list_view.controls = [
+                self._build_track_row(tr, i, has_file=has_file_snapshot.get(id(tr), False))
+                for i, tr in enumerate(initial_tracks, 1)
+            ]
+            if remaining_tracks and load_gen == self._load_gen and not self._unmounted:
+                try:
+                    asyncio.get_running_loop()
+                    self._batch_task = asyncio.create_task(
+                        self._append_remaining_rows(
+                            remaining_tracks,
+                            start_index=_INITIAL_ROW_BATCH + 1,
+                            gen=load_gen,
+                            has_file_map=has_file_snapshot,
+                        )
+                    )
+                except RuntimeError:
+                    self._list_view.controls.extend(
+                        self._build_track_row(tr, i, has_file=has_file_snapshot.get(id(tr), False))
+                        for i, tr in enumerate(remaining_tracks, _INITIAL_ROW_BATCH + 1)
+                    )
+        if update_ui:
+            safe_update(self)
+
+    def select_all(self, selected: bool = True) -> None:
+        """Selecciona o deselecciona las pistas visibles (o todas si no hay filtro)."""
+        if selected:
+            self._selected_ids.update(id(t) for t in self._visible_tracks())
+        else:
+            visible_ids = {id(t) for t in self._visible_tracks()}
+            self._selected_ids.difference_update(visible_ids)
         for tid, chk in self._row_checkboxes.items():
             is_sel = tid in self._selected_ids
             chk.value = is_sel
