@@ -47,12 +47,14 @@ Desktop application to **transfer playlists between YouTube Music, Apple Music, 
 
 ## Roadmap
 
-The documented version is **4.11.1**. The roadmap summary is:
+The documented version is **4.11.1**. Upcoming priorities:
 
-- **Next · Complete Block 3:** Library favorites, total duration on playlist cards, remaining accessibility settings (UI and text scaling, density, and visible keyboard focus), and a decision/implementation for a dedicated Search view.
-- **Later · New capabilities:** playlist workspace, activity and listening histories, statistics, local metadata editing, and Discover, which depends on favorites and listening history.
+- **Library and accessibility:** favorites, total duration on playlist cards, and remaining settings for scaling, density, and visible keyboard focus. A dedicated Search view will also be evaluated.
+- **Recommendation foundations:** build favorites and listening history as signals for a persistent, broad, local music profile. It should recognize multiple taste clusters, limit the weight of recent activity, and distinguish curiosity from sustained preference.
+- **Discover — primary focus:** build a recommendation algorithm that takes candidates and metadata from available sources, then ranks them for personal relevance. The MVP covers songs, artists, and albums, combining affinity, familiarity, diversity, and a configurable exploration level; popularity remains secondary, and each recommendation must have an explanation grounded in real signals. Genres and styles can follow later.
+- **Other planned improvements:** separate activity and listening histories, statistics, a playlist workspace, and local metadata editing.
 
-Block 3 already includes Home, the redesigned Library, contextual Management, Settings, About, and the Listening Room visual migration. The order is indicative; see the project roadmap notes for the full plan.
+The profile should not treat a single play, a saved track, or an ignored recommendation as definitive proof of preference or rejection. The order is indicative; see the project roadmap notes for the full plan.
 
 ---
 

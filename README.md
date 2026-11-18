@@ -47,12 +47,14 @@ Aplicación de escritorio para **transferir playlists entre YouTube Music, Apple
 
 ## Roadmap
 
-La versión documentada es **4.11.1**. El resumen del roadmap es:
+La versión documentada es **4.11.1**. Las próximas prioridades son:
 
-- **Siguiente · Cerrar el Bloque 3:** favoritos en Biblioteca, duración total en tarjetas, ajustes de accesibilidad pendientes (escala de interfaz y texto, densidad y foco visible) y decidir/implementar una vista dedicada de Buscar.
-- **Después · Nuevas capacidades:** workspace de playlists, historiales de actividad y escucha, estadísticas, edición de metadatos locales y Discover, que depende de favoritos e historial.
+- **Biblioteca y accesibilidad:** favoritos, duración total en las tarjetas y ajustes pendientes de escala, densidad y foco de teclado. También se evaluará una vista dedicada de Buscar.
+- **Fundamentos de recomendación:** crear favoritos e historial de escucha como señales para un perfil musical persistente, amplio y local. Debe reconocer varios grupos de gustos, dar peso limitado a la actividad reciente y distinguir la curiosidad de una preferencia sostenida.
+- **Discover — prioridad principal:** construir un algoritmo propio que reciba candidatos y metadatos de las fuentes disponibles, y los ordene según la afinidad personal. El MVP cubrirá canciones, artistas y álbumes, combinando afinidad, familiaridad, diversidad y un nivel configurable de exploración; la popularidad será secundaria y cada recomendación tendrá una explicación respaldada por señales reales. Géneros y estilos podrán añadirse después.
+- **Otras mejoras previstas:** historial separado de actividad y escucha, estadísticas, workspace de playlists y edición de metadatos locales.
 
-El Bloque 3 ya incluye Inicio, Biblioteca renovada, Gestión contextual, Configuración, About y la migración visual Sala de escucha. El orden es orientativo; el roadmap completo está en las notas de producto del proyecto.
+El perfil no debe tratar una reproducción aislada, una canción guardada o una recomendación ignorada como prueba definitiva de gusto o rechazo. El orden es orientativo; el roadmap detallado está en las notas de producto del proyecto.
 
 ---
 
