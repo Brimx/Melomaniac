@@ -1010,6 +1010,18 @@ class PlaylistManagerUI:
             self._sync_report_dialog(s)
             if s.transfer_state == TransferState.DONE and not getattr(self, "_completion_snack_shown", False):
                 self._sync_progress(s, False, True, False, False, False, True)
+            cur_auth = (
+                tuple(sorted((getattr(s, "auth_session_ok", None) or {}).items())),
+                tuple(sorted((getattr(s, "auth_session_hint", None) or {}).items())),
+            )
+            if cur_auth != getattr(self, "_last_auth_ui_snapshot", None):
+                self._last_auth_ui_snapshot = cur_auth
+                cfg = getattr(self, "_panel_config", None)
+                if cfg is not None and getattr(cfg, "visible", False) and hasattr(cfg, "refresh"):
+                    try:
+                        cfg.refresh()
+                    except Exception:
+                        pass
             return
         self._gestion_dirty = False
         is_local_src = s.source in AppState.LOCAL_SOURCES

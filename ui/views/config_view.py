@@ -489,6 +489,8 @@ class ConfigView(ft.Container):
         if self._active_section == "biblioteca" and self._local_folders_col is not None:
             self._render_local_folders_list()
         if self._active_section == "conexiones":
+            if self._browser_dd is not None:
+                self._browser_dd.value = settings_store.get_preferred_browser() or "__auto__"
             for plat in PLATFORM_ORDER:
                 self._apply_provider_status_ui(plat)
 
@@ -567,6 +569,7 @@ class ConfigView(ft.Container):
         prof_label = profiles[0].label if profiles else ""
         for plat in PLATFORM_ORDER:
             res = last_results.get(plat)
+            eff_pref = settings_store.get_effective_preferred_browser(plat)
             if res is not None:
                 self._provider_status[plat] = {
                     "kind": "ok" if res.ok else ("warn" if not res.expired else "err"),
@@ -578,6 +581,12 @@ class ConfigView(ft.Container):
                     "kind": "ok",
                     "label": "Override",
                     "meta": "Credencial manual detectada en config/",
+                }
+            elif eff_pref:
+                self._provider_status[plat] = {
+                    "kind": "warn",
+                    "label": "Preferido",
+                    "meta": f"Origen configurado: {eff_pref} · pulsa Verificar",
                 }
             elif prof_label:
                 self._provider_status[plat] = {
@@ -765,8 +774,9 @@ class ConfigView(ft.Container):
         if svc is not None:
             for attr in ("youtube_preferred_source", "apple_preferred_source", "spotify_preferred_source"):
                 if hasattr(svc, attr):
-                    setattr(svc, attr, pref or None)
+                    setattr(svc, attr, None)
         browser_session.clear_cache()
+        self._schedule_probe()
         self._changed()
 
     # ── Reproducción, Descargas, Accesibilidad y Apariencia handlers ───

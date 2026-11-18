@@ -133,7 +133,12 @@ class SpotifyClient:
             else list(browser_session.spotify_candidates(self.preferred_source))
         )
         if not candidates:
-            self.auth_error = "missing credentials (sin sesión en navegador ni config/spotify_cookies.json)"
+            eff = browser_session.effective_preferred_source(self.preferred_source, "Spotify")
+            self.auth_error = (
+                f"missing credentials (sin sesión en {eff})"
+                if eff
+                else "missing credentials (sin sesión en navegador ni config/spotify_cookies.json)"
+            )
             self.session_source = ""
             self._sp_login = None
             self._sp_song = None

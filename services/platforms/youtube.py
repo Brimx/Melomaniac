@@ -168,7 +168,12 @@ class YouTubeClient:
             else list(browser_session.youtube_candidates(self.preferred_source))
         )
         if not candidates:
-            self.auth_error = "missing credentials (sin sesión en navegador ni config/browser.json)"
+            eff = browser_session.effective_preferred_source(self.preferred_source, "YouTube Music")
+            self.auth_error = (
+                f"missing credentials (sin sesión en {eff})"
+                if eff
+                else "missing credentials (sin sesión en navegador ni config/browser.json)"
+            )
             self.session_source = ""
             self._ytm = None
             return False

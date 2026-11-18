@@ -831,6 +831,48 @@ def open_external(page: ft.Page | None, url: str) -> None:
         pass
 
 
+def open_in_preferred_browser(
+    page: ft.Page | None,
+    url: str,
+    preferred_source: str | None = None,
+    *,
+    platform: str | None = None,
+) -> None:
+    """Abre ``url`` en el navegador elegido si está instalado; si falla, cae al del sistema."""
+    if not url:
+        return
+    try:
+        from services.browser_session import resolve_browser_launch_command
+
+        cmd, target_label = resolve_browser_launch_command(
+            url, preferred_source, platform=platform
+        )
+    except Exception:
+        cmd, target_label = None, None
+
+    if cmd:
+        try:
+            import subprocess
+
+            subprocess.Popen(
+                cmd,
+                start_new_session=True,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+            return
+        except OSError:
+            pass
+
+    open_external(page, url)
+    if target_label and page is not None:
+        notify(
+            page,
+            f"No se pudo abrir {target_label}; se abrió el navegador predeterminado.",
+            kind="info",
+        )
+
+
 # ── Relieve de papel, selección, chips, obi y foco ─────────────────────
 
 

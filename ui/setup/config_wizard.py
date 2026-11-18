@@ -30,7 +30,7 @@ from ui.components.widgets import (
     app_dialog,
     app_text,
     close_dialog,
-    open_external,
+    open_in_preferred_browser,
     organize_dropdown,
     paper_shadow,
     show_dialog,
@@ -50,7 +50,7 @@ from ui.setup.wizard_forms import (
     instructions_box,
     section_header,
 )
-from services import browser_session
+from services import browser_session, settings_store
 from services.authentication import (
     PreFlightResult,
     read_browser_json,
@@ -228,6 +228,8 @@ class ConfigWizard:
     # ── Action handlers ────────────────────────────────────────────────
 
     def _on_close_click(self, _e: ft.ControlEvent) -> None:
+        for platform in PLATFORM_ORDER:
+            self._set_preferred_source(platform, None)
         self._close_wizard()
 
     def _on_save_click(self, _e: ft.ControlEvent) -> None:
@@ -247,6 +249,8 @@ class ConfigWizard:
         async def _save_and_close() -> None:
             try:
                 await asyncio.to_thread(self._apply_save, values)
+                for platform in PLATFORM_ORDER:
+                    self._set_preferred_source(platform, None)
                 self._close_wizard()
                 if self.on_saved:
                     self.on_saved()
@@ -289,6 +293,10 @@ class ConfigWizard:
             "spotify": {
                 key: field.value or ""
                 for key, field in self._sp_fields.items()
+            },
+            "sources": {
+                platform: str(dd.value or "__global__")
+                for platform, dd in self._source_dropdowns.items()
             },
         }
 
@@ -461,7 +469,7 @@ class ConfigWizard:
         svc = getattr(self._auth_manager, "service", None)
         if svc is None:
             return
-        pref = None if not value or value == "__auto__" else value
+        pref = value if value else None
         if platform == "YouTube Music":
             svc.youtube_preferred_source = pref
         elif platform == "Apple Music":
@@ -485,11 +493,6 @@ class ConfigWizard:
             self._results_by_platform[r.platform] = r
             if r.ok:
                 self._failed_platforms.discard(r.platform)
-                dd = self._source_dropdowns.get(r.platform)
-                if dd is not None and r.source and dd.value == "__auto__":
-                    opt_keys = {o.key for o in (dd.options or [])}
-                    if r.source in opt_keys:
-                        dd.value = r.source
             else:
                 self._failed_platforms.add(r.platform)
             self._update_status_row(r.platform)
@@ -550,14 +553,21 @@ class ConfigWizard:
         """Construye selector de origen, línea de estado, botones y sección Avanzado plegable."""
         profiles = browser_session.detect()
         manual_key = PLATFORM_MANUAL_LABELS[platform]
-        options: list[tuple[str, str]] = [("__auto__", "Automático (navegador primero)")]
+        global_pref = settings_store.get_preferred_browser()
+        saved_override = settings_store.get_preferred_browser(platform)
+        options: list[tuple[str, str]] = [
+            ("__global__", f"Global ({global_pref or 'Automático'})"),
+            ("__auto__", "Automático (todos los navegadores)"),
+        ]
         for prof in profiles:
             options.append((prof.label, prof.label))
         options.append((manual_key, f"Manual ({manual_key})"))
 
-        ok, active_src, _ = self._current_source_info(platform)
         option_keys = {k for k, _ in options}
-        default_val = active_src if (ok and active_src in option_keys) else "__auto__"
+        if saved_override and saved_override not in option_keys:
+            options.append((saved_override, f"{saved_override} (no detectado)"))
+            option_keys.add(saved_override)
+        default_val = saved_override if saved_override in option_keys else "__global__"
 
         dd = organize_dropdown(
             options=options,
@@ -579,12 +589,18 @@ class ConfigWizard:
         self._update_status_row(platform)
 
         login_url = PLATFORM_LOGIN_URLS[platform]
+
+        def _open_login(_e: ft.ControlEvent, u: str = login_url, p: str = platform) -> None:
+            dd_cur = self._source_dropdowns.get(p)
+            chosen = str(dd_cur.value or "__global__") if dd_cur is not None else None
+            open_in_preferred_browser(self.page, u, chosen, platform=p)
+
         actions_row = ft.Row(
             controls=[
                 _primary_btn(
                     "Abrir y iniciar sesión",
                     PIcons.ARROW_SQUARE_OUT,
-                    lambda _e, u=login_url: open_external(self.page, u),
+                    _open_login,
                     height=38,
                 ),
                 _ghost_btn(
@@ -771,6 +787,9 @@ class ConfigWizard:
                 sp_vals["sp_dc"],
                 sp_vals["sp_key"],
             )
+
+        for platform, source_val in (values.get("sources") or {}).items():
+            settings_store.set_preferred_browser(source_val, platform=platform)
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

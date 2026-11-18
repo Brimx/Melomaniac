@@ -10,9 +10,12 @@ import sqlite3
 import tempfile
 import unittest
 
+from services import browser_session, settings_store
 from services.browser_session import (
+    BrowserProfile,
     compute_sapisidhash,
     read_firefox_cookies,
+    resolve_browser_launch_command,
     select_apple_jwt,
 )
 
@@ -116,6 +119,164 @@ class TestBrowserSessionOffline(unittest.TestCase):
         self.assertEqual(by_name["sp_dc"], (".spotify.com", "wal_only_sp_dc"))
         self.assertNotIn("PREF", by_name)
         self.assertEqual(len(rows), 2)
+
+
+class TestPreferredBrowserAndLaunch(unittest.TestCase):
+    def _with_temp_settings(self, fn) -> None:
+        from unittest import mock
+
+        with tempfile.TemporaryDirectory() as tmp:
+            settings_path = Path(tmp) / "settings.json"
+            with (
+                mock.patch.object(settings_store, "SETTINGS_JSON", settings_path),
+                mock.patch.object(settings_store, "ensure_config_dir", lambda: None),
+                mock.patch.object(settings_store, "_CACHE", None),
+            ):
+                fn()
+
+    def test_settings_per_platform_override_and_auto_exception(self) -> None:
+        def _run() -> None:
+            settings_store.set_preferred_browser("Firefox · default-release")
+            self.assertEqual(
+                settings_store.get_effective_preferred_browser("YouTube Music"),
+                "Firefox · default-release",
+            )
+            settings_store.set_preferred_browser("Brave · Default", platform="YouTube Music")
+            settings_store.set_preferred_browser("__auto__", platform="Spotify")
+
+            self.assertEqual(
+                settings_store.get_effective_preferred_browser("YouTube Music"),
+                "Brave · Default",
+            )
+            self.assertEqual(
+                settings_store.get_effective_preferred_browser("Apple Music"),
+                "Firefox · default-release",
+            )
+            self.assertEqual(
+                settings_store.get_effective_preferred_browser("Spotify"),
+                "",
+            )
+
+            settings_store.set_preferred_browser("__global__", platform="YouTube Music")
+            self.assertEqual(
+                settings_store.get_effective_preferred_browser("YouTube Music"),
+                "Firefox · default-release",
+            )
+
+        self._with_temp_settings(_run)
+
+    def test_order_candidates_strict_when_installed_fallback_when_missing(self) -> None:
+        from unittest import mock
+
+        brave = BrowserProfile("chromium", "brave", "Brave · Default", Path("/tmp/brave"), "Default")
+        firefox = BrowserProfile("firefox", "firefox", "Firefox · default-release", Path("/tmp/ff"), "default")
+        items = [("Firefox · default-release", {"k": "ff"})]
+
+        def _run() -> None:
+            # Brave instalado, pero sin sesión para esta plataforma → estricto (no cae a Firefox)
+            with mock.patch.object(browser_session, "detect", return_value=[brave, firefox]):
+                res = list(browser_session._order_candidates(items, "Brave · Default", platform="YouTube Music"))
+                self.assertEqual(res, [])
+
+            # Brave guardado ya no está instalado/detectado → fallback al resto
+            with mock.patch.object(browser_session, "detect", return_value=[firefox]):
+                res = list(browser_session._order_candidates(items, "Brave · Default", platform="YouTube Music"))
+                self.assertEqual(res, [("Firefox · default-release", {"k": "ff"})])
+
+            # Excepción __auto__ ignora global y devuelve todos
+            settings_store.set_preferred_browser("Brave · Default")
+            with mock.patch.object(browser_session, "detect", return_value=[brave, firefox]):
+                res = list(browser_session._order_candidates(items, "__auto__", platform="YouTube Music"))
+                self.assertEqual(res, [("Firefox · default-release", {"k": "ff"})])
+
+        self._with_temp_settings(_run)
+
+    def test_apple_candidates_honors_saved_preferred_browser(self) -> None:
+        from unittest import mock
+
+        brave = BrowserProfile("chromium", "brave", "Brave · Default", Path("/tmp/brave"), "Default")
+        firefox = BrowserProfile("firefox", "firefox", "Firefox · default-release", Path("/tmp/ff"), "default")
+
+        def _fake_cookies(prof: BrowserProfile):
+            if prof.browser == "firefox":
+                return [(".music.apple.com", "media-user-token", "ff_tok")]
+            return [(".music.apple.com", "media-user-token", "brave_tok")]
+
+        def _run() -> None:
+            settings_store.set_preferred_browser("Brave · Default")
+            with (
+                mock.patch.object(browser_session, "detect", return_value=[firefox, brave]),
+                mock.patch.object(browser_session, "_profile_cookies", side_effect=_fake_cookies),
+                mock.patch.object(browser_session, "_derive_apple_bearer", return_value="jwt_bearer"),
+                mock.patch.object(browser_session, "read_env_values", return_value={}),
+            ):
+                cands = list(browser_session.apple_candidates(None))
+                self.assertEqual(len(cands), 1)
+                self.assertEqual(cands[0][0], "Brave · Default")
+                self.assertEqual(cands[0][1]["user_token"], "brave_tok")
+
+        self._with_temp_settings(_run)
+
+    def test_resolve_browser_launch_command_and_fallback(self) -> None:
+        from unittest import mock
+
+        brave = BrowserProfile("chromium", "brave", "Brave · Default", Path("/tmp/brave"), "Default")
+
+        def _run() -> None:
+            with (
+                mock.patch.object(browser_session, "detect", return_value=[brave]),
+                mock.patch.object(browser_session, "_find_browser_executable", return_value="/usr/bin/brave-browser"),
+                mock.patch.object(browser_session.sys, "platform", "linux"),
+            ):
+                cmd, label = resolve_browser_launch_command("https://music.youtube.com", "Brave · Default")
+                self.assertEqual(label, "Brave · Default")
+                self.assertEqual(
+                    cmd,
+                    ["/usr/bin/brave-browser", "--profile-directory=Default", "https://music.youtube.com"],
+                )
+
+            # Navegador no instalado → devuelve (None, etiqueta) para activar fallback
+            with (
+                mock.patch.object(browser_session, "detect", return_value=[brave]),
+                mock.patch.object(browser_session, "_find_browser_executable", return_value=None),
+            ):
+                cmd, label = resolve_browser_launch_command("https://music.youtube.com", "Brave · Default")
+                self.assertIsNone(cmd)
+                self.assertEqual(label, "Brave · Default")
+
+            # Modo automático → (None, None)
+            cmd, label = resolve_browser_launch_command("https://music.youtube.com", "__auto__")
+            self.assertEqual((cmd, label), (None, None))
+
+        self._with_temp_settings(_run)
+
+    def test_config_wizard_apply_save_persists_per_platform_sources(self) -> None:
+        from types import SimpleNamespace
+        from unittest import mock
+        from ui.setup.config_wizard import ConfigWizard
+
+        def _run() -> None:
+            wiz = ConfigWizard.__new__(ConfigWizard)
+            wiz._yt_fields = {}
+            wiz._am_fields = {}
+            wiz._sp_fields = {}
+            wiz._source_dropdowns = {
+                "YouTube Music": SimpleNamespace(value="Brave · Default"),
+                "Apple Music": SimpleNamespace(value="__global__"),
+                "Spotify": SimpleNamespace(value="__auto__"),
+            }
+            settings_store.set_preferred_browser("Firefox · default-release")
+            vals = wiz._collect_form_values()
+            with mock.patch("ui.setup.config_wizard.write_browser_json"), \
+                 mock.patch("ui.setup.config_wizard.write_env_values"), \
+                 mock.patch("ui.setup.config_wizard.write_spotify_cookies"):
+                wiz._apply_save(vals)
+
+            self.assertEqual(settings_store.get_effective_preferred_browser("YouTube Music"), "Brave · Default")
+            self.assertEqual(settings_store.get_effective_preferred_browser("Apple Music"), "Firefox · default-release")
+            self.assertEqual(settings_store.get_effective_preferred_browser("Spotify"), "")
+
+        self._with_temp_settings(_run)
 
 
 if __name__ == "__main__":

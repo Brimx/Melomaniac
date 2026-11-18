@@ -122,7 +122,12 @@ class AppleClient:
             else list(browser_session.apple_candidates(self.preferred_source))
         )
         if not candidates:
-            self.auth_error = "missing credentials (sin sesión en navegador ni config/.env)"
+            eff = browser_session.effective_preferred_source(self.preferred_source, "Apple Music")
+            self.auth_error = (
+                f"missing credentials (sin sesión en {eff})"
+                if eff
+                else "missing credentials (sin sesión en navegador ni config/.env)"
+            )
             self.session_source = ""
             return False
 

@@ -42,6 +42,7 @@ _KEY_ENHANCED_FOCUS = "enhanced_focus"
 _KEY_THEME = "theme"
 _KEY_BG_TEXTURE = "bg_texture"
 _KEY_PREFERRED_BROWSER = "preferred_browser"
+_KEY_PREFERRED_BROWSERS = "preferred_browsers"
 _KEY_FADE_SECONDS = "fade_seconds"
 _KEY_RESUME_ON_OPEN = "resume_on_open"
 _KEY_STREAM_WITHOUT_DOWNLOAD = "stream_without_download"
@@ -541,20 +542,49 @@ def set_bg_texture(texture: str) -> None:
     _set_choice(_KEY_BG_TEXTURE, texture, "none", _VALID_BG_TEXTURES)
 
 
-def get_preferred_browser() -> str:
-    """Etiqueta del navegador/perfil preferido para leer sesiones, o vacío si es automático."""
-    return str(load_settings().get(_KEY_PREFERRED_BROWSER) or "").strip()
+def get_preferred_browser(platform: str | None = None) -> str:
+    """Etiqueta del navegador/perfil preferido global o override por plataforma."""
+    data = load_settings()
+    if platform:
+        raw_map = data.get(_KEY_PREFERRED_BROWSERS)
+        if isinstance(raw_map, dict):
+            return str(raw_map.get(platform) or "").strip()
+        return ""
+    return str(data.get(_KEY_PREFERRED_BROWSER) or "").strip()
 
 
-def set_preferred_browser(browser_label: str) -> None:
-    """Persiste el navegador/perfil preferido (vacío restablece a automático)."""
+def get_effective_preferred_browser(platform: str | None = None) -> str:
+    """Resuelve el navegador preferido efectivo (override por plataforma → global)."""
+    if platform:
+        override = get_preferred_browser(platform)
+        if override == "__auto__":
+            return ""
+        if override and override != "__global__":
+            return override
+    return get_preferred_browser()
+
+
+def set_preferred_browser(browser_label: str, platform: str | None = None) -> None:
+    """Persiste el navegador preferido global o el override/excepción por plataforma."""
     val = str(browser_label or "").strip()
     with _LOCK:
         data = load_settings()
-        if val and val != "__auto__":
-            data[_KEY_PREFERRED_BROWSER] = val
+        if platform:
+            raw_map = data.get(_KEY_PREFERRED_BROWSERS)
+            overrides = dict(raw_map) if isinstance(raw_map, dict) else {}
+            if val and val != "__global__":
+                overrides[platform] = val
+            else:
+                overrides.pop(platform, None)
+            if overrides:
+                data[_KEY_PREFERRED_BROWSERS] = overrides
+            else:
+                data.pop(_KEY_PREFERRED_BROWSERS, None)
         else:
-            data.pop(_KEY_PREFERRED_BROWSER, None)
+            if val and val not in ("__auto__", "__global__"):
+                data[_KEY_PREFERRED_BROWSER] = val
+            else:
+                data.pop(_KEY_PREFERRED_BROWSER, None)
         save_settings(data)
 
 

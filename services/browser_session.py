@@ -568,7 +568,9 @@ def _derive_apple_bearer() -> str | None:
     return None
 
 
-def youtube_candidates(preferred_source: str | None = None) -> Iterator[tuple[str, dict]]:
+def youtube_candidates(
+    preferred_source: str | None = None,
+) -> Iterator[tuple[str, dict]]:
     """Itera candidatos ``(origen, headers)`` para YouTube Music: navegador primero, archivo después."""
     items: list[tuple[str, dict]] = []
     for prof in detect():
@@ -587,10 +589,12 @@ def youtube_candidates(preferred_source: str | None = None) -> Iterator[tuple[st
         if headers is not None:
             items.append(("config/browser.json", headers))
 
-    yield from _order_candidates(items, preferred_source)
+    yield from _order_candidates(items, preferred_source, platform="YouTube Music")
 
 
-def spotify_candidates(preferred_source: str | None = None) -> Iterator[tuple[str, dict]]:
+def spotify_candidates(
+    preferred_source: str | None = None,
+) -> Iterator[tuple[str, dict]]:
     """Itera candidatos ``(origen, dump)`` para Spotify: navegador primero, archivo después."""
     items: list[tuple[str, dict]] = []
     for prof in detect():
@@ -634,10 +638,12 @@ def spotify_candidates(preferred_source: str | None = None) -> Iterator[tuple[st
             )
         )
 
-    yield from _order_candidates(items, preferred_source)
+    yield from _order_candidates(items, preferred_source, platform="Spotify")
 
 
-def apple_candidates(preferred_source: str | None = None) -> Iterator[tuple[str, dict]]:
+def apple_candidates(
+    preferred_source: str | None = None,
+) -> Iterator[tuple[str, dict]]:
     """Itera candidatos ``(origen, {'bearer', 'user_token'})`` para Apple Music."""
     profile_tokens: list[tuple[str, str]] = []
     for prof in detect():
@@ -654,54 +660,206 @@ def apple_candidates(preferred_source: str | None = None) -> Iterator[tuple[str,
     env_bearer = env.get("APPLE_AUTH_BEARER", "").strip()
     env_utok = env.get("APPLE_MUSIC_USER_TOKEN", "").strip()
 
-    def _gen() -> Iterator[tuple[str, dict]]:
-        if profile_tokens:
-            bearer = _derive_apple_bearer()
-            if bearer:
-                for label, utok in profile_tokens:
-                    yield (label, {"bearer": bearer, "user_token": utok})
-        if env_utok:
-            bearer = env_bearer or _derive_apple_bearer()
-            if bearer:
-                yield ("config/.env", {"bearer": bearer, "user_token": env_utok})
+    items: list[tuple[str, dict]] = []
+    if profile_tokens:
+        bearer = _derive_apple_bearer()
+        if bearer:
+            for label, utok in profile_tokens:
+                items.append((label, {"bearer": bearer, "user_token": utok}))
+    if env_utok:
+        bearer = env_bearer or _derive_apple_bearer()
+        if bearer:
+            items.append(("config/.env", {"bearer": bearer, "user_token": env_utok}))
 
-    if not preferred_source:
-        yield from _gen()
-        return
-
-    all_items = list(_gen())
-    yield from _order_candidates(all_items, preferred_source)
+    yield from _order_candidates(items, preferred_source, platform="Apple Music")
 
 
-def _resolve_preferred_source(preferred_source: str | None) -> str | None:
-    if preferred_source:
-        return preferred_source
+_MANUAL_SOURCES = frozenset({
+    "config/browser.json",
+    "config/.env",
+    "config/spotify_cookies.json",
+})
+
+_BROWSER_EXEC_LINUX: dict[str, tuple[str, ...]] = {
+    "firefox": ("firefox", "firefox-esr"),
+    "zen": ("zen-browser", "zen", "zen-bin"),
+    "librewolf": ("librewolf",),
+    "floorp": ("floorp",),
+    "waterfox": ("waterfox",),
+    "mullvad": ("mullvad-browser",),
+    "tor": ("tor-browser", "torbrowser-launcher"),
+    "brave": ("brave-browser", "brave", "brave-browser-stable"),
+    "chrome": ("google-chrome", "google-chrome-stable", "chrome"),
+    "chromium": ("chromium", "chromium-browser"),
+    "edge": ("microsoft-edge", "microsoft-edge-stable"),
+    "opera": ("opera",),
+    "vivaldi": ("vivaldi", "vivaldi-stable"),
+    "whale": ("naver-whale", "naver-whale-stable"),
+}
+
+_BROWSER_EXEC_WINDOWS: dict[str, tuple[str, ...]] = {
+    "firefox": ("firefox.exe", r"Mozilla Firefox\firefox.exe"),
+    "zen": ("zen.exe", r"Zen Browser\zen.exe"),
+    "librewolf": ("librewolf.exe", r"LibreWolf\librewolf.exe"),
+    "floorp": ("floorp.exe", r"Ablaze Floorp\floorp.exe"),
+    "waterfox": ("waterfox.exe", r"Waterfox\waterfox.exe"),
+    "brave": ("brave.exe", r"BraveSoftware\Brave-Browser\Application\brave.exe"),
+    "chrome": ("chrome.exe", r"Google\Chrome\Application\chrome.exe"),
+    "chromium": ("chrome.exe", r"Chromium\Application\chrome.exe"),
+    "edge": ("msedge.exe", r"Microsoft\Edge\Application\msedge.exe"),
+    "opera": ("opera.exe", r"Programs\Opera\opera.exe"),
+    "vivaldi": ("vivaldi.exe", r"Vivaldi\Application\vivaldi.exe"),
+    "whale": ("whale.exe", r"Naver\Naver Whale\Application\whale.exe"),
+}
+
+_BROWSER_APP_MACOS: dict[str, str] = {
+    "firefox": "Firefox",
+    "zen": "Zen",
+    "librewolf": "LibreWolf",
+    "floorp": "Floorp",
+    "waterfox": "Waterfox",
+    "mullvad": "Mullvad Browser",
+    "tor": "Tor Browser",
+    "brave": "Brave Browser",
+    "chrome": "Google Chrome",
+    "chromium": "Chromium",
+    "edge": "Microsoft Edge",
+    "opera": "Opera",
+    "vivaldi": "Vivaldi",
+    "whale": "Whale",
+}
+
+
+def _resolve_preferred_source(
+    preferred_source: str | None,
+    platform: str | None = None,
+) -> str | None:
+    if preferred_source == "__auto__":
+        return None
     try:
         from services import settings_store
 
-        saved = settings_store.get_preferred_browser()
-        return saved or None
+        if preferred_source == "__global__":
+            return settings_store.get_preferred_browser() or None
+        if preferred_source:
+            return preferred_source
+        return settings_store.get_effective_preferred_browser(platform) or None
     except Exception:
-        return None
+        return preferred_source if (preferred_source and preferred_source != "__global__") else None
+
+
+def _source_matches(source_label: str, pref_raw: str) -> bool:
+    pref_l = pref_raw.lower()
+    return source_label == pref_raw or source_label.lower().startswith(f"{pref_l} ")
+
+
+def _profile_matches(prof: BrowserProfile, pref_raw: str) -> bool:
+    pref_l = pref_raw.lower()
+    return _source_matches(prof.label, pref_raw) or prof.browser.lower() == pref_l
 
 
 def _order_candidates(
     items: list[tuple[str, dict]],
     preferred_source: str | None,
+    *,
+    platform: str | None = None,
 ) -> Iterator[tuple[str, dict]]:
-    pref_raw = _resolve_preferred_source(preferred_source)
+    pref_raw = _resolve_preferred_source(preferred_source, platform=platform)
     if not pref_raw:
         yield from items
         return
-    pref_l = pref_raw.lower()
-    preferred = [
-        it for it in items
-        if it[0] == pref_raw or it[0].lower().startswith(f"{pref_l} ")
-    ]
+    preferred = [it for it in items if _source_matches(it[0], pref_raw)]
+    is_available = (pref_raw in _MANUAL_SOURCES) or any(
+        _profile_matches(prof, pref_raw) for prof in detect()
+    )
+    if is_available:
+        yield from preferred
+        return
     pref_set = {id(it) for it in preferred}
     others = [it for it in items if id(it) not in pref_set]
     yield from preferred
     yield from others
+
+
+def _find_browser_executable(browser_key: str) -> str | None:
+    if sys.platform == "darwin":
+        app_name = _BROWSER_APP_MACOS.get(browser_key)
+        if not app_name:
+            return None
+        for base in (Path("/Applications"), Path("~/Applications").expanduser()):
+            if (base / f"{app_name}.app").exists():
+                return app_name
+        return None
+    if sys.platform in ("cygwin", "win32"):
+        specs = _BROWSER_EXEC_WINDOWS.get(browser_key, ())
+        roots = [
+            os.environ.get("ProgramFiles", ""),
+            os.environ.get("ProgramFiles(x86)", ""),
+            os.environ.get("LOCALAPPDATA", ""),
+        ]
+        for spec in specs:
+            if "\\" not in spec:
+                hit = shutil.which(spec)
+                if hit:
+                    return hit
+            else:
+                for root in roots:
+                    if not root:
+                        continue
+                    candidate = Path(root) / spec
+                    if candidate.is_file():
+                        return str(candidate)
+        return None
+    for name in _BROWSER_EXEC_LINUX.get(browser_key, (browser_key,)):
+        hit = shutil.which(name)
+        if hit:
+            return hit
+    return None
+
+
+def resolve_browser_launch_command(
+    url: str,
+    preferred_source: str | None = None,
+    *,
+    platform: str | None = None,
+) -> tuple[list[str] | None, str | None]:
+    """Construye el comando para abrir ``url`` en el navegador preferido.
+
+    Devuelve ``(argv, etiqueta)`` si debe lanzarse un navegador concreto y está
+    instalado; ``(None, etiqueta)`` si el navegador elegido no está disponible;
+    o ``(None, None)`` en modo automático o manual.
+    """
+    pref_raw = _resolve_preferred_source(preferred_source, platform=platform)
+    if not pref_raw or pref_raw in _MANUAL_SOURCES:
+        return (None, None)
+
+    matched = next((p for p in detect() if _profile_matches(p, pref_raw)), None)
+    if matched is None:
+        return (None, pref_raw)
+
+    exe = _find_browser_executable(matched.browser)
+    if not exe:
+        return (None, matched.label)
+
+    if sys.platform == "darwin":
+        cmd = ["open", "-a", exe, url]
+        if matched.engine == "chromium" and matched.profile:
+            cmd = ["open", "-a", exe, "--args", f"--profile-directory={matched.profile}", url]
+        return (cmd, matched.label)
+
+    cmd = [exe]
+    if matched.engine == "chromium" and matched.profile:
+        cmd.append(f"--profile-directory={matched.profile}")
+    cmd.append(url)
+    return (cmd, matched.label)
+
+
+def effective_preferred_source(
+    preferred_source: str | None = None,
+    platform: str | None = None,
+) -> str | None:
+    """Expone el origen efectivo resuelto para diagnósticos y mensajes de error."""
+    return _resolve_preferred_source(preferred_source, platform=platform)
 
 
 def youtube_cookies() -> dict[str, str]:
@@ -724,8 +882,10 @@ __all__ = [
     "clear_cache",
     "compute_sapisidhash",
     "detect",
+    "effective_preferred_source",
     "parse_cookie_header",
     "read_firefox_cookies",
+    "resolve_browser_launch_command",
     "select_apple_jwt",
     "spotify_candidates",
     "unsupported_browsers",
