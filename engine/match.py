@@ -53,9 +53,9 @@ if TYPE_CHECKING:
     from core.models import SearchResult
 
 from engine.normalizer import (
-    _ASIAN_RE, _LETHAL_WORDS, _normalize_title, _strip_noise,
+    _LETHAL_WORDS, _normalize_title, _strip_noise,
     clean_metadata,
-    FUZZY_IDEAL, FUZZY_LOG_BAND_LOW, FUZZY_REVISION_THRESHOLD,
+    FUZZY_IDEAL, FUZZY_REVISION_THRESHOLD,
     FUZZY_TITLE_IDEAL_WHEN_ARTIST_EXACT, ARTIST_EXACT_MIN, ARTIST_PERFECT,
 )
 
@@ -166,37 +166,29 @@ def _ideal_pass_hunter(comb: int, tit: int, art: int) -> bool:
 def _fuzzy_flags_elastic(comb: int, tit: int, art: int) -> tuple[bool, bool]:
     """
     Calcula flags de confianza para un match: needs_review y low_confidence.
-    
+
     Implementa la lógica de clasificación de matches en tres categorías:
-    1. Alta confianza: needs_review=False, low_confidence=False
-    2. Confianza media: needs_review=False, low_confidence=True (70-84%)
+    1. Alta confianza: needs_review=False, low_confidence=False (comb ≥85% y título ≥85% si artista ≥99%)
+    2. Confianza baja/media: needs_review=False, low_confidence=True (comb <85% sin requerir revisión, o salvado)
     3. Requiere revisión: needs_review=True (score <40% sin salvamento)
-    
+
     Args:
         comb: Score combinado 0-100.
         tit: Score de título 0-100.
         art: Score de artista 0-100.
-    
+
     Returns:
         Tupla (needs_review, low_confidence).
         - needs_review: True si requiere revisión manual
-        - low_confidence: True si está en banda de confianza media (70-84%)
-    
-    Note:
-        La lógica de salvamento previene que matches con artista exacto
-        sean marcados para revisión incluso si el score combinado es bajo.
-        Esto es intencional: un artista exacto es señal fuerte de que
-        estamos en la canción correcta, incluso si el título varía.
+        - low_confidence: True si comb < FUZZY_IDEAL o título < FUZZY_IDEAL con artista exacto
     """
     salvaged = (art >= ARTIST_EXACT_MIN and tit >= FUZZY_TITLE_IDEAL_WHEN_ARTIST_EXACT)
     needs_review = comb < FUZZY_REVISION_THRESHOLD and not salvaged
-    ideal = _ideal_pass_hunter(comb, tit, art)
     low_conf = (
-        ideal
-        and not needs_review
+        not needs_review
         and (
-            (FUZZY_LOG_BAND_LOW <= comb < FUZZY_IDEAL)
-            or (art >= ARTIST_EXACT_MIN and FUZZY_LOG_BAND_LOW <= tit < FUZZY_IDEAL)
+            comb < FUZZY_IDEAL
+            or (art >= ARTIST_EXACT_MIN and tit < FUZZY_IDEAL)
         )
     )
     return needs_review, low_conf
@@ -259,13 +251,16 @@ def score_spotify_match(
 
     fuzzy_pts = (title_ratio / 100.0) * 40 + (artist_ratio / 100.0) * 20
 
-    delta_ms = abs(local_duration_ms - sp_duration_ms)
-    if delta_ms <= 2000:
-        duration_pts = 30
-    elif delta_ms <= 5000:
-        duration_pts = 15
+    if local_duration_ms > 0 and sp_duration_ms > 0:
+        delta_ms = abs(local_duration_ms - sp_duration_ms)
+        if delta_ms <= 2000:
+            duration_pts = 30
+        elif delta_ms <= 5000:
+            duration_pts = 15
+        else:
+            duration_pts = -20
     else:
-        duration_pts = -20
+        duration_pts = 0
 
     metadata_pts = 10 if (local_is_explicit == sp_is_explicit) else 0
 
@@ -304,9 +299,8 @@ def validar_match(
     """
     Motor de validación multi-capa para resultados de ytmusicapi 1.12.1.
 
-    L0 — Bypass asiático  : scripts CJK/Hangul → match inmediato
+    L2 — Filtro letal     : cover / karaoke / tribute → REJECT (prioritario)
     L1 — Prueba de ácido  : substring + solapamiento de artista → MATCH
-    L2 — Filtro letal     : cover / karaoke / tribute → REJECT
     L3 — Fuzzy safety net : SequenceMatcher ≥ 0.65 → MATCH / REJECT
     """
     raw_artists: list = remote_result.get('artists') or []
@@ -323,23 +317,19 @@ def validar_match(
     l_title:  str = _normalize_title(unicodedata.normalize("NFKC", str(local_title)))
     l_artist: str = _normalize_title(unicodedata.normalize("NFKC", str(local_artist)))
 
-    # L0: Bypass asiático
-    if _ASIAN_RE.search(l_title) or _ASIAN_RE.search(r_title):
-        return True
+    # L2: Filtro letal (antes de L1 para no aceptar covers, karaokes ni tributos)
+    if any(word in r_title for word in _LETHAL_WORDS):
+        return False
 
-    # L1: Prueba de ácido
-    title_match: bool = (l_title in r_title) or (r_title in l_title)
-    artist_match: bool = (
+    # L1: Prueba de ácido (exige título y artista no vacíos)
+    title_match: bool = bool(l_title and r_title) and ((l_title in r_title) or (r_title in l_title))
+    artist_match: bool = bool(l_artist and r_artist_str) and (
         l_artist in r_artist_str
         or r_artist_str in l_artist
         or any(word in r_artist_str for word in l_artist.split() if len(word) > 2)
     )
     if title_match and artist_match:
         return True
-
-    # L2: Filtro letal
-    if any(word in r_title for word in _LETHAL_WORDS):
-        return False
 
     # L3: Fuzzy safety net
     l_full = unicodedata.normalize("NFKC", f"{l_title} {l_artist}")
