@@ -9,7 +9,7 @@ from typing import Optional
 
 import requests
 
-from core.config import YOUTUBE_HTTP_TIMEOUT as CFG_YOUTUBE_HTTP_TIMEOUT
+from core.config import DEFAULT_COOLDOWN, YOUTUBE_HTTP_TIMEOUT as CFG_YOUTUBE_HTTP_TIMEOUT
 from engine.match import (
     _fuzzy_scores_triple,
     _ideal_pass_hunter,
@@ -27,6 +27,7 @@ from services.platforms._common import (
 from core.models import PlaylistMeta, SearchResult, Track
 from services import browser_session
 from services.authentication import youtube_http_status
+from services.circuit_breaker import RateLimitError
 from engine.normalizer import _normalize_title, build_search_query, normalize_isrc
 from core.library_models import PlaylistSummary
 
@@ -60,6 +61,15 @@ def _is_ytm_unauthorized(exc: BaseException) -> bool:
     return status == 401 if status is not None else any(
         marker in str(exc).lower() for marker in ("unauthorized", "sign in", "login")
     )
+
+
+def _is_ytm_rate_limited(exc: BaseException) -> bool:
+    """Detecta HTTP 429/423 en errores de ytmusicapi o requests."""
+    status = youtube_http_status(exc)
+    if status in (429, 423):
+        return True
+    msg = str(exc).lower()
+    return any(marker in msg for marker in ("too many requests", "rate limit", "rate-limit"))
 
 
 def _ytm_sign_in_required(response: dict) -> bool:
@@ -202,13 +212,16 @@ class YouTubeClient:
         for i, t in enumerate(raw, 1):
             thumbs = t.get("thumbnails", [])
             vid = t.get("videoId") or ""
+            dur_str = t.get("duration") or "0:00"
+            dur_s = int(t.get("duration_seconds") or 0) or (duration_to_seconds(dur_str) or 0)
             tracks.append(Track(
                 id=vid, name=t["title"],
                 artist=", ".join(a["name"] for a in t.get("artists", [])),
                 album=(t.get("album") or {}).get("name", "Single"),
-                duration=t.get("duration", "0:00"),
+                duration=dur_str,
                 img_url=thumbs[-1]["url"] if thumbs else "",
                 platform="YouTube Music",
+                duration_ms=dur_s * 1000 if dur_s > 0 else 0,
                 isrc=normalize_isrc(t.get("isrc")),
                 source_url=f"https://music.youtube.com/watch?v={vid}" if vid else "",
                 genre="",  # §10 pendiente fuente externa para YTM
@@ -564,17 +577,24 @@ class YouTubeClient:
         best: Optional[dict] = None
         best_comb = -1
 
-        for query in strict_q:
+        async def _search_round(query: str):
             async with GLOBAL_API_SEMAPHORE:
                 try:
-                    had_results, pack = await asyncio.to_thread(
+                    return await asyncio.to_thread(
                         self._yt_sync_search_round, query, orig_name, orig_artist, local_duration_s
                     )
+                except RateLimitError:
+                    raise
                 except Exception as exc:  # pylint: disable=broad-exception-caught
                     self.auth_error = str(exc)
+                    if _is_ytm_rate_limited(exc):
+                        raise RateLimitError("YouTube Music", DEFAULT_COOLDOWN) from exc
                     if _is_ytm_unauthorized(exc):
                         raise RuntimeError("Sesion YouTube Music expirada (401).") from exc
                     raise
+
+        for query in strict_q:
+            had_results, pack = await _search_round(query)
             if had_results:
                 strict_empty_api = False
             if not pack:
@@ -588,16 +608,7 @@ class YouTubeClient:
 
         if strict_empty_api and raw_q:
             for query in raw_q:
-                async with GLOBAL_API_SEMAPHORE:
-                    try:
-                        had_results, pack = await asyncio.to_thread(
-                            self._yt_sync_search_round, query, orig_name, orig_artist, local_duration_s
-                        )
-                    except Exception as exc:  # pylint: disable=broad-exception-caught
-                        self.auth_error = str(exc)
-                        if _is_ytm_unauthorized(exc):
-                            raise RuntimeError("Sesion YouTube Music expirada (401).") from exc
-                        raise
+                had_results, pack = await _search_round(query)
                 if not pack:
                     continue
                 ideal = _process_pack(pack)
@@ -669,9 +680,11 @@ class YouTubeClient:
             items = self._ytm.get_playlist(pl_id, limit=len(ids) + 10)
             confirmed_ids = {t.get("videoId") for t in items.get("tracks", []) if t.get("videoId")}
             rejected      = [vid for vid in ids if vid not in confirmed_ids]
-            return True, pl_id, len(confirmed_ids), rejected
+            confirmed_cnt = sum(1 for vid in ids if vid in confirmed_ids)
+            return True, pl_id, confirmed_cnt, rejected
         except Exception:  # pylint: disable=broad-exception-caught
-            return True, pl_id, len(ids), []
+            # -1 indica que la lectura de verificación falló y el conteo real es desconocido.
+            return True, pl_id, -1, []
 
     def _yt_delete(self, pid: str) -> tuple[bool, str]:
         if not self._ytm:
