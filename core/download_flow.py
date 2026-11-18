@@ -468,8 +468,8 @@ class DownloadRunner:
         if not self._state.download_paused:
             return None
         pending = list(self._state._download_pending_tracks)
-        self._state.download_paused = False
         if not pending:
+            self._state.download_paused = False
             self._state._log("[WARN] No hay pistas pendientes para reanudar")
             self._state.notify()
             return None
@@ -479,7 +479,9 @@ class DownloadRunner:
         async def _resume_after_pause() -> None:
             # El task pausado puede seguir vivo unos instantes mientras las
             # tareas en espera ven el evento. ``download_tracks`` devolvería
-            # ese task sin arrancar nada, así que primero se deja terminar.
+            # ese task sin arrancar nada, así que primero se deja terminar y
+            # recién ahí se limpia ``download_paused`` para evitar encolar en
+            # la sesión saliente.
             previous = self._state._download_task
             if previous is not None and not previous.done():
                 try:
@@ -487,6 +489,7 @@ class DownloadRunner:
                 except Exception:
                     pass
             self._state._download_task = None
+            self._state.download_paused = False
             # Un grupo por carpeta y playlist: el primero abre la sesión y el
             # resto entra en caliente con su propio contexto.
             tasks = [
@@ -634,7 +637,12 @@ class DownloadRunner:
                         if track not in self._state._download_pending_tracks:
                             self._state._download_pending_tracks.append(track)
                         return
-                    if not job_pinned_video_id and not (track.source_path and os.path.isfile(track.source_path)):
+                    want_ext = job_fmt.lower().lstrip(".")
+                    if not job_pinned_video_id and not (
+                        track.source_path
+                        and os.path.isfile(track.source_path)
+                        and os.path.splitext(track.source_path)[1].lower().lstrip(".") == want_ext
+                    ):
                         try:
                             from services import settings_store
                             from services.local_index import match_tracks_against_library
@@ -646,12 +654,20 @@ class DownloadRunner:
                                 local_folders=local_folders_arg or settings_store.get_local_folders(),
                                 playlist_name=job_playlist_name,
                                 platform=job_platform,
+                                preferred_ext=want_ext,
                             )
                         except Exception:
                             pass
-                    if not job_pinned_video_id and track.source_path and os.path.isfile(track.source_path):
+                    if (
+                        not job_pinned_video_id
+                        and track.source_path
+                        and os.path.isfile(track.source_path)
+                        and os.path.splitext(track.source_path)[1].lower().lstrip(".") == want_ext
+                    ):
                         async with lock:
                             item["status"], item["percent"] = "skipped", 100.0
+                            for alias in session["alias_tracks"].get(id(track), ()):
+                                alias.source_path = track.source_path
                             self._state.download_skipped.append(
                                 {
                                     "id": track.id,

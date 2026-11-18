@@ -81,6 +81,7 @@ def match_tracks_against_library(
     playlist_name: str = "",
     platform: str = "",
     include_shared_index: bool = True,
+    preferred_ext: str = "",
 ) -> int:
     """Cruza pistas contra su carpeta, otras playlists descargadas y carpetas locales.
 
@@ -205,7 +206,12 @@ def match_tracks_against_library(
     if include_shared_index and audio_roots:
         resolved_roots = [os.path.abspath(str(r)) for r in audio_roots]
         idx = shared_index()
-        for abs_path, record in getattr(idx, "_files", {}).items():
+        files_snapshot = (
+            idx.snapshot_files()
+            if hasattr(idx, "snapshot_files")
+            else dict(getattr(idx, "_files", {}))
+        )
+        for abs_path, record in files_snapshot.items():
             if not any(
                 abs_path == r or abs_path.startswith(r + os.sep)
                 for r in resolved_roots
@@ -224,10 +230,16 @@ def match_tracks_against_library(
 
     from engine.parsers import _LOCAL_AUDIO_EXTENSIONS
 
+    want_ext = f".{preferred_ext.lower().lstrip('.')}" if preferred_ext else ""
+    allowed_exts = (want_ext,) if want_ext else _LOCAL_AUDIO_EXTENSIONS
+
+    def _ext_ok(path: str) -> bool:
+        return not want_ext or path.lower().endswith(want_ext)
+
     matched = 0
     for tr in track_list:
         cur = str(getattr(tr, "source_path", "") or "")
-        if cur and os.path.isfile(cur):
+        if cur and os.path.isfile(cur) and _ext_ok(cur):
             matched += 1
             continue
 
@@ -252,13 +264,13 @@ def match_tracks_against_library(
 
         found_path = ""
         for cand_path, cand_dur in candidates:
-            if _durations_compatible(tr_dur, cand_dur) and os.path.isfile(cand_path):
+            if _ext_ok(cand_path) and _durations_compatible(tr_dur, cand_dur) and os.path.isfile(cand_path):
                 found_path = cand_path
                 break
 
         if not found_path:
             stem = _target_stem(tr).lower()
-            for ext in _LOCAL_AUDIO_EXTENSIONS:
+            for ext in allowed_exts:
                 cand_path = by_filename.get(f"{stem}{ext}".lower(), "")
                 if cand_path and os.path.isfile(cand_path):
                     found_path = cand_path

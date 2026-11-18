@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import json
 import os
+import threading
 from pathlib import Path
 from typing import Any, Optional
 
@@ -41,11 +42,17 @@ class LocalIndex:
 
     def __init__(self, path: Path | str) -> None:
         self.path = Path(path)
+        self._lock = threading.RLock()
         self._files: dict[str, dict[str, Any]] = {}
         self._folder_covers: dict[str, dict[str, Any]] = {}
         self._cover_cache: dict[str, str] = {}
         self._dirty = False
         self.load()
+
+    def snapshot_files(self) -> dict[str, dict[str, Any]]:
+        """Devuelve una copia segura de las entradas indexadas."""
+        with self._lock:
+            return dict(self._files)
 
     # ── persistencia ──────────────────────────────────────────────────
 
@@ -57,28 +64,30 @@ class LocalIndex:
             return
         if not isinstance(raw, dict) or raw.get("version") != INDEX_VERSION:
             return
-        files = raw.get("files")
-        if isinstance(files, dict):
-            self._files = {
-                str(k): v for k, v in files.items()
-                if isinstance(v, dict) and isinstance(v.get("meta"), dict)
-            }
-        covers = raw.get("folder_covers")
-        if isinstance(covers, dict):
-            self._folder_covers = {
-                str(k): v for k, v in covers.items()
-                if isinstance(v, dict) and isinstance(v.get("uri"), str)
-            }
+        with self._lock:
+            files = raw.get("files")
+            if isinstance(files, dict):
+                self._files = {
+                    str(k): v for k, v in files.items()
+                    if isinstance(v, dict) and isinstance(v.get("meta"), dict)
+                }
+            covers = raw.get("folder_covers")
+            if isinstance(covers, dict):
+                self._folder_covers = {
+                    str(k): v for k, v in covers.items()
+                    if isinstance(v, dict) and isinstance(v.get("uri"), str)
+                }
 
     def save(self, *, force: bool = False) -> bool:
         """Escritura atómica. ``force`` guarda aunque no haya cambios."""
-        if not self._dirty and not force:
-            return False
-        payload = {
-            "version": INDEX_VERSION,
-            "files": self._files,
-            "folder_covers": self._folder_covers,
-        }
+        with self._lock:
+            if not self._dirty and not force:
+                return False
+            payload = {
+                "version": INDEX_VERSION,
+                "files": dict(self._files),
+                "folder_covers": dict(self._folder_covers),
+            }
         tmp = self.path.with_suffix(".json.tmp")
         try:
             self.path.parent.mkdir(parents=True, exist_ok=True)
@@ -93,7 +102,8 @@ class LocalIndex:
             except OSError:
                 pass
             return False
-        self._dirty = False
+        with self._lock:
+            self._dirty = False
         return True
 
     # ── metadatos ─────────────────────────────────────────────────────
@@ -110,7 +120,8 @@ class LocalIndex:
         """Metadatos cacheados, o ``None`` si el archivo cambió o falta."""
         if not audio_path:
             return None
-        entry = self._files.get(os.path.abspath(audio_path))
+        with self._lock:
+            entry = self._files.get(os.path.abspath(audio_path))
         if entry is None:
             return None
         current = self._stat(audio_path)
@@ -127,12 +138,13 @@ class LocalIndex:
         current = self._stat(audio_path)
         if current is None:
             return
-        self._files[os.path.abspath(audio_path)] = {
-            "mtime": current[0],
-            "size": current[1],
-            "meta": dict(metadata),
-        }
-        self._dirty = True
+        with self._lock:
+            self._files[os.path.abspath(audio_path)] = {
+                "mtime": current[0],
+                "size": current[1],
+                "meta": dict(metadata),
+            }
+            self._dirty = True
 
     # ── portadas ──────────────────────────────────────────────────────
 
@@ -186,20 +198,21 @@ class LocalIndex:
         """
         root = os.path.abspath(folder)
         prefix = root.rstrip(os.sep) + os.sep
-        dead = [
-            p for p in self._files
-            if (p == root or p.startswith(prefix)) and p not in live_paths
-        ]
-        for path in dead:
-            self._files.pop(path, None)
-            self._cover_cache.pop(path, None)
-            self._dirty = True
-        if dead:
-            self._dirty = True
+        with self._lock:
+            dead = [
+                p for p in self._files
+                if (p == root or p.startswith(prefix)) and p not in live_paths
+            ]
+            for path in dead:
+                self._files.pop(path, None)
+                self._cover_cache.pop(path, None)
+            if dead:
+                self._dirty = True
 
     def drop(self, audio_path: str) -> None:
         """Olvida un archivo concreto (por ejemplo, borrado o reemplazado)."""
         key = os.path.abspath(audio_path)
-        if self._files.pop(key, None) is not None:
-            self._dirty = True
-        self._cover_cache.pop(key, None)
+        with self._lock:
+            if self._files.pop(key, None) is not None:
+                self._dirty = True
+            self._cover_cache.pop(key, None)
