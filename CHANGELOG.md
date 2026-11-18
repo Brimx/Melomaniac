@@ -20,6 +20,12 @@
 
 - **Detección de Spotify y feedback en vivo:** `spotify_candidates` y `SpotifyClient` aceptan sesiones abiertas con `sp_dc` sin exigir `sp_key`; el paso «Conectar plataformas» de `OnboardingView` muestra en vivo el estado de sesión detectado; `ConfigWizard` indica «Verificando sesión del navegador…» mientras corre el preflight inicial y se refresca al terminar; y `_restore_key_handler` restaura los atajos globales comparando con `==` sobre la referencia instalada.
 
+### Ajustes, letras en vivo, caché y estabilidad UI
+
+- **Concurrencia de `settings_store` y navegador preferido:** todos los setters read-modify-write de `settings_store` (`set_download_dir`, `add_local_folder`, `remove_local_folder`, `set_volume`, `set_download_format`, `set_preferred_browser`, `_set_choice`, `reset_settings`) quedan protegidos de punta a punta con `_LOCK`; `browser_session` consulta `get_preferred_browser()` al ordenar candidatos y `ConfigView` propaga el cambio en vivo sobre los clientes.
+- **Letras en vivo y cachés:** `LyricsPane` se suscribe a `settings_store` (limpiando caché y recargando la pista activa al cambiar proveedor o apagar letras) y se desuscribe en `dispose()`; `MusicApiService` retiene referencias de las tareas de refresco del caché de playlists en `_playlist_refresh_tasks` y marca `PlaylistMeta.from_stale_cache`; y `cover_warmer` retiene sus tareas y solo marca en `_done` las portadas descargadas con éxito.
+- **Descargas y estabilidad UI:** `download_flow` escribe `item["percent"]` en el loop `asyncio` vía `call_soon_threadsafe`, el clic en la tarjeta `DESTINO` sin playlist cargada muestra aviso al usuario, y `spawn_task` retiene referencias de tareas asíncronas lanzadas desde `ui/`.
+
 ## 4.11.0 — 2026-11-17 · Sala de escucha, Reproduciendo, Letras, Streaming y Caché
 
 > Cierra la migración visual **Sala de escucha**, incorpora **Inicio**, **Biblioteca** renovada, **Configuración** en 8 secciones, **Letras sincronizadas**, **escena Reproduciendo**, **streaming sin descargar**, **crossfade**, **cachés persistentes** de playlists/portadas y las correcciones de estabilidad y ciclo de vida acumuladas desde `4.10.0`.
