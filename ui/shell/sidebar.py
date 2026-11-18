@@ -133,6 +133,10 @@ def build_sidebar(ui) -> None:
         _apply_source_change(e.control.value)
 
     def _on_dst_select(e) -> None:
+        if getattr(s, "transfer_state", TransferState.IDLE) == TransferState.RUNNING:
+            e.control.value = s.destination
+            safe_update(e.control)
+            return
         val = e.control.value
         s.set_destination(val)
         if val == EXPORT_DEST_LABEL:

@@ -119,6 +119,8 @@ def _step_player(view: "OnboardingView") -> list[ft.Control]:
     return [
         _feature(PIcons.DISC, "Escena Reproduciendo",
                  "Vista inmersiva a pantalla completa con disco giratorio, cola lateral y fondo ambiente."),
+        _feature(PIcons.WAVEFORM, "Streaming, fundido y reanudar",
+                 "Escucha pistas remotas sin descargar, suaviza cambios con crossfade y retoma tu última pista al abrir."),
         _feature(PIcons.MUSIC_NOTES, "Letras sincronizadas",
                  "Letras en vivo durante la reproducción, con guardado .lrc o incrustado en tus descargas."),
         _feature(PIcons.KEY, "Atajos de teclado",
@@ -319,7 +321,7 @@ ONBOARDING_STEPS: tuple[Step, ...] = (
     Step("library", PIcons.BOOKS, "Biblioteca y Descargas",
          "Lo tuyo, sincronizado y en disco.", _step_library),
     Step("player", PIcons.MUSIC_NOTE, "Reproducción, Letras y Atajos",
-         "Escena Reproduciendo, letras en vivo y control con teclado.", _step_player),
+         "Escena Reproduciendo, streaming sin descarga, fundido, letras y atajos.", _step_player),
     Step("prefs", PIcons.SLIDERS_HORIZONTAL, "Preferencias",
          "Carpeta de descargas, formato de audio y portadas online.", _step_prefs),
     Step("system", PIcons.DESKTOP, "Sistema y actualizaciones",

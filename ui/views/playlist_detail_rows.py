@@ -8,6 +8,7 @@ from typing import Optional
 
 import flet as ft
 
+from core.config import LOCAL_LIBRARY_LABEL
 from core.models import Track
 from engine.downloader import open_in_file_manager
 from services import settings_store
@@ -80,8 +81,13 @@ def build_track_context_actions(
             ),
         ])
     else:
+        is_local_or_manifest = bool(getattr(view, "_is_local", False)) or bool(getattr(view, "_is_manifest", False))
+        track_plat = str(getattr(track, "platform", "") or "").strip()
+        is_local_track = track_plat in ("", "local", "Archivo Local", "Pegar Texto", LOCAL_LIBRARY_LABEL)
         if (
-            view.player_bar is not None
+            not is_local_or_manifest
+            and not is_local_track
+            and view.player_bar is not None
             and hasattr(view, "_stream_single_track")
             and bool(getattr(settings_store, "get_stream_without_download", lambda: True)())
         ):

@@ -53,6 +53,7 @@ Fecha: 2026
 from __future__ import annotations
 
 import asyncio
+import os
 import time
 from typing import Optional
 
@@ -60,7 +61,8 @@ import flet as ft
 
 from core.models import Track, LoadState, TransferState
 from core.state import AppState
-from core.config import EXPORT_DEST_LABEL
+from core.config import EXPORT_DEST_LABEL, LOCAL_LIBRARY_LABEL
+from services import settings_store
 from ui.components.song_row import (
     SongRow,
     build_preview_row,
@@ -532,8 +534,8 @@ class PlaylistManagerUI:
             if hasattr(self.player_bar, "restore_last_playback"):
                 try:
                     self.player_bar.restore_last_playback()
-                except Exception:
-                    pass
+                except Exception as exc:  # noqa: BLE001
+                    self.state.log(f"[WARN] No se pudo restaurar la reproducción: {exc}")
         self._mount_home_view()
         self._inject_config_dependencies()
         self._setup_keyboard_and_regions()
@@ -1038,13 +1040,18 @@ class PlaylistManagerUI:
             self._playlist_section.update()
             self._playlist_divider.update()
         _hint_map = {
-            "Archivo Local": "Pulsa \u00abCargar\u00bb para abrir el explorador de archivos.",
-            "Pegar Texto": "Pulsa \u00abCargar\u00bb para pegar tu lista de canciones.",
+            "Archivo Local": "Elige «Archivo Local» en el panel izquierdo para abrir el explorador.",
+            "Pegar Texto": "Elige «Pegar Texto» en el panel izquierdo para pegar tu lista.",
         }
-        new_hint = _hint_map.get(s.source, "Introduce el ID o la URL en el panel izquierdo y pulsa \u00abCargar\u00bb.")
+        default_hint = (
+            "Introduce el ID o la URL en el panel izquierdo y pulsa «Cargar»."
+            if getattr(self, "_url_mode", False)
+            else "Elige una playlist en el panel izquierdo o pulsa «Avanzado» para cargar por URL o ID."
+        )
+        new_hint = _hint_map.get(s.source, default_hint)
         if self._empty_hint_text.value != new_hint:
             self._empty_hint_text.value = new_hint
-            self._empty_hint_text.update()
+            safe_update(self._empty_hint_text)
         if getattr(self._dst_dd, "_last_border_key", None) != (BORDER_LIGHT, ACCENT):
             self._dst_dd.border = input_border(BORDER_LIGHT, ACCENT)
             self._dst_dd._last_border_key = (BORDER_LIGHT, ACCENT)
@@ -1185,7 +1192,7 @@ class PlaylistManagerUI:
                     self.page,
                     f"Transferencia completada: {s.count_confirmed} exitosas, {fail_n} errores",
                     action="Ver Detalles" if fail_n > 0 else None,
-                    on_action=(lambda _: self._telemetry.show_postmortem()) if fail_n > 0 else None,
+                    on_action=(lambda _: self._layout.open_postmortem()) if fail_n > 0 else None,
                 )
         elif s.transfer_state == TransferState.ERROR:
             self._content_prog_label.value = f"{porcentaje}%  \u00b7  error \u00b7 {fallidas + rechazadas} incidencias"
@@ -1233,7 +1240,7 @@ class PlaylistManagerUI:
         report = getattr(s, "last_report", None)
         if report is not None:
             self._telemetry.update_postmortem(
-                [issue.track for issue in report.missing],
+                report.missing,
                 destination=report.destination,
                 confirmed=report.confirmed,
                 detected=report.detected,
@@ -1258,6 +1265,9 @@ class PlaylistManagerUI:
         self._load_btn.disabled = net_blocked or is_loading
         self._transfer_btn.disabled = net_blocked or is_transferring or not is_ready
         self._clear_session_btn.disabled = is_loading or is_transferring
+        self._dst_dd.disabled = is_transferring
+        if self._dst_dd.value != s.destination:
+            self._dst_dd.value = s.destination
         self._id_clear_btn.visible = bool(self._id_field.value)
         if is_transferring:
             self._transfer_btn.tooltip = "Transferencia en curso"
@@ -1303,12 +1313,21 @@ class PlaylistManagerUI:
                 pass
             lv.controls.clear()
             show_album = not getattr(getattr(self, "player_queue", None), "is_open", False)
+            stream_enabled = bool(
+                getattr(settings_store, "get_stream_without_download", lambda: True)()
+            )
+            has_pb = getattr(self, "player_bar", None) is not None
             for i, track in enumerate(tracks, 1):
+                has_local = bool(track.source_path and os.path.isfile(track.source_path))
+                plat = str(getattr(track, "platform", "") or "").strip()
+                is_remote = plat not in ("", "local", "Archivo Local", "Pegar Texto", LOCAL_LIBRARY_LABEL)
+                can_play = has_pb and (has_local or (is_remote and stream_enabled))
                 lv.controls.append(
                     SongRow(
                         track, i, self.state.toggle_track,
                         on_move=self.state.move_track_to_position,
                         on_download=self._on_row_download,
+                        on_play=self._on_row_play if can_play else None,
                         download_busy=download_busy,
                         download_done=(track.id in done_by_id),
                         show_album=show_album,
@@ -1350,6 +1369,34 @@ class PlaylistManagerUI:
 
     # ── EVENT HANDLERS ─────────────────────────────────────────────────
 
+    def _on_row_play(self, track: Track) -> None:
+        """Reproduce una fila de Gestión desde disco o por streaming sin descargar."""
+        pb = getattr(self, "player_bar", None)
+        if pb is None:
+            return
+        if track.source_path and os.path.isfile(track.source_path):
+            pb.play_file(track.source_path, track)
+            return
+        plat = str(getattr(track, "platform", "") or "").strip()
+        if plat in ("", "local", "Archivo Local", "Pegar Texto", LOCAL_LIBRARY_LABEL):
+            notify(self.page, "Archivo local no disponible en disco", kind="error")
+            return
+        if not hasattr(pb, "play_remote_track"):
+            return
+
+        async def _run() -> None:
+            if bool(getattr(settings_store, "get_stream_without_download", lambda: True)()):
+                notify(self.page, f"Resolviendo audio: {track.name}…")
+            await pb.play_remote_track(track)
+
+        try:
+            self.page.run_task(_run)
+        except Exception:
+            try:
+                asyncio.create_task(_run())
+            except Exception as exc:  # noqa: BLE001
+                notify(self.page, f"No se pudo iniciar la reproducción: {exc}", kind="error")
+
     # ── selector de playlists de la biblioteca ─────────────────────────
 
     def _on_toggle_url_field(self, _e=None) -> None:
@@ -1380,6 +1427,9 @@ class PlaylistManagerUI:
                 ctrl.update()
             except Exception:
                 pass
+        if getattr(self, "state", None) is not None and hasattr(self, "_empty_hint_text"):
+            is_local_src = self.state.source in AppState.LOCAL_SOURCES
+            self._sync_platform_ui(self.state, is_local_src)
 
     def _on_playlist_pick(self, e=None) -> None:
         """Carga la playlist elegida en el selector."""

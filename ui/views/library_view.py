@@ -65,6 +65,13 @@ _FILTER_DEFS = (
     ("today", "Sincronizada hoy"),
 )
 _SORT_LABELS = ("Recientes", "A a Z", "Z a A")
+_SORT_KEYS = ("recent", "az", "za")
+
+
+def _sort_mode_from_settings() -> int:
+    getter = getattr(settings_store, "get_library_sort_order", None)
+    key = getter() if callable(getter) else "recent"
+    return _SORT_KEYS.index(key) if key in _SORT_KEYS else 0
 
 
 class LibraryView(ft.Container):
@@ -86,7 +93,7 @@ class LibraryView(ft.Container):
         self._detail = None  # PlaylistDetailView
         self._search_query: str = ""
         self._active_filters: set[str] = set()
-        self._sort_mode: int = 0
+        self._sort_mode: int = _sort_mode_from_settings()
         self._local_tab: str = "carpetas"
         self._recent_opened_ids: list[tuple[str, str]] = []
         self._show_obi: bool = self._read_show_obi()
@@ -293,6 +300,8 @@ class LibraryView(ft.Container):
         self._platform_btns = {plat: ctrl for plat, ctrl in zip(SOURCES, self._platform_row.controls)}
 
     def _on_platform_select(self, plat: str) -> None:
+        if plat != self._platform:
+            self._reset_filters_state()
         self._platform = plat
         self._rebuild_platform_selector()
         if plat != LOCAL_LIBRARY_LABEL:
@@ -360,11 +369,14 @@ class LibraryView(ft.Container):
 
     def _cycle_sort_mode(self) -> None:
         self._sort_mode = (self._sort_mode + 1) % len(_SORT_LABELS)
+        setter = getattr(settings_store, "set_library_sort_order", None)
+        if callable(setter):
+            setter(_SORT_KEYS[self._sort_mode])
         from ui.components.widgets import set_button_text
         set_button_text(self._sort_btn, _SORT_LABELS[self._sort_mode])
         self._refresh()
 
-    def _clear_filters(self) -> None:
+    def _reset_filters_state(self) -> None:
         self._search_query = ""
         self._active_filters.clear()
         if hasattr(self, "_search_field"):
@@ -374,6 +386,9 @@ class LibraryView(ft.Container):
             chip.border = ft.Border.all(0.8, BORDER_CONTROL)
             if isinstance(chip.content, ft.Text):
                 chip.content.color = TEXT_MUTED
+
+    def _clear_filters(self) -> None:
+        self._reset_filters_state()
         self._refresh()
 
     def _read_show_obi(self) -> bool:
@@ -825,6 +840,11 @@ class LibraryView(ft.Container):
         # called via library_state notify
         if self._detail is not None:
             return
+        stored_sort = _sort_mode_from_settings()
+        if stored_sort != self._sort_mode:
+            self._sort_mode = stored_sort
+            from ui.components.widgets import set_button_text
+            set_button_text(self._sort_btn, _SORT_LABELS[self._sort_mode])
         # rebuild grid for selected platform
         plat = self._platform or (PLATFORM_ORDER[0] if PLATFORM_ORDER else None)
         if not plat:
@@ -939,7 +959,7 @@ class LibraryView(ft.Container):
         for k, btn in self._local_tab_btns.items():
             active = k == self._local_tab
             btn.bgcolor = ACCENT_HALO if active else BG_SURFACE
-            btn.border = ft.Border.all(0.8, ACCENT if active else BORDER_MUTED)
+            btn.border = ft.Border.all(0.8, ACCENT if active else BORDER_CONTROL)
 
         status_parts: list[str] = []
         if imported:

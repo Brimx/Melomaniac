@@ -239,9 +239,14 @@ class CatalogController:
                 or getattr(ui.state, "dual_mode", "lista") in ("doble", "preview")
             )
             ui._mode_bar.visible = bool(has_transform and not target)
+        layout = getattr(ui, "_layout", None)
+        if layout is not None and hasattr(layout, "_apply_contextual_actions_state"):
+            from ui.shell.main_layout import compute_contextual_actions_state
+
+            layout._apply_contextual_actions_state(compute_contextual_actions_state(ui.state))
         try:
-            content = getattr(ui, "_content", None)
-            if not safe_update(content):
+            panel = getattr(ui, "_panel_gestion", None) or getattr(ui, "_content", None)
+            if not safe_update(panel):
                 ui.page.update()
         except Exception:
             pass

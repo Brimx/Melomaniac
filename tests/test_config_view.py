@@ -205,7 +205,7 @@ class ConfigViewTests(unittest.TestCase):
         acc_switches = [c for c in _walk_controls(view._body_col) if isinstance(c, (ft.Switch, AppSwitch))]
         self.assertEqual(sum(1 for sw in acc_switches if not sw.disabled), 1)
 
-    def test_native_controls_persist_volume_lyrics_provider_queue_mode_and_theme(self) -> None:
+    def test_native_controls_persist_volume_lyrics_provider_sort_and_theme(self) -> None:
         on_change = MagicMock()
         view = ConfigView(_mock_page(1280), on_change=on_change)
 
@@ -220,13 +220,13 @@ class ConfigViewTests(unittest.TestCase):
         view._on_lyrics_provider_change(SimpleNamespace(control=SimpleNamespace(selected=["off"])))
         self.assertEqual(settings_store.get_lyrics_provider(), "off")
 
-        view.select_section("accesibilidad", update=False)
-        self.assertIsNone(view._queue_preview_blocks)
+        view._on_library_sort_change(SimpleNamespace(control=SimpleNamespace(value="az")))
+        self.assertEqual(settings_store.get_library_sort_order(), "az")
 
         view.select_section("apariencia", update=False)
         view._on_theme_change(SimpleNamespace(control=SimpleNamespace(value="washi")))
         self.assertEqual(settings_store.get_theme(), "washi")
-        self.assertGreaterEqual(on_change.call_count, 3)
+        self.assertGreaterEqual(on_change.call_count, 4)
 
 
 class ConfigViewAsyncTests(unittest.IsolatedAsyncioTestCase):

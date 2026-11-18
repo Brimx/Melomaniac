@@ -72,6 +72,28 @@ def build_oled_theme() -> ft.Theme:
     )
 
 
+async def run_startup_update_check(page: ft.Page) -> bool:
+    """Comprueba actualizaciones al arrancar si la preferencia está activa."""
+    if not bool(getattr(settings_store, "get_check_updates_on_start", lambda: False)()):
+        return False
+    try:
+        from services.update_checker import check_for_updates
+        from ui.components.widgets import notify, open_external
+
+        info = await check_for_updates(timeout_sec=4.0)
+        if info.checked and info.has_update:
+            notify(
+                page,
+                f"Nueva versión v{info.latest_version} disponible",
+                action="Ver",
+                on_action=lambda _e, url=info.release_url: open_external(page, url),
+            )
+            return True
+    except Exception:
+        pass
+    return False
+
+
 async def main(page: ft.Page) -> None:
     """
     Función principal asíncrona de la aplicación j.
@@ -235,6 +257,7 @@ async def main(page: ft.Page) -> None:
             if library_state is not None and library_state.selected_platform:
                 await library_state.sync_source(library_state.selected_platform)
             state.notify()
+            asyncio.create_task(run_startup_update_check(page))
             auto_close = float(os.environ.get("MELOMANIAC_AUTO_CLOSE_S") or 0)
             if auto_close > 0:
                 await asyncio.sleep(auto_close)

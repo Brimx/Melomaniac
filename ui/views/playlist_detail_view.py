@@ -1341,8 +1341,8 @@ class PlaylistDetailView(ft.Container):
         except Exception:
             try:
                 asyncio.create_task(_run())
-            except Exception:
-                pass
+            except Exception as exc:  # noqa: BLE001
+                notify(self._page_ref, f"No se pudo iniciar la reproducción remota: {exc}", kind="error")
 
     def _play_single_track(self, track: Track, index: int) -> None:
         """Reproduce una sola pista local en el reproductor encolando la lista."""

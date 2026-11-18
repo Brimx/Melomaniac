@@ -415,9 +415,7 @@ def build_reproduccion_section(view: Any) -> list[ft.Control]:
                     str(settings_store.get_fade_seconds()),
                     "Fundido",
                     width=160,
-                    on_select=lambda e: settings_store.set_fade_seconds(
-                        int(getattr(e.control, "value", 0) or 0)
-                    ),
+                    on_select=view._on_fade_change,
                 ),
             ),
             cfg_row(
@@ -641,9 +639,14 @@ def build_biblioteca_section(view: Any) -> list[ft.Control]:
         [
             cfg_row(
                 "Orden de estantes",
-                "",
-                _disabled_dropdown("Orden", "recent", "Recientes", width=160),
-                reason="Próximamente · orden según sincronización.",
+                "Orden por defecto al mostrar playlists y carpetas en Biblioteca.",
+                organize_dropdown(
+                    [("recent", "Recientes"), ("az", "A a Z"), ("za", "Z a A")],
+                    settings_store.get_library_sort_order(),
+                    "Orden",
+                    width=160,
+                    on_select=view._on_library_sort_change,
+                ),
             ),
             cfg_row(
                 "Mostrar obi con la plataforma",
@@ -659,50 +662,8 @@ def build_biblioteca_section(view: Any) -> list[ft.Control]:
 # ── Sección 05: Accesibilidad ──────────────────────────────────────────
 
 
-def _build_queue_preview(mode: str, *, reduce_motion: bool) -> tuple[ft.Container, ft.Container, ft.Row]:
-    """Preview estática del panel de cola: Superpuesto vs Empuje."""
-    anim = None if reduce_motion else ft.Animation(MOTION_PANEL_MS, ft.AnimationCurve.EASE_IN_OUT)
-    is_overlay = mode == "overlay"
-    panel = ft.Container(
-        width=68,
-        height=64,
-        right=6,
-        top=6,
-        bgcolor=BG_PANEL,
-        border=ft.Border.all(1.0, ACCENT),
-        border_radius=RADIUS_SM,
-        alignment=ft.Alignment.CENTER,
-        offset=(0.0, 0.0) if is_overlay else (0.12, 0.0),
-        animate_offset=anim,
-        content=app_text("Cola", size=FS_META, color=ACCENT, font_family=mono_family("light")),
-    )
-    blocks = ft.Row(
-        controls=[
-            ft.Container(
-                expand=True, height=48, bgcolor=BG_LIST,
-                border=ft.Border.all(0.6, BORDER_MUTED), border_radius=RADIUS_SM,
-            )
-            for _ in range(3)
-        ],
-        spacing=SPACE_2,
-        right=10 if is_overlay else 80,
-        left=10,
-        top=14,
-        animate_position=anim,
-    )
-    stage = ft.Container(
-        height=78,
-        bgcolor=BG_DEEP,
-        border=ft.Border.all(0.8, BORDER_MUTED),
-        border_radius=RADIUS_SHARP,
-        clip_behavior=ft.ClipBehavior.HARD_EDGE,
-        content=ft.Stack(controls=[blocks, panel], expand=True),
-    )
-    return stage, panel, blocks
-
-
 def build_accesibilidad_section(view: Any) -> list[ft.Control]:
-    """Movimiento (único lugar), foco/teclado y preview de modo de cola."""
+    """Movimiento (único lugar) y foco/teclado."""
     reduce_val = settings_store.get_reduce_motion()
     reduce_sw = app_switch(
         value=reduce_val,
@@ -742,9 +703,6 @@ def build_accesibilidad_section(view: Any) -> list[ft.Control]:
         ],
     )
 
-    view._queue_preview_stage = None
-    view._queue_preview_panel = None
-    view._queue_preview_blocks = None
     return [movimiento_card, foco_card]
 
 
@@ -1031,9 +989,13 @@ def build_acerca_section(view: Any, *, wide: bool = False) -> list[ft.Control]:
             view._update_result_col,
             cfg_row(
                 "Aviso al abrir",
-                "Solo avisa; nunca instala por su cuenta.",
-                _disabled_switch(False),
-                reason="Comprobación manual desde este panel.",
+                "Comprueba al iniciar si hay versiones nuevas en GitHub (solo avisa; nunca instala por su cuenta).",
+                app_switch(
+                    value=settings_store.get_check_updates_on_start(),
+                    on_change=lambda e: view._persist_bool(
+                        settings_store.set_check_updates_on_start, e.control.value
+                    ),
+                ),
             ),
             cfg_row(
                 "Bienvenida",

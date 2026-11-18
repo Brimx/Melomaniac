@@ -191,9 +191,6 @@ class ConfigView(ft.Container):
         self._cover_refresh_btn: ft.Control | None = None
         self._cache_text: ft.Text | None = None
         self._cache_btn: ft.Control | None = None
-        self._queue_preview_stage: ft.Container | None = None
-        self._queue_preview_panel: ft.Container | None = None
-        self._queue_preview_blocks: ft.Row | None = None
         self._theme_group: ft.RadioGroup | None = None
         self._theme_tiles: dict[str, ft.Container] = {}
         self._search_cache_text: ft.Text | None = None
@@ -796,6 +793,14 @@ class ConfigView(ft.Container):
         settings_store.set_download_format(str(getattr(e.control, "value", "") or ""))
         self._changed()
 
+    def _on_fade_change(self, e=None) -> None:
+        try:
+            sec = int(getattr(e.control, "value", 0) or 0)
+        except (TypeError, ValueError):
+            sec = 0
+        settings_store.set_fade_seconds(sec)
+        self._changed()
+
     async def _on_pick_dir(self, e=None) -> None:
         try:
             current = self._download_dir
@@ -818,18 +823,8 @@ class ConfigView(ft.Container):
         safe_update(self)
         self._changed()
 
-    def _on_queue_mode_change(self, e=None) -> None:
-        sel = list(getattr(e.control, "selected", None) or [])
-        if not sel:
-            return
-        mode = str(sel[0])
-        settings_store.set_queue_mode(mode)
-        is_overlay = mode == "overlay"
-        if self._queue_preview_panel is not None:
-            self._queue_preview_panel.offset = (0.0, 0.0) if is_overlay else (0.12, 0.0)
-        if self._queue_preview_blocks is not None:
-            self._queue_preview_blocks.right = 10 if is_overlay else 80
-        safe_update(self._queue_preview_stage)
+    def _on_library_sort_change(self, e=None) -> None:
+        settings_store.set_library_sort_order(str(getattr(e.control, "value", "") or ""))
         self._changed()
 
     def _on_theme_change(self, e=None) -> None:

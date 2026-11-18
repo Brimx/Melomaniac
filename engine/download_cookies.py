@@ -38,7 +38,10 @@ def _load_cookie_jar(
             return None
         cookie_provider = youtube_cookies
 
-    cookies = cookie_provider()
+    try:
+        cookies = cookie_provider()
+    except Exception:
+        return None
     if not cookies:
         return None
 

@@ -8,6 +8,7 @@ import flet as ft
 
 from core.config import EXPORT_DEST_LABEL
 from core.models import LoadState, TransferState
+from core.transfer import KIND_DEFAULT_REASON, _track_payload
 from ui.components.skeletons import PreviewSkeletonRow, SkeletonRow
 from ui.components.song_row import ITEM_H
 from ui.components.widgets import (
@@ -18,6 +19,7 @@ from ui.components.widgets import (
     empty_state,
     input_border,
     kicker,
+    notify,
     safe_update,
     set_button_text,
     status_chip,
@@ -149,24 +151,30 @@ class _RegistroDrawer:
         safe_update(self._pm_export_btn)
 
     def _export_postmortem(self) -> None:
+        if not self._pm_rows:
+            notify(self._page, "No hay datos de Post-Mortem para exportar.")
+            return
         try:
             from datetime import datetime
-            from pathlib import Path
             import json
+            from services.authentication import TRANSFER_REPORTS_DIR
 
-            out_dir = Path("config")
+            out_dir = TRANSFER_REPORTS_DIR
             out_dir.mkdir(parents=True, exist_ok=True)
             stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             out_path = out_dir / f"postmortem_{stamp}.json"
             payload = {"meta": self._pm_meta, "failed": self._pm_rows}
             out_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
-        except Exception:
-            pass
+            notify(self._page, f"Informe guardado → {out_path}")
+        except Exception as exc:  # noqa: BLE001
+            notify(self._page, f"Error al exportar informe: {exc}", kind="error")
 
     def show_postmortem(self) -> None:
+        self.container.visible = True
         self._body_wrap.visible = True
         self._caret_ctrl.value = PIcons.CARET_UP
         self._set_tab("postmortem")
+        safe_update(self.container)
         safe_update(self._body_wrap)
         safe_update(self._caret_ctrl)
 
@@ -231,6 +239,29 @@ class _RegistroDrawer:
         ]
         safe_update(self._log_list)
 
+    @staticmethod
+    def _normalize_pm_row(item) -> dict[str, object]:
+        if isinstance(item, dict):
+            row = dict(item)
+            reason = str(row.get("reason") or row.get("failure_reason") or "").strip()
+            if not reason:
+                reason = KIND_DEFAULT_REASON.get(str(row.get("kind") or ""), "")
+            row["reason"] = reason
+            row.setdefault("name", "?")
+            row.setdefault("artist", "?")
+            return row
+        if hasattr(item, "to_dict") and hasattr(item, "track"):
+            row = dict(item.to_dict())
+            reason = str(row.get("reason") or getattr(item.track, "failure_reason", "") or "").strip()
+            if not reason:
+                reason = KIND_DEFAULT_REASON.get(str(row.get("kind") or ""), "")
+            row["reason"] = reason
+            return row
+        row = _track_payload(item)
+        reason = str(getattr(item, "reason", "") or getattr(item, "failure_reason", "") or "").strip()
+        row["reason"] = reason
+        return row
+
     def update_postmortem(
         self,
         failed_tracks,
@@ -243,14 +274,15 @@ class _RegistroDrawer:
         title: str = "",
         playlist_url: str = "",
     ) -> None:
-        del elapsed_s, title
         total_attempted = int(detected if detected is not None else attempted)
-        rows = list(failed_tracks or ())
+        rows = [self._normalize_pm_row(item) for item in (failed_tracks or ())]
         self._pm_rows = rows
         self._pm_meta = {
             "destination": destination,
             "confirmed": confirmed,
             "attempted": total_attempted,
+            "elapsed_s": elapsed_s,
+            "title": title,
             "playlist_url": playlist_url,
         }
         if not rows:
@@ -258,13 +290,8 @@ class _RegistroDrawer:
                 f"Destino: {destination or '—'} · Confirmadas: {confirmed}/{total_attempted} · Sin fallos."
             )
         else:
-            def _row_field(item, key: str, default: str = "") -> str:
-                if isinstance(item, dict):
-                    return str(item.get(key, default) or default)
-                return str(getattr(item, key, default) or default)
-
             preview = [
-                f"• {_row_field(r, 'name', '?')} — {_row_field(r, 'artist', '?')} ({_row_field(r, 'reason', 'sin detalle')})"
+                f"• {r.get('name') or '?'} — {r.get('artist') or '?'} ({r.get('reason') or 'sin detalle'})"
                 for r in rows[:20]
             ]
             self._pm_text.value = (
@@ -385,6 +412,7 @@ class LayoutController:
         self._last_chip_counts: tuple[int, int, int] | None = None
         self._last_footer_btn_label: str = "Transferir"
         self._telemetry_manual_open: bool | None = None
+        self._last_telemetry_xfer_state: TransferState = TransferState.IDLE
 
     def _make_order_segmented(self, current: str, on_change=None) -> ft.Control:
         """SegmentedButton para elegir Artista-Título vs Título-Artista."""
@@ -454,7 +482,6 @@ class LayoutController:
     def _build_content(self) -> None:
         ui = self._ui
         self._build_mode_bar()
-        ui._footer_bar = None
         header_bar = self._build_content_header()
         ui._contextual_bar = self._build_contextual_bar()
         ui._catalog_panel = ui._catalog.build_catalog_panel()
@@ -556,16 +583,16 @@ class LayoutController:
             tip = str(spec.get("tooltip", "") or "")
             if tip:
                 btn.tooltip = tip
+        catalog_open = bool(getattr(self._ui, "_catalog_open", False))
         bar = getattr(self._ui, "_contextual_bar", None)
         if bar is not None:
-            catalog_open = bool(getattr(self._ui, "_catalog_open", False))
             bar.visible = any_visible and not catalog_open
         sb_sec = getattr(self._ui, "_sidebar_actions_section", None)
         sb_div = getattr(self._ui, "_sidebar_actions_divider", None)
         if sb_sec is not None:
-            sb_sec.visible = any_visible
+            sb_sec.visible = any_visible and not catalog_open
         if sb_div is not None:
-            sb_div.visible = any_visible
+            sb_div.visible = any_visible and not catalog_open
         self._sync_workflow_ui(states)
 
     def _build_content_header(self) -> ft.Container:
@@ -779,6 +806,8 @@ class LayoutController:
         )
 
     def _toggle_telemetry_manual(self, _e=None) -> None:
+        if getattr(self._ui, "_catalog_open", False):
+            return
         tel = getattr(self._ui, "_telemetry", None)
         if tel is None:
             return
@@ -786,6 +815,15 @@ class LayoutController:
         self._telemetry_manual_open = not cur
         tel.container.visible = not cur
         safe_update(tel.container)
+
+    def open_postmortem(self) -> None:
+        if getattr(self._ui, "_catalog_open", False):
+            return
+        tel = getattr(self._ui, "_telemetry", None)
+        if tel is None:
+            return
+        self._telemetry_manual_open = True
+        tel.show_postmortem()
 
     def _build_col_headers(self) -> ft.Container:
         ui = self._ui
@@ -868,9 +906,24 @@ class LayoutController:
         empty_col = empty_state(
             PIcons.PLAYLIST,
             "Carga una playlist",
-            subtitle="Introduce el ID o la URL en el panel izquierdo y pulsa «Cargar».",
+            subtitle="Elige una playlist en el panel izquierdo o pulsa «Avanzado» para cargar por URL o ID.",
             action_label="Buscar en catálogo",
             on_action=lambda _: ui._on_toggle_catalog_search(),
+        )
+        cat_btn = empty_col.controls.pop()
+        empty_col.controls.append(
+            ft.Row(
+                controls=[
+                    cat_btn,
+                    _ghost_btn(
+                        "Fusionar playlists",
+                        PIcons.QUEUE,
+                        lambda _: ui._open_merge_dialog(),
+                        height=32,
+                    ),
+                ],
+                spacing=SPACE_2,
+            )
         )
         ui._empty_hint_text = empty_col.controls[2]
         ui._empty_state = ft.Container(
@@ -1171,6 +1224,12 @@ class LayoutController:
             mode_seg.visible = has_dual_result
 
         # 3c. Registro visible solo si hay actividad/reporte o apertura manual
+        if transfer_state != self._last_telemetry_xfer_state:
+            if transfer_state in (TransferState.RUNNING, TransferState.ERROR) or (
+                transfer_state == TransferState.IDLE and not has_report
+            ):
+                self._telemetry_manual_open = None
+            self._last_telemetry_xfer_state = transfer_state
         tel = getattr(ui, "_telemetry", None)
         if tel is not None:
             if self._telemetry_manual_open is not None:

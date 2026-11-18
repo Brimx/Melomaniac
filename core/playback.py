@@ -10,9 +10,11 @@ from __future__ import annotations
 
 import os
 import random
+import time
 from dataclasses import dataclass
 from enum import Enum, auto
 from typing import Iterable
+from urllib.parse import parse_qs, urlparse
 
 from core.models import Track
 
@@ -29,6 +31,19 @@ class PlayableTrack:
     bitrate_kbps: int | None = None
     sample_rate: int | None = None
     is_stream: bool = False
+    resolved_at: float = 0.0
+    expires_at: float = 0.0
+
+    def is_stream_expired(self, *, now: float | None = None, margin_s: float = 120.0) -> bool:
+        """Indica si una URL de streaming caducó o está próxima a caducar."""
+        if not self.is_stream:
+            return False
+        cur_ts = time.time() if now is None else float(now)
+        if self.expires_at > 0:
+            return cur_ts >= (self.expires_at - margin_s)
+        if self.resolved_at > 0:
+            return (cur_ts - self.resolved_at) >= (4 * 3600)
+        return False
 
     @property
     def badge_text(self) -> str:
@@ -212,6 +227,14 @@ class PlayQueue:
             self.repeat = RepeatMode.OFF
         return self.repeat
 
+    def has_next(self) -> bool:
+        """Indica sin mutar la cola si existe una pista siguiente al terminar la actual."""
+        if not self.order or self.pos < 0:
+            return False
+        if self.repeat in (RepeatMode.ONE, RepeatMode.ALL):
+            return True
+        return self.pos + 1 < len(self.order)
+
     def next(self) -> PlayableTrack | None:
         if not self.order or self.pos < 0:
             return None
@@ -373,6 +396,15 @@ def build_stream_playable_track(
     duration_ms = int(meta.get("duration_ms") or track.duration_ms or 0)
     abr = meta.get("abr")
     asr = meta.get("asr")
+    resolved_at = float(meta.get("resolved_at") or time.time())
+    expires_at = float(meta.get("expires_at") or 0.0)
+    if expires_at <= 0.0:
+        try:
+            raw_exp = (parse_qs(urlparse(url).query).get("expire") or [None])[0]
+            if raw_exp:
+                expires_at = float(raw_exp)
+        except (TypeError, ValueError):
+            expires_at = 0.0
     return PlayableTrack(
         track=track,
         path=url,
@@ -382,4 +414,6 @@ def build_stream_playable_track(
         bitrate_kbps=int(abr) if abr else None,
         sample_rate=int(asr) if asr else None,
         is_stream=True,
+        resolved_at=resolved_at,
+        expires_at=expires_at,
     )

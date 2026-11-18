@@ -11,8 +11,9 @@ from __future__ import annotations
 
 import json
 import os
+import threading
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 from services.authentication import SETTINGS_JSON, ensure_config_dir
 
@@ -45,6 +46,8 @@ _KEY_FADE_SECONDS = "fade_seconds"
 _KEY_RESUME_ON_OPEN = "resume_on_open"
 _KEY_STREAM_WITHOUT_DOWNLOAD = "stream_without_download"
 _KEY_LAST_PLAYBACK = "last_playback"
+_KEY_LIBRARY_SORT_ORDER = "library_sort_order"
+_KEY_CHECK_UPDATES_ON_START = "check_updates_on_start"
 
 _VALID_REPEAT = ("off", "all", "one")
 _VALID_QUEUE_TABS = ("cola", "letra")
@@ -52,34 +55,106 @@ _VALID_QUEUE_MODES = ("push", "overlay")
 _VALID_LYRICS_PROVIDERS = ("lrclib", "local", "off")
 VALID_THEMES = ("sala", "bermellon", "matcha", "valvula", "glicina", "hielo", "washi")
 _VALID_BG_TEXTURES = ("grid", "sei", "none")
+_VALID_LIBRARY_SORT_ORDERS = ("recent", "az", "za")
+
+
+_LOCK = threading.RLock()
+_CACHE: tuple[Path, int, int, dict[str, Any]] | None = None
+_LISTENERS: list[Callable[[], None]] = []
+
+
+def subscribe(cb: Callable[[], None]) -> None:
+    """Registra un callback notificado cuando cambian los ajustes."""
+    with _LOCK:
+        if cb not in _LISTENERS:
+            _LISTENERS.append(cb)
+
+
+def unsubscribe(cb: Callable[[], None]) -> None:
+    """Anula un callback registrado con ``subscribe``."""
+    with _LOCK:
+        if cb in _LISTENERS:
+            _LISTENERS.remove(cb)
+
+
+def _coerce_bool(raw: Any, default: bool) -> bool:
+    if raw is None:
+        return default
+    if isinstance(raw, bool):
+        return raw
+    if isinstance(raw, (int, float)):
+        return bool(raw)
+    if isinstance(raw, str):
+        norm = raw.strip().lower()
+        if norm in ("1", "true", "yes", "on", "si", "sí"):
+            return True
+        if norm in ("0", "false", "no", "off", ""):
+            return False
+        return default
+    return bool(raw)
 
 
 def load_settings() -> dict[str, Any]:
     """Devuelve los ajustes guardados; un archivo ausente o corrupto da ``{}``."""
-    try:
-        data = json.loads(SETTINGS_JSON.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        return {}
-    return data if isinstance(data, dict) else {}
+    global _CACHE
+    with _LOCK:
+        path = SETTINGS_JSON
+        try:
+            st = path.stat()
+        except OSError:
+            _CACHE = None
+            return {}
+        if (
+            _CACHE is not None
+            and _CACHE[0] == path
+            and _CACHE[1] == st.st_mtime_ns
+            and _CACHE[2] == st.st_size
+        ):
+            return dict(_CACHE[3])
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            _CACHE = None
+            return {}
+        if not isinstance(data, dict):
+            _CACHE = None
+            return {}
+        _CACHE = (path, st.st_mtime_ns, st.st_size, dict(data))
+        return dict(data)
 
 
 def save_settings(data: dict[str, Any]) -> None:
     """Persiste los ajustes de forma atómica."""
-    ensure_config_dir()
-    tmp = SETTINGS_JSON.with_suffix(".json.tmp")
-    tmp.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
-    os.replace(tmp, SETTINGS_JSON)
+    global _CACHE
+    with _LOCK:
+        ensure_config_dir()
+        path = SETTINGS_JSON
+        tmp = path.with_suffix(".json.tmp")
+        payload = dict(data)
+        tmp.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+        os.replace(tmp, path)
+        try:
+            st = path.stat()
+            _CACHE = (path, st.st_mtime_ns, st.st_size, payload)
+        except OSError:
+            _CACHE = None
+        listeners = list(_LISTENERS)
+    for cb in listeners:
+        try:
+            cb()
+        except Exception:
+            pass
 
 
 def _get_bool(key: str, default: bool) -> bool:
-    raw = load_settings().get(key)
-    return default if raw is None else bool(raw)
+    return _coerce_bool(load_settings().get(key), default)
 
 
 def _set_bool(key: str, value: bool) -> None:
-    data = load_settings()
-    data[key] = bool(value)
-    save_settings(data)
+    with _LOCK:
+        data = load_settings()
+        data[key] = bool(value)
+        save_settings(data)
 
 
 def _get_choice(key: str, default: str, valid: tuple[str, ...]) -> str:
@@ -170,19 +245,17 @@ def set_volume(volume: float) -> None:
 
 def get_mute() -> bool:
     """Estado de silencio del reproductor (por defecto False)."""
-    return bool(load_settings().get(_KEY_MUTE, False))
+    return _get_bool(_KEY_MUTE, False)
 
 
 def set_mute(muted: bool) -> None:
     """Persiste el estado de silencio del reproductor."""
-    data = load_settings()
-    data[_KEY_MUTE] = bool(muted)
-    save_settings(data)
+    _set_bool(_KEY_MUTE, muted)
 
 
-def get_fade_seconds() -> int:
-    """Duración del fundido de audio en segundos (0, 1, 2 o 3; por defecto 0)."""
-    raw = load_settings().get(_KEY_FADE_SECONDS, 0)
+def _coerce_fade_seconds(raw: Any) -> int:
+    if isinstance(raw, bool):
+        return 0
     try:
         val = int(raw)
     except (TypeError, ValueError):
@@ -190,39 +263,37 @@ def get_fade_seconds() -> int:
     return val if val in (0, 1, 2, 3) else 0
 
 
+def get_fade_seconds() -> int:
+    """Duración del fundido de audio en segundos (0, 1, 2 o 3; por defecto 0)."""
+    return _coerce_fade_seconds(load_settings().get(_KEY_FADE_SECONDS, 0))
+
+
 def set_fade_seconds(seconds: int) -> None:
     """Persiste la duración del fundido de audio (0, 1, 2 o 3 segundos)."""
-    data = load_settings()
-    try:
-        val = int(seconds)
-    except (TypeError, ValueError):
-        val = 0
-    data[_KEY_FADE_SECONDS] = val if val in (0, 1, 2, 3) else 0
-    save_settings(data)
+    with _LOCK:
+        data = load_settings()
+        data[_KEY_FADE_SECONDS] = _coerce_fade_seconds(seconds)
+        save_settings(data)
 
 
 def get_resume_on_open() -> bool:
     """Si debe recordarse la última pista y posición al abrir (por defecto False)."""
-    return bool(load_settings().get(_KEY_RESUME_ON_OPEN, False))
+    return _get_bool(_KEY_RESUME_ON_OPEN, False)
 
 
 def set_resume_on_open(enabled: bool) -> None:
     """Persiste si se debe reanudar la última pista al abrir."""
-    data = load_settings()
-    data[_KEY_RESUME_ON_OPEN] = bool(enabled)
-    save_settings(data)
+    _set_bool(_KEY_RESUME_ON_OPEN, enabled)
 
 
 def get_stream_without_download() -> bool:
     """Si las pistas remotas se reproducen por streaming sin descargar (por defecto True)."""
-    return bool(load_settings().get(_KEY_STREAM_WITHOUT_DOWNLOAD, True))
+    return _get_bool(_KEY_STREAM_WITHOUT_DOWNLOAD, True)
 
 
 def set_stream_without_download(enabled: bool) -> None:
     """Persiste la preferencia de reproducción sin descarga."""
-    data = load_settings()
-    data[_KEY_STREAM_WITHOUT_DOWNLOAD] = bool(enabled)
-    save_settings(data)
+    _set_bool(_KEY_STREAM_WITHOUT_DOWNLOAD, enabled)
 
 
 def get_last_playback() -> dict[str, Any]:
@@ -233,24 +304,23 @@ def get_last_playback() -> dict[str, Any]:
 
 def set_last_playback(payload: dict[str, Any] | None) -> None:
     """Guarda o limpia la última pista, cola local y posición en milisegundos."""
-    data = load_settings()
-    if payload:
-        data[_KEY_LAST_PLAYBACK] = dict(payload)
-    else:
-        data.pop(_KEY_LAST_PLAYBACK, None)
-    save_settings(data)
+    with _LOCK:
+        data = load_settings()
+        if payload:
+            data[_KEY_LAST_PLAYBACK] = dict(payload)
+        else:
+            data.pop(_KEY_LAST_PLAYBACK, None)
+        save_settings(data)
 
 
 def get_shuffle() -> bool:
     """Estado de reproducción aleatoria (por defecto False)."""
-    return bool(load_settings().get(_KEY_SHUFFLE, False))
+    return _get_bool(_KEY_SHUFFLE, False)
 
 
 def set_shuffle(enabled: bool) -> None:
     """Persiste el estado de reproducción aleatoria."""
-    data = load_settings()
-    data[_KEY_SHUFFLE] = bool(enabled)
-    save_settings(data)
+    _set_bool(_KEY_SHUFFLE, enabled)
 
 
 def get_download_format() -> str:
@@ -273,26 +343,22 @@ def set_download_format(fmt: str) -> None:
 
 def get_covers_online() -> bool:
     """Si se permite consultar proveedores de portada en red (por defecto sí)."""
-    return bool(load_settings().get(_KEY_COVERS_ONLINE, True))
+    return _get_bool(_KEY_COVERS_ONLINE, True)
 
 
 def set_covers_online(enabled: bool) -> None:
     """Persiste el permiso para resolver portadas online."""
-    data = load_settings()
-    data[_KEY_COVERS_ONLINE] = bool(enabled)
-    save_settings(data)
+    _set_bool(_KEY_COVERS_ONLINE, enabled)
 
 
 def get_onboarding_done() -> bool:
     """Si el usuario ya completó u omitió la bienvenida de primera ejecución."""
-    return bool(load_settings().get(_KEY_ONBOARDING_DONE, False))
+    return _get_bool(_KEY_ONBOARDING_DONE, False)
 
 
 def set_onboarding_done(done: bool = True) -> None:
     """Persiste que la bienvenida ya se mostró."""
-    data = load_settings()
-    data[_KEY_ONBOARDING_DONE] = bool(done)
-    save_settings(data)
+    _set_bool(_KEY_ONBOARDING_DONE, done)
 
 
 def get_repeat() -> str:
@@ -482,3 +548,23 @@ def set_preferred_browser(browser_label: str) -> None:
     else:
         data.pop(_KEY_PREFERRED_BROWSER, None)
     save_settings(data)
+
+
+def get_library_sort_order() -> str:
+    """Orden por defecto de estantes en Biblioteca ('recent', 'az' o 'za')."""
+    return _get_choice(_KEY_LIBRARY_SORT_ORDER, "recent", _VALID_LIBRARY_SORT_ORDERS)
+
+
+def set_library_sort_order(order: str) -> None:
+    """Persiste el orden por defecto de estantes en Biblioteca."""
+    _set_choice(_KEY_LIBRARY_SORT_ORDER, order, "recent", _VALID_LIBRARY_SORT_ORDERS)
+
+
+def get_check_updates_on_start() -> bool:
+    """Si debe buscar actualizaciones automáticamente al abrir (por defecto False)."""
+    return _get_bool(_KEY_CHECK_UPDATES_ON_START, False)
+
+
+def set_check_updates_on_start(enabled: bool) -> None:
+    """Persiste si se comprueban actualizaciones al abrir."""
+    _set_bool(_KEY_CHECK_UPDATES_ON_START, enabled)

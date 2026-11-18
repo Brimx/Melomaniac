@@ -7,6 +7,7 @@ eliminación, reordenamiento e historial de reproducción.
 
 from __future__ import annotations
 
+import asyncio
 import random
 import subprocess
 import sys
@@ -195,6 +196,31 @@ class TestPlayQueue(unittest.TestCase):
 class TestPlayerBarEnsureAudio(unittest.TestCase):
     """Valida el ciclo de vida simplificado de ``PlayerBar._ensure_audio`` (Flet 1.1.2)."""
 
+    def setUp(self) -> None:
+        import tempfile
+        from unittest.mock import patch
+        from services import settings_store
+
+        self._tmp = tempfile.TemporaryDirectory()
+        self._settings_path = Path(self._tmp.name) / "settings.json"
+        settings_store._CACHE = None
+        self._p1 = patch.object(settings_store, "SETTINGS_JSON", self._settings_path)
+        self._p2 = patch.object(
+            settings_store,
+            "ensure_config_dir",
+            lambda: self._settings_path.parent.mkdir(parents=True, exist_ok=True),
+        )
+        self._p1.start()
+        self._p2.start()
+
+    def tearDown(self) -> None:
+        from services import settings_store
+
+        self._p2.stop()
+        self._p1.stop()
+        settings_store._CACHE = None
+        self._tmp.cleanup()
+
     def test_init_creates_single_audio_service_without_src(self) -> None:
         from types import SimpleNamespace
         import flet_audio as fta
@@ -328,27 +354,25 @@ class TestPlayerBarEnsureAudio(unittest.TestCase):
         self.assertEqual(play_calls[-1], (bar.audio.play, (0,)))
 
         with tempfile.TemporaryDirectory() as tmpdir:
-            s_path = Path(tmpdir) / "settings.json"
             audio_file = Path(tmpdir) / "saved.mp3"
             audio_file.write_bytes(b"ID3")
-            with patch.object(settings_store, "SETTINGS_JSON", s_path):
-                settings_store.set_fade_seconds(2)
-                self.assertEqual(settings_store.get_fade_seconds(), 2)
-                settings_store.set_stream_without_download(False)
-                self.assertFalse(settings_store.get_stream_without_download())
-                settings_store.set_resume_on_open(True)
-                self.assertTrue(settings_store.get_resume_on_open())
+            settings_store.set_fade_seconds(2)
+            self.assertEqual(settings_store.get_fade_seconds(), 2)
+            settings_store.set_stream_without_download(False)
+            self.assertFalse(settings_store.get_stream_without_download())
+            settings_store.set_resume_on_open(True)
+            self.assertTrue(settings_store.get_resume_on_open())
 
-                bar.play_file(str(audio_file))
-                bar._position_ms = 42_000
-                bar._persist_playback_state()
+            bar.play_file(str(audio_file))
+            bar._position_ms = 42_000
+            bar._persist_playback_state()
 
-                bar2 = PlayerBar(SimpleNamespace(services=[]))
-                bar2._schedule_audio = lambda fn, *args, **kwargs: None  # type: ignore[method-assign]
-                self.assertTrue(bar2.restore_last_playback())
-                self.assertIsNotNone(bar2.queue.current)
-                self.assertEqual(bar2.position_ms, 42_000)
-                self.assertEqual(bar2._pending_seek_ms, 42_000)
+            bar2 = PlayerBar(SimpleNamespace(services=[]))
+            bar2._schedule_audio = lambda fn, *args, **kwargs: None  # type: ignore[method-assign]
+            self.assertTrue(bar2.restore_last_playback())
+            self.assertIsNotNone(bar2.queue.current)
+            self.assertEqual(bar2.position_ms, 42_000)
+            self.assertEqual(bar2._pending_seek_ms, 42_000)
 
     def test_resolve_stream_info_uses_ytdlp_without_download(self) -> None:
         from unittest.mock import patch
@@ -395,6 +419,325 @@ class TestPlayerBarEnsureAudio(unittest.TestCase):
         self.assertEqual(res["url"], "https://cdn.example/stream.opus")
         self.assertFalse(captured["download"])
         self.assertEqual(captured["opts"]["format"], "bestaudio/best")
+
+
+class TestPlayerBarLifecycleAndEdgeCases(unittest.IsolatedAsyncioTestCase):
+    """Cubre crossfade, ticker, pending seek, pistas ausentes, streaming y errores."""
+
+    def setUp(self) -> None:
+        import tempfile
+        from unittest.mock import patch
+        from services import settings_store
+
+        self._tmp = tempfile.TemporaryDirectory()
+        self._settings_path = Path(self._tmp.name) / "settings.json"
+        settings_store._CACHE = None
+        self._p1 = patch.object(settings_store, "SETTINGS_JSON", self._settings_path)
+        self._p2 = patch.object(
+            settings_store,
+            "ensure_config_dir",
+            lambda: self._settings_path.parent.mkdir(parents=True, exist_ok=True),
+        )
+        self._p1.start()
+        self._p2.start()
+
+    def tearDown(self) -> None:
+        from services import settings_store
+
+        self._p2.stop()
+        self._p1.stop()
+        settings_store._CACHE = None
+        self._tmp.cleanup()
+
+    def _make_bar(self):
+        from types import SimpleNamespace
+        from ui.player.player_bar import PlayerBar
+
+        page = SimpleNamespace(services=[], overlay=[], update=lambda: None)
+        bar = PlayerBar(page)
+        calls: list[tuple[object, tuple]] = []
+        bar._schedule_audio = lambda fn, *args, **kwargs: calls.append((fn, args))  # type: ignore[method-assign]
+        return bar, calls
+
+    def _make_files(self, count: int = 2) -> list[PlayableTrack]:
+        items: list[PlayableTrack] = []
+        for i in range(count):
+            p = Path(self._tmp.name) / f"song_{i}.flac"
+            p.write_bytes(b"RIFF")
+            tr = Track(
+                id=f"f_{i}",
+                name=f"Song {i}",
+                artist=f"Artist {i}",
+                album="Album",
+                duration="3:00",
+                img_url="",
+                platform="local",
+                duration_ms=180_000,
+                source_path=str(p),
+            )
+            items.append(
+                PlayableTrack(
+                    track=tr,
+                    path=str(p),
+                    container="flac",
+                    codec="flac",
+                    duration_ms=180_000,
+                )
+            )
+        return items
+
+    async def test_cancel_crossfade_pauses_outgoing_and_stop_releases_both(self) -> None:
+        bar, calls = self._make_bar()
+        items = self._make_files(2)
+        bar.queue.set_tracks(items, start_index=0)
+        bar._load_and_play_current()
+        first_deck = bar.audio
+        calls.clear()
+
+        self.assertTrue(bar._begin_crossfade_to_next(2))
+        outgoing = bar._xfade_audio
+        self.assertIs(outgoing, first_deck)
+        self.assertIsNot(bar.audio, outgoing)
+
+        # Pausar a mitad del fundido debe pausar el deck saliente inmediatamente
+        bar._on_play_pause_click()
+        paused_fns = [fn for fn, _ in calls]
+        self.assertIn(outgoing.pause, paused_fns)
+        self.assertFalse(bar._crossfade_triggered)
+
+        # Limpiar cola libera ambos decks
+        calls.clear()
+        bar.clear_queue()
+        released_fns = [fn for fn, _ in calls]
+        self.assertIn(bar.audio.release, released_fns)
+        self.assertIn(outgoing.release, released_fns)
+        bar.release()
+
+    async def test_last_track_not_cut_off_by_crossfade_and_ticker_stays_alive(self) -> None:
+        import flet_audio as fta
+        from services import settings_store
+
+        settings_store.set_fade_seconds(3)
+        bar, _calls = self._make_bar()
+        items = self._make_files(2)
+        bar.queue.set_tracks(items, start_index=0)
+
+        # Sin repetir en la última pista: has_next() es False y _begin_crossfade_to_next devuelve False
+        bar.queue.select(1)
+        self.assertFalse(bar.queue.has_next())
+        bar._load_and_play_current()
+        self.assertFalse(bar._begin_crossfade_to_next(3))
+        self.assertIs(bar.queue.current, items[1])
+
+        # Con pista siguiente: el ticker dispara crossfade y NO muere (sigue vivo en el nuevo deck)
+        bar.queue.select(0)
+        bar._load_and_play_current()
+        bar.audio.get_current_position = lambda: asyncio.sleep(0, result=177_500)  # type: ignore[method-assign]
+        bar.audio.get_duration = lambda: asyncio.sleep(0, result=180_000)  # type: ignore[method-assign]
+
+        # Asegurar un segundo ciclo después del crossfade
+        await asyncio.sleep(0.35)
+        self.assertIs(bar.queue.current, items[1])
+        self.assertEqual(bar._audio_state, fta.AudioState.PLAYING)
+        self.assertIsNotNone(bar._ticker_task)
+        self.assertFalse(bar._ticker_task.done())
+        bar.release()
+
+    def test_pending_seek_cleared_by_seek_to_and_prev_and_zero_restore(self) -> None:
+        from services import settings_store
+
+        settings_store.set_resume_on_open(True)
+        items = self._make_files(2)
+        settings_store.set_last_playback({
+            "path": items[0].path,
+            "position_ms": 42_000,
+            "queue_paths": [items[0].path, items[1].path],
+        })
+
+        bar, calls = self._make_bar()
+        self.assertTrue(bar.restore_last_playback())
+        self.assertEqual(bar._pending_seek_ms, 42_000)
+        bar._duration_ms = 180_000
+
+        # Seek mientras está pausado tras restaurar actualiza pending seek a 10s
+        bar.seek_to(10_000)
+        self.assertEqual(bar._pending_seek_ms, 10_000)
+        bar._on_play_pause_click()  # Reanuda -> play(10_000)
+        self.assertEqual(calls[-1], (bar.audio.play, (10_000,)))
+        self.assertIsNone(bar._pending_seek_ms)
+
+        # Pausar y reanudar otra vez no vuelve a 42s
+        calls.clear()
+        bar._on_play_pause_click()
+        bar._on_play_pause_click()
+        self.assertEqual(calls[-1], (bar.audio.resume, ()))
+
+        # Restaurar en posición 0 usa play(0) en el primer play (no resume())
+        settings_store.set_last_playback({
+            "path": items[0].path,
+            "position_ms": 0,
+            "queue_paths": [items[0].path],
+        })
+        bar2, calls2 = self._make_bar()
+        self.assertTrue(bar2.restore_last_playback())
+        self.assertEqual(bar2._pending_seek_ms, 0)
+        bar2._on_play_pause_click()
+        self.assertEqual(calls2[-1], (bar2.audio.play, (0,)))
+
+        # Prev limpia pending seek
+        bar3, calls3 = self._make_bar()
+        settings_store.set_last_playback({
+            "path": items[0].path,
+            "position_ms": 42_000,
+            "queue_paths": [items[0].path],
+        })
+        bar3.restore_last_playback()
+        bar3._on_prev_click()
+        self.assertIsNone(bar3._pending_seek_ms)
+        self.assertEqual(calls3[-1], (bar3.audio.play, (0,)))
+
+    def test_restore_with_corrupt_settings_and_fade_zero_resume_volume(self) -> None:
+        from services import settings_store
+
+        settings_store.set_resume_on_open(True)
+        items = self._make_files(1)
+        settings_store.set_last_playback({
+            "path": items[0].path,
+            "position_ms": "corrupto",
+            "queue_paths": "not-a-list",
+        })
+        bar, _calls = self._make_bar()
+        self.assertTrue(bar.restore_last_playback())
+        self.assertIs(bar.queue.current.path, bar.queue.tracks[0].path)
+        self.assertEqual(bar.position_ms, 0)
+
+        # Cambiar fundido a 0 entre pausa y reanudación restaura volumen completo
+        settings_store.set_fade_seconds(2)
+        bar._on_play_pause_click()
+        bar.audio.volume = 0.25  # simula volumen parcial tras fade-out interrumpido
+        bar._on_play_pause_click()
+        settings_store.set_fade_seconds(0)
+        bar._on_play_pause_click()
+        self.assertAlmostEqual(float(bar.audio.volume), bar._volume)
+
+    def test_missing_file_skips_to_next_or_stops_cleanly(self) -> None:
+        import flet_audio as fta
+
+        bar, calls = self._make_bar()
+        items = self._make_files(2)
+        Path(items[0].path).unlink()  # primera pista borrada en disco
+        bar.queue.set_tracks(items, start_index=0)
+        bar._load_and_play_current()
+        # Debe saltar a la segunda pista válida
+        self.assertIs(bar.queue.current, items[1])
+        self.assertEqual(bar._audio_state, fta.AudioState.PLAYING)
+
+        # Si todas faltan (incluso con RepeatMode.ALL), se detiene sin bucle infinito
+        Path(items[1].path).unlink()
+        bar.queue.repeat = RepeatMode.ALL
+        calls.clear()
+        bar._load_and_play_current()
+        self.assertEqual(bar._audio_state, fta.AudioState.STOPPED)
+        self.assertIn(bar.audio.release, [fn for fn, _ in calls])
+
+    async def test_stream_expiry_and_remote_race_and_search_fallback(self) -> None:
+        import time
+        from unittest.mock import patch
+        from core.playback import build_stream_playable_track
+        from engine.download_search import resolve_stream_info, search_candidates
+
+        tr = Track(
+            id="s1",
+            name="Test Song",
+            artist="Test Artist",
+            album="",
+            duration="3:00",
+            img_url="",
+            platform="Spotify",
+            duration_ms=180_000,
+        )
+        expired_pt = build_stream_playable_track(
+            f"https://cdn.example/videoplayback?expire={int(time.time()) - 10}",
+            tr,
+        )
+        self.assertIsNotNone(expired_pt)
+        self.assertTrue(expired_pt.is_stream_expired())
+
+        fresh_pt = build_stream_playable_track(
+            f"https://cdn.example/videoplayback?expire={int(time.time()) + 7200}",
+            tr,
+        )
+        self.assertIsNotNone(fresh_pt)
+        self.assertFalse(fresh_pt.is_stream_expired())
+
+        # Dos clics rápidos en play_remote_track: solo el último gana
+        bar, _calls = self._make_bar()
+        tr2 = Track(id="s2", name="Second", artist="Artist", album="", duration="3:00", img_url="", platform="Spotify")
+
+        def _fake_resolve(track_arg):
+            if track_arg.id == "s1":
+                time.sleep(0.08)
+                return {"url": "https://cdn.example/first.opus", "ext": "webm", "acodec": "opus", "error": ""}
+            return {"url": "https://cdn.example/second.opus", "ext": "webm", "acodec": "opus", "error": ""}
+
+        with patch("ui.player.player_bar.resolve_stream_info", side_effect=_fake_resolve):
+            t1 = asyncio.create_task(bar.play_remote_track(tr))
+            await asyncio.sleep(0.01)
+            t2 = asyncio.create_task(bar.play_remote_track(tr2))
+            r1, r2 = await asyncio.gather(t1, t2)
+        self.assertFalse(r1)
+        self.assertTrue(r2)
+        self.assertEqual(bar.audio.src, "https://cdn.example/second.opus")
+
+        # resolve_stream_info rechaza directos en source_url y hace fallback al 2do candidato
+        live_tr = Track(
+            id="yt_live",
+            name="Live",
+            artist="Artist",
+            album="",
+            duration="0:00",
+            img_url="",
+            platform="YouTube Music",
+            source_url="https://www.youtube.com/watch?v=abcdefghijk",
+        )
+
+        class _LiveYDL:
+            def __init__(self, _opts):
+                self.cookiejar = None
+            def __enter__(self):
+                return self
+            def __exit__(self, *args):
+                return False
+            def extract_info(self, url, download=True):
+                if "abcdefghijk" in url:
+                    return {"is_live": True, "url": "https://cdn.example/live.m3u8"}
+                return {"url": "https://cdn.example/fallback.opus", "duration": 180, "title": "Test Song"}
+
+        with patch("engine.download_search.yt_dlp.YoutubeDL", _LiveYDL):
+            res_live = resolve_stream_info(live_tr)
+        self.assertEqual(res_live["url"], "")
+        self.assertIn("Directo", res_live["error"])
+
+        with patch(
+            "engine.download_search.search_candidates",
+            return_value={
+                "query": "Test Artist Test Song",
+                "candidates": [
+                    {"url": "https://www.youtube.com/watch?v=abcdefghijk"},
+                    {"url": "https://www.youtube.com/watch?v=12345678901"},
+                ],
+                "error": "",
+            },
+        ), patch("engine.download_search.yt_dlp.YoutubeDL", _LiveYDL):
+            res_fb = resolve_stream_info(tr)
+        self.assertEqual(res_fb["error"], "")
+        self.assertEqual(res_fb["url"], "https://cdn.example/fallback.opus")
+
+        # search_candidates con metadatos vacíos retorna error limpio
+        empty_tr = Track(id="e1", name="", artist="", album="", duration="0:00", img_url="", platform="Spotify")
+        err_res = search_candidates(empty_tr)
+        self.assertEqual(err_res["candidates"], [])
+        self.assertTrue(err_res["error"])
 
 
 if __name__ == "__main__":

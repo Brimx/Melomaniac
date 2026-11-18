@@ -886,6 +886,8 @@ class AppState:
         self.notify()
 
     def set_destination(self, val: str) -> None:
+        if self.transfer_state == TransferState.RUNNING:
+            return
         self.destination = val
         self.destination_confirmed = True
         self.notify()
