@@ -596,5 +596,159 @@ class TestPoint2AndMediasTramo2(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(max_active, 1)
 
 
+class TestPoint4AndBajas(unittest.TestCase):
+    def test_settings_store_concurrent_writers_do_not_clobber_keys(self) -> None:
+        import concurrent.futures
+        from services import settings_store
+
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "settings.json"
+            with (
+                patch.object(settings_store, "SETTINGS_JSON", path),
+                patch.object(settings_store, "ensure_config_dir", lambda: path.parent.mkdir(parents=True, exist_ok=True)),
+            ):
+                def _w_vol() -> None:
+                    for i in range(15):
+                        settings_store.set_volume((i + 1) / 20.0)
+
+                def _w_fmt() -> None:
+                    for fmt in ("mp3", "flac", "opus") * 5:
+                        settings_store.set_download_format(fmt)
+
+                def _w_browser() -> None:
+                    for b in ("Firefox · default-release", "Chrome · Default") * 5:
+                        settings_store.set_preferred_browser(b)
+
+                def _w_pb() -> None:
+                    for i in range(15):
+                        settings_store.set_last_playback({"pos": i})
+
+                with concurrent.futures.ThreadPoolExecutor(max_workers=4) as pool:
+                    futs = [pool.submit(fn) for fn in (_w_vol, _w_fmt, _w_browser, _w_pb)]
+                    for f in futs:
+                        f.result()
+
+                final = settings_store.load_settings()
+                self.assertIn("volume", final)
+                self.assertIn("download_format", final)
+                self.assertIn("preferred_browser", final)
+                self.assertIn("last_playback", final)
+
+    def test_preferred_browser_setting_orders_candidates(self) -> None:
+        from services import browser_session as bs
+        from services import settings_store
+
+        items = [
+            ("Chrome · Default", {"id": "chrome"}),
+            ("Firefox · default-release", {"id": "firefox"}),
+        ]
+        with patch.object(settings_store, "get_preferred_browser", return_value="Firefox · default-release"):
+            ordered = list(bs._order_candidates(items, None))
+        self.assertEqual(ordered[0][0], "Firefox · default-release")
+
+    def test_lyrics_pane_reacts_to_settings_store_live_and_unsubscribes(self) -> None:
+        from core.playback import PlayableTrack
+        from services import settings_store
+        from ui.player.player_queue import LyricsPane
+
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "settings.json"
+            with (
+                patch.object(settings_store, "SETTINGS_JSON", path),
+                patch.object(settings_store, "ensure_config_dir", lambda: path.parent.mkdir(parents=True, exist_ok=True)),
+            ):
+                tr = _make_track("1", "Song", "Artist")
+                cur = PlayableTrack(
+                    track=tr, path="/tmp/x.mp3", container="mp3", codec="mp3", duration_ms=120_000
+                )
+                player_bar = MagicMock()
+                player_bar.queue = SimpleNamespace(current=cur)
+                player_bar.position_ms = 0
+                player_bar._lyrics_cache = {}
+                page = MagicMock()
+
+                pane = LyricsPane(page, player_bar, initially_visible=True)
+                pane._cache[pane._track_key(cur)] = SimpleNamespace(lines=[], plain_text="abc", error="")
+                pane._loaded_key = pane._track_key(cur)
+                pane._status = "plain"
+
+                settings_store.set_lyrics_enabled(False)
+                self.assertEqual(pane._status, "disabled")
+                self.assertEqual(pane._cache, {})
+
+                pane.dispose()
+                self.assertNotIn(pane._on_lyrics_settings_changed, settings_store._LISTENERS)
+
+    def test_playlist_cache_refresh_keeps_task_ref_and_marks_stale(self) -> None:
+        from core.config import PLATFORM_ORDER
+        from core.models import PlaylistMeta
+        from services.api_service import MusicApiService
+        from services.circuit_breaker import CircuitBreaker
+        from services.playlist_cache import CachedPlaylist
+
+        async def _run() -> None:
+            breakers = {p: CircuitBreaker(p) for p in PLATFORM_ORDER}
+            with (
+                patch("services.api_service.ensure_config_dir"),
+                patch("services.api_service.MusicApiService._load_search_cache", return_value={}),
+            ):
+                svc = MusicApiService(breakers)
+
+            stale = CachedPlaylist(
+                meta=PlaylistMeta(name="Vieja", description=""),
+                tracks=[_make_track("1", "A", "B")],
+                fetched_at=0.0,
+            )
+            with (
+                patch("services.api_service.playlist_cache.load", return_value=stale),
+                patch.object(svc, "_refresh_playlist_cache", return_value=None),
+            ):
+                meta, tracks = await svc.fetch_playlist("YouTube Music", "PL123", use_cache=True)
+                self.assertTrue(meta.from_stale_cache)
+                self.assertEqual(len(tracks), 1)
+                self.assertEqual(len(svc._playlist_refresh_tasks), 1)
+                await asyncio.gather(*list(svc._playlist_refresh_tasks), return_exceptions=True)
+                await asyncio.sleep(0)
+                self.assertEqual(len(svc._playlist_refresh_tasks), 0)
+
+        asyncio.run(_run())
+
+    def test_cover_warmer_does_not_mark_failed_urls_as_done(self) -> None:
+        from services import cover_warmer
+
+        async def _run() -> None:
+            cover_warmer._pending.clear()
+            cover_warmer._done.clear()
+            cover_warmer._started = False
+            cover_warmer._queue = None
+            cover_warmer._loop = None
+
+            with (
+                patch("services.cover_warmer.cover_cache.cached_path_for_url", return_value=None),
+                patch("services.cover_warmer.cover_cache.ensure_cached", return_value=None),
+            ):
+                cover_warmer.request("https://example.com/fail.jpg")
+                await asyncio.sleep(0.05)
+                self.assertNotIn("https://example.com/fail.jpg", cover_warmer._done)
+
+            with (
+                patch("services.cover_warmer.cover_cache.cached_path_for_url", return_value=None),
+                patch("services.cover_warmer.cover_cache.ensure_cached", return_value=Path("/tmp/ok.jpg")),
+            ):
+                cover_warmer.request("https://example.com/fail.jpg")
+                await asyncio.sleep(0.05)
+                self.assertIn("https://example.com/fail.jpg", cover_warmer._done)
+
+            if cover_warmer._drain_task is not None and not cover_warmer._drain_task.done():
+                cover_warmer._drain_task.cancel()
+                try:
+                    await cover_warmer._drain_task
+                except asyncio.CancelledError:
+                    pass
+            cover_warmer._started = False
+
+        asyncio.run(_run())
+
+
 if __name__ == "__main__":
     unittest.main()
