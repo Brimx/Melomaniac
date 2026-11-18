@@ -49,9 +49,11 @@ Versión: 4.9.0
 
 from __future__ import annotations
 
+from contextlib import contextmanager
 import os
 import re
 import shutil
+import threading
 import unicodedata
 from dataclasses import dataclass
 from pathlib import Path
@@ -67,7 +69,13 @@ from core.config import (
     YTDLP_FORMAT_SELECTOR,
 )
 from engine.download_cookies import _apply_cookie_jar, _load_cookie_jar
-from engine.download_search import _youtube_video_id, search_candidates
+from engine.download_search import (
+    MAX_VIDEO_DURATION_S,
+    _probe_video_info,
+    _reject_live,
+    _youtube_video_id,
+    search_candidates,
+)
 
 __all__ = [
     "DownloadResult",
@@ -293,6 +301,32 @@ def sanitize_filename(name: str, fallback: str = "audio") -> str:
     return value[:120] or fallback
 
 
+_STEM_LOCKS_GUARD = threading.Lock()
+_STEM_LOCKS: dict[tuple[str, str], tuple[threading.Lock, int]] = {}
+
+
+@contextmanager
+def _acquire_stem_lock(target_dir: Path, stem: str):
+    """Serializa descargas simultáneas que comparten carpeta y stem destino."""
+    key = (str(target_dir), stem)
+    with _STEM_LOCKS_GUARD:
+        lock, refs = _STEM_LOCKS.get(key, (threading.Lock(), 0))
+        _STEM_LOCKS[key] = (lock, refs + 1)
+    lock.acquire()
+    try:
+        yield
+    finally:
+        lock.release()
+        with _STEM_LOCKS_GUARD:
+            cur = _STEM_LOCKS.get(key)
+            if cur is not None:
+                cur_lock, cur_refs = cur
+                if cur_refs <= 1:
+                    _STEM_LOCKS.pop(key, None)
+                else:
+                    _STEM_LOCKS[key] = (cur_lock, cur_refs - 1)
+
+
 def _target_stem(track: Any) -> str:
     """Nombre base ``artista - título`` para el archivo final.
 
@@ -386,6 +420,25 @@ def search_video_id(track: Any, timeout_s: int = 30) -> DownloadResult:
     """
     direct_id = _youtube_video_id(track)
     if direct_id:
+        track_dur_s = int(getattr(track, "duration_ms", 0) or 0) // 1000
+        if track_dur_s > MAX_VIDEO_DURATION_S:
+            return DownloadResult(
+                ok=False,
+                error="Directo o vídeo demasiado largo descartado",
+            )
+        info = _probe_video_info(direct_id, timeout_s)
+        if info is not None:
+            if _reject_live(info):
+                return DownloadResult(
+                    ok=False,
+                    error="Directo o vídeo demasiado largo descartado",
+                )
+            return DownloadResult(
+                ok=True,
+                video_id=direct_id,
+                title=str(info.get("title") or getattr(track, "name", "") or ""),
+                duration_s=int(info.get("duration") or 0),
+            )
         return DownloadResult(
             ok=True, video_id=direct_id, title=str(getattr(track, "name", "") or "")
         )
@@ -591,53 +644,41 @@ def download_audio(
     stem = _target_stem(track)
     final_path = target_dir / f"{stem}.{fmt}"
 
-    # «Omitir existentes»: sin esto la cola vuelve a descargar, busca en
-    # YouTube y sobrescribe en silencio un archivo que ya estaba bien.
-    if skip_existing and final_path.is_file():
-        try:
-            size = final_path.stat().st_size
-        except OSError:
-            size = 0
-        if size >= DOWNLOAD_MIN_BYTES:
-            return DownloadResult(
-                ok=True,
-                path=str(final_path),
-                title=str(getattr(track, "name", "") or ""),
-                code=DOWNLOAD_SKIPPED,
-                skipped=True,
-            )
+    with _acquire_stem_lock(target_dir, stem):
+        # «Omitir existentes»: sin esto la cola vuelve a descargar, busca en
+        # YouTube y sobrescribe en silencio un archivo que ya estaba bien.
+        if skip_existing and final_path.is_file():
+            try:
+                size = final_path.stat().st_size
+            except OSError:
+                size = 0
+            if size >= DOWNLOAD_MIN_BYTES:
+                return DownloadResult(
+                    ok=True,
+                    path=str(final_path),
+                    title=str(getattr(track, "name", "") or ""),
+                    code=DOWNLOAD_SKIPPED,
+                    skipped=True,
+                )
 
-    _cleanup_stale_part_files(target_dir, stem)
-    temp_stem = target_dir / f".{stem}.{os.getpid()}"
+        _cleanup_stale_part_files(target_dir, stem)
+        temp_stem = target_dir / f".{stem}.{os.getpid()}"
 
-    resolved_id = video_id or search_video_id(track).video_id
-    if not resolved_id:
-        return DownloadResult(ok=False, error="Sin coincidencia en YouTube")
+        if video_id:
+            resolved_id = video_id
+            search_err = ""
+        else:
+            search_res = search_video_id(track)
+            resolved_id = search_res.video_id
+            search_err = search_res.error
+        if not resolved_id:
+            return DownloadResult(ok=False, error=search_err or "Sin coincidencia en YouTube")
 
-    url = f"https://www.youtube.com/watch?v={resolved_id}"
+        url = f"https://www.youtube.com/watch?v={resolved_id}"
 
-    result = _attempt_download(
-        track, url, temp_stem, final_path, fmt,
-        use_cookies=False,
-        progress_hook=progress_hook,
-        embed_thumbnail=embed_thumbnail,
-        timeout_s=timeout_s,
-        artwork_fetcher=artwork_fetcher,
-        pause_event=pause_event,
-        lyrics_fetcher=lyrics_fetcher,
-        save_lrc=save_lrc,
-        embed_lyrics=embed_lyrics,
-    )
-    if not result.ok and result.code == DOWNLOAD_PAUSED:
-        # Reintentar con cookies reiniciaría la descarga: la pausa manda.
-        result.video_id = resolved_id
-        return result
-    if not result.ok and _load_cookie_jar() is not None:
-        # El primer error puede ser un límite anónimo; con sesión cambia el
-        # conjunto de formatos disponibles y a veces resuelve.
-        retry = _attempt_download(
+        result = _attempt_download(
             track, url, temp_stem, final_path, fmt,
-            use_cookies=True,
+            use_cookies=False,
             progress_hook=progress_hook,
             embed_thumbnail=embed_thumbnail,
             timeout_s=timeout_s,
@@ -647,11 +688,30 @@ def download_audio(
             save_lrc=save_lrc,
             embed_lyrics=embed_lyrics,
         )
-        if retry.ok:
-            result = retry
+        if not result.ok and result.code == DOWNLOAD_PAUSED:
+            # Reintentar con cookies reiniciaría la descarga: la pausa manda.
+            result.video_id = resolved_id
+            return result
+        if not result.ok and _load_cookie_jar() is not None:
+            # El primer error puede ser un límite anónimo; con sesión cambia el
+            # conjunto de formatos disponibles y a veces resuelve.
+            retry = _attempt_download(
+                track, url, temp_stem, final_path, fmt,
+                use_cookies=True,
+                progress_hook=progress_hook,
+                embed_thumbnail=embed_thumbnail,
+                timeout_s=timeout_s,
+                artwork_fetcher=artwork_fetcher,
+                pause_event=pause_event,
+                lyrics_fetcher=lyrics_fetcher,
+                save_lrc=save_lrc,
+                embed_lyrics=embed_lyrics,
+            )
+            if retry.ok:
+                result = retry
 
-    result.video_id = resolved_id
-    return result
+        result.video_id = resolved_id
+        return result
 
 
 def _artifact_artist_from_filename(audio_path: Path) -> str:

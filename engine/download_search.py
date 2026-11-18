@@ -156,6 +156,30 @@ def _search_entries(track: Any, timeout_s: int) -> tuple[list[dict[str, Any]], s
     return entries, ""
 
 
+def _probe_video_info(video_id: str, timeout_s: int = 30) -> dict[str, Any] | None:
+    """Extrae metadatos mínimos de un vídeo directo para validar directos y duración."""
+    opts: dict[str, Any] = {
+        "quiet": True,
+        "no_warnings": True,
+        "noplaylist": True,
+        "skip_download": True,
+        "socket_timeout": timeout_s,
+        "extractor_args": {"youtube": {"player_client": [YOUTUBE_PLAYER_CLIENT]}},
+    }
+    jar = _load_cookie_jar()
+    try:
+        with yt_dlp.YoutubeDL(opts) as ydl:
+            if jar is not None:
+                ydl.cookiejar = jar
+            info = ydl.extract_info(
+                f"https://www.youtube.com/watch?v={video_id}",
+                download=False,
+            )
+    except Exception:
+        return None
+    return info if isinstance(info, dict) else None
+
+
 def search_candidates(track: Any, timeout_s: int = 30) -> dict[str, Any]:
     """Lista los mejores resultados de YouTube para una pista, sin descargar.
 
