@@ -377,8 +377,13 @@ class TestPlayerBarEnsureAudio(unittest.TestCase):
 
     def test_resolve_stream_info_uses_ytdlp_without_download(self) -> None:
         from unittest.mock import patch
-        from engine.download_search import resolve_stream_info
+        from core.config import (
+            YTDLP_STREAM_FORMAT_SELECTOR,
+            YTDLP_STREAM_PLAYER_CLIENTS,
+        )
+        from engine.download_search import clear_stream_cache, resolve_stream_info
 
+        clear_stream_cache()
         captured: dict = {}
 
         class _FakeYDL:
@@ -395,6 +400,7 @@ class TestPlayerBarEnsureAudio(unittest.TestCase):
             def extract_info(self, url, download=True):
                 captured["url"] = url
                 captured["download"] = download
+                captured["cookiejar"] = self.cookiejar
                 return {
                     "url": "https://cdn.example/stream.opus",
                     "ext": "webm",
@@ -414,12 +420,142 @@ class TestPlayerBarEnsureAudio(unittest.TestCase):
             platform="YouTube Music",
             source_url="https://www.youtube.com/watch?v=dQw4w9WgXcQ",
         )
-        with patch("engine.download_search.yt_dlp.YoutubeDL", _FakeYDL):
+        with (
+            patch("engine.download_search.yt_dlp.YoutubeDL", _FakeYDL),
+            patch("engine.download_search._load_cookie_jar", return_value=object()),
+            patch("engine.download_search._verify_stream_url", return_value=True),
+        ):
             res = resolve_stream_info(tr)
         self.assertEqual(res["error"], "")
         self.assertEqual(res["url"], "https://cdn.example/stream.opus")
         self.assertFalse(captured["download"])
-        self.assertEqual(captured["opts"]["format"], "bestaudio/best")
+        self.assertIsNone(captured["cookiejar"])
+        self.assertEqual(captured["opts"]["format"], YTDLP_STREAM_FORMAT_SELECTOR)
+        self.assertEqual(
+            captured["opts"]["extractor_args"]["youtube"]["player_client"],
+            list(YTDLP_STREAM_PLAYER_CLIENTS),
+        )
+        clear_stream_cache()
+
+    def test_resolve_stream_info_fallbacks_and_ui_hides_stream_badge(self) -> None:
+        from unittest.mock import patch
+        from core.playback import build_pending_stream_track, build_stream_playable_track
+        from engine.download_search import (
+            clear_stream_cache,
+            invalidate_stream_cache,
+            resolve_stream_info,
+        )
+        from ui.player.player_queue import build_queue_row
+
+        clear_stream_cache()
+        attempts: list[tuple[list[str], bool]] = []
+        fake_jar = object()
+
+        class _FallbackYDL:
+            def __init__(self, opts):
+                self._clients = opts["extractor_args"]["youtube"]["player_client"]
+                self.cookiejar = None
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *args):
+                return False
+
+            def extract_info(self, url, download=True):
+                attempts.append((list(self._clients), self.cookiejar is not None))
+                # Falla el cliente primario anónimo y el secundario anónimo;
+                # solo resuelve al caer al intento con cookies.
+                if self.cookiejar is None:
+                    raise RuntimeError("Requested format is not available")
+                return {
+                    "url": "https://cdn.example/auth-audio.m4a",
+                    "ext": "m4a",
+                    "acodec": "mp4a.40.2",
+                    "duration": 180,
+                }
+
+        tr = Track(
+            id="yt_fb",
+            name="Fallback Song",
+            artist="Artist",
+            album="",
+            duration="3:00",
+            img_url="",
+            platform="YouTube Music",
+            source_url="https://www.youtube.com/watch?v=9bZkp7q19f0",
+        )
+        with (
+            patch("engine.download_search.yt_dlp.YoutubeDL", _FallbackYDL),
+            patch("engine.download_search._load_cookie_jar", return_value=fake_jar),
+            patch("engine.download_search._verify_stream_url", return_value=True),
+        ):
+            res = resolve_stream_info(tr)
+            # Segunda llamada usa caché en memoria sin tocar yt-dlp.
+            res_cached = resolve_stream_info(tr)
+            self.assertEqual(len(attempts), 3)
+            self.assertFalse(attempts[0][1])
+            self.assertFalse(attempts[1][1])
+            self.assertTrue(attempts[2][1])
+            self.assertEqual(res["url"], "https://cdn.example/auth-audio.m4a")
+            self.assertEqual(res_cached["url"], res["url"])
+
+            invalidate_stream_cache(tr)
+            resolve_stream_info(tr)
+            self.assertEqual(len(attempts), 6)
+
+        # La verificación rechaza 403 y prueba el siguiente intento.
+        clear_stream_cache()
+        verify_calls: list[str] = []
+
+        class _MultiYDL:
+            def __init__(self, opts):
+                self._clients = opts["extractor_args"]["youtube"]["player_client"]
+                self.cookiejar = None
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *args):
+                return False
+
+            def extract_info(self, url, download=True):
+                if "android_vr" in self._clients:
+                    return {"url": "https://cdn.example/forbidden.m4a", "ext": "m4a", "duration": 180}
+                return {"url": "https://cdn.example/ok18.mp4", "ext": "mp4", "duration": 180}
+
+        def _fake_verify(url: str) -> bool:
+            verify_calls.append(url)
+            return "ok18" in url
+
+        with (
+            patch("engine.download_search.yt_dlp.YoutubeDL", _MultiYDL),
+            patch("engine.download_search._load_cookie_jar", return_value=None),
+            patch("engine.download_search._verify_stream_url", side_effect=_fake_verify),
+        ):
+            res_v = resolve_stream_info(tr)
+        self.assertEqual(res_v["url"], "https://cdn.example/ok18.mp4")
+        self.assertEqual(verify_calls, ["https://cdn.example/forbidden.m4a", "https://cdn.example/ok18.mp4"])
+        clear_stream_cache()
+
+        # UI: el badge de formato se oculta para pistas de streaming (no muestra "STREAM").
+        import flet as ft
+        from ui.player.player_bar import PlayerBar
+
+        bar = PlayerBar(ft.Page)
+        pending = build_pending_stream_track(tr)
+        bar.queue.set_tracks([pending], start_index=0)
+        bar._sync_ui()
+        self.assertFalse(bar._badge_box.visible)
+        stream_pt = build_stream_playable_track("https://cdn.example/ok.m4a", tr, {"ext": "m4a", "acodec": "mp4a.40.2"})
+        self.assertIsNotNone(stream_pt)
+        bar.queue.set_tracks([stream_pt], start_index=0)
+        bar._sync_ui()
+        self.assertFalse(bar._badge_box.visible)
+
+        qrow_stream = build_queue_row(0, pending, True, bar, reorderable=False)
+        self.assertEqual(len(qrow_stream.content.controls), 4)  # lead, thumb, meta, remove (sin chip STREAM)
+        bar.release()
 
 
 class TestPlayerBarLifecycleAndEdgeCases(unittest.IsolatedAsyncioTestCase):
@@ -717,7 +853,12 @@ class TestPlayerBarLifecycleAndEdgeCases(unittest.IsolatedAsyncioTestCase):
         import time
         from unittest.mock import patch
         from core.playback import build_stream_playable_track
-        from engine.download_search import resolve_stream_info, search_candidates
+        from engine.download_search import (
+            clear_stream_cache,
+            resolve_stream_info,
+            search_candidates,
+        )
+        clear_stream_cache()
 
         tr = Track(
             id="s1",
@@ -791,18 +932,23 @@ class TestPlayerBarLifecycleAndEdgeCases(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(res_live["url"], "")
         self.assertIn("Directo", res_live["error"])
 
-        with patch(
-            "engine.download_search.search_candidates",
-            return_value={
-                "query": "Test Artist Test Song",
-                "candidates": [
-                    {"url": "https://www.youtube.com/watch?v=abcdefghijk"},
-                    {"url": "https://www.youtube.com/watch?v=12345678901"},
-                ],
-                "error": "",
-            },
-        ), patch("engine.download_search.yt_dlp.YoutubeDL", _LiveYDL):
+        with (
+            patch(
+                "engine.download_search.search_candidates",
+                return_value={
+                    "query": "Test Artist Test Song",
+                    "candidates": [
+                        {"url": "https://www.youtube.com/watch?v=abcdefghijk"},
+                        {"url": "https://www.youtube.com/watch?v=12345678901"},
+                    ],
+                    "error": "",
+                },
+            ),
+            patch("engine.download_search.yt_dlp.YoutubeDL", _LiveYDL),
+            patch("engine.download_search._verify_stream_url", return_value=True),
+        ):
             res_fb = resolve_stream_info(tr)
+        clear_stream_cache()
         self.assertEqual(res_fb["error"], "")
         self.assertEqual(res_fb["url"], "https://cdn.example/fallback.opus")
 

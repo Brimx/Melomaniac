@@ -98,6 +98,16 @@ AUDIO_BITRATES: dict[str, str] = {
 # sesión SABR activa. Los formatos de audio puro quedan ocultos, así que
 # se pide el contenedor con audio (18) y se extrae con FFmpeg.
 YOUTUBE_PLAYER_CLIENT: str = "android"
+# Clientes y selector para streaming sin descarga: `default,android_vr` expone
+# audio puro progresivo (140 m4a / 251 webm) sin disparar SABR, con fallback
+# a `android` (contenedor 18) y `best` para no fallar por formato ausente.
+YTDLP_STREAM_PLAYER_CLIENTS: tuple[str, ...] = ("default", "android_vr")
+YTDLP_STREAM_FORMAT_SELECTOR: str = (
+    "ba[ext=m4a][protocol^=http][protocol!=http_dash_segments]/"
+    "ba[ext=webm][protocol^=http][protocol!=http_dash_segments]/"
+    "ba[protocol^=http][protocol!=http_dash_segments]/"
+    "bestaudio/18/b/best"
+)
 # Selector de formato: primero audio puro si existe; si la sesión SABR lo
 # oculta, cae al contenedor 18 (360p con audio) y a `best` como último
 # recurso. El video nunca se conserva: FFmpeg extrae solo el audio.

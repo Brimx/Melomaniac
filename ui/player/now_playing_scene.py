@@ -1204,6 +1204,7 @@ class NowPlayingScene(ft.Container):
                 cur.track.album,
                 cur.track.img_url,
                 cur.badge_text,
+                bool(getattr(cur, "is_stream", False)),
             )
             if cur is not None
             else None
@@ -1211,9 +1212,10 @@ class NowPlayingScene(ft.Container):
         if track_sig != self._last_track_sig:
             self._last_track_sig = track_sig
             if cur is not None:
+                is_stream = bool(getattr(cur, "is_stream", False))
                 tr = cur.track
                 title = tr.name or os.path.basename(cur.path)
-                artist = tr.artist or "Archivo local"
+                artist = tr.artist or ("Artista desconocido" if is_stream else "Archivo local")
                 sub = f"{artist} — {tr.album}" if tr.album else artist
                 self._title_txt.value = title
                 self._title_txt.font_family = font_family_for(title, "bold")
@@ -1227,8 +1229,11 @@ class NowPlayingScene(ft.Container):
                         icon_size=56,
                     )
                     safe_update(self._cover_thumb)
-                self._format_badge_txt.value = cur.badge_text
-                self._format_badge.visible = True
+                if is_stream:
+                    self._format_badge.visible = False
+                else:
+                    self._format_badge_txt.value = cur.badge_text
+                    self._format_badge.visible = True
                 self._refresh_ambient_for_cover(tr.img_url)
             else:
                 self._title_txt.value = "Sin reproducción"

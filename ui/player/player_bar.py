@@ -33,7 +33,7 @@ from core.playback import (
     build_stream_playable_track,
     build_playable_for_track,
 )
-from engine.download_search import resolve_stream_info
+from engine.download_search import invalidate_stream_cache, resolve_stream_info
 from services.mpris_service import MPRISService
 from services import settings_store
 from ui.theme.fonts import (
@@ -953,6 +953,8 @@ class PlayerBar(ft.Container):
         seek_ms: int = 0,
         is_retry: bool = False,
     ) -> None:
+        if is_retry:
+            invalidate_stream_cache(item.track)
         info = await asyncio.to_thread(resolve_stream_info, item.track)
         if self._disposed or req_seq != self._stream_req_seq or self.queue.current is not item:
             return
@@ -1617,8 +1619,9 @@ class PlayerBar(ft.Container):
 
         if cur is not None:
             tr = cur.track
+            is_stream = bool(getattr(cur, "is_stream", False))
             title = tr.name or os.path.basename(cur.path)
-            fallback_artist = "Streaming" if getattr(cur, "is_stream", False) else "Archivo local"
+            fallback_artist = "Artista desconocido" if is_stream else "Archivo local"
             artist = tr.artist or fallback_artist
             self._title_txt.value = title
             self._title_txt.font_family = font_family_for(title, "bold")
@@ -1630,9 +1633,12 @@ class PlayerBar(ft.Container):
                 self._thumb_box.content = _thumb_content_for(
                     img_url, box=PLAYER_THUMB_SIZE, icon_size=18
                 )
-            self._badge_txt.value = cur.badge_text
-            self._badge_box.tooltip = cur.stream_tooltip
-            self._badge_box.visible = True
+            if is_stream:
+                self._badge_box.visible = False
+            else:
+                self._badge_txt.value = cur.badge_text
+                self._badge_box.tooltip = cur.stream_tooltip
+                self._badge_box.visible = True
             if self._duration_ms <= 0 and cur.duration_ms > 0:
                 self._duration_ms = cur.duration_ms
         else:

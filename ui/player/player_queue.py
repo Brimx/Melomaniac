@@ -215,19 +215,22 @@ def build_queue_row(
         content=_thumb_content_for(tr.img_url, box=40, icon_size=16),
     )
 
-    fmt_chip = ft.Container(
-        bgcolor=CHIP_BG,
-        border=ft.Border.all(0.6, BORDER_MUTED),
-        border_radius=RADIUS_SHARP,
-        padding=ft.Padding.symmetric(horizontal=6, vertical=2),
-        tooltip=item.stream_tooltip,
-        content=app_text(
-            ext_badge,
-            size=FS_META,
-            color=TEXT_MUTED,
-            font_family=mono_family("medium"),
-        ),
-    )
+    row_controls: list[ft.Control] = [*leading_controls, lead_btn, thumb, meta]
+    if not bool(getattr(item, "is_stream", False)):
+        fmt_chip = ft.Container(
+            bgcolor=CHIP_BG,
+            border=ft.Border.all(0.6, BORDER_MUTED),
+            border_radius=RADIUS_SHARP,
+            padding=ft.Padding.symmetric(horizontal=6, vertical=2),
+            tooltip=item.stream_tooltip,
+            content=app_text(
+                ext_badge,
+                size=FS_META,
+                color=TEXT_MUTED,
+                font_family=mono_family("medium"),
+            ),
+        )
+        row_controls.append(fmt_chip)
 
     remove_btn = app_icon_button(
         PIcons.X,
@@ -239,6 +242,7 @@ def build_queue_row(
         width=24,
         height=24,
     )
+    row_controls.append(remove_btn)
 
     return ft.Container(
         key=stable_key,
@@ -249,7 +253,7 @@ def build_queue_row(
         padding=ft.Padding.symmetric(horizontal=6, vertical=4),
         margin=ft.Margin.only(bottom=4),
         content=ft.Row(
-            controls=[*leading_controls, lead_btn, thumb, meta, fmt_chip, remove_btn],
+            controls=row_controls,
             spacing=SPACE_2,
             vertical_alignment=ft.CrossAxisAlignment.CENTER,
         ),
