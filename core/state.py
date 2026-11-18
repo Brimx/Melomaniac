@@ -430,6 +430,9 @@ class AppState:
     # ── Actions ────────────────────────────────────────────────────────
 
     async def load_playlist(self, playlist_id: str) -> None:
+        if self.transfer_state == TransferState.RUNNING:
+            self._log("[WARN] Transferencia en curso; no se puede cargar otra playlist.")
+            return
         playlist_id = normalize_playlist_id(self.source, playlist_id)
         if not playlist_id:
             return
@@ -498,6 +501,9 @@ class AppState:
 
     def load_local_tracks(self, tracks: list, playlist_name: str = "Playlist Local",
                              playlist_description: str = "") -> None:
+        if self.transfer_state == TransferState.RUNNING:
+            self._log("[WARN] Transferencia en curso; no se pueden cargar pistas locales.")
+            return
         self.cancel_lazy_scan()
         self.playlist_id   = f"local_{uuid.uuid4().hex[:8]}"
         self.playlist_name = playlist_name
@@ -527,6 +533,9 @@ class AppState:
         deduplicate: bool = True,
     ) -> list[Track]:
         """Funde listas de pistas (locales o remotas), opcionalmente deduplica y carga el resultado."""
+        if self.transfer_state == TransferState.RUNNING:
+            self._log("[WARN] Transferencia en curso; no se pueden fusionar playlists.")
+            return []
         self.cancel_lazy_scan()
         materialized = [list(src) for src in sources if src]
         raw_total = sum(len(src) for src in materialized)
@@ -563,6 +572,9 @@ class AppState:
         return list(merged)
 
     def reset_session(self) -> None:
+        if self.transfer_state == TransferState.RUNNING:
+            self._log("[WARN] Transferencia en curso; no se puede reiniciar la sesión.")
+            return
         self.cancel_lazy_scan()
         self.playlist_id   = ""
         self.playlist_name = "Cargar una playlist"
