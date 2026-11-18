@@ -232,7 +232,7 @@ async def main(page: ft.Page) -> None:
                     bg_mode = "disco"
             overlay = OnboardingView(
                 page, on_connect=auth_manager.open_wizard, on_close=_close,
-                bg_mode=bg_mode,
+                bg_mode=bg_mode, state=state,
             )
             root_stack.controls.append(overlay)
             page.update()

@@ -55,6 +55,7 @@ class AuthManager:
         )
         self._last_results: list[PreFlightResult] = []
         self._reload_task:  Optional[asyncio.Task] = None  # tracked for hard_cleanup
+        self.startup_checking: bool = False
 
     # ── Pre-flight / session management ───────────────────────────────
 
@@ -131,6 +132,7 @@ class AuthManager:
             merged[platform] for platform in PLATFORM_ORDER if platform in merged
         ]
         self._sync_auth_ui_state(results)
+        self._wizard.refresh_results(self._last_results)
         self.state.notify()
 
     def _sync_auth_ui_state(self, results: list[PreFlightResult]) -> None:
@@ -148,9 +150,14 @@ class AuthManager:
     async def run_startup_check(self) -> list[PreFlightResult]:
         """Run preflight on startup, log status and update icons without opening the wizard."""
         self.state_log_fn("[INFO] Pre-flight: verificando credenciales…")
-        results = await self.check_all_sessions()
+        self.startup_checking = True
+        try:
+            results = await self.check_all_sessions()
+        finally:
+            self.startup_checking = False
         self._last_results = results
         self._sync_auth_ui_state(results)
+        self._wizard.refresh_results(results)
 
         for r in results:
             if r.ok:

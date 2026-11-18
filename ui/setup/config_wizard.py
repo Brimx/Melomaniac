@@ -167,11 +167,14 @@ class ConfigWizard:
         if self._panel_holder is not None:
             self._panel_holder.content = self._tab_panels[idx]
         for i, btn in enumerate(self._tab_buttons):
-            is_warn      = PLATFORM_ORDER[i] in self._failed_platforms
+            platform     = PLATFORM_ORDER[i]
+            is_warn      = platform in self._failed_platforms
+            icon_ok, icon_warn = PLATFORM_TAB_META[platform]
             col_active   = WARNING if is_warn else TEXT_PRIMARY
             col_inactive = WARNING if is_warn else TEXT_MUTED
             btn.bgcolor  = OVERLAY_14 if i == idx else "transparent"
             row = btn.content
+            row.controls[0].value  = icon_warn if is_warn else icon_ok
             row.controls[0].color  = col_active   if i == idx else col_inactive
             row.controls[1].color  = col_active   if i == idx else col_inactive
             row.controls[1].font_family = (
@@ -466,6 +469,32 @@ class ConfigWizard:
         elif platform == "Spotify":
             svc.spotify_preferred_source = pref
 
+    def _is_platform_checking(self, platform: str) -> bool:
+        if platform in self._results_by_platform:
+            return False
+        st = getattr(self._auth_manager, "state", None)
+        if st is not None and st.auth_session_ok.get(platform) is not None:
+            return False
+        return bool(getattr(self._auth_manager, "startup_checking", False))
+
+    def refresh_results(self, results: list[PreFlightResult]) -> None:
+        """Refresca estados e indicadores si el diálogo está abierto."""
+        if self._dlg is None or not getattr(self._dlg, "open", False):
+            return
+        for r in results:
+            self._results_by_platform[r.platform] = r
+            if r.ok:
+                self._failed_platforms.discard(r.platform)
+                dd = self._source_dropdowns.get(r.platform)
+                if dd is not None and r.source and dd.value == "__auto__":
+                    opt_keys = {o.key for o in (dd.options or [])}
+                    if r.source in opt_keys:
+                        dd.value = r.source
+            else:
+                self._failed_platforms.add(r.platform)
+            self._update_status_row(r.platform)
+        self._apply_tab_selection(self._active_tab_idx)
+
     def _update_status_row(self, platform: str) -> None:
         row = self._status_rows.get(platform)
         if row is None:
@@ -479,6 +508,11 @@ class ConfigWizard:
             src_label = source or "sesión activa"
             text_ctrl.value = f"Verificado con {src_label}"
             text_ctrl.color = SUCCESS
+        elif self._is_platform_checking(platform):
+            icon_ctrl.value = PIcons.ARROWS_CLOCKWISE
+            icon_ctrl.color = TEXT_MUTED
+            text_ctrl.value = "Verificando sesión del navegador…"
+            text_ctrl.color = TEXT_MUTED
         else:
             icon_ctrl.value = PIcons.WARNING
             icon_ctrl.color = WARNING

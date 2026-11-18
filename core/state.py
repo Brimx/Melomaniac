@@ -51,6 +51,7 @@ Fecha: 2026
 from __future__ import annotations
 
 import asyncio
+import threading
 import traceback
 import uuid
 from typing import Callable, Iterable, Optional
@@ -345,6 +346,13 @@ class AppState:
         """
         self._listeners.append(cb)
 
+    def unsubscribe(self, cb: Callable[[], None]) -> None:
+        """Elimina un callback registrado previamente con ``subscribe``."""
+        try:
+            self._listeners.remove(cb)
+        except ValueError:
+            pass
+
     def notify(self) -> None:
         for cb in self._listeners:
             try:
@@ -464,11 +472,27 @@ class AppState:
         self.transfer_started_iso = ""
         self.notify()
 
-        def _progress(_fetched: int, total: int, name: str) -> None:
+        loop = asyncio.get_running_loop()
+        loop_tid = threading.get_ident()
+        loading_active = True
+
+        def _apply_progress(total: int, name: str) -> None:
+            if not loading_active:
+                return
             self.playlist_name = name
             if total:
                 self.load_state = LoadState.LOADING_TRACKS
             self.notify()
+
+        def _progress(_fetched: int, total: int, name: str) -> None:
+            if threading.get_ident() == loop_tid:
+                _apply_progress(total, name)
+                return
+            try:
+                if not loop.is_closed():
+                    loop.call_soon_threadsafe(_apply_progress, total, name)
+            except RuntimeError:
+                pass
 
         if self._lazy_task and not self._lazy_task.done():
             self._lazy_task.cancel()
@@ -478,6 +502,7 @@ class AppState:
             meta, tracks = await self.service.fetch_playlist(
                 self.source, self.playlist_id, _progress
             )
+            loading_active = False
             if isinstance(meta, PlaylistMeta):
                 self.playlist_name = meta.name
                 self.playlist_description = meta.description or ""
@@ -489,14 +514,17 @@ class AppState:
             self.source_tracks = list(tracks)
             self.load_state    = LoadState.READY
         except RateLimitError as e:
+            loading_active = False
             self.cb[self.source].trip(e.retry_after)
             self.load_state = LoadState.ERROR
             self.load_error = f"Rate limit en {e.platform}. Espera {e.retry_after}s."
         except Exception as e:  # pylint: disable=broad-exception-caught
+            loading_active = False
             self._transfer_runner._record_auth_operation_failure(self.source, e)
             self.load_state = LoadState.ERROR
             self.load_error = str(e)
         finally:
+            loading_active = False
             self.notify()
 
     def load_local_tracks(self, tracks: list, playlist_name: str = "Playlist Local",

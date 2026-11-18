@@ -14,19 +14,20 @@ from __future__ import annotations
 
 import asyncio
 import os
+import threading
 from dataclasses import dataclass
 from typing import Callable
 
 import flet as ft
 
-from core.config import AUDIO_FORMATS
+from core.config import AUDIO_FORMATS, PLATFORM_ORDER
 from services import settings_store
 from ui.components.skeletons import is_reduced_motion
 from ui.theme.fonts import FONT_HEADLINE, FONT_TEXT, mono_family
 from ui.theme.icons import PIcons, app_icon
 from ui.setup.onboarding_bg import OnboardingBackground, OnboardingDiscoBackground
 from ui.theme.tokens import (
-    ACCENT, BG_DEEP, BG_SURFACE, BORDER_CONTROL, BORDER_MUTED, FS_META, FS_ROW,
+    ACCENT, BG_DEEP, BG_PANEL, BG_SURFACE, BORDER_CONTROL, BORDER_MUTED, FS_META, FS_ROW,
     FS_SEC, FS_SM, MOTION_ENTER_MS, MOTION_PANEL_MS,
     ONBOARDING_CARD_ALPHA, ONBOARDING_CARD_H, ONBOARDING_CARD_W,
     ONBOARDING_SLIDE, ONBOARDING_STAGGER_MS, PLAYER_PROGRESS_ANIM_MS, PLAYER_PROGRESS_H,
@@ -278,19 +279,33 @@ def _step_system(view: "OnboardingView") -> list[ft.Control]:
 
 
 def _step_connect(view: "OnboardingView") -> list[ft.Control]:
-    return [
+    controls: list[ft.Control] = [
         _feature(PIcons.LOCK, "Es opcional",
                  "Sin credenciales puedes usar lo local y cargar playlists públicas."),
         _feature(PIcons.GLOBE, "Sesión del navegador",
                  "Melomaniac lee primero la sesión de tu navegador, en memoria y sin guardarla."),
         _feature(PIcons.KEY, "Credenciales manuales",
                  "Si hace falta, pégalas en el asistente. Se guardan solo en tu equipo, en config/."),
+    ]
+    if view._state is not None:
+        view._connect_status_row = ft.Row(
+            spacing=SPACE_2,
+            run_spacing=SPACE_1,
+            wrap=True,
+        )
+        view._refresh_connect_status(update=False)
+        controls.append(ft.Container(height=SPACE_1))
+        controls.append(view._connect_status_row)
+    else:
+        view._connect_status_row = None
+    controls.extend([
         ft.Container(height=SPACE_1),
         ft.Row(controls=[
             _primary_btn("Configurar plataformas", PIcons.GEAR,
                          view.connect, width=240, height=40),
         ]),
-    ]
+    ])
+    return controls
 
 
 def _step_done(view: "OnboardingView") -> list[ft.Control]:
@@ -358,7 +373,8 @@ class OnboardingView(ft.Container):
 
     def __init__(self, page: ft.Page, on_connect: Callable[[], None] | None = None,
                  on_close: Callable[[], None] | None = None,
-                 bg_mode: str | None = None) -> None:
+                 bg_mode: str | None = None,
+                 state=None) -> None:
         super().__init__(
             expand=True, bgcolor=BG_DEEP, opacity=1,
             animate_opacity=ft.Animation(MOTION_PANEL_MS, ft.AnimationCurve.EASE_IN_OUT),
@@ -366,12 +382,18 @@ class OnboardingView(ft.Container):
         self._page_ref = page
         self._on_connect = on_connect
         self._on_close = on_close
+        self._state = state
         self._index = 0
         self._busy = False
         self._mounted = False
         self._reduced_motion = is_reduced_motion(page) or settings_store.get_reduce_motion()
         self._prev_key_handler = None
         self._prev_win_handler = None
+        self._installed_key_handler = None
+        self._installed_win_handler = None
+        self._ui_loop = None
+        self._ui_tid = threading.get_ident()
+        self._connect_status_row: ft.Row | None = None
         self.dir_text: ft.Text | None = None
         self._picker = ft.FilePicker()
         page.services.append(self._picker)
@@ -467,7 +489,68 @@ class OnboardingView(ft.Container):
 
     # ── ciclo de vida ──────────────────────────────────────────────────
 
+    def _refresh_connect_status(self, *, update: bool = True) -> None:
+        row = self._connect_status_row
+        st = self._state
+        if row is None or st is None:
+            return
+        auth_ok = getattr(st, "auth_session_ok", {}) or {}
+        auth_hint = getattr(st, "auth_session_hint", {}) or {}
+        chips: list[ft.Control] = []
+        for platform in PLATFORM_ORDER:
+            status = auth_ok.get(platform)
+            hint = str(auth_hint.get(platform) or "").strip()
+            if status is True:
+                icon_name, color = PIcons.CHECK_CIRCLE, SUCCESS
+                detail = hint.split("·", 1)[1].strip() if "·" in hint else "Sesión activa"
+                label = f"{platform}: {detail}"
+            elif status is False:
+                icon_name, color = PIcons.WARNING, WARNING
+                label = f"{platform}: Sin sesión"
+            else:
+                icon_name, color = PIcons.ARROWS_CLOCKWISE, TEXT_MUTED
+                label = f"{platform}: Verificando…"
+            chips.append(
+                ft.Container(
+                    bgcolor=BG_PANEL,
+                    border=ft.Border.all(1, BORDER_CONTROL),
+                    border_radius=RADIUS_SM,
+                    padding=ft.Padding.symmetric(horizontal=SPACE_2, vertical=SPACE_1),
+                    content=ft.Row(
+                        controls=[
+                            app_icon(icon_name, size=FS_SM, color=color, fill=(status is True)),
+                            app_text(label, size=FS_META, color=color if status is not None else TEXT_MUTED,
+                                     font_family=FONT_TEXT),
+                        ],
+                        spacing=SPACE_1,
+                        tight=True,
+                        vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                    ),
+                )
+            )
+        row.controls = chips
+        if update and self._mounted:
+            try:
+                row.update()
+            except Exception:
+                pass
+
+    def _on_state_changed(self) -> None:
+        if not self._mounted or self._connect_status_row is None:
+            return
+        if threading.get_ident() == self._ui_tid:
+            self._refresh_connect_status(update=True)
+            return
+        loop = self._ui_loop
+        if loop is not None and not loop.is_closed():
+            try:
+                loop.call_soon_threadsafe(self._refresh_connect_status, True)
+            except RuntimeError:
+                pass
+
     def _on_key_event(self, e: ft.KeyboardEvent) -> None:
+        if not self._mounted:
+            return
         key = getattr(e, "key", "") or ""
         if key == "Escape":
             asyncio.create_task(self._close())
@@ -482,13 +565,18 @@ class OnboardingView(ft.Container):
             asyncio.create_task(self._go(-1))
 
     def _restore_key_handler(self) -> None:
-        if getattr(self._page_ref, "on_keyboard_event", None) is self._on_key_event:
+        cur_key = getattr(self._page_ref, "on_keyboard_event", None)
+        if self._installed_key_handler is not None and cur_key == self._installed_key_handler:
             self._page_ref.on_keyboard_event = self._prev_key_handler
             self._prev_key_handler = None
+        self._installed_key_handler = None
         win = getattr(self._page_ref, "window", None)
-        if win is not None and getattr(win, "on_event", None) == self._on_window_event:
-            win.on_event = self._prev_win_handler
-            self._prev_win_handler = None
+        if win is not None:
+            cur_win = getattr(win, "on_event", None)
+            if self._installed_win_handler is not None and cur_win == self._installed_win_handler:
+                win.on_event = self._prev_win_handler
+                self._prev_win_handler = None
+        self._installed_win_handler = None
 
     def _on_window_event(self, e) -> None:
         if callable(self._prev_win_handler):
@@ -505,17 +593,28 @@ class OnboardingView(ft.Container):
 
     def did_mount(self) -> None:
         self._mounted = True
+        self._ui_tid = threading.get_ident()
+        try:
+            self._ui_loop = asyncio.get_running_loop()
+        except RuntimeError:
+            self._ui_loop = None
         self._prev_key_handler = getattr(self._page_ref, "on_keyboard_event", None)
-        self._page_ref.on_keyboard_event = self._on_key_event
+        self._installed_key_handler = self._on_key_event
+        self._page_ref.on_keyboard_event = self._installed_key_handler
         win = getattr(self._page_ref, "window", None)
         if win is not None:
             self._prev_win_handler = getattr(win, "on_event", None)
-            win.on_event = self._on_window_event
+            self._installed_win_handler = self._on_window_event
+            win.on_event = self._installed_win_handler
+        if self._state is not None and hasattr(self._state, "subscribe"):
+            self._state.subscribe(self._on_state_changed)
         self._bg.start()
         asyncio.create_task(self._enter(0))
 
     def will_unmount(self) -> None:
         self._mounted = False
+        if self._state is not None and hasattr(self._state, "unsubscribe"):
+            self._state.unsubscribe(self._on_state_changed)
         self._restore_key_handler()
         self._bg.stop()
 
