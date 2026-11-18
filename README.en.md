@@ -27,7 +27,7 @@ Desktop application to **transfer playlists between YouTube Music, Apple Music, 
 - 🎵 **Integrated player** — Global player bar, reorderable queue, shuffle/repeat, synchronized lyrics, MPRIS on Linux, and a Now Playing scene. Plays local files and remote tracks without downloading, with crossfade and resume of the last local track.
 - ⬇️ **Downloads (personal use)** — Save audio with `yt-dlp` in MP3, M4A, Opus, FLAC, or WAV, with metadata, 800 px artwork, pause and resume of the track in progress, and one subfolder per playlist keeping its original order. Requires `ffmpeg`.
 - 🔎 **Results panel** — When a batch finishes you see what was downloaded, what already existed, what failed, and what was missing; you can re-search the track on YouTube, pick another candidate, or retry in another format.
-- 🛠️ **Organization and export** — List/Dual/Preview views, sorting and grouping by artist, album, or date, manual splits into 2–5 blocks, and export to `TXT`, `CSV`, `M3U`, `M3U8`, `PLS`, `WPL`, `XSPF`, or XML.
+- 🛠️ **Organization and export** — List/Dual/Preview views, sorting and grouping by artist, album, or date, manual splits into 2–5 blocks, and export to `TXT`, `CSV`, `M3U/M3U8`, or `XSPF`.
 - 🌐 **Browser session** — In most cases there is nothing to configure: it detects your active Firefox/Chromium session in memory. Manual credentials are available through the built-in wizard.
 - 🖥️ **Settings and system integration** — Eight settings sections, release checks, persistent playlist and artwork caches. Packaged builds create and update the system shortcut.
 
@@ -126,7 +126,7 @@ Start the app again with `scripts/launchers/run.bat`/`run.sh` (they detect `requ
 2. Load the playlist (or search songs, albums, and artists from **Catalog**, or combine sources with **Merge**) and review the tracks; uncheck any you do not want.
 3. Optionally: **Organize** (sort/group) or **Split** (manual blocks) from the contextual bar and switch between List, Dual, and Preview views.
 4. Click **Transfer** (pick the destination and validate the session live in the dialog), **Download**, or **Export** to a file or target playlist. When finished, the Post-Mortem report lets you search for alternatives to ambiguous tracks.
-5. Play any local or downloaded file from the bottom bar (with expandable side queue) or from Library/Downloads.
+5. Play local and downloaded files, or stream supported remote tracks without downloading, from the bottom bar (with side queue) or the Library.
 
 The first run shows a guided welcome tour (reopenable from Config).
 
@@ -139,9 +139,11 @@ The session is resolved in memory from your browser (Firefox/Chromium). If you n
 | `config/browser.json` | YouTube Music: session cookies (`Cookie`); `SAPISIDHASH` is computed on each read |
 | `config/.env` | Apple Music: `APPLE_AUTH_BEARER`, `APPLE_MUSIC_USER_TOKEN` |
 | `config/spotify_cookies.json` | Spotify: `sp_dc`, `sp_key` |
-| `config/settings.json` | Download format, online artwork, and local folders |
+| `config/settings.json` | Playback, download, Library, appearance, accessibility, and browser preferences |
 | `config/search_cache.json` | Cached search results |
 | `config/transfer_history.jsonl` | Transfer and resolution history |
+| `config/library_playlists.json`, `config/local_index.json` | Local Library metadata and index |
+| `config/playlist_cache/`, `config/cover_cache/`, `config/lyrics/` | Playlist, artwork, and lyrics caches |
 
 Files in `config/` are equivalent to your session: never share or commit them.
 

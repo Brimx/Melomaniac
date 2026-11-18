@@ -27,7 +27,7 @@ Aplicación de escritorio para **transferir playlists entre YouTube Music, Apple
 - 🎵 **Reproductor integrado** — Barra global, cola reordenable, shuffle/repeat, letras sincronizadas, MPRIS en Linux y escena Reproduciendo. Reproduce archivos locales y pistas remotas sin descargarlas; incluye crossfade y reanudación de la última pista local.
 - ⬇️ **Descargas (uso personal)** — Guarda audio con `yt-dlp` en MP3, M4A, Opus, FLAC o WAV, con metadatos, carátula a 800 px, pausa y reanudación de la pista en curso, y una subcarpeta por playlist con su orden original. Requiere `ffmpeg`.
 - 🔎 **Panel de resultados** — Al terminar una descarga ves qué se descargó, qué ya existía, qué falló y qué faltó; puedes rebuscar la pista en YouTube, elegir otro candidato o reintentar en otro formato.
-- 🛠️ **Organización y exportación** — Vistas Lista/Doble/Preview, ordenación y agrupación por artista, álbum o fecha, división manual en 2–5 bloques y exportación a `TXT`, `CSV`, `M3U`, `M3U8`, `PLS`, `WPL`, `XSPF` o XML.
+- 🛠️ **Organización y exportación** — Vistas Lista/Doble/Preview, ordenación y agrupación por artista, álbum o fecha, división manual en 2–5 bloques y exportación a `TXT`, `CSV`, `M3U/M3U8` o `XSPF`.
 - 🌐 **Sesión desde el navegador** — En la mayoría de los casos no hay nada que configurar: detecta tu sesión activa de Firefox/Chromium en memoria. Credenciales manuales disponibles vía asistente integrado.
 - 🖥️ **Configuración e integración** — Ocho secciones de ajustes, comprobación de nuevas releases, caché persistente de playlists y portadas. En binarios crea y actualiza el acceso directo del sistema.
 
@@ -128,7 +128,7 @@ Vuelve a arrancar con `scripts/launchers/run.bat`/`run.sh` (detectan cambios en 
 2. Carga la playlist (o busca canciones, álbumes y artistas desde **Catálogo**, o combina fuentes con **Fusionar**) y revisa las pistas; desmarca las que no quieras.
 3. Opcional: **Organizar** (ordenar/agrupar) o **Dividir** (bloques manuales) desde la barra contextual y alterna entre vistas Lista, Doble y Preview.
 4. Pulsa **Transferir** (elige el destino y valida la sesión en vivo en el mismo diálogo), **Descargar** o **Exportar** a archivo o a una playlist destino. Al terminar, el reporte Post-Mortem permite buscar alternativas para las pistas dudosas.
-5. Reproduce cualquier archivo local o descargado desde la barra inferior (con cola lateral desplegable) o desde Biblioteca/Descargas.
+5. Reproduce archivos locales y descargados, o transmite pistas remotas compatibles sin descargarlas, desde la barra inferior (con cola lateral) o desde Biblioteca.
 
 La primera ejecución muestra una bienvenida guiada (reabrible desde Config).
 
@@ -141,9 +141,11 @@ La sesión se resuelve en memoria desde tu navegador (Firefox/Chromium). Si nece
 | `config/browser.json` | YouTube Music: cookies de sesión (`Cookie`); `SAPISIDHASH` se calcula en cada lectura |
 | `config/.env` | Apple Music: `APPLE_AUTH_BEARER`, `APPLE_MUSIC_USER_TOKEN` |
 | `config/spotify_cookies.json` | Spotify: `sp_dc`, `sp_key` |
-| `config/settings.json` | Formato de descarga, carátulas online y carpetas locales |
+| `config/settings.json` | Preferencias de reproducción, descargas, Biblioteca, apariencia, accesibilidad y navegador |
 | `config/search_cache.json` | Caché de búsquedas previas |
 | `config/transfer_history.jsonl` | Historial de transferencias y resoluciones |
+| `config/library_playlists.json`, `config/local_index.json` | Metadatos e índice de la Biblioteca local |
+| `config/playlist_cache/`, `config/cover_cache/`, `config/lyrics/` | Cachés de playlists, portadas y letras |
 
 Los archivos de `config/` equivalen a tu sesión: no los compartas ni los subas a Git.
 

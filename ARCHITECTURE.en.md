@@ -1,10 +1,10 @@
-# Melomaniac v4.10.0 — Architecture
+# Melomaniac v4.11.1 — Architecture
 
 [← README](README.en.md) · [Español](ARCHITECTURE.md) · [Design](DESIGN.md) · [Changes](CHANGELOG.md)
 
-Melomaniac separates the Flet UI, application state, platform services, and metadata normalization/matching engine. The current version supports YouTube Music, Apple Music, Spotify, and two local inputs: file and pasted text.
+Melomaniac separates the Flet UI, application state, platform services, and metadata normalization/matching engine. The current version integrates YouTube Music, Apple Music, and Spotify with local files/text, the local Library, audio playback, and streaming for supported remote tracks.
 
-The documented working version is `4.10.0` (single source: `APP_VERSION` in `core/config.py:12`). This version closes Management Block 2 (library playlist picker, merge, local manifests, export/add to platforms, catalog search in Management, and contextual action bar), upgrades to Flet `1.1.2`, and consolidates the composition-based modular architecture. Per-version details live in `CHANGELOG.md`.
+The documented version is `4.11.1` (single source: `APP_VERSION` in `core/config.py:12`). It includes the Listening Room experience, Home, redesigned Library, synchronized lyrics, the Now Playing scene, streaming without downloading, crossfade, and reliability improvements for transfers, matching, downloads, and sessions. Per-version details live in `CHANGELOG.md` and `RELEASE_NOTES.md`.
 
 ## Layers and dependencies
 
@@ -80,6 +80,7 @@ Melomaniac/
 │   ├── cover_warmer.py            # Background artwork prefetch into the cache
 │   ├── covers.py                  # Multi-source album artwork resolution pipeline
 │   ├── desktop_integration.py     # .desktop/.lnk launchers and binary auto-sync
+│   ├── lyrics.py                  # Synchronized lyrics lookup and cache
 │   ├── library_state.py           # Library synchronization and state management
 │   ├── local_index.py             # Facade over local index and manifests
 │   ├── mpris_service.py           # Linux D-Bus MPRIS service for media controls
@@ -91,7 +92,7 @@ Melomaniac/
 │   ├── components/                # widgets.py, song_row.py, skeletons.py, playlist_card.py, context_menu.py, telemetry.py
 │   ├── dialogs/                   # organize_panel.py, division_dialogs.py, playlist_meta_dialog.py, transfer_*, export_dialog.py, merge_dialog.py, recovery_panel.py
 │   ├── setup/                     # auth_manager.py, config_wizard.py, wizard_forms.py, onboarding.py, onboarding_bg.py
-│   ├── views/                     # library_view.py, playlist_detail_*, downloads_view.py, download_recovery.py, config_view.py
+│   ├── views/                     # home_view.py, library_view.py, playlist_detail_*, downloads_view.py, config_*
 │   ├── player/                    # player_bar.py, bar_layout.py, player_queue.py, now_playing_scene.py, player_mpris.py
 │   └── shell/                     # main_ui.py, main_layout.py, main_actions.py, catalog_panel.py, nav_rail.py, sidebar.py, keymap.py
 ├── resources/fonts/               # Stack Sans and IBM Plex fonts; optional CJK
@@ -152,7 +153,7 @@ UI selects source + ID or URL
 
 Parsers accept `TXT`, `CSV`, `M3U/M3U8`, `PLS`, `WPL`, `XSPF`, and XSPF-compatible XML. Local paths are resolved only for known audio extensions; remote URLs are not read as local files.
 
-`engine.exporters` mirrors the parsers for local output. It exports `TXT`, `CSV`, `M3U`, `M3U8`, and `XSPF`, supports `artist-title` and `title-artist` order, sanitizes filenames, and preserves ISRC in XSPF. The UI exposes it as the `Local File (Export)` destination and uses `FilePicker` when available.
+`engine.exporters` writes local output in `TXT`, `CSV`, `M3U/M3U8`, and `XSPF` (imports also accept `PLS`, `WPL`, and XSPF-compatible XML). It supports `artist-title` and `title-artist` order, sanitizes filenames, and preserves ISRC in XSPF. The UI exposes it as the `Local File (Export)` destination and uses `FilePicker` when available.
 
 ## Search and transfer flow
 
@@ -186,21 +187,21 @@ The shared matcher uses these thresholds:
 | Threshold | Meaning |
 |---:|---|
 | `85` | ideal match |
-| `70–84` | low confidence but acceptable for streaming |
+| `70–84` | low confidence; accepted for platform tracks and rejected for local tracks |
 | `<40` | `needs_review` / `revision_necesaria` |
 | artist `99` + title `60` | exact-artist rescue path |
 
 For local tracks, a `low_confidence` result is also rejected to avoid ambiguous transfers.
 
-The Organize dialog can preserve the current order or sort A→Z/Z→A, then group by artist, album, or release date. Split creates 2–5 manual divisions by selecting artists, albums, or tracks. These operations apply to the playlist as a whole. The user can show the list, preview, or both columns. The floating side rail is a custom docked control: it pushes the content instead of overlaying it, starts collapsed at `68 px`, and expands to `220 px` with animated labels. It exposes Manage, Library, Downloads, and Config; Config manages default audio formats, online artwork toggles, destination folders, and cache clearing, while the credential wizard opens from the gear button in the left panel. Library syncs and caches playlist metadata, and indexes local music folders. Downloads lets users select tracks, format, and destination, inspect progress/results with an FFmpeg preflight banner, and cancel the queue.
+The Organize dialog preserves the current order or sorts A→Z/Z→A, then groups by artist, album, or release date. Split creates 2–5 manual divisions by selecting artists, albums, or tracks. These operations apply to the playlist as a whole. The floating side rail is docked: it pushes the content instead of overlaying it, starts collapsed at `68 px`, and expands to `220 px`. It exposes Home, Management, Library, Downloads, and Config. Config covers connections, playback, downloads, Library, accessibility, appearance, data, and About. The Library syncs playlists, searches/filters their contents, and indexes local music folders; Downloads provides a queue with pause/resume and a results report.
 
 ### Audio downloads
 
-`AppState.download_selected()` coordinates the queue and runs blocking `yt-dlp` calls in threads (`asyncio.to_thread`), with maximum concurrency `DOWNLOAD_CONCURRENCY=2`. `engine.downloader` reuses the source URL for YouTube Music tracks or searches YouTube for a match for other sources; it validates title and duration, extracts audio only with FFmpeg, and writes metadata/artwork with Mutagen. The file is published via atomic rename after passing a minimum-size check. MP3 (default), M4A, Opus, FLAC, and WAV are available, with automated skipping for already downloaded files.
+`AppState.download_selected()` coordinates the queue and runs blocking `yt-dlp` calls in threads (`asyncio.to_thread`), with maximum concurrency `DOWNLOAD_CONCURRENCY=2`. `engine.downloader` reuses the source URL for YouTube Music tracks or searches YouTube for a match for other sources; it validates title and duration, extracts audio only with FFmpeg, and writes metadata/artwork with Mutagen. The file is published via atomic rename after passing a minimum-size check. MP3 (default), M4A, Opus, FLAC, and WAV are available, with skip-existing, pause/resume, and recovery for missing tracks.
 
 ### Integrated Audio Player and MPRIS
 
-Native audio playback is handled by `ui.player.player_bar.PlayerBar` using `flet-audio` over `FLET_DESKTOP_FLAVOR=full`. It supports FLAC, MP3, M4A, Opus, and WAV for local and downloaded tracks. Playback queues are managed by `core.playback.PlayQueue` (featuring repeat, shuffle, and reorderable track control via `ui.player.player_queue.PlayerQueuePanel`). On Linux, `services.mpris_service.MPRISService` (`org.mpris.MediaPlayer2.melomaniac`) exposes standard transport state, position seeking, artwork, and track metadata to the session D-Bus via `ui.player.player_mpris.MprisController`, enabling control through desktop widgets and physical keyboard media keys.
+Playback is handled by `ui.player.player_bar.PlayerBar` using `flet-audio` with `FLET_DESKTOP_FLAVOR=full`. It plays local files and supported remote tracks resolved on demand, keeps a reorderable queue in `core.playback.PlayQueue`, and supports repeat, shuffle, crossfade, synchronized lyrics, and resuming the last local track. On Linux, `services.mpris_service.MPRISService` (`org.mpris.MediaPlayer2.melomaniac`) synchronizes state, position, artwork, and metadata with the session D-Bus through `ui.player.player_mpris.MprisController`.
 
 ## Concurrency, caching, and resilience
 

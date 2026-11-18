@@ -1,10 +1,10 @@
-# Melomaniac v4.10.0 — Arquitectura
+# Melomaniac v4.11.1 — Arquitectura
 
 [← README](README.md) · [English](ARCHITECTURE.en.md) · [Diseño](DESIGN.md) · [Cambios](CHANGELOG.md)
 
-Melomaniac separa la interfaz Flet, el estado de la aplicación, los servicios de plataforma y el motor de normalización/matching. La versión actual soporta YouTube Music, Apple Music, Spotify y dos entradas locales: archivo y texto pegado.
+Melomaniac separa la interfaz Flet, el estado de la aplicación, los servicios de plataforma y el motor de normalización/matching. La versión actual integra YouTube Music, Apple Music y Spotify con archivos/texto locales, Biblioteca local, reproducción de audio y streaming de pistas compatibles.
 
-La versión de trabajo documentada es `4.10.0` (fuente única: `APP_VERSION` en `core/config.py:12`). Esta versión cierra el Bloque 2 de gestión (selección de biblioteca, fusión, manifiestos locales, exportación/añadido a plataformas, catálogo en Gestión y barra contextual), migra a Flet `1.1.2` y consolida la arquitectura modular por composición. El detalle por versión está en `CHANGELOG.md`.
+La versión documentada es `4.11.1` (fuente única: `APP_VERSION` en `core/config.py:12`). Incluye la experiencia Sala de escucha, Inicio, Biblioteca renovada, letras sincronizadas, escena Reproduciendo, streaming sin descarga, crossfade y mejoras de fiabilidad en transferencias, matching, descargas y sesiones. El detalle por versión está en `CHANGELOG.md` y `RELEASE_NOTES.md`.
 
 ## Capas y dependencias
 
@@ -80,6 +80,7 @@ Melomaniac/
 │   ├── cover_warmer.py            # Descarga en segundo plano de portadas al caché
 │   ├── covers.py                  # Resolución inteligente de portadas por álbum
 │   ├── desktop_integration.py     # Lanzadores .desktop/.lnk y auto-sync en binarios
+│   ├── lyrics.py                  # Búsqueda y caché de letras sincronizadas
 │   ├── library_state.py           # Sincronización de la Biblioteca
 │   ├── local_index.py             # Fachada de índice local y manifiestos
 │   ├── mpris_service.py           # Servicio D-Bus MPRIS para control en Linux
@@ -91,7 +92,7 @@ Melomaniac/
 │   ├── components/                # widgets.py, song_row.py, skeletons.py, playlist_card.py, context_menu.py, telemetry.py
 │   ├── dialogs/                   # organize_panel.py, division_dialogs.py, playlist_meta_dialog.py, transfer_*, export_dialog.py, merge_dialog.py, recovery_panel.py
 │   ├── setup/                     # auth_manager.py, config_wizard.py, wizard_forms.py, onboarding.py, onboarding_bg.py
-│   ├── views/                     # library_view.py, playlist_detail_*, downloads_view.py, download_recovery.py, config_view.py
+│   ├── views/                     # home_view.py, library_view.py, playlist_detail_*, downloads_view.py, config_*
 │   ├── player/                    # player_bar.py, bar_layout.py, player_queue.py, now_playing_scene.py, player_mpris.py
 │   └── shell/                     # main_ui.py, main_layout.py, main_actions.py, catalog_panel.py, nav_rail.py, sidebar.py, keymap.py
 ├── resources/fonts/               # Stack Sans e IBM Plex; CJK opcional
@@ -152,7 +153,7 @@ UI selecciona origen + ID o URL
 
 Los parsers aceptan `TXT`, `CSV`, `M3U/M3U8`, `PLS`, `WPL`, `XSPF` y XML compatible con XSPF. Las rutas locales solo se resuelven para extensiones de audio conocidas; las URLs remotas no se leen como archivos.
 
-`engine.exporters` es el espejo de los parsers para la salida local. Exporta `TXT`, `CSV`, `M3U`, `M3U8` y `XSPF`, respeta el orden `artist-title` o `title-artist`, sanea el nombre de archivo y conserva el ISRC en XSPF. La UI lo expone como el destino `Archivo Local (Exportar)` y usa `FilePicker` cuando está disponible.
+`engine.exporters` genera salida local en `TXT`, `CSV`, `M3U/M3U8` y `XSPF` (la importación también acepta `PLS`, `WPL` y XML compatible con XSPF). Respeta el orden `artist-title` o `title-artist`, sanea el nombre de archivo y conserva el ISRC en XSPF. La UI lo expone como el destino `Archivo Local (Exportar)` y usa `FilePicker` cuando está disponible.
 
 ## Flujo de búsqueda y transferencia
 
@@ -186,21 +187,21 @@ El matching común usa estos umbrales:
 | Umbral | Uso |
 |---:|---|
 | `85` | match ideal |
-| `70–84` | baja confianza pero aceptable para streaming |
+| `70–84` | baja confianza; se acepta en pistas de plataforma y se rechaza para pistas locales |
 | `<40` | `needs_review` / `revision_necesaria` |
 | `99` de artista + `60` de título | salvamento por artista exacto |
 
 En pistas locales, un resultado `low_confidence` también se rechaza para evitar transferencias ambiguas.
 
-El diálogo Organizar conserva el orden actual o permite ordenar A→Z/Z→A y agrupar por artista, álbum o fecha de lanzamiento. Dividir crea de 2 a 5 divisiones manuales seleccionando artistas, álbumes o canciones; ambas operaciones actúan sobre la playlist completa. El usuario puede mostrar la lista, el preview o ambas columnas. El rail lateral flotante es un control custom docked: desplaza el contenido en vez de superponerlo, arranca colapsado en `68 px` y se expande a `220 px` con labels animados. Expone Gestión, Biblioteca, Descargas y Config; Config gestiona formato por defecto, permiso de carátulas online, carpeta destino y vaciado de caché, mientras el asistente de credenciales se abre desde el engranaje del panel izquierdo. Biblioteca sincroniza y conserva metadatos de playlists, además de indexar carpetas de música local. Descargas permite seleccionar pistas, formato y destino, consultar el progreso/resultados con preflight de FFmpeg y cancelar la cola.
+El diálogo Organizar conserva el orden actual o permite ordenar A→Z/Z→A y agrupar por artista, álbum o fecha de lanzamiento. Dividir crea de 2 a 5 divisiones manuales seleccionando artistas, álbumes o canciones; ambas operaciones actúan sobre la playlist completa. El usuario puede mostrar la lista, el preview o ambas columnas. El rail lateral flotante es un control docked: desplaza el contenido en vez de superponerlo, arranca colapsado en `68 px` y se expande a `220 px`. Expone Inicio, Gestión, Biblioteca, Descargas y Config. Config organiza conexiones, reproducción, descargas, Biblioteca, accesibilidad, apariencia, datos y Acerca de. Biblioteca sincroniza playlists, filtra/busca su contenido e indexa carpetas locales; Descargas ofrece cola con pausa/reanudación y reporte de resultados.
 
 ### Descargas de audio
 
-`AppState.download_selected()` coordina la cola y ejecuta las llamadas bloqueantes de `yt-dlp` en hilos (`asyncio.to_thread`), con concurrencia máxima `DOWNLOAD_CONCURRENCY=2`. `engine.downloader` reutiliza la URL de origen para pistas de YouTube Music o busca una coincidencia en YouTube para las demás fuentes; valida título y duración, extrae solo audio con FFmpeg y escribe metadatos/portada con Mutagen. El archivo se publica mediante renombrado atómico tras superar el tamaño mínimo. Se ofrecen MP3 (predeterminado), M4A, Opus, FLAC y WAV con omisión inteligente de archivos ya existentes.
+`AppState.download_selected()` coordina la cola y ejecuta las llamadas bloqueantes de `yt-dlp` en hilos (`asyncio.to_thread`), con concurrencia máxima `DOWNLOAD_CONCURRENCY=2`. `engine.downloader` reutiliza la URL de origen para pistas de YouTube Music o busca una coincidencia en YouTube para las demás fuentes; valida título y duración, extrae solo audio con FFmpeg y escribe metadatos/portada con Mutagen. El archivo se publica mediante renombrado atómico tras superar el tamaño mínimo. Se ofrecen MP3 (predeterminado), M4A, Opus, FLAC y WAV con omisión inteligente de archivos existentes, pausa/reanudación y recuperación de faltantes.
 
 ### Reproductor de audio y MPRIS
 
-El reproductor nativo vive en `ui.player.player_bar.PlayerBar` utilizando `flet-audio` sobre `FLET_DESKTOP_FLAVOR=full`. Soporta FLAC, MP3, M4A, Opus y WAV para fuentes locales y pistas descargadas. La cola de reproducción vive en `core.playback.PlayQueue` (con modos repeat, shuffle y control reordenable en `ui.player.player_queue.PlayerQueuePanel`). En Linux, `services.mpris_service.MPRISService` (`org.mpris.MediaPlayer2.melomaniac`) sincroniza el estado de transporte, posición, carátulas y metadatos con el bus D-Bus de sesión vía `ui.player.player_mpris.MprisController`, habilitando control mediante teclas multimedia del sistema y widgets de escritorio.
+El reproductor vive en `ui.player.player_bar.PlayerBar` y usa `flet-audio` con `FLET_DESKTOP_FLAVOR=full`. Reproduce archivos locales y pistas remotas compatibles resueltas bajo demanda, mantiene la cola reordenable en `core.playback.PlayQueue` y admite repeat, shuffle, crossfade, letras sincronizadas y reanudación de la última pista local. En Linux, `services.mpris_service.MPRISService` (`org.mpris.MediaPlayer2.melomaniac`) sincroniza estado, posición, carátulas y metadatos con el bus D-Bus vía `ui.player.player_mpris.MprisController`.
 
 ## Concurrencia, caché y resiliencia
 

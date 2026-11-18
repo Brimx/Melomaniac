@@ -1,258 +1,162 @@
 ---
 name: Melomaniac
-description: Sistema visual de Melomaniac, aplicación de escritorio en Flet. Paleta OLED oscura, tipografía Stack Sans con fallback IBM Plex y CJK, escalas fijas de espaciado y radio.
+description: Sistema visual de Melomaniac en Flet: lienzo OLED, texto cálido, acento azul y detalles de papel, obi y sello hanko.
 colors:
   background: "#000000"
-  surface: "#111118"
   panel: "#080808"
+  inset: "#050608"
+  surface: "#111118"
   input: "#16161F"
   list: "#161622"
   hover: "#1E1E28"
   sidebar: "#0E0E15"
   chip: "#1A1A22"
-  primary: "#4F8BFF"
-  primary-hover: "#6BA3FF"
-  primary-pressed: "#2D5FCC"
-  primary-halo: "#2A3F5C"
+  paper: "#E9E2D0"
+  hanko: "#D9443B"
+  accent: "#4F8BFF"
+  accent-hover: "#6BA3FF"
+  accent-pressed: "#2D5FCC"
+  accent-halo: "#2A3F5C"
   success: "#00D084"
   warning: "#FFA500"
   error: "#FF4444"
   border: "#3D4455"
   border-muted: "#2A3040"
+  border-control: "#5A6478"
   border-row: "#252530"
-  text-primary: "#F2F6FF"
+  text-primary: "#F2EDE4"
   text-muted: "#848DA1"
   text-dim: "#3D4455"
 typography:
-  brand: {fontFamily: Stack Sans Notch, fontSize: 52px, fontWeight: 700}
-  title: {fontFamily: Stack Sans Headline, fontSize: 22px, fontWeight: 600}
-  heading: {fontFamily: Stack Sans Headline, fontSize: 16px, fontWeight: 600}
-  body: {fontFamily: Stack Sans Text, fontSize: 14px, fontWeight: 400, lineHeight: 1.4}
-  body-small: {fontFamily: Stack Sans Text, fontSize: 13px, fontWeight: 400, lineHeight: 1.4}
-  label: {fontFamily: Stack Sans Headline, fontSize: 12px, fontWeight: 600}
-  caption: {fontFamily: Stack Sans Text, fontSize: 11px, fontWeight: 400}
-  mono: {fontFamily: IBM Plex Mono, fontSize: 12px, fontWeight: 400}
-  cyrillic: {fontFamily: IBM Plex Sans, fontSize: 14px, fontWeight: 400}
+  brand: {fontFamily: Stack Sans Notch}
+  headline: {fontFamily: Stack Sans Headline}
+  body: {fontFamily: Stack Sans Text}
+  mono: {fontFamily: IBM Plex Mono}
+  cyrillic: {fontFamily: IBM Plex Sans}
+  sizes: {meta: 11px, small: 12px, body: 14px, row: 16px, section: 20px, page: 28px, display: 40px}
 rounded:
-  xs: 3px
-  sm: 4px
-  md: 6px
-  lg: 8px
-  xl: 10px
-  pill: 20px
+  none: 0px
+  sharp: 3px
+  sm: 6px
+  pill: 999px
 spacing:
-  xs: 4px
-  sm: 8px
-  md: 12px
-  lg: 16px
-  xl: 24px
-components:
-  app-canvas:
-    backgroundColor: "{colors.background}"
-    textColor: "{colors.text-primary}"
-  surface-card:
-    backgroundColor: "{colors.surface}"
-    textColor: "{colors.text-primary}"
-    typography: "{typography.body}"
-    rounded: "{rounded.lg}"
-    padding: 12px
-  panel:
-    backgroundColor: "{colors.panel}"
-    textColor: "{colors.text-muted}"
-    rounded: "{rounded.md}"
-  sidebar:
-    backgroundColor: "{colors.sidebar}"
-    textColor: "{colors.text-muted}"
-  list-row:
-    backgroundColor: "{colors.list}"
-    textColor: "{colors.text-primary}"
-    typography: "{typography.body}"
-  list-row-hover:
-    backgroundColor: "{colors.hover}"
-    textColor: "{colors.text-primary}"
-  input:
-    backgroundColor: "{colors.input}"
-    textColor: "{colors.text-primary}"
-    typography: "{typography.body}"
-    rounded: "{rounded.md}"
-    padding: 8px
-  input-focus:
-    backgroundColor: "{colors.input}"
-    textColor: "{colors.text-primary}"
-    rounded: "{rounded.md}"
-  chip:
-    backgroundColor: "{colors.chip}"
-    textColor: "{colors.text-muted}"
-    typography: "{typography.caption}"
-    rounded: "{rounded.pill}"
-    padding: 4px
-  button-primary:
-    backgroundColor: "{colors.primary}"
-    textColor: "{colors.text-primary}"
-    typography: "{typography.label}"
-    rounded: "{rounded.xl}"
-    padding: 12px
-  button-primary-hover:
-    backgroundColor: "{colors.primary-hover}"
-    textColor: "{colors.text-primary}"
-    rounded: "{rounded.xl}"
-  button-primary-pressed:
-    backgroundColor: "{colors.primary-pressed}"
-    textColor: "{colors.text-primary}"
-    rounded: "{rounded.xl}"
-  focus-ring:
-    backgroundColor: "{colors.primary-halo}"
-  button-ghost:
-    backgroundColor: "{colors.background}"
-    textColor: "{colors.text-muted}"
-    typography: "{typography.label}"
-    rounded: "{rounded.xl}"
-    padding: 12px
-  button-ghost-hover:
-    backgroundColor: "{colors.background}"
-    textColor: "{colors.text-primary}"
-    rounded: "{rounded.xl}"
-  divider-row:
-    backgroundColor: "{colors.border-row}"
-  border-strong:
-    backgroundColor: "{colors.border}"
-  border-muted:
-    backgroundColor: "{colors.border-muted}"
-  icon-placeholder:
-    backgroundColor: "{colors.surface}"
-    textColor: "{colors.text-dim}"
-  status-success:
-    backgroundColor: "{colors.success}"
-    textColor: "{colors.background}"
-  status-warning:
-    backgroundColor: "{colors.warning}"
-    textColor: "{colors.background}"
-  status-error:
-    backgroundColor: "{colors.error}"
-    textColor: "{colors.background}"
+  0: 0px
+  1: 4px
+  2: 8px
+  3: 12px
+  4: 16px
+  5: 24px
+  6: 32px
+  7: 48px
 ---
 
-## Overview
+## Dirección visual
 
-Melomaniac es una aplicación de escritorio (Flet, Python) para organizar, buscar y exportar playlists entre YouTube Music, Apple Music y Spotify. Su interfaz es un instrumento de trabajo denso y oscuro: se usa de noche, con listas largas y con la mirada fija en la pantalla.
+La interfaz combina un lienzo OLED oscuro con acentos cálidos inspirados en papel, lomos *obi* y sellos *hanko*. La jerarquía se construye con espacio, contraste, alineación y relieve medido. Las superficies oscuras mantienen continuidad; las bandas de papel resaltan contenido seleccionado o editorial, y el azul identifica acciones y foco.
 
-La identidad visual es OLED: negro absoluto de fondo y superficies que solo se separan por un uno o dos niveles de gris azulado. No hay sombras como mecanismo principal de jerarquía —la jerarquía viene del contraste de superficie y del espacio—. El acento azul es el único color saturado y se reserva para lo accionable.
+Las decisiones de producto deben conservar legibilidad en listas largas y ventanas compactas. La portada acompaña la información de la pista; no debe desplazar las acciones ni los metadatos que permiten organizar una biblioteca.
 
-Criterio: la UI debe leerse como una sola superficie oscura continua donde el contenido flota, no como un conjunto de tarjetas. Un elemento destaca por su posición o por su acento, no por estar encerrado en un marco.
+## Colores
 
-## Colors
+`ui/theme/tokens.py` es la fuente única de colores. Los valores de abajo son la forma sin alfa de los tokens RGBA del código.
 
-Fondo y superficies, de más profundo a más elevado:
-
-| Token | Hex | Uso |
+| Token de código | Hex | Uso |
 |---|---|---|
-| `background` | `#000000` | Lienzo de la app, base de los botones ghost |
-| `panel` | `#080808` | Paneles y contenedores de información |
-| `sidebar` | `#0E0E15` | Rail de navegación lateral |
-| `surface` | `#111118` | Superficies elevadas: tarjetas, placeholders de skeleton |
-| `input` | `#16161F` | Campos de texto |
-| `list` | `#161622` | Fondo de las filas de lista |
-| `hover` | `#1E1E28` | Fila de lista bajo el cursor |
-| `chip` | `#1A1A22` | Chips, tags y badges |
+| `BG_DEEP` | `#000000` | Fondo principal |
+| `BG_PANEL` | `#080808` | Paneles profundos |
+| `BG_INSET` | `#050608` | Superficies interiores |
+| `BG_SURFACE` | `#111118` | Superficie elevada y skeletons |
+| `BG_INPUT` | `#16161F` | Campos de entrada |
+| `BG_LIST` | `#161622` | Filas de listas |
+| `BG_HOVER` | `#1E1E28` | Hover de filas |
+| `SIDEBAR_BG` | `#0E0E15` | Rail lateral |
+| `CHIP_BG` | `#1A1A22` | Chips y etiquetas |
+| `PAPER_BG` | `#E9E2D0` | Papel, bandas *obi* y superficies claras |
+| `HANKO` | `#D9443B` | Sello bermellón |
+| `ACCENT` | `#4F8BFF` | Acción principal y foco |
+| `ACCENT_HOVER` | `#6BA3FF` | Acción principal en hover |
+| `ACCENT_DIM` | `#2D5FCC` | Acción presionada |
+| `ACCENT_HALO` | `#2A3F5C` | Relieve azul de acciones |
+| `TEXT_PRIMARY` | `#F2EDE4` | Texto principal cálido |
+| `TEXT_MUTED` | `#848DA1` | Texto secundario |
+| `TEXT_DIM` | `#3D4455` | Marcas decorativas, no texto informativo |
+| `BORDER_LIGHT` | `#3D4455` | Borde visible |
+| `BORDER_MUTED` | `#2A3040` | Borde discreto |
+| `BORDER_CONTROL` | `#5A6478` | Contorno de controles interactivos |
+| `BORDER_ROW` | `#252530` | Separador de filas |
+| `SUCCESS` / `WARNING` / `ERROR_COL` | `#00D084` / `#FFA500` / `#FF4444` | Estados semánticos |
 
-El acento y sus estados:
+`ON_ACCENT` (`#06101F`) define texto e iconos sobre el azul. `SHADOW_INK` y `SHADOW_INK_2` crean el relieve de papel. Los overlays blancos y de advertencia también están centralizados en `tokens.py`; no se inventan valores locales.
 
-| Token | Hex | Uso |
-|---|---|---|
-| `primary` | `#4F8BFF` | Botón primario, icono seleccionado |
-| `primary-hover` | `#6BA3FF` | Botón primario en hover |
-| `primary-pressed` | `#2D5FCC` | Botón primario presionado |
-| `primary-halo` | `#2A3F5C` | Halo de elevación del botón primario en hover |
+## Tipografía
 
-Estados semánticos, usados solo en iconografía y bordes, nunca como relleno grande:
+`ui/theme/fonts.py` selecciona la familia por escritura, no por idioma del sistema:
 
-| Token | Hex |
-|---|---|
-| `success` | `#00D084` |
-| `warning` | `#FFA500` |
-| `error` | `#FF4444` |
+- **Stack Sans Notch:** marca.
+- **Stack Sans Headline:** encabezados y etiquetas de interfaz.
+- **Stack Sans Text:** texto general latino.
+- **IBM Plex Sans:** texto cirílico.
+- **IBM Plex Mono:** logs y datos técnicos.
+- **CJK:** se usa cuando hay una fuente compatible disponible; si no, se conserva el fallback del sistema.
 
-Bordes: `border` `#3D4455` (visible), `border-muted` `#2A3040` (fantasma de botón), `border-row` `#252530` (separador de fila, 0.5 px).
+La escala tipográfica canónica (`FS_*` en `tokens.py`) es: meta 11 px, pequeña 12 px, cuerpo 14 px, fila 16 px, sección 20 px, página 28 px y display 40 px. Los componentes pueden definir tamaños puntuales cuando su función lo exige, pero los valores compartidos deben salir de esta escala.
 
-Texto: `text-primary` `#F2F6FF`, `text-muted` `#848DA1` (secundario), `text-dim` `#3D4455` (iconos de placeholder, nunca informativo).
+## Espaciado y medidas
 
-Los overlays blancos translúcidos (6 %, 8 %, 10 %, 14 %, 18 %) se usan para tabs, inputs, notas y banners: son el único mecanismo de "capa" sobre superficie negra.
+La escala de espacio vive en `SPACE_0`–`SPACE_7`: `0`, `4`, `8`, `12`, `16`, `24`, `32` y `48` px.
 
-## Typography
+| Elemento | Medida de referencia |
+|---|---:|
+| Fila de pista (`ITEM_H`) | 64 px |
+| Rail colapsado / expandido | 68 / 220 px |
+| Barra de reproducción | 72 px |
+| Panel lateral de cola | 340 px |
+| Tarjeta de playlist | 160 px |
 
-Stack Sans es la familia de producto; IBM Plex entra por criterio de Coverage, no por gusto.
+Las listas de altura uniforme mantienen `item_extent=ITEM_H` y una caché de scroll acotada. El rail desplaza el contenido; el panel de cola se integra al layout. En ventanas estrechas, se priorizan controles utilizables y texto sin recortes.
 
-- `brand` — Stack Sans **Notch**, 52 px. Solo el logotipo.
-- `title` — Stack Sans Headline 22 px, semibold. Títulos de sección y títulos de diálogo.
-- `heading` — Stack Sans Headline 16 px, semibold. Encabezados de columna y de tarjeta.
-- `body` — Stack Sans Text 14 px. Texto de fila y contenido.
-- `body-small` — Stack Sans Text 13 px. Texto secundario dentro de una celda.
-- `label` — Stack Sans Headline 12 px, semibold. Etiquetas de botones y de segmented buttons.
-- `caption` — Stack Sans Text 11 px. Metadatos: duración, número de pistas, badges.
-- `mono` — IBM Plex Mono 12 px. Consola, logs y datos técnicos.
-- `cyrillic` — IBM Plex Sans 14 px. Sustituye a Stack Sans Text cuando el texto contiene cirílico.
+## Formas y profundidad
 
-La selección de familia se hace **por rangos de caracteres** del texto renderizado (CJK > cirílico > latino), no por el locale del sistema. Si no hay fuente CJK instalada, se registra el fallback nativo; nunca se fuerza una fuente latina sobre glifos CJK.
+Los únicos radios canónicos son `RADIUS_NONE` (0 px), `RADIUS_SHARP` (3 px), `RADIUS_SM` (6 px) y `RADIUS_PILL` (999 px, solo discos e indicadores circulares). No se deben documentar radios de 10 o 14 px como norma global.
 
-Pesos disponibles: Light, Regular, Medium, SemiBold, Bold. El SemiBold es el peso de interfaz por defecto en etiquetas y titulares.
+El relieve de papel usa desplazamientos y sombras centralizados (`PAPER_LIFT`, `PAPER_LIFT_SM`, `PAPER_CANTO_PX`, `SHADOW_INK*`). Las filas y paneles oscuros se separan sobre todo por tono, espacio y divisores; la sombra se reserva para elementos que representan papel elevado.
 
-## Layout
+## Componentes y estados
 
-Escala de espaciado: `xs` 4, `sm` 8, `md` 12, `lg` 16, `xl` 24. Todo el padding y el `spacing` salen de aquí.
+- **Acción primaria:** azul `ACCENT`, texto `ON_ACCENT`; hover y presión usan sus tokens propios.
+- **Acción secundaria:** superficie discreta y texto secundario, con borde de control donde haga falta.
+- **Entrada:** `BG_INPUT`, texto principal y contorno visible al recibir foco.
+- **Fila:** `BG_LIST`, altura `ITEM_H`, divisor `BORDER_ROW`; selección y hover conservan una señal visible además del color.
+- **Papel y obi:** `PAPER_BG` con texto oscuro, filete/canto y sombra de papel según el componente.
+- **Sello:** `HANKO` se reserva para acentos de identidad.
+- **Foco de teclado:** anillo azul de `FOCUS_RING_WIDTH=2` y separación `FOCUS_RING_OFFSET=2`.
+- **Estado:** éxito, advertencia y error se acompañan con texto o iconografía; el color no es la única señal.
 
-- Altura de fila de canción: **64 px** constantes, padding vertical 12 px, separador inferior de 0.5 px.
-- La fila es una rejilla de 7 celdas: índice (28), miniatura (55×55), título (expande 3), álbum (expande 2), duración (48), estado (26), check (32×18). `spacing` horizontal 16.
-- Los skeletons replican exactamente esa geometría; si no, la lista salta al cargar.
-- El rail lateral es colapsable y recalcula el esqueleto al cambiar de viewport.
-- Los diálogos se centran y nunca superan el ancho de la ventana; en ventanas estrechas pasan a columna.
+Los helpers visuales compartidos viven en `ui/components/widgets.py`; las vistas reutilizan esos helpers y los tokens en `ui/theme/tokens.py`.
 
-## Elevation & Depth
+## Movimiento
 
-La profundidad es casi plana. No hay sombras como mecanismo de jerarquía.
-
-- La única sombra del sistema es el halo del botón primario en hover: `primary-halo` con elevación 6.
-- Jerarquía por tono de superficie: `background` → `panel`/`sidebar` → `surface` → `input`/`list`.
-- Las separaciones dentro de una superficie se hacen con `border-row` a 0.5 px, no con sombra.
-- El overlay (blanco translúcido 6–18 %) marca capas modales por encima de la superficie.
-
-## Shapes
-
-Radios de controles centralizados en `ui/theme/tokens.py`: inputs y botones, 10 px; diálogos y rail, 14 px. Para superficies y chips se mantiene el radio propio del componente.
-
-Regla: inputs y botones usan 10 px; diálogos y rail, 14 px. Las filas y superficies se mantienen casi rectas y chips/círculos siguen el radio propio de su componente.
-
-## Components
-
-- **Botón primario** — fondo `primary`, texto `text-primary`, radio 10 px, padding 12 px. Hover: `primary-hover` + halo. Pressed: `primary-pressed`.
-- **Botón ghost** — fondo transparente, texto `text-muted`, borde `border-muted` 0.8 px. Hover: texto `text-primary` y borde `primary`. Es la acción secundaria o destructiva.
-- **Campo de texto** — fondo `input`, radio 10 px, texto `body`.
-- **Fila de lista** — fondo `list`, separador `border-row` 0.5 px, alto 64 px. Hover: `hover`.
-- **Chip** — fondo `chip`, texto `text-muted` en `caption`, radio definido por el componente.
-- **Superficie elevada** — fondo `surface`, radio definido por el componente, padding `md`.
-- **Icono de placeholder** — `surface` + `text-dim`, para carátulas y estados vacíos.
-- **Indicador de estado** — `success` / `warning` / `error` sobre `background` en iconos pequeños.
-
-## Motion
-
-La duración sale de `ui/theme/tokens.py`, una por propósito; nunca se escribe un número en `ui/`.
+Las duraciones están centralizadas en `tokens.py`; se reutilizan por propósito y con las curvas de transición definidas por el componente.
 
 | Token | Duración | Uso |
-|---|---|---|
-| `MOTION_HOVER_MS` | 120 ms | Hover, press, cambios de color o borde |
-| `MOTION_ENTER_MS` | 200 ms | Aparición de elementos, progreso, cambios de estado cortos |
-| `MOTION_PANEL_MS` | 300 ms | Paneles, rail y transiciones de vista |
-| `MOTION_REVEAL_MS` | 400 ms | Barrido ASCII de skeletons |
+|---|---:|---|
+| `MOTION_PRESS_MS` | 90 ms | Compresión al pulsar |
+| `MOTION_HOVER_MS` | 120 ms | Hover y respuesta breve |
+| `MOTION_EXIT_MS` | 167 ms | Salida o cierre |
+| `MOTION_ENTER_MS` | 200 ms | Entrada y cambio de estado |
+| `MOTION_PANEL_MS` | 300 ms | Rail, paneles y vistas |
+| `MOTION_REVEAL_MS` | 400 ms | Reveal ASCII de skeletons |
 | `MOTION_SKELETON_MS` | 600 ms | Pulso de carga |
+| `MOTION_SHIMMER_MS` | 1500 ms | Shimmer |
+| `MOTION_AMBIENT_MS` | 24000 ms | Deriva ambiental de Reproduciendo |
 
-## Do's and Don'ts
+Las animaciones respetan movimiento reducido. No se asignan duraciones numéricas ad hoc en `ui/`; si aparece un propósito nuevo y reutilizable, se añade un token con su justificación.
 
-- **Do:** token único para cada valor; si el color no está en `ui/theme/tokens.py`, se añade ahí.
-- **Do:** una sola familia tipográfica por script, sin mezclar Stack Sans e IBM Plex en la misma línea.
-- **Do:** jerarquía por espacio y por tono de superficie, no por cajas y sombras.
-- **Do:** un solo elemento memorable por pantalla; el resto se queda quieto.
-- **Don't:** añadir tarjetas alrededor de cada elemento de una lista.
-- **Don't:** usar el acento como color decorativo: `#4F8BFF` significa "accionable".
-- **Don't:** usar `text-dim` para texto que se debe leer.
-- **Don't:** animar con curvas elásticas o rebote.
-- **Don't:** variar la duración de la misma animación entre pantallas.
-- **Contraste del botón primario:** `text-primary` sobre `#4F8BFF` alcanza aproximadamente 3.0:1; en hover sobre `#6BA3FF` baja a 2.3:1. El estado hover queda por debajo de AA para texto normal. El icono de placeholder también queda por debajo de AA a propósito (es decorativo, no informativo).
+## Criterios de implementación
+
+- Colores, escalas, radios, medidas repetidas y movimiento tienen una sola fuente de verdad en `ui/theme/tokens.py`.
+- Tipografías y selección por script pasan por `ui/theme/fonts.py`.
+- La jerarquía se resuelve primero con espacio, contraste y alineación; tarjetas, bordes y sombras se usan cuando comunican agrupación o elevación.
+- El texto dim es decorativo: no se usa para información que el usuario debe leer.
+- El foco debe ser visible, los estados no dependen solo del color y los ajustes de accesibilidad respetan movimiento reducido.
+- No se añaden superficies alrededor de cada fila ni se usa el azul como decoración sin función.
