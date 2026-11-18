@@ -62,6 +62,7 @@ from ui.components.widgets import (
     organize_dropdown,
     safe_update,
     set_button_text,
+    spawn_task,
 )
 from ui.components.context_menu import (
     ContextMenuAction,
@@ -491,10 +492,7 @@ class PlaylistDetailView(ft.Container):
         try:
             self._page_ref.run_task(_wait)
         except Exception:
-            try:
-                asyncio.create_task(_wait())
-            except Exception:
-                pass
+            spawn_task(_wait())
 
     def _download_context(self) -> dict[str, str]:
         """Destino de descarga común para lote, pista individual y recuperación."""
@@ -1074,9 +1072,7 @@ class PlaylistDetailView(ft.Container):
         try:
             self._page_ref.run_task(_do_download)
         except Exception:
-            try:
-                asyncio.create_task(_do_download())
-            except Exception:
+            if spawn_task(_do_download()) is None:
                 self._downloading_track_ids.discard(tid)
 
     def _on_play_all(self, _e=None) -> None:
@@ -1468,10 +1464,8 @@ class PlaylistDetailView(ft.Container):
                 try:
                     self._page_ref.run_task(_run_ctx)
                 except Exception:
-                    try:
-                        asyncio.create_task(_run_ctx())
-                    except Exception as exc:  # noqa: BLE001
-                        notify(self._page_ref, f"No se pudo iniciar la reproducción remota: {exc}", kind="error")
+                    if spawn_task(_run_ctx()) is None:
+                        notify(self._page_ref, "No se pudo iniciar la reproducción remota", kind="error")
                 return
         if not hasattr(pb, "play_remote_track"):
             return
@@ -1483,10 +1477,8 @@ class PlaylistDetailView(ft.Container):
         try:
             self._page_ref.run_task(_run)
         except Exception:
-            try:
-                asyncio.create_task(_run())
-            except Exception as exc:  # noqa: BLE001
-                notify(self._page_ref, f"No se pudo iniciar la reproducción remota: {exc}", kind="error")
+            if spawn_task(_run()) is None:
+                notify(self._page_ref, "No se pudo iniciar la reproducción remota", kind="error")
 
     def _play_single_track(self, track: Track, index: int) -> None:
         """Reproduce una sola pista local en el reproductor encolando la lista."""

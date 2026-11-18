@@ -38,6 +38,7 @@ from ui.components.widgets import (
     organize_dropdown,
     section_label,
     show_dialog,
+    spawn_task,
     tab_underline,
 )
 
@@ -307,10 +308,7 @@ class LibraryView(ft.Container):
         if plat != LOCAL_LIBRARY_LABEL:
             self.library_state.select_platform(plat)
             # auto sync
-            try:
-                asyncio.create_task(self.library_state.sync_source(plat))
-            except Exception:
-                pass
+            spawn_task(self.library_state.sync_source(plat))
         self._refresh()
         try:
             self.update()
@@ -335,10 +333,7 @@ class LibraryView(ft.Container):
             return
         if not self._platform:
             return
-        try:
-            asyncio.create_task(self.library_state.refresh_source(self._platform))
-        except Exception:
-            pass
+        spawn_task(self.library_state.refresh_source(self._platform))
 
     def _set_local_tab(self, tab_key: str) -> None:
         if tab_key not in ("carpetas", "playlists") or self._local_tab == tab_key:
@@ -641,10 +636,7 @@ class LibraryView(ft.Container):
         try:
             self._page_ref.run_task(_do_save)
         except Exception:
-            try:
-                asyncio.create_task(_do_save())
-            except Exception:
-                pass
+            spawn_task(_do_save())
 
     def _open_import_dialog(self) -> None:
         """Abre diálogo para importar una playlist remota como manifiesto local."""
@@ -823,7 +815,7 @@ class LibraryView(ft.Container):
             try:
                 self._page_ref.run_task(_run_import)
             except Exception:
-                asyncio.create_task(_run_import())
+                spawn_task(_run_import())
 
         cancel_btn = dialog_action("Cancelar", _close, kind="muted", icon=PIcons.X)
         import_btn = dialog_action("Importar sin descargar", _on_submit, kind="primary", icon=PIcons.FLOPPY_DISK)

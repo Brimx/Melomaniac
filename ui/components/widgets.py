@@ -66,6 +66,23 @@ FONT_MEDIUM = FONT_TEXT_MEDIUM
 FONT_SEMI = FONT_TEXT_SEMI
 
 _DEBOUNCE_TASKS: dict[Any, asyncio.Task] = {}
+_BG_TASKS: set[asyncio.Task] = set()
+
+
+def spawn_task(coro: Any) -> asyncio.Task | None:
+    """Crea una tarea asyncio reteniendo su referencia hasta que finalice."""
+    try:
+        task = asyncio.get_running_loop().create_task(coro)
+    except RuntimeError:
+        if hasattr(coro, "close"):
+            try:
+                coro.close()
+            except Exception:
+                pass
+        return None
+    _BG_TASKS.add(task)
+    task.add_done_callback(_BG_TASKS.discard)
+    return task
 
 
 def control_page(ctrl: ft.Control | None) -> ft.Page | None:

@@ -16,6 +16,7 @@ from ui.components.widgets import (
     app_text_field,
     input_border,
     kicker,
+    notify,
     platform_select,
     safe_update,
     set_button_text,
@@ -346,6 +347,7 @@ def build_sidebar(ui) -> None:
 
     def _on_sidebar_dest_click(_e=None) -> None:
         if getattr(s, "load_state", LoadState.IDLE) != LoadState.READY or not getattr(s, "tracks", None):
+            notify(ui.page, "Carga una playlist primero para elegir destino.")
             return
         if getattr(s, "transfer_state", TransferState.IDLE) == TransferState.RUNNING:
             return

@@ -41,6 +41,7 @@ from ui.components.widgets import (
     notify,
     organize_dropdown,
     paper_shadow,
+    spawn_task,
 )
 
 _PAD = SPACE_5
@@ -553,16 +554,16 @@ class OnboardingView(ft.Container):
             return
         key = getattr(e, "key", "") or ""
         if key == "Escape":
-            asyncio.create_task(self._close())
+            spawn_task(self._close())
         elif key == "Enter":
             if self._index == len(ONBOARDING_STEPS) - 1:
-                asyncio.create_task(self._close())
+                spawn_task(self._close())
             else:
-                asyncio.create_task(self._go(1))
+                spawn_task(self._go(1))
         elif key == "Arrow Right":
-            asyncio.create_task(self._go(1))
+            spawn_task(self._go(1))
         elif key == "Arrow Left":
-            asyncio.create_task(self._go(-1))
+            spawn_task(self._go(-1))
 
     def _restore_key_handler(self) -> None:
         cur_key = getattr(self._page_ref, "on_keyboard_event", None)
@@ -609,7 +610,7 @@ class OnboardingView(ft.Container):
         if self._state is not None and hasattr(self._state, "subscribe"):
             self._state.subscribe(self._on_state_changed)
         self._bg.start()
-        asyncio.create_task(self._enter(0))
+        spawn_task(self._enter(0))
 
     def will_unmount(self) -> None:
         self._mounted = False
