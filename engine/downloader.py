@@ -607,6 +607,7 @@ def download_audio(
                 skipped=True,
             )
 
+    _cleanup_stale_part_files(target_dir, stem)
     temp_stem = target_dir / f".{stem}.{os.getpid()}"
 
     resolved_id = video_id or search_video_id(track).video_id
@@ -909,6 +910,68 @@ def _find_produced_file(temp_stem: Path) -> Optional[Path]:
     ]
     pool = audio_like or candidates
     return max(pool, key=lambda p: p.stat().st_size)
+
+
+def _is_pid_alive(pid: int) -> bool:
+    """True si ``pid`` corresponde a un proceso vivo en el sistema."""
+    if pid <= 0:
+        return False
+    if pid == os.getpid():
+        return True
+    if os.name == "nt":
+        try:
+            import ctypes
+            kernel32 = ctypes.windll.kernel32
+            handle = kernel32.OpenProcess(0x1000, False, pid)
+            if not handle:
+                return False
+            try:
+                code = ctypes.c_ulong()
+                if kernel32.GetExitCodeProcess(handle, ctypes.byref(code)):
+                    return code.value == 259
+                return False
+            finally:
+                kernel32.CloseHandle(handle)
+        except Exception:
+            return False
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    except OSError:
+        return False
+    return True
+
+
+def _cleanup_stale_part_files(target_dir: Path, stem: str) -> None:
+    """Elimina temporales ``.{stem}.<pid>.*`` huérfanos de procesos ya muertos."""
+    prefix = f".{stem}."
+    try:
+        entries = list(target_dir.iterdir())
+    except OSError:
+        return
+    for entry in entries:
+        if not entry.is_file() or not entry.name.startswith(prefix):
+            continue
+        rest = entry.name[len(prefix):]
+        pid_token = rest.split(".", 1)[0]
+        if not pid_token.isdigit():
+            continue
+        is_temp_artifact = (
+            rest == pid_token
+            or rest.startswith(f"{pid_token}.temp")
+            or entry.name.endswith((".part", ".ytdl", ".temp"))
+        )
+        if not is_temp_artifact:
+            continue
+        pid = int(pid_token)
+        if pid != os.getpid() and not _is_pid_alive(pid):
+            try:
+                entry.unlink()
+            except OSError:
+                pass
 
 
 def _cleanup_temp_files(temp_stem: Path) -> None:

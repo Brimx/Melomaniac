@@ -63,6 +63,29 @@ class PauseTransitionTest(unittest.TestCase):
         self.state.pause_downloads()
         self.assertEqual(self.state.download_failed, [])
 
+    def test_cleanup_stale_part_files_removes_dead_pid_and_keeps_active_pid(self) -> None:
+        import os
+        import tempfile
+        from unittest.mock import patch
+        from engine.downloader import _cleanup_stale_part_files
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            dead_part = root / ".Artist - Song.999999.temp.part"
+            dead_ytdl = root / ".Artist - Song.999999.temp.ytdl"
+            alive_part = root / f".Artist - Song.{os.getpid()}.temp.part"
+            unrelated = root / ".keep.hidden"
+            for f in (dead_part, dead_ytdl, alive_part, unrelated):
+                f.write_bytes(b"partial")
+
+            with patch("engine.downloader._is_pid_alive", side_effect=lambda pid: pid == os.getpid()):
+                _cleanup_stale_part_files(root, "Artist - Song")
+
+            self.assertFalse(dead_part.exists())
+            self.assertFalse(dead_ytdl.exists())
+            self.assertTrue(alive_part.exists())
+            self.assertTrue(unrelated.exists())
+
 
 if __name__ == "__main__":
     unittest.main()
