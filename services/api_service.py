@@ -134,6 +134,7 @@ class MusicApiService:
         # Claves (platform, playlist_id) cuyo caché se está refrescando en
         # segundo plano; evita lanzar dos refrescos de la misma playlist.
         self._playlist_refreshing: set[tuple[str, str]] = set()
+        self._playlist_refresh_tasks: set[asyncio.Task] = set()
         self.auth_manager = None
 
         _am_ua = (
@@ -169,6 +170,10 @@ class MusicApiService:
             self._http_session.close()
         except OSError:
             pass
+        for task in list(self._playlist_refresh_tasks):
+            if not task.done():
+                task.cancel()
+        self._playlist_refresh_tasks.clear()
         for client in self._clients.values():
             client.cleanup()
 
@@ -306,7 +311,9 @@ class MusicApiService:
             raise ValueError("Playlist sin identificador")
         cached = playlist_cache.load(platform, playlist_id) if use_cache else None
         if cached is not None:
-            if not cached.is_fresh():
+            is_fresh = cached.is_fresh()
+            cached.meta.from_stale_cache = not is_fresh
+            if not is_fresh:
                 self._schedule_playlist_refresh(platform, playlist_id, client)
             return cached.meta, cached.tracks
         # El breaker protege llamadas de red: una copia en disco se sirve
@@ -327,7 +334,13 @@ class MusicApiService:
         task = asyncio.create_task(
             self._refresh_playlist_cache(platform, playlist_id, client)
         )
-        task.add_done_callback(lambda _t, k=key: self._playlist_refreshing.discard(k))
+        self._playlist_refresh_tasks.add(task)
+
+        def _done(t: asyncio.Task, k: tuple[str, str] = key) -> None:
+            self._playlist_refreshing.discard(k)
+            self._playlist_refresh_tasks.discard(t)
+
+        task.add_done_callback(_done)
 
     async def _refresh_playlist_cache(self, platform: str, playlist_id: str, client) -> None:
         """Descarga y guarda la playlist sin propagar errores al llamador."""

@@ -92,6 +92,7 @@ class PlaylistMeta:
     """
     name: str
     description: str = ""
+    from_stale_cache: bool = False
 
 
 @dataclass
