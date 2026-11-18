@@ -115,10 +115,33 @@ class CircuitBreaker:
                 default_cooldown = 60
         self.platform         = platform
         self.default_cooldown = default_cooldown
-        self.is_open: bool    = False
+        self._is_open: bool   = False
         self._until: float    = 0.0
         self._callbacks: list[Callable[[bool, int], None]] = []
         self._reset_task: Optional[asyncio.Task] = None
+        self._loop: Optional[asyncio.AbstractEventLoop] = None
+
+    @property
+    def is_open(self) -> bool:
+        self._expire_if_elapsed()
+        return self._is_open
+
+    @is_open.setter
+    def is_open(self, value: bool) -> None:
+        self._is_open = bool(value)
+        if not value:
+            self._until = 0.0
+
+    def _schedule_reset_task(self, wait: int) -> None:
+        if self._reset_task and not self._reset_task.done():
+            self._reset_task.cancel()
+        self._reset_task = asyncio.create_task(self._auto_reset(wait))
+
+    def _expire_if_elapsed(self) -> None:
+        if self._is_open and self._until and time.monotonic() >= self._until:
+            self._is_open = False
+            self._until = 0.0
+            self._notify(False, 0)
 
     def subscribe(self, cb: Callable[[bool, int], None]) -> None:
         """
@@ -134,6 +157,10 @@ class CircuitBreaker:
             Los callbacks son típicamente usados por la UI para actualizar
             el estado visual de botones y mostrar countdowns en tiempo real.
         """
+        try:
+            self._loop = asyncio.get_running_loop()
+        except RuntimeError:
+            pass
         self._callbacks.append(cb)
 
     def trip(self, retry_after: Optional[int] = None) -> None:
@@ -162,10 +189,17 @@ class CircuitBreaker:
         self.is_open = True
         self._until  = time.monotonic() + wait
         self._notify(True, wait)
-        # Cancel any previous reset task before scheduling a new one
-        if self._reset_task and not self._reset_task.done():
-            self._reset_task.cancel()
-        self._reset_task = asyncio.create_task(self._auto_reset(wait))
+        try:
+            running = asyncio.get_running_loop()
+            self._loop = running
+            self._schedule_reset_task(wait)
+        except RuntimeError:
+            loop = self._loop
+            if loop is not None and not loop.is_closed():
+                try:
+                    loop.call_soon_threadsafe(self._schedule_reset_task, wait)
+                except RuntimeError:
+                    pass
 
     def check_or_raise(self) -> None:
         """
@@ -183,6 +217,11 @@ class CircuitBreaker:
             intentar la petición y manejar el error, ya que evita
             latencia innecesaria y consumo de recursos.
         """
+        try:
+            self._loop = asyncio.get_running_loop()
+        except RuntimeError:
+            pass
+        self._expire_if_elapsed()
         if self.is_open:
             raise RateLimitError(self.platform, int(self.remaining))
 
