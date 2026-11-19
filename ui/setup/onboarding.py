@@ -314,7 +314,7 @@ def _step_done(view: "OnboardingView") -> list[ft.Control]:
         _feature(PIcons.CHECK_CIRCLE, "Todo listo",
                  "Empieza cargando una playlist en Gestión o añadiendo una carpeta en Biblioteca."),
         _feature(PIcons.GEAR, "Configuración y mantenimiento",
-                 "Desde Config puedes recalcular portadas, limpiar caché, comprobar versiones en GitHub y reabrir esta guía."),
+                 "En Apariencia puedes aplicar ondas Seigaiha a la barra lateral. Desde Config también puedes recalcular portadas, limpiar caché, comprobar versiones y reabrir esta guía."),
     ]
 
 

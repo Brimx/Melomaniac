@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from functools import lru_cache
+from pathlib import Path
 
 import flet as ft
 
@@ -63,6 +65,16 @@ HOME_MODULE_IDX = 4
 _RAIL_COLLAPSED_KEY = "rail_collapsed"
 _RAIL_AUTO_COLLAPSE_BP = 1100.0
 _HOUSE_GLYPH = getattr(PIcons, "HOUSE", "\ue2c2")
+
+
+@lru_cache(maxsize=1)
+def _seigaiha_image() -> ft.DecorationImage:
+    tile = Path(__file__).resolve().parents[2] / "resources" / "seigaiha.png"
+    return ft.DecorationImage(src=tile.read_bytes(), fit=ft.BoxFit.NONE, repeat=ft.ImageRepeat.REPEAT)
+
+
+def apply_rail_texture(header: ft.Container) -> None:
+    header.image = _seigaiha_image() if settings_store.get_bg_texture() == "sei" else None
 
 
 def _read_rail_collapsed(page: ft.Page | None) -> bool:
@@ -472,6 +484,8 @@ def build_nav_rail(ui) -> None:
         ),
         alignment=ft.Alignment.CENTER if ui._rail_collapsed else ft.Alignment.CENTER_LEFT,
     )
+
+    apply_rail_texture(ui._rail_header_box)
 
     rail_items = [
         _rail_item(v_idx, mod_idx, lbl, ico, sel)

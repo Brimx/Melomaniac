@@ -1547,6 +1547,10 @@ class PlaylistManagerUI:
         Descargas lee el formato por defecto en su constructor, así que hay
         que refrescarla para que un cambio en Config se vea al volver.
         """
+        from ui.shell.nav_rail import apply_rail_texture
+
+        apply_rail_texture(self._rail_header_box)
+        safe_update(self._rail_header_box)
         for panel in getattr(self, "_module_panels", []):
             if panel is getattr(self, "_panel_config", None):
                 continue

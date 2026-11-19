@@ -843,6 +843,11 @@ class ConfigView(ft.Container):
         settings_store.set_library_sort_order(str(getattr(e.control, "value", "") or ""))
         self._changed()
 
+    def _on_texture_change(self, e) -> None:
+        if e.control.selected:
+            settings_store.set_bg_texture(next(iter(e.control.selected)))
+            self._changed()
+
     def _on_theme_change(self, e=None) -> None:
         val = str(getattr(e.control, "value", "sala") or "sala")
         settings_store.set_theme(val)

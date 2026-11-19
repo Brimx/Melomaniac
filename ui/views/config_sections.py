@@ -779,22 +779,21 @@ def build_apariencia_section(view: Any) -> list[ft.Control]:
         allow_multiple_selection=False,
         allow_empty_selection=False,
         show_selected_icon=False,
-        disabled=True,
+        on_change=view._on_texture_change,
         segments=[
             ft.Segment(value="grid", label="Rejilla", disabled=True),
-            ft.Segment(value="sei", label="Seigaiha", disabled=True),
-            ft.Segment(value="none", label="Ninguna", disabled=True),
+            ft.Segment(value="sei", label="Seigaiha"),
+            ft.Segment(value="none", label="Ninguna"),
         ],
     )
     fondo_card = cfg_card(
         "Fondo",
-        "La textura va fija detrás del contenido y no se anima.",
+        "Elige una textura para la cabecera de la barra lateral.",
         [
             cfg_row(
                 "Textura",
                 "",
                 tex_seg,
-                reason="Próximamente · capa de textura fija pendiente en el shell.",
             ),
         ],
     )
