@@ -10,7 +10,9 @@ import flet as ft
 
 from ui.theme.fonts import mono_family
 from ui.theme.tokens import (
+    ACCENT,
     BG_SURFACE,
+    BORDER_MUTED,
     BORDER_ROW,
     FS_META,
     MOTION_REVEAL_MS,
@@ -25,14 +27,11 @@ from ui.theme.tokens import (
 # Altura fija de fila para cálculos de virtualización
 ITEM_H = 64
 
-# Secuencia acotada en ASCII puro para el barrido de entrada en skeletons (una sola pieza mono)
-_ASCII_REVEAL_FRAMES = (
-    "[=----]",
-    "[==---]",
-    "[===--]",
-    "[====-]",
-    "[=====]",
-)
+# Patrón determinista estilo ascii-reveal (dither/scan) en 3 TextSpan por fila
+_ASCII_BASE_PATTERN = "░░░░▒░░░▒░░░░▒░░░▒░░░░▒░░░"
+_ASCII_BAND_GLYPHS = ("▒▓▓█▓▒", "▓█▓▒░", "▒▓█▓▒")
+_ASCII_ROW_LENGTHS = (22, 18, 25, 20, 24, 17, 23, 19)
+_ASCII_WAVE_STEP_S = 0.055
 _REDUCED_MOTION_TRUTHY = frozenset({"1", "true", "yes", "on", "reduce"})
 _REDUCED_MOTION_FALSY = frozenset({"0", "false", "no", "off"})
 
@@ -88,12 +87,26 @@ class _BaseSkeletonRow(ft.Container):
         except Exception:
             _shimmer = row
 
-        self._reveal_text = ft.Text(
+        row_len = _ASCII_ROW_LENGTHS[_index % len(_ASCII_ROW_LENGTHS)]
+        self._ascii_base = _ASCII_BASE_PATTERN[:row_len]
+        self._span_left = ft.TextSpan(
+            self._ascii_base,
+            style=ft.TextStyle(color=BORDER_MUTED, font_family=mono_family("light"), size=FS_META),
+        )
+        self._span_band = ft.TextSpan(
             "",
+            style=ft.TextStyle(color=ACCENT, font_family=mono_family("light"), size=FS_META),
+        )
+        self._span_right = ft.TextSpan(
+            "",
+            style=ft.TextStyle(color=BORDER_MUTED, font_family=mono_family("light"), size=FS_META),
+        )
+        self._reveal_text = ft.Text(
+            spans=[self._span_left, self._span_band, self._span_right],
             size=FS_META,
             color=TEXT_MUTED,
             font_family=mono_family("light"),
-            opacity=1.0,
+            no_wrap=True,
         )
         self._reveal_wrap = ft.Container(
             content=self._reveal_text,
@@ -101,8 +114,8 @@ class _BaseSkeletonRow(ft.Container):
             top=0,
             bottom=0,
             alignment=ft.Alignment.CENTER_LEFT,
-            visible=False,
-            opacity=0.0,
+            visible=True,
+            opacity=0.85,
             animate_opacity=ft.Animation(MOTION_REVEAL_MS, ft.AnimationCurve.EASE_OUT),
         )
 
@@ -113,8 +126,7 @@ class _BaseSkeletonRow(ft.Container):
             border=ft.Border.only(bottom=ft.BorderSide(0.5, BORDER_ROW)),
             content=ft.Stack(controls=[_shimmer, self._reveal_wrap]),
             opacity=1.0,
-            scale=1.0 if reduce else 0.98,
-            animate_scale=None if reduce else ft.Animation(MOTION_SKELETON_MS, ft.AnimationCurve.EASE_IN_OUT),
+            scale=1.0,
         )
 
     def _safe_update(self, ctrl: ft.Control | None = None) -> None:
@@ -125,56 +137,55 @@ class _BaseSkeletonRow(ft.Container):
             pass
 
     def _reset_reveal(self) -> None:
-        self._reveal_text.value = ""
-        self._reveal_wrap.opacity = 0.0
-        self._reveal_wrap.visible = False
-
-    async def _run_ascii_reveal(self) -> None:
-        """Barrido ASCII de una sola pasada acotada a MOTION_REVEAL_MS."""
-        try:
-            page = self.page
-        except Exception:
-            page = None
-        if is_reduced_motion(page, reduced_motion=self._reduced_motion):
-            return
-        step_s = (MOTION_REVEAL_MS / 1000.0) / len(_ASCII_REVEAL_FRAMES)
+        self._span_left.text = self._ascii_base
+        self._span_band.text = ""
+        self._span_right.text = ""
         self._reveal_wrap.visible = True
-        self._reveal_wrap.opacity = 1.0
-        try:
-            for frame in _ASCII_REVEAL_FRAMES:
-                self._reveal_text.value = frame
-                self._safe_update(self._reveal_wrap)
-                await asyncio.sleep(step_s)
-        finally:
-            self._reset_reveal()
-            self._safe_update(self._reveal_wrap)
+
+    def render_ascii_frame(self, phase: int, *, static: bool = False) -> None:
+        """Actualiza los 3 TextSpan con una banda diagonal determinista (sin nodos por carácter)."""
+        base = self._ascii_base
+        n = len(base)
+        if static or n <= 0:
+            self._span_left.text = base
+            self._span_band.text = ""
+            self._span_right.text = ""
+            self._safe_update(self._reveal_text)
+            return
+        band = _ASCII_BAND_GLYPHS[(phase // 2 + self._index) % len(_ASCII_BAND_GLYPHS)]
+        bw = len(band)
+        cycle = n + bw + 6
+        pos = (phase - self._index * 2) % cycle - bw
+        b_start = max(0, pos)
+        b_end = min(n, pos + bw)
+        if b_end <= b_start:
+            self._span_left.text = base
+            self._span_band.text = ""
+            self._span_right.text = ""
+        else:
+            slice_start = b_start - pos
+            slice_end = slice_start + (b_end - b_start)
+            self._span_left.text = base[:b_start]
+            self._span_band.text = band[slice_start:slice_end]
+            self._span_right.text = base[b_end:]
+        self._safe_update(self._reveal_text)
 
     async def start_pulse(self) -> None:
-        """Barrido ASCII acotado al activar + zoom sutil 0.98↔1.0 (600ms, stagger 60ms)."""
+        """Compatibilidad unitaria: corre el barrido ASCII sobre esta sola fila."""
         self._pulse_task = asyncio.current_task()
         try:
             page = self.page
         except Exception:
             page = None
         if is_reduced_motion(page, reduced_motion=self._reduced_motion):
-            self._reset_reveal()
-            self.scale = 1.0
-            self._safe_update()
+            self.render_ascii_frame(0, static=True)
             return
+        phase = 0
         try:
-            await asyncio.sleep(0.06 * self._index)
-        except asyncio.CancelledError:
-            return
-        try:
-            await self._run_ascii_reveal()
-            pulse_s = MOTION_SKELETON_MS / 1000.0
             while True:
-                self.scale = 1.0
-                self._safe_update()
-                await asyncio.sleep(pulse_s)
-                self.scale = 0.98
-                self._safe_update()
-                await asyncio.sleep(pulse_s)
+                self.render_ascii_frame(phase)
+                phase += 1
+                await asyncio.sleep(_ASCII_WAVE_STEP_S)
         except asyncio.CancelledError:
             pass
 
@@ -189,19 +200,42 @@ class _BaseSkeletonRow(ft.Container):
             pass
 
 
+async def _run_shared_skeleton_wave(skeletons: list[_BaseSkeletonRow]) -> None:
+    """Loop único compartido que anima la banda diagonal ascii-reveal sobre todas las filas."""
+    if not skeletons:
+        return
+    try:
+        page = skeletons[0].page
+    except Exception:
+        page = None
+    reduced = is_reduced_motion(page, reduced_motion=skeletons[0]._reduced_motion)
+    if reduced:
+        for sk in skeletons:
+            sk.render_ascii_frame(0, static=True)
+        return
+    phase = 0
+    try:
+        while True:
+            for sk in skeletons:
+                sk.render_ascii_frame(phase)
+            phase += 1
+            await asyncio.sleep(_ASCII_WAVE_STEP_S)
+    except asyncio.CancelledError:
+        pass
+
+
 def start_skeleton_pulse_tasks(
     skeletons: list[_BaseSkeletonRow],
     tasks: list[asyncio.Task],
 ) -> None:
-    """Lanza las tareas de pulso skeleton solo si hay un event loop activo."""
+    """Lanza un único loop compartido de ascii-reveal solo si hay event loop activo."""
     if tasks or not skeletons:
         return
     try:
         loop = asyncio.get_running_loop()
     except RuntimeError:
         return
-    for sk in skeletons:
-        tasks.append(loop.create_task(sk.start_pulse()))
+    tasks.append(loop.create_task(_run_shared_skeleton_wave(list(skeletons))))
 
 
 def stop_skeleton_pulse_tasks(

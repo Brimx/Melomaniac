@@ -1123,6 +1123,8 @@ class PlaylistManagerUI:
         return True
 
     def _sync_list_state(self, s, is_loading: bool, is_ready: bool, is_error: bool, is_idle: bool) -> None:
+        if is_loading and getattr(self, "_catalog_open", False):
+            self._catalog_open = False
         self._empty_state.visible = is_idle
         self._skeleton_view_wrap.visible = is_loading
         self._list_view_wrap.visible = is_ready and not is_error

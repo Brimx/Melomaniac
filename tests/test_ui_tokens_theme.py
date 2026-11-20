@@ -94,40 +94,41 @@ from ui.components.skeletons import (
     PreviewSkeletonRow,
     SkeletonRow,
     is_reduced_motion,
+    start_skeleton_pulse_tasks,
+    stop_skeleton_pulse_tasks,
 )
 
 async def _run() -> None:
     for cls in (SkeletonRow, PreviewSkeletonRow, LibrarySkeletonRow):
         sk = cls(0, reduced_motion=False)
-        seen_frames = []
-        orig_safe_update = sk._safe_update
+        assert len(sk._reveal_text.spans) == 3
+        seen_bands = []
+        for phase in range(12):
+            sk.render_ascii_frame(phase)
+            if sk._span_band.text:
+                seen_bands.append((sk._span_left.text, sk._span_band.text, sk._span_right.text))
+        assert len(seen_bands) >= 3, (cls.__name__, seen_bands)
 
-        def _capture_update(ctrl=None, _seen=seen_frames, _orig=orig_safe_update, _sk=sk):
-            if ctrl is _sk._reveal_wrap and _sk._reveal_text.value:
-                _seen.append(_sk._reveal_text.value)
-            _orig(ctrl)
-
-        sk._safe_update = _capture_update
-        with patch("ui.components.skeletons.asyncio.sleep", return_value=None):
-            await sk._run_ascii_reveal()
-
-        assert len(seen_frames) >= 3, (cls.__name__, seen_frames)
-        assert all(f.isascii() for f in seen_frames)
-        assert not sk._reveal_wrap.visible
-        assert sk._reveal_text.value == ""
+    # Un único loop compartido para todas las filas
+    shared_rows = [SkeletonRow(i, reduced_motion=False) for i in range(4)]
+    shared_tasks = []
+    start_skeleton_pulse_tasks(shared_rows, shared_tasks)
+    assert len(shared_tasks) == 1
+    await asyncio.sleep(0.08)
+    stop_skeleton_pulse_tasks(shared_rows, shared_tasks)
+    assert len(shared_tasks) == 0
+    assert all(r._span_band.text == "" for r in shared_rows)
 
     sk_rm = SkeletonRow(0, reduced_motion=True)
     await sk_rm.start_pulse()
-    assert not sk_rm._reveal_wrap.visible
-    assert sk_rm._reveal_text.value == ""
+    assert sk_rm._span_band.text == ""
     assert sk_rm.scale == 1.0
 
     with patch.dict(os.environ, {"MELOMANIAC_REDUCED_MOTION": "1"}):
         assert is_reduced_motion()
         sk_env = LibrarySkeletonRow(0)
         await sk_env.start_pulse()
-        assert not sk_env._reveal_wrap.visible
-        assert sk_env._reveal_text.value == ""
+        assert sk_env._span_band.text == ""
 
     tr = Track(
         id="t1",
@@ -149,8 +150,7 @@ async def _run() -> None:
     await asyncio.sleep(0.05)
     sk_stop.stop_pulse()
     await asyncio.gather(task, return_exceptions=True)
-    assert not sk_stop._reveal_wrap.visible
-    assert sk_stop._reveal_text.value == ""
+    assert sk_stop._span_band.text == ""
     assert sk_stop.scale == 1.0
 
     from unittest.mock import MagicMock
