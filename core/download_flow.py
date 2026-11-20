@@ -60,17 +60,13 @@ class DownloadRunner:
         platform: str,
     ):
         from core.config import AUDIO_BITRATES, DEFAULT_AUDIO_FORMAT
-        from engine.downloader import resolve_download_dir, resolve_playlist_dir
+        from engine.downloader import resolve_download_dir
 
+        del playlist_name, platform
         fmt = (audio_format or DEFAULT_AUDIO_FORMAT).lower().lstrip(".")
         if fmt not in AUDIO_BITRATES:
             fmt = DEFAULT_AUDIO_FORMAT
-        if playlist_name:
-            target_dir = resolve_playlist_dir(
-                destination_dir or None, playlist_name, platform
-            )
-        else:
-            target_dir = resolve_download_dir(destination_dir or None)
+        target_dir = resolve_download_dir(destination_dir or None)
         return fmt, target_dir
 
     def _enqueue_into_session(
@@ -817,15 +813,9 @@ class DownloadRunner:
                 + (f" · Faltantes: {missing}" if missing else "")
             )
             self._state._log(f"[INFO] {summary}")
-            # El manifiesto se escribe una vez por playlist al cerrar la
-            # sesión: hacerlo por pista era E/S síncrona en el hilo de la UI
-            # y O(n²) sobre el mismo archivo.
-            for (_, grp_pl_name, grp_plat), (grp_dir, grp_tracks) in session["manifest_groups"].items():
-                if grp_pl_name and grp_tracks:
-                    self._write_download_manifest(
-                        grp_dir, grp_pl_name, grp_plat, grp_tracks,
-                        write_playlist_manifest, read_playlist_manifest,
-                    )
+            # Los audios se guardan en un almacén plano único; los manifiestos de
+            # playlist viven en config/local_playlists (no en un playlist.json
+            # compartido en la raíz de descargas, que se pisaría entre listas).
         except Exception as exc:  # noqa: BLE001
             if self._active_session is session:
                 self._state.download_state = TransferState.ERROR

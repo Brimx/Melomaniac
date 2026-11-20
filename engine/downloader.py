@@ -88,6 +88,7 @@ __all__ = [
     "build_audio_opts",
     "search_video_id",
     "download_audio",
+    "export_playlist_audio_files",
 ]
 
 # Código de error reutilizable por la UI para distinguir la falta de FFmpeg
@@ -1047,3 +1048,56 @@ def _cleanup_temp_files(temp_stem: Path) -> None:
                     pass
     except OSError:
         pass
+
+
+def export_playlist_audio_files(
+    tracks: list[Track],
+    dest_dir: Path | str,
+    *,
+    playlist_name: str = "",
+    numbered: bool = True,
+) -> dict[str, Any]:
+    """Copia los archivos descargados de una playlist a una carpeta destino.
+
+    Permite aislar las canciones de una sola playlist (para USB, móvil o copia)
+    sin duplicar ni fragmentar el almacén principal de descargas.
+    """
+    base = Path(dest_dir).expanduser()
+    folder_name = sanitize_filename(playlist_name, "") if playlist_name else ""
+    target = base / folder_name if folder_name else base
+    target.mkdir(parents=True, exist_ok=True)
+
+    available = [
+        t for t in tracks
+        if getattr(t, "source_path", "") and os.path.isfile(t.source_path)
+    ]
+    skipped = len(tracks) - len(available)
+    pad = max(2, len(str(len(available)))) if available else 2
+    used_names: set[str] = set()
+    copied = 0
+    errors: list[str] = []
+
+    for idx, tr in enumerate(available, 1):
+        src = Path(tr.source_path)
+        ext = src.suffix or ".mp3"
+        stem = _target_stem(tr)
+        prefix = f"{idx:0{pad}d} - " if numbered else ""
+        candidate = f"{prefix}{stem}{ext}"
+        dedup = 2
+        while candidate.lower() in used_names:
+            candidate = f"{prefix}{stem} ({dedup}){ext}"
+            dedup += 1
+        used_names.add(candidate.lower())
+        dst = target / candidate
+        try:
+            shutil.copy2(src, dst)
+            copied += 1
+        except OSError as exc:
+            errors.append(f"{tr.name}: {exc}")
+
+    return {
+        "dest_dir": str(target),
+        "copied": copied,
+        "skipped": skipped,
+        "errors": errors,
+    }

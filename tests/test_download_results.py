@@ -461,6 +461,79 @@ class DownloadQueueLifecycleTest(unittest.TestCase):
 
         asyncio.run(_run())
 
+    def test_flat_download_store_and_playlist_audio_export(self) -> None:
+        import asyncio
+        import tempfile
+        from types import SimpleNamespace
+        from engine.downloader import export_playlist_audio_files
+        from services import settings_store
+
+        async def _run() -> None:
+            with tempfile.TemporaryDirectory() as tmp:
+                dl_root = Path(tmp) / "downloads"
+                dl_root.mkdir()
+                st = _state()
+                t1 = self._track("p1", "Song One", "Artist A")
+                t2 = self._track("p2", "Song Two", "Artist B")
+                t3 = self._track("p3", "Not Downloaded", "Artist C")
+                seen_dirs: list[Path] = []
+
+                def _fake(track, destination_dir=None, audio_format="mp3", **_kw):
+                    seen_dirs.append(Path(destination_dir))
+                    out = Path(destination_dir) / f"{track.artist} - {track.name}.{audio_format}"
+                    out.write_bytes(f"data:{track.id}".encode())
+                    return SimpleNamespace(
+                        ok=True, path=str(out), video_id=f"v_{track.id}",
+                        skipped=False, code="", error="",
+                    )
+
+                p1, p2, p3, p4 = self._patches(_fake)
+                with p1, p2, p3, p4:
+                    await st.download_tracks(
+                        [t1], destination_dir=str(dl_root), playlist_name="Lista A", platform="Spotify",
+                    )
+                    await st.download_tracks(
+                        [t2], destination_dir=str(dl_root), playlist_name="Lista B", platform="YouTube Music",
+                    )
+
+                self.assertEqual(seen_dirs, [dl_root, dl_root])
+                self.assertFalse((dl_root / "playlist.json").exists())
+                self.assertEqual(Path(t1.source_path).parent, dl_root)
+                self.assertEqual(Path(t2.source_path).parent, dl_root)
+
+                export_base = Path(tmp) / "usb"
+                res = export_playlist_audio_files(
+                    [t1, t3, t2], export_base, playlist_name="Mi Viaje", numbered=True,
+                )
+                self.assertEqual(res["copied"], 2)
+                self.assertEqual(res["skipped"], 1)
+                self.assertEqual(res["errors"], [])
+                out_dir = Path(res["dest_dir"])
+                self.assertEqual(out_dir, export_base / "Mi Viaje")
+                exported_names = sorted(p.name for p in out_dir.iterdir())
+                self.assertEqual(
+                    exported_names,
+                    ["01 - Artist A - Song One.mp3", "02 - Artist B - Song Two.mp3"],
+                )
+
+                # Cambiar download_dir conserva la carpeta anterior en local_folders
+                from unittest.mock import patch
+
+                new_dl = Path(tmp) / "downloads_v2"
+                new_dl.mkdir()
+                settings_file = Path(tmp) / "settings.json"
+                with (
+                    patch.object(settings_store, "SETTINGS_JSON", settings_file),
+                    patch.object(settings_store, "ensure_config_dir", lambda: settings_file.parent.mkdir(parents=True, exist_ok=True)),
+                    patch.object(settings_store, "_CACHE", None),
+                ):
+                    settings_store.set_download_dir(dl_root)
+                    settings_store.set_download_dir(new_dl)
+                    self.assertEqual(settings_store.get_download_dir(), str(new_dl))
+                    self.assertIn(str(dl_root), settings_store.get_local_folders())
+
+        asyncio.run(_run())
+
 
 if __name__ == "__main__":
     unittest.main()

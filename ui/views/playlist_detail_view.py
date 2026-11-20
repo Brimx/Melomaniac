@@ -163,6 +163,11 @@ class PlaylistDetailView(ft.Container):
             disabled=True,
         )
 
+        self._export_audio_btn = _ghost_btn(
+            "Exportar audios", PIcons.EXPORT, self._on_export_audios, height=40,
+        )
+        self._export_audio_btn.visible = False
+
         if self._is_manifest:
             self._play_all_btn = _primary_btn("Reproducir", PIcons.PLAY, self._on_play_all, height=40)
             self._play_all_btn.visible = False
@@ -178,6 +183,7 @@ class PlaylistDetailView(ft.Container):
                 self._play_all_btn,
                 self._shuffle_btn,
                 self._download_btn,
+                self._export_audio_btn,
                 self._select_mode_btn,
                 self._create_btn,
             ]
@@ -196,6 +202,7 @@ class PlaylistDetailView(ft.Container):
             actions = [
                 self._play_all_btn,
                 self._shuffle_btn,
+                self._export_audio_btn,
                 self._select_mode_btn,
                 self._create_btn,
                 _ghost_btn("Abrir carpeta", PIcons.FOLDER_OPEN, lambda e: self._open_folder(), height=40),
@@ -209,7 +216,13 @@ class PlaylistDetailView(ft.Container):
             self._shuffle_btn.visible = False
             self._download_btn = _primary_btn("Descargar playlist", PIcons.DOWNLOAD_SIMPLE, self._on_download, height=40)
             self._download_btn.disabled = True
-            actions = [self._play_all_btn, self._shuffle_btn, self._download_btn, self._select_mode_btn]
+            actions = [
+                self._play_all_btn,
+                self._shuffle_btn,
+                self._download_btn,
+                self._export_audio_btn,
+                self._select_mode_btn,
+            ]
         if summary.external_url:
             actions.append(self._open_btn)
         actions_row = ft.Row(controls=actions, spacing=SPACE_2, wrap=True)
@@ -868,7 +881,59 @@ class PlaylistDetailView(ft.Container):
                 self._shuffle_btn.disabled = True
         if self._create_btn is not None:
             self._create_btn.disabled = total == 0
+        if getattr(self, "_export_audio_btn", None) is not None:
+            self._export_audio_btn.visible = downloaded > 0
+            self._export_audio_btn.disabled = downloaded == 0
         self._select_mode_btn.disabled = total == 0
+
+    def _on_export_audios(self, _e=None) -> None:
+        """Copia los archivos descargados de esta playlist a una carpeta elegida."""
+        if not any(self._has_disk_file(t) for t in self._tracks):
+            notify(self._page_ref, "No hay canciones descargadas en esta playlist", kind="warn")
+            return
+        if self._page_ref is None:
+            return
+
+        async def _pick_and_export() -> None:
+            from engine.downloader import export_playlist_audio_files
+
+            picker = ft.FilePicker()
+            try:
+                dest = await picker.get_directory_path(
+                    dialog_title="Elegir carpeta para exportar audios",
+                )
+            except Exception as exc:  # noqa: BLE001
+                notify(self._page_ref, f"No se pudo abrir el selector: {exc}", kind="error")
+                return
+            if not dest:
+                return
+            pl_name, _ = self._playlist_download_identity()
+            notify(self._page_ref, f"Exportando audios de «{pl_name or self.summary.name}»…")
+            result = await asyncio.to_thread(
+                export_playlist_audio_files,
+                list(self._tracks),
+                dest,
+                playlist_name=pl_name or self.summary.name,
+                numbered=True,
+            )
+            copied = int(result.get("copied", 0))
+            skipped = int(result.get("skipped", 0))
+            out_dir = str(result.get("dest_dir") or dest)
+            if copied <= 0:
+                notify(self._page_ref, "No se pudo copiar ningún archivo de audio", kind="error")
+                return
+            extra = f" ({skipped} sin descargar omitidas)" if skipped else ""
+            notify(
+                self._page_ref,
+                f"Exportadas {copied} canciones{extra}",
+                action="Abrir carpeta",
+                on_action=lambda _ev, p=out_dir: open_in_file_manager(p),
+            )
+
+        try:
+            self._page_ref.run_task(_pick_and_export)
+        except Exception:
+            spawn_task(_pick_and_export())
 
     def _download_recovered_track(
         self,

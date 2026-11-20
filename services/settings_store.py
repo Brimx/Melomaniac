@@ -186,10 +186,20 @@ def get_download_dir() -> str:
 
 
 def set_download_dir(path: str | Path) -> None:
-    """Guarda la carpeta de descargas; una ruta vacía restablece la por defecto."""
+    """Guarda la carpeta de descargas; una ruta vacía restablece la por defecto.
+
+    Si había una carpeta anterior existente y distinta de la nueva, se conserva
+    en ``local_folders`` para seguir detectando las canciones ya descargadas.
+    """
     value = str(Path(path).expanduser()) if path else ""
     with _LOCK:
         data = load_settings()
+        prev = str(data.get(_KEY_DOWNLOAD_DIR) or "").strip()
+        if prev and prev != value and os.path.isdir(prev):
+            raw_folders = data.get(_KEY_LOCAL_FOLDERS)
+            folders = [str(p) for p in raw_folders if p] if isinstance(raw_folders, list) else []
+            if prev not in folders:
+                data[_KEY_LOCAL_FOLDERS] = [*folders, prev]
         if value:
             data[_KEY_DOWNLOAD_DIR] = value
         else:
