@@ -636,12 +636,11 @@ class NowPlayingScene(ft.Container):
             width=34,
             height=34,
         )
-        self._vol_slider = ft.Slider(
-            min=0.0,
-            max=1.0,
+        from ui.player.bar_layout import NeoVolumeFader
+
+        self._vol_slider = NeoVolumeFader(
             value=0.0 if self.player_bar._muted else self.player_bar._volume,
-            active_color=ACCENT,
-            inactive_color=BG_SURFACE,
+            width=None,
             expand=True,
             on_change=self._on_volume_change,
             on_change_end=self._on_volume_change_end,

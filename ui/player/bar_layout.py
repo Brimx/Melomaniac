@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+from types import SimpleNamespace
+from typing import Callable
+
 import flet as ft
 
 from ui.components.song_row import _thumb_content_for
@@ -257,6 +260,144 @@ def _build_transport_and_progress_section(bar, *, default_track_width: float = 2
     )
 
 
+_FADER_KNOB_W = 4
+_FADER_KNOB_H = 12
+_FADER_TRACK_H = 4
+_FADER_HIT_H = 24
+
+
+class NeoVolumeFader(ft.Container):
+    """Fader de volumen rectangular afilado (Neo-Ukiyo) compatible con la API de Slider."""
+
+    def __init__(
+        self,
+        *,
+        value: float = 1.0,
+        width: float | None = 96,
+        expand: bool = False,
+        on_change: Callable | None = None,
+        on_change_end: Callable | None = None,
+    ) -> None:
+        self._value = self._clamp(value)
+        self._track_width = float(width) if width else 120.0
+        self._on_change_cb = on_change
+        self._on_change_end_cb = on_change_end
+
+        self._fill = ft.Container(
+            width=0,
+            height=_FADER_TRACK_H,
+            bgcolor=ACCENT,
+            border_radius=RADIUS_NONE,
+        )
+        self._knob = ft.Container(
+            width=_FADER_KNOB_W,
+            height=_FADER_KNOB_H,
+            bgcolor=TEXT_PRIMARY,
+            border=ft.Border.all(0.8, ACCENT),
+            border_radius=RADIUS_NONE,
+            left=0,
+            top=(_FADER_HIT_H - _FADER_KNOB_H) / 2,
+        )
+        self._rail = ft.Container(
+            height=_FADER_TRACK_H,
+            bgcolor=BG_SURFACE,
+            border=ft.Border.all(0.5, BORDER_MUTED),
+            border_radius=RADIUS_NONE,
+            alignment=ft.Alignment.CENTER_LEFT,
+            content=self._fill,
+            left=0,
+            right=0,
+            top=(_FADER_HIT_H - _FADER_TRACK_H) / 2,
+        )
+        self._stack = ft.Stack(
+            controls=[self._rail, self._knob],
+            height=_FADER_HIT_H,
+            width=width,
+            expand=expand,
+        )
+        self._gesture = ft.GestureDetector(
+            mouse_cursor=ft.MouseCursor.CLICK,
+            on_tap_down=self._on_tap,
+            on_horizontal_drag_update=self._on_drag_update,
+            on_horizontal_drag_end=self._on_drag_end,
+            content=self._stack,
+        )
+        super().__init__(
+            content=self._gesture,
+            width=width,
+            height=_FADER_HIT_H,
+            expand=expand,
+            tooltip=self._fmt_tooltip(self._value),
+            on_size_change=self._on_size_change,
+        )
+        self._sync_geometry()
+
+    @staticmethod
+    def _clamp(val: float) -> float:
+        try:
+            return max(0.0, min(1.0, float(val)))
+        except (TypeError, ValueError):
+            return 0.0
+
+    @staticmethod
+    def _fmt_tooltip(val: float) -> str:
+        return f"Volumen: {int(round(val * 100))}%"
+
+    @property
+    def value(self) -> float:
+        return self._value
+
+    @value.setter
+    def value(self, val: float) -> None:
+        self._value = self._clamp(val)
+        self.tooltip = self._fmt_tooltip(self._value)
+        self._sync_geometry()
+
+    def _sync_geometry(self) -> None:
+        w = max(float(_FADER_KNOB_W), self._track_width)
+        fill_w = w * self._value
+        self._fill.width = fill_w
+        self._knob.left = max(0.0, min(w - _FADER_KNOB_W, fill_w - (_FADER_KNOB_W / 2)))
+
+    def _on_size_change(self, e) -> None:
+        w = getattr(e, "width", None)
+        if w is not None and float(w) > 0:
+            self._track_width = float(w)
+            self._sync_geometry()
+            safe_update(self)
+
+    def _value_from_event(self, e) -> float | None:
+        loc = getattr(e, "local_position", None)
+        x = getattr(loc, "x", None) if loc is not None else getattr(e, "local_x", None)
+        if x is None:
+            return None
+        w = max(1.0, self._track_width)
+        return self._clamp(float(x) / w)
+
+    def _emit_change(self, val: float, *, end: bool = False) -> None:
+        self.value = val
+        safe_update(self)
+        ev = SimpleNamespace(control=self)
+        if callable(self._on_change_cb):
+            self._on_change_cb(ev)
+        if end and callable(self._on_change_end_cb):
+            self._on_change_end_cb(ev)
+
+    def _on_tap(self, e) -> None:
+        val = self._value_from_event(e)
+        if val is not None:
+            self._emit_change(val, end=True)
+
+    def _on_drag_update(self, e) -> None:
+        val = self._value_from_event(e)
+        if val is not None:
+            self._emit_change(val, end=False)
+
+    def _on_drag_end(self, _e) -> None:
+        if callable(self._on_change_end_cb):
+            self._on_change_end_cb(SimpleNamespace(control=self))
+
+
 def _build_volume_and_queue_section(bar) -> ft.Row:
     # [volumen]
     bar._mute_btn = app_icon_button(
@@ -268,13 +409,9 @@ def _build_volume_and_queue_section(bar) -> ft.Row:
         width=32,
         height=32,
     )
-    bar._vol_slider = ft.Slider(
-        min=0.0,
-        max=1.0,
+    bar._vol_slider = NeoVolumeFader(
         value=0.0 if bar._muted else bar._volume,
         width=96,
-        active_color=ACCENT,
-        inactive_color=BG_SURFACE,
         on_change=bar._on_volume_change,
         on_change_end=bar._on_volume_change_end,
     )
