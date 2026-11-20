@@ -12,6 +12,7 @@ from __future__ import annotations
 import json
 import os
 import threading
+import time
 from pathlib import Path
 from typing import Any, Callable
 
@@ -47,8 +48,10 @@ _KEY_FADE_SECONDS = "fade_seconds"
 _KEY_RESUME_ON_OPEN = "resume_on_open"
 _KEY_STREAM_WITHOUT_DOWNLOAD = "stream_without_download"
 _KEY_LAST_PLAYBACK = "last_playback"
+_KEY_RECENT_PLAYLISTS = "recent_playlists"
 _KEY_LIBRARY_SORT_ORDER = "library_sort_order"
 _KEY_CHECK_UPDATES_ON_START = "check_updates_on_start"
+_RECENT_PLAYLISTS_MAX = 24
 
 _VALID_REPEAT = ("off", "all", "one")
 _VALID_QUEUE_TABS = ("cola", "letra")
@@ -327,6 +330,59 @@ def set_last_playback(payload: dict[str, Any] | None) -> None:
             data[_KEY_LAST_PLAYBACK] = dict(payload)
         else:
             data.pop(_KEY_LAST_PLAYBACK, None)
+        save_settings(data)
+
+
+def get_recent_playlists() -> list[dict[str, Any]]:
+    """Devuelve las playlists/carpetas abiertas o reproducidas recientemente."""
+    raw = load_settings().get(_KEY_RECENT_PLAYLISTS)
+    if not isinstance(raw, list):
+        return []
+    cleaned: list[dict[str, Any]] = []
+    seen: set[tuple[str, str]] = set()
+    for item in raw:
+        if not isinstance(item, dict):
+            continue
+        plat = str(item.get("platform") or "").strip()
+        pid = str(item.get("id") or "").strip()
+        if not plat or not pid:
+            continue
+        key = (plat, pid)
+        if key in seen:
+            continue
+        seen.add(key)
+        try:
+            ts = float(item.get("ts") or 0.0)
+        except (TypeError, ValueError):
+            ts = 0.0
+        cleaned.append({"platform": plat, "id": pid, "ts": ts})
+    return cleaned
+
+
+def record_recent_playlist(platform: str, playlist_id: str) -> None:
+    """Registra una playlist o carpeta como reciente (más nueva primero)."""
+    plat = str(platform or "").strip()
+    pid = str(playlist_id or "").strip()
+    if not plat or not pid:
+        return
+    with _LOCK:
+        data = load_settings()
+        existing = data.get(_KEY_RECENT_PLAYLISTS)
+        entries: list[dict[str, Any]] = [
+            {"platform": plat, "id": pid, "ts": time.time()}
+        ]
+        if isinstance(existing, list):
+            for item in existing:
+                if not isinstance(item, dict):
+                    continue
+                ep = str(item.get("platform") or "").strip()
+                eid = str(item.get("id") or "").strip()
+                if not ep or not eid or (ep, eid) == (plat, pid):
+                    continue
+                entries.append({"platform": ep, "id": eid, "ts": item.get("ts") or 0.0})
+                if len(entries) >= _RECENT_PLAYLISTS_MAX:
+                    break
+        data[_KEY_RECENT_PLAYLISTS] = entries
         save_settings(data)
 
 

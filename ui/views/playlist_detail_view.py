@@ -1140,6 +1140,12 @@ class PlaylistDetailView(ft.Container):
             if spawn_task(_do_download()) is None:
                 self._downloading_track_ids.discard(tid)
 
+    def _record_recent(self) -> None:
+        try:
+            settings_store.record_recent_playlist(self.summary.platform, self.summary.id)
+        except Exception:
+            pass
+
     def _on_play_all(self, _e=None) -> None:
         """Reproduce la playlist: locales en disco y, con streaming activo, también las remotas."""
         tracks, with_remote = self._playable_context()
@@ -1147,6 +1153,7 @@ class PlaylistDetailView(ft.Container):
         if with_remote and pb is not None and hasattr(pb, "play_tracks"):
             n = pb.play_tracks(tracks, start_index=0, include_remote=True)
             if n:
+                self._record_recent()
                 notify(self._page_ref, f"Reproduciendo {n} canciones")
             return
         items = [(t.source_path, t) for t in tracks if self._has_disk_file(t)]
@@ -1155,9 +1162,11 @@ class PlaylistDetailView(ft.Container):
             return
         if pb is not None and hasattr(pb, "play_files"):
             pb.play_files(items, start_index=0)
+            self._record_recent()
             notify(self._page_ref, f"Reproduciendo {len(items)} canciones")
         elif pb is not None and hasattr(pb, "play_file"):
             pb.play_file(items[0][0])
+            self._record_recent()
 
     def _on_shuffle_play(self, _e=None) -> None:
         """Activa el modo aleatorio y reproduce desde una pista al azar."""
@@ -1184,6 +1193,7 @@ class PlaylistDetailView(ft.Container):
                 include_remote=True,
             )
             if n:
+                self._record_recent()
                 notify(self._page_ref, f"Reproduciendo {n} canciones en aleatorio")
             return
         start_idx: int | None = None
@@ -1533,6 +1543,7 @@ class PlaylistDetailView(ft.Container):
         pb = self.player_bar
         if pb is None:
             return
+        self._record_recent()
         if hasattr(pb, "play_tracks"):
             tracks, _with_remote = self._playable_context()
             if track in tracks:
@@ -1564,6 +1575,7 @@ class PlaylistDetailView(ft.Container):
         if not track.source_path or not os.path.isfile(track.source_path):
             notify(self._page_ref, "Archivo no encontrado en disco", kind="error")
             return
+        self._record_recent()
         pb = self.player_bar
         tracks, with_remote = self._playable_context()
         if with_remote and pb is not None and hasattr(pb, "play_tracks") and track in tracks:

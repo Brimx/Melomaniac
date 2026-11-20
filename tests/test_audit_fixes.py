@@ -545,6 +545,40 @@ class TestContextMenuLibraryAndSettingsCoercion(unittest.TestCase):
         lib_state.notify.assert_called_once()
         self.assertEqual(fake_ui._last_download_state, TransferState.DONE)
 
+    def test_recent_playlists_persistence_and_home_ordering(self) -> None:
+        from core.config import LOCAL_LIBRARY_LABEL
+        from core.library_models import PlaylistSummary
+        from ui.views.home_view import HomeView
+
+        settings_store.record_recent_playlist("Spotify", "sp_2")
+        settings_store.record_recent_playlist(LOCAL_LIBRARY_LABEL, "loc_1")
+        settings_store.record_recent_playlist("Spotify", "sp_2")  # sube al tope sin duplicar
+        persisted = settings_store.get_recent_playlists()
+        self.assertEqual([(p["platform"], p["id"]) for p in persisted], [("Spotify", "sp_2"), (LOCAL_LIBRARY_LABEL, "loc_1")])
+
+        by_plat = {
+            "YouTube Music": [
+                PlaylistSummary(id=f"yt_{i}", name=f"YT {i}", platform="YouTube Music", track_count=5)
+                for i in range(1, 8)
+            ],
+            "Spotify": [
+                PlaylistSummary(id="sp_1", name="SP 1", platform="Spotify", track_count=5),
+                PlaylistSummary(id="sp_2", name="SP 2", platform="Spotify", track_count=5),
+            ],
+            LOCAL_LIBRARY_LABEL: [
+                PlaylistSummary(id="loc_1", name="Local 1", platform=LOCAL_LIBRARY_LABEL, track_count=5),
+            ],
+        }
+        fake_home = SimpleNamespace(
+            library_state=SimpleNamespace(get_playlists=lambda p: by_plat.get(p, [])),
+        )
+        recents = HomeView._collect_recent_summaries(fake_home)
+        self.assertEqual(recents[0].id, "sp_2")
+        self.assertEqual(recents[1].id, "loc_1")
+        # El resto se completa balanceado entre fuentes (no solo YouTube Music)
+        self.assertIn("sp_1", [r.id for r in recents])
+        self.assertIn("yt_1", [r.id for r in recents])
+
 
 if __name__ == "__main__":
     unittest.main()

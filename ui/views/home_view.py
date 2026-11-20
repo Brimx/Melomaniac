@@ -809,21 +809,52 @@ class HomeView(ft.Container):
         lib = self.library_state
         if lib is None:
             return []
-        collected: list[PlaylistSummary] = []
-        seen_keys: set[tuple[str, str]] = set()
+        per_platform: list[list[PlaylistSummary]] = []
+        by_key: dict[tuple[str, str], PlaylistSummary] = {}
         for plat in (*PLATFORM_ORDER, LOCAL_LIBRARY_LABEL):
             try:
-                items = lib.get_playlists(plat) or []
+                items = list(lib.get_playlists(plat) or [])
             except Exception:
                 items = []
-            for item in items:
-                key = (item.platform, item.id)
-                if key in seen_keys:
-                    continue
-                seen_keys.add(key)
-                collected.append(item)
-                if len(collected) >= _RECENT_LIMIT:
-                    return collected
+            if items:
+                per_platform.append(items)
+                for item in items:
+                    by_key.setdefault((item.platform, item.id), item)
+
+        collected: list[PlaylistSummary] = []
+        seen_keys: set[tuple[str, str]] = set()
+        # 1) Primero las playlists/carpetas realmente abiertas o reproducidas recientemente
+        try:
+            persisted = settings_store.get_recent_playlists()
+        except Exception:
+            persisted = []
+        for entry in persisted:
+            key = (entry["platform"], entry["id"])
+            if key in seen_keys or key not in by_key:
+                continue
+            seen_keys.add(key)
+            collected.append(by_key[key])
+            if len(collected) >= _RECENT_LIMIT:
+                return collected
+
+        # 2) Si faltan espacios, completar en round-robin entre todas las fuentes
+        #    para no llenar la fila solo con la primera plataforma.
+        idx = 0
+        while len(collected) < _RECENT_LIMIT and per_platform:
+            progressed = False
+            for bucket in per_platform:
+                if idx < len(bucket):
+                    progressed = True
+                    item = bucket[idx]
+                    key = (item.platform, item.id)
+                    if key not in seen_keys:
+                        seen_keys.add(key)
+                        collected.append(item)
+                        if len(collected) >= _RECENT_LIMIT:
+                            return collected
+            if not progressed:
+                break
+            idx += 1
         return collected
 
     def _sync_recents(self, *, update: bool = True) -> None:

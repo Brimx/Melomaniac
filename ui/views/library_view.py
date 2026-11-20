@@ -96,7 +96,10 @@ class LibraryView(ft.Container):
         self._active_filters: set[str] = set()
         self._sort_mode: int = _sort_mode_from_settings()
         self._local_tab: str = "carpetas"
-        self._recent_opened_ids: list[tuple[str, str]] = []
+        self._recent_opened_ids: list[tuple[str, str]] = [
+            (r["platform"], r["id"])
+            for r in settings_store.get_recent_playlists()
+        ][:6]
         self._show_obi: bool = self._read_show_obi()
         self._build()
         self.library_state.subscribe(lambda: self._refresh())
@@ -430,10 +433,14 @@ class LibraryView(ft.Container):
         return out
 
     def _on_open_playlist(self, summary) -> None:
-        # registrar en Recientes (máx 6)
+        # registrar en Recientes (persistido + máx 6 en carrusel)
         key = (summary.platform, summary.id)
         self._recent_opened_ids = [key] + [k for k in self._recent_opened_ids if k != key]
         self._recent_opened_ids = self._recent_opened_ids[:6]
+        try:
+            settings_store.record_recent_playlist(summary.platform, summary.id)
+        except Exception:
+            pass
         # push detail
         is_manifest = bool(
             hasattr(self.library_state, "is_imported_manifest")
