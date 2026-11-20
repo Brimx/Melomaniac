@@ -651,6 +651,33 @@ class TestLibraryViewManifestUI(unittest.TestCase):
                     ["https://is1-ssl.mzstatic.com/fail.jpg"],
                 )
 
+    def test_append_tracks_to_manifest_deduplicates_and_updates_covers(self) -> None:
+        from core.config import LOCAL_LIBRARY_LABEL
+        from core.models import Track
+        from engine.local_manifests import (
+            append_tracks_to_manifest,
+            load_local_manifest,
+            save_local_manifest,
+        )
+
+        with tempfile.TemporaryDirectory() as tmp:
+            mdir = Path(tmp) / "manifests"
+            t1 = Track(id="t1", name="Uno", artist="Artista", album="A", duration="3:00", img_url="https://img/1.jpg", platform="Spotify")
+            t2 = Track(id="t2", name="Dos", artist="Artista", album="A", duration="3:10", img_url="https://img/2.jpg", platform="Spotify")
+            saved = save_local_manifest(
+                platform=LOCAL_LIBRARY_LABEL,
+                name="Mi Lista",
+                tracks=[t1],
+                manifests_dir=mdir,
+            )
+            updated, added = append_tracks_to_manifest(saved.manifest_id, [t1, t2], manifests_dir=mdir)
+            self.assertIsNotNone(updated)
+            self.assertEqual(added, 1)
+            reloaded = load_local_manifest(saved.manifest_id, manifests_dir=mdir)
+            self.assertIsNotNone(reloaded)
+            self.assertEqual([t.id for t in reloaded.tracks], ["t1", "t2"])
+            self.assertIn("https://img/2.jpg", reloaded.cover_urls)
+
 
 if __name__ == "__main__":
     unittest.main()

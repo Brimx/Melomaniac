@@ -568,3 +568,46 @@ def update_manifest_track_paths(
     if changed:
         _write_manifest_json(target, data)
     return changed
+
+
+def append_tracks_to_manifest(
+    identifier: str | Path,
+    tracks: Iterable[Track],
+    *,
+    manifests_dir: Path | str | None = None,
+) -> tuple[Optional[LocalPlaylistManifest], int]:
+    """Añade ``tracks`` a un manifiesto local existente evitando duplicados exactos.
+
+    Devuelve ``(manifest_actualizado, cantidad_añadida)``. Si no existe el
+    manifiesto, devuelve ``(None, 0)``.
+    """
+    manifest = load_local_manifest(identifier, manifests_dir=manifests_dir)
+    if manifest is None:
+        return None, 0
+
+    def _track_key(tr: Track) -> tuple[str, str]:
+        tid = str(getattr(tr, "id", "") or "").strip()
+        plat = str(getattr(tr, "platform", "") or "").strip().lower()
+        if tid:
+            return ("id", f"{plat}::{tid}")
+        name = str(getattr(tr, "name", "") or "").strip().lower()
+        artist = str(getattr(tr, "artist", "") or "").strip().lower()
+        return ("pair", f"{name}::{artist}")
+
+    seen = {_track_key(t) for t in manifest.tracks}
+    added = 0
+    for tr in tracks:
+        key = _track_key(tr)
+        if key in seen:
+            continue
+        seen.add(key)
+        manifest.tracks.append(tr)
+        if tr.img_url and tr.img_url not in manifest.cover_urls and len(manifest.cover_urls) < 4:
+            manifest.cover_urls.append(tr.img_url)
+        added += 1
+
+    if added > 0:
+        if not manifest.img_url and manifest.cover_urls:
+            manifest.img_url = manifest.cover_urls[0]
+        save_local_manifest(manifest, manifests_dir=manifests_dir)
+    return manifest, added
