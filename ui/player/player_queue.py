@@ -37,6 +37,7 @@ from ui.theme.tokens import (
 )
 from ui.components.widgets import (
     _ghost_btn,
+    app_segmented_toggle,
     app_text,
     empty_state,
     is_mounted,
@@ -805,13 +806,60 @@ class PlayerQueuePanel(ft.Container):
             content=tab_underline(self._tab_items, self._active_tab, self.set_tab),
         )
 
+        self._queue_section: str = "up_next"  # up_next | history
+        self._up_next_offset: int = 0
+
+        self._now_playing_slot = ft.Container()
+        self._now_playing_wrap = ft.Column(
+            controls=[
+                section_label("REPRODUCIENDO"),
+                self._now_playing_slot,
+            ],
+            spacing=SPACE_1,
+            tight=True,
+            visible=False,
+        )
+
+        self._section_toggle = app_segmented_toggle(
+            [("up_next", "A continuación"), ("history", "Historial")],
+            self._queue_section,
+            on_change=self._on_queue_section_change,
+            height=30,
+            expand=True,
+        )
+        self._section_toggle_wrap = ft.Container(
+            content=self._section_toggle,
+            visible=False,
+        )
+
         self._list_view = ft.ReorderableListView(
             item_extent=ITEM_H,
             build_controls_on_demand=True,
             show_default_drag_handles=False,
             on_reorder=self._on_reorder,
             expand=True,
-            padding=ft.Padding.symmetric(horizontal=8, vertical=4),
+            padding=ft.Padding.symmetric(horizontal=SPACE_1, vertical=SPACE_1),
+        )
+
+        self._history_list = ft.ListView(
+            item_extent=ITEM_H,
+            expand=True,
+            padding=ft.Padding.symmetric(horizontal=SPACE_1, vertical=SPACE_1),
+            visible=False,
+        )
+
+        self._section_empty_txt = app_text(
+            "",
+            size=11,
+            color=TEXT_MUTED,
+            font_family=FONT_TEXT,
+        )
+        self._section_empty_box = ft.Container(
+            expand=True,
+            alignment=ft.Alignment.TOP_LEFT,
+            padding=ft.Padding.symmetric(horizontal=SPACE_2, vertical=SPACE_3),
+            content=self._section_empty_txt,
+            visible=False,
         )
 
         self._empty_box = ft.Container(
@@ -841,8 +889,15 @@ class PlayerQueuePanel(ft.Container):
                     ],
                     vertical_alignment=ft.CrossAxisAlignment.CENTER,
                 ),
+                self._now_playing_wrap,
+                self._section_toggle_wrap,
                 ft.Stack(
-                    controls=[self._list_view, self._empty_box],
+                    controls=[
+                        self._list_view,
+                        self._history_list,
+                        self._section_empty_box,
+                        self._empty_box,
+                    ],
                     expand=True,
                     fit=ft.StackFit.EXPAND,
                 ),
@@ -986,28 +1041,96 @@ class PlayerQueuePanel(ft.Container):
         except Exception:
             pass
 
+    def _on_queue_section_change(self, e) -> None:
+        self._queue_section = str(getattr(e.control, "value", "up_next") or "up_next")
+        self.refresh()
+
     def _on_reorder(self, e: ft.OnReorderEvent) -> None:
         old_idx = getattr(e, "old_index", None)
         new_idx = getattr(e, "new_index", None)
         if old_idx is None or new_idx is None:
             return
-        self.player_bar.move_queue_item(int(old_idx), int(new_idx))
+        base = self._up_next_offset
+        self.player_bar.move_queue_item(base + int(old_idx), base + int(new_idx))
 
-    def _build_row(self, queue_pos: int, item: PlayableTrack, is_current: bool) -> ft.Container:
-        return build_queue_row(queue_pos, item, is_current, self.player_bar, reorderable=True)
+    def _build_row(
+        self,
+        queue_pos: int,
+        item: PlayableTrack,
+        is_current: bool,
+        *,
+        reorderable: bool = True,
+    ) -> ft.Container:
+        return build_queue_row(queue_pos, item, is_current, self.player_bar, reorderable=reorderable)
 
     def refresh(self) -> None:
         q = self.player_bar.queue
         items = q.ordered_tracks()
         cur = q.current
+        cur_pos = int(getattr(q, "pos", -1))
+        if cur is not None and not (0 <= cur_pos < len(items) and items[cur_pos] is cur):
+            cur_pos = next((i for i, pt in enumerate(items) if pt is cur), -1)
+
         self._count_txt.value = f"{len(items)} {'pista' if len(items) == 1 else 'pistas'}"
         self._clear_btn.disabled = not items
-        self._list_view.controls = [
-            self._build_row(idx, pt, pt is cur)
-            for idx, pt in enumerate(items)
-        ]
-        self._empty_box.visible = not items
-        self._list_view.visible = bool(items)
+
+        if not items:
+            self._up_next_offset = 0
+            self._now_playing_wrap.visible = False
+            self._section_toggle_wrap.visible = False
+            self._list_view.controls = []
+            self._history_list.controls = []
+            self._list_view.visible = False
+            self._history_list.visible = False
+            self._section_empty_box.visible = False
+            self._empty_box.visible = True
+        else:
+            self._empty_box.visible = False
+            if cur is not None and cur_pos >= 0:
+                self._now_playing_slot.content = self._build_row(
+                    cur_pos, cur, True, reorderable=False
+                )
+                self._now_playing_wrap.visible = True
+                self._section_toggle_wrap.visible = True
+                self._up_next_offset = cur_pos + 1
+                up_next = [
+                    (idx, items[idx])
+                    for idx in range(cur_pos + 1, len(items))
+                ]
+                history = [
+                    (idx, items[idx])
+                    for idx in range(cur_pos - 1, -1, -1)
+                ]
+            else:
+                self._now_playing_wrap.visible = False
+                self._section_toggle_wrap.visible = False
+                self._up_next_offset = 0
+                up_next = list(enumerate(items))
+                history = []
+
+            self._list_view.controls = [
+                self._build_row(idx, pt, False, reorderable=True)
+                for idx, pt in up_next
+            ]
+            history_rows: list[ft.Control] = []
+            for idx, pt in history:
+                row = self._build_row(idx, pt, False, reorderable=False)
+                row.opacity = 0.78
+                history_rows.append(row)
+            self._history_list.controls = history_rows
+
+            show_history = self._queue_section == "history" and self._section_toggle_wrap.visible
+            if show_history:
+                self._list_view.visible = False
+                self._history_list.visible = bool(history_rows)
+                self._section_empty_txt.value = "Aún no hay pistas anteriores en esta sesión."
+                self._section_empty_box.visible = not history_rows
+            else:
+                self._history_list.visible = False
+                self._list_view.visible = bool(up_next)
+                self._section_empty_txt.value = "No hay más pistas a continuación."
+                self._section_empty_box.visible = not up_next
+
         self._letra_view.refresh_track()
         try:
             self.update()
