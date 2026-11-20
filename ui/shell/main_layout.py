@@ -373,35 +373,11 @@ def _make_segmented_control(
     dd_width: int,
     on_change=None,
 ) -> ft.Control:
-    """Construye un ``SegmentedButton`` con fallback a ``Dropdown`` si falta en runtime."""
-    try:
-        return ft.SegmentedButton(
-            selected=[current],
-            allow_empty_selection=False,
-            allow_multiple_selection=False,
-            show_selected_icon=False,
-            style=ft.ButtonStyle(
-                bgcolor={ft.ControlState.SELECTED: ACCENT, ft.ControlState.DEFAULT: BG_SURFACE},
-                color={ft.ControlState.SELECTED: ON_ACCENT, ft.ControlState.DEFAULT: TEXT_MUTED},
-            ),
-            segments=[
-                ft.Segment(value=val, label=ft.Text(label, size=11, font_family=FONT_HEADLINE))
-                for val, label in options
-            ],
-            on_change=on_change,
-        )
-    except Exception:
-        return ft.Dropdown(
-            value=current,
-            width=dd_width,
-            height=38,
-            bgcolor=BG_INPUT,
-            border=input_border(),
-            text_style=ft.TextStyle(color=TEXT_PRIMARY, size=11, font_family=FONT_TEXT),
-            content_padding=ft.Padding.symmetric(horizontal=10, vertical=0),
-            options=[ft.dropdown.Option(val, label) for val, label in options],
-            on_select=on_change,
-        )
+    """Construye un control segmentado afilado (``app_segmented_toggle``)."""
+    from ui.components.widgets import app_segmented_toggle
+
+    del dd_width
+    return app_segmented_toggle(options, current, on_change=on_change, height=34)
 
 
 class LayoutController:

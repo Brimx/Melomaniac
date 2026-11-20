@@ -55,7 +55,7 @@ from ui.theme.tokens import (
     ON_ACCENT, PAPER_BG, SHADOW_INK, SHADOW_INK_2,
     PAPER_LIFT, PAPER_LIFT_SM, PAPER_CANTO_PX,
     FOCUS_RING_WIDTH, FOCUS_RING_OFFSET, SELECTION_BAR_W,
-    FS_META, RADIUS_SHARP, RADIUS_SM, HANKO, BG_INSET,
+    FS_META, RADIUS_NONE, RADIUS_SHARP, RADIUS_SM, HANKO, BG_INSET,
     SPACE_0, SPACE_1, SPACE_2, SPACE_3, SPACE_5,
     MOTION_HOVER_MS, MOTION_PRESS_MS,
 )
@@ -1167,6 +1167,125 @@ def tab_underline(
         )
 
     return ft.Row([_tab(k, l) for k, l in items], spacing=SPACE_5, tight=True)
+
+
+class SegmentedToggle(ft.Container):
+    """Control segmentado afilado (Neo-Ukiyo, ``RADIUS_SHARP``) compatible con ``.selected`` y ``.value``."""
+
+    def __init__(
+        self,
+        options: Sequence[tuple[str, str]],
+        value: str,
+        on_change: Callable | None = None,
+        *,
+        height: int = 34,
+        expand: bool = False,
+        text_size: int = 11,
+    ) -> None:
+        self._options = [(str(k), str(lbl)) for k, lbl in options]
+        valid_keys = [k for k, _ in self._options]
+        self._value = str(value) if str(value) in valid_keys else (valid_keys[0] if valid_keys else "")
+        self._on_change_cb = on_change
+        self._text_size = text_size
+        self._item_controls: dict[str, tuple[ft.Container, ft.Text]] = {}
+        self._expand_items = bool(expand)
+
+        row_controls: list[ft.Control] = []
+        for idx, (key, label) in enumerate(self._options):
+            txt = ft.Text(
+                label,
+                size=text_size,
+                font_family=FONT_HEADLINE,
+                no_wrap=True,
+            )
+            seg = ft.Container(
+                content=txt,
+                height=height - 2,
+                padding=ft.Padding.symmetric(horizontal=SPACE_3),
+                alignment=ft.Alignment.CENTER,
+                border_radius=RADIUS_NONE,
+                expand=self._expand_items,
+                ink=True,
+                animate=ft.Animation(MOTION_HOVER_MS, ft.AnimationCurve.EASE_OUT),
+                on_click=lambda _e, k=key: self._select(k, emit=True),
+            )
+            self._item_controls[key] = (seg, txt)
+            if idx > 0:
+                row_controls.append(ft.Container(width=1, height=height - 8, bgcolor=BORDER_MUTED))
+            row_controls.append(seg)
+
+        super().__init__(
+            content=ft.Row(
+                controls=row_controls,
+                spacing=SPACE_0,
+                tight=not self._expand_items,
+                vertical_alignment=ft.CrossAxisAlignment.CENTER,
+            ),
+            height=height,
+            bgcolor=BG_SURFACE,
+            border=ft.Border.all(0.8, BORDER_CONTROL),
+            border_radius=RADIUS_SHARP,
+            clip_behavior=ft.ClipBehavior.ANTI_ALIAS,
+            expand=expand,
+        )
+        self._apply_styles()
+
+    @property
+    def value(self) -> str:
+        return self._value
+
+    @value.setter
+    def value(self, val: str) -> None:
+        self._select(str(val), emit=False)
+
+    @property
+    def selected(self) -> list[str]:
+        return [self._value] if self._value else []
+
+    @selected.setter
+    def selected(self, vals) -> None:
+        if isinstance(vals, (list, tuple, set)):
+            picked = next(iter(vals), "")
+        else:
+            picked = vals or ""
+        self._select(str(picked), emit=False)
+
+    def _apply_styles(self) -> None:
+        for key, (seg, txt) in self._item_controls.items():
+            active = key == self._value
+            seg.bgcolor = ACCENT if active else ft.Colors.TRANSPARENT
+            txt.color = ON_ACCENT if active else TEXT_MUTED
+
+    def _select(self, key: str, *, emit: bool) -> None:
+        if key not in self._item_controls:
+            return
+        changed = key != self._value
+        self._value = key
+        self._apply_styles()
+        if emit:
+            safe_update(self)
+            if changed and callable(self._on_change_cb):
+                self._on_change_cb(SimpleNamespace(control=self))
+
+
+def app_segmented_toggle(
+    options: Sequence[tuple[str, str]],
+    value: str,
+    on_change: Callable | None = None,
+    *,
+    height: int = 34,
+    expand: bool = False,
+    text_size: int = 11,
+) -> SegmentedToggle:
+    """Crea un control segmentado afilado (``RADIUS_SHARP``) sin estilo pill Material."""
+    return SegmentedToggle(
+        options,
+        value,
+        on_change=on_change,
+        height=height,
+        expand=expand,
+        text_size=text_size,
+    )
 
 
 def table_header(columns: Sequence[str | tuple[str, int | None]]) -> ft.Container:

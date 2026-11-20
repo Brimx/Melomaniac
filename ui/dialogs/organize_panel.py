@@ -94,26 +94,22 @@ def show_organize_dialog(page: ft.Page, state) -> None:
     dd_sort.on_select = _on_sort_change  # type: ignore
 
     # Mantener orden = agrupar dispersos sin reordenar 5+1; A→Z/Z→A = alfabético
-    try:
-        seg_orden = ft.SegmentedButton(
-            selected=[orden["value"]], allow_empty_selection=False, allow_multiple_selection=False, show_selected_icon=False,
-            style=ft.ButtonStyle(bgcolor={ft.ControlState.SELECTED: ACCENT, ft.ControlState.DEFAULT: BG_SURFACE}, color={ft.ControlState.SELECTED: ON_ACCENT, ft.ControlState.DEFAULT: TEXT_MUTED}),
-            segments=[ft.Segment(value="original", label=ft.Text("Mantener orden", size=FS_META)), ft.Segment(value="az", label=ft.Text("A → Z", size=11)), ft.Segment(value="za", label=ft.Text("Z → A", size=11))],
-            on_change=lambda e: orden.__setitem__("value", list(e.control.selected)[0] if hasattr(e.control, "selected") and e.control.selected else e.control.value),
-        )
-    except Exception:
-        seg_orden = ft.Dropdown(value=orden["value"], width=240, height=38, bgcolor=BG_INPUT, border=input_border(), text_style=ft.TextStyle(color=TEXT_PRIMARY, size=11, font_family="IBM Plex Sans"), options=[ft.dropdown.Option("original","Mantener orden"), ft.dropdown.Option("az","A → Z"), ft.dropdown.Option("za","Z → A")], on_select=lambda e: orden.__setitem__("value", e.control.value))
+    from ui.components.widgets import app_segmented_toggle
+
+    seg_orden = app_segmented_toggle(
+        [("original", "Mantener orden"), ("az", "A → Z"), ("za", "Z → A")],
+        orden["value"],
+        on_change=lambda e: orden.__setitem__("value", e.control.value),
+        height=34,
+    )
 
     # Agrupar estable: trae dispersos juntos (5+1) §12-15; ninguno = sin agrupar
-    try:
-        seg_group = ft.SegmentedButton(
-            selected=[group_by["value"]], allow_empty_selection=False, allow_multiple_selection=False, show_selected_icon=False,
-            style=ft.ButtonStyle(bgcolor={ft.ControlState.SELECTED: ACCENT, ft.ControlState.DEFAULT: BG_SURFACE}, color={ft.ControlState.SELECTED: ON_ACCENT, ft.ControlState.DEFAULT: TEXT_MUTED}),
-            segments=[ft.Segment(value="none", label=ft.Text("Sin agrupar", size=FS_META)), ft.Segment(value="artist", label=ft.Text("Artista", size=FS_META)), ft.Segment(value="album", label=ft.Text("Álbum", size=FS_META)), ft.Segment(value="release_date", label=ft.Text("Fecha", size=FS_META))],
-            on_change=lambda e: group_by.__setitem__("value", list(e.control.selected)[0] if hasattr(e.control, "selected") and e.control.selected else e.control.value),
-        )
-    except Exception:
-        seg_group = ft.Dropdown(value=group_by["value"], width=300, height=38, bgcolor=BG_INPUT, border=input_border(), text_style=ft.TextStyle(color=TEXT_PRIMARY, size=11, font_family="IBM Plex Sans"), options=[ft.dropdown.Option("none","Sin agrupar"), ft.dropdown.Option("artist","Artista"), ft.dropdown.Option("album","Álbum"), ft.dropdown.Option("release_date","Fecha")], on_select=lambda e: group_by.__setitem__("value", e.control.value))
+    seg_group = app_segmented_toggle(
+        [("none", "Sin agrupar"), ("artist", "Artista"), ("album", "Álbum"), ("release_date", "Fecha")],
+        group_by["value"],
+        on_change=lambda e: group_by.__setitem__("value", e.control.value),
+        height=34,
+    )
 
     # Avanzado — muestra criterio secundario/terciario para jerarquía manual
     dd_second = organize_dropdown([("none","—"), ("artist","Artista"), ("album","Álbum"), ("name","Título"), ("release_date","Fecha")], second_key["value"], "Criterio secundario")

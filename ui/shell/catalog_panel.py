@@ -96,32 +96,14 @@ class CatalogController:
             width=32,
             height=32,
         )
-        try:
-            ui._catalog_tabs = ft.SegmentedButton(
-                selected=["songs"],
-                allow_empty_selection=False,
-                allow_multiple_selection=False,
-                show_selected_icon=False,
-                style=ft.ButtonStyle(
-                    bgcolor={ft.ControlState.SELECTED: ACCENT, ft.ControlState.DEFAULT: BG_SURFACE},
-                    color={ft.ControlState.SELECTED: ON_ACCENT, ft.ControlState.DEFAULT: TEXT_MUTED},
-                ),
-                segments=[
-                    ft.Segment(value="songs", label=ft.Text("Canciones", size=11, font_family=FONT_HEADLINE)),
-                    ft.Segment(value="albums", label=ft.Text("Álbumes", size=11, font_family=FONT_HEADLINE)),
-                    ft.Segment(value="artists", label=ft.Text("Artistas", size=11, font_family=FONT_HEADLINE)),
-                ],
-                on_change=self._on_catalog_tab_change,
-            )
-        except Exception:
-            ui._catalog_tabs = organize_dropdown(
-                [("songs", "Canciones"), ("albums", "Álbumes"), ("artists", "Artistas")],
-                "songs",
-                "Tipo",
-                width=160,
-                height=38,
-                on_select=self._on_catalog_tab_change,
-            )
+        from ui.components.widgets import app_segmented_toggle
+
+        ui._catalog_tabs = app_segmented_toggle(
+            [("songs", "Canciones"), ("albums", "Álbumes"), ("artists", "Artistas")],
+            "songs",
+            on_change=self._on_catalog_tab_change,
+            height=34,
+        )
 
         ui._catalog_detail_title = ft.Text(
             "",
