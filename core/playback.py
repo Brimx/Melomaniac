@@ -42,6 +42,8 @@ class PlayableTrack:
             return False
         if self.is_pending:
             return True
+        if self.path and not self.path.startswith(("http://", "https://")):
+            return not os.path.isfile(self.path)
         cur_ts = time.time() if now is None else float(now)
         if self.expires_at > 0:
             return cur_ts >= (self.expires_at - margin_s)
@@ -448,9 +450,10 @@ def build_stream_playable_track(
     track: Track,
     info: dict | None = None,
 ) -> PlayableTrack | None:
-    """Construye un ``PlayableTrack`` remoto (streaming sin descarga)."""
+    """Construye un ``PlayableTrack`` remoto (URL directa o buffer efímero de audio)."""
     url = str(stream_url or "").strip()
-    if not url.startswith(("http://", "https://")):
+    is_http = url.startswith(("http://", "https://"))
+    if not is_http and not (url and os.path.isfile(url)):
         return None
     meta = info if isinstance(info, dict) else {}
     container = str(meta.get("ext") or "stream").lower()

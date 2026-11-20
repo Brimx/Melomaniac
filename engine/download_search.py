@@ -7,9 +7,15 @@ a un hilo.
 
 from __future__ import annotations
 
+import hashlib
+import os
 import re
+import shutil
+import subprocess
+import tempfile
 import threading
 import time
+from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qs, urlparse
 
@@ -28,9 +34,87 @@ from core.config import (
 
 _STREAM_CACHE_TTL_S: float = 30 * 60.0
 _STREAM_CACHE_MAX: int = 200
+_STREAM_TMP_MAX: int = 16
 _STREAM_CACHE_LOCK = threading.Lock()
 _STREAM_CACHE: dict[str, tuple[float, dict[str, Any]]] = {}
 _STREAM_INFLIGHT: dict[str, threading.Event] = {}
+
+
+def _stream_temp_dir() -> Path:
+    return Path(tempfile.gettempdir()) / "melomaniac_stream_cache"
+
+
+def cleanup_stream_temp_cache() -> None:
+    """Elimina los archivos temporales efímeros de streaming al cerrar la app."""
+    tmp_dir = _stream_temp_dir()
+    try:
+        if tmp_dir.is_dir():
+            shutil.rmtree(tmp_dir, ignore_errors=True)
+    except Exception:
+        pass
+
+
+def _prune_stream_temp_dir(tmp_dir: Path) -> None:
+    try:
+        files = sorted(
+            (p for p in tmp_dir.iterdir() if p.is_file() and not p.name.endswith(".tmp")),
+            key=lambda p: p.stat().st_mtime,
+        )
+        excess = len(files) - _STREAM_TMP_MAX
+        for old in files[: max(0, excess)]:
+            try:
+                old.unlink(missing_ok=True)
+            except OSError:
+                pass
+    except OSError:
+        pass
+
+
+def _remux_audio_only(stream_url: str, cache_key: str, *, timeout_s: int = 20) -> str:
+    """Extrae solo la pista de audio sin recodificar (``-vn -c:a copy``) en caché efímero.
+
+    Evita que GStreamer/audioplayers abra una ventana de video cuando YouTube
+    solo ofrece contenedores con video (como ``itag=18``).
+    """
+    ffmpeg = shutil.which("ffmpeg")
+    if not ffmpeg:
+        return ""
+    tmp_dir = _stream_temp_dir()
+    try:
+        tmp_dir.mkdir(parents=True, exist_ok=True)
+    except OSError:
+        return ""
+    digest = hashlib.sha1(cache_key.encode("utf-8", errors="ignore")).hexdigest()[:16]
+    dst = tmp_dir / f"{digest}.m4a"
+    if dst.is_file() and dst.stat().st_size > 0:
+        try:
+            os.utime(dst, None)
+        except OSError:
+            pass
+        return str(dst)
+    part = tmp_dir / f"{digest}.{os.getpid()}.tmp.m4a"
+    kwargs: dict[str, Any] = {
+        "capture_output": True,
+        "timeout": max(10, int(timeout_s)),
+    }
+    if os.name == "nt" and hasattr(subprocess, "CREATE_NO_WINDOW"):
+        kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW
+    try:
+        proc = subprocess.run(
+            [ffmpeg, "-y", "-loglevel", "error", "-i", stream_url, "-vn", "-c:a", "copy", str(part)],
+            **kwargs,
+        )
+        if proc.returncode == 0 and part.is_file() and part.stat().st_size > 0:
+            os.replace(part, dst)
+            _prune_stream_temp_dir(tmp_dir)
+            return str(dst)
+    except Exception:
+        pass
+    try:
+        part.unlink(missing_ok=True)
+    except OSError:
+        pass
+    return ""
 
 
 # Margen de duración aceptable frente a la pista original. Un video con
@@ -291,6 +375,10 @@ def _get_cached_stream(key: str) -> dict[str, Any] | None:
         if now >= expires_at:
             _STREAM_CACHE.pop(key, None)
             return None
+        cached_url = str(payload.get("url") or "")
+        if cached_url and not cached_url.startswith(("http://", "https://")) and not os.path.isfile(cached_url):
+            _STREAM_CACHE.pop(key, None)
+            return None
         return dict(payload)
 
 
@@ -371,6 +459,7 @@ def _resolve_watch_url(
     is_direct: bool,
     timeout_s: int,
     jar: Any,
+    cache_key: str = "",
 ) -> tuple[dict[str, Any] | None, str, bool]:
     """Intenta resolver un ``watch_url`` probando clientes y sin cookies primero."""
     last_error = ""
@@ -411,6 +500,18 @@ def _resolve_watch_url(
             last_error = "URL de streaming rechazada o inaccesible"
             continue
 
+        # Si el formato elegido contiene pista de video (p. ej. itag=18),
+        # GStreamer abre una ventana adicional al reproducirlo. Remuxeamos
+        # solo el audio (-vn -c:a copy, ~0.3s) en caché efímero.
+        vcodec = str(chosen.get("vcodec") or info.get("vcodec") or "none").strip().lower()
+        final_url = stream_url
+        final_ext = str(chosen.get("ext") or info.get("ext") or "mp4").lower()
+        if vcodec not in ("none", ""):
+            remuxed = _remux_audio_only(stream_url, cache_key or watch_url, timeout_s=timeout_s)
+            if remuxed:
+                final_url = remuxed
+                final_ext = "m4a"
+
         duration_s = float(info.get("duration") or 0.0)
         duration_ms = (
             int(duration_s * 1000)
@@ -420,8 +521,8 @@ def _resolve_watch_url(
         abr_raw = chosen.get("abr") or info.get("abr")
         asr_raw = chosen.get("asr") or info.get("asr")
         return {
-            "url": stream_url,
-            "ext": str(chosen.get("ext") or info.get("ext") or "mp4").lower(),
+            "url": final_url,
+            "ext": final_ext,
             "acodec": str(chosen.get("acodec") or info.get("acodec") or "mp4a.40.2").lower(),
             "abr": int(round(float(abr_raw))) if abr_raw else None,
             "asr": int(asr_raw) if asr_raw else None,
@@ -499,6 +600,7 @@ def resolve_stream_info(
                 is_direct=is_direct,
                 timeout_s=timeout_s,
                 jar=jar,
+                cache_key=cache_key,
             )
             if payload is not None:
                 _put_cached_stream(cache_key, payload)

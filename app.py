@@ -341,6 +341,14 @@ async def main(page: ft.Page) -> None:
             except Exception:  # pylint: disable=broad-exception-caught
                 pass
 
+            # Limpiar caché efímero de streaming
+            try:
+                from engine.download_search import cleanup_stream_temp_cache
+
+                cleanup_stream_temp_cache()
+            except Exception:  # pylint: disable=broad-exception-caught
+                pass
+
             # Detener instancia de UI
             try:
                 app_inst.stop()
