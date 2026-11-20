@@ -341,6 +341,14 @@ async def main(page: ft.Page) -> None:
             except Exception:  # pylint: disable=broad-exception-caught
                 pass
 
+            # Detener proxy local de streaming si se arrancó
+            try:
+                from services.stream_proxy import stop_stream_proxy
+
+                stop_stream_proxy()
+            except Exception:  # pylint: disable=broad-exception-caught
+                pass
+
             # Detener instancia de UI
             try:
                 app_inst.stop()

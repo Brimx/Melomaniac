@@ -1178,6 +1178,76 @@ class TestPlayerBarLifecycleAndEdgeCases(unittest.IsolatedAsyncioTestCase):
             view._stream_single_track.assert_not_called()
             view._download_single_track.assert_called_once_with(platform_tr, action_btn)
 
+    def test_stream_proxy_forwards_headers_and_range_preserving_expiry(self) -> None:
+        from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+        import threading
+        import httpx
+        from services.stream_proxy import register_stream_url, stop_stream_proxy
+        from ui.player.player_bar import PlayerBar
+
+        seen: dict[str, str] = {}
+
+        class _Upstream(BaseHTTPRequestHandler):
+            def log_message(self, format, *args):  # noqa: A002
+                return
+
+            def do_GET(self):
+                seen["ua"] = self.headers.get("User-Agent", "")
+                seen["range"] = self.headers.get("Range", "")
+                payload = b"0123456789abcdef"
+                if self.headers.get("Range") == "bytes=0-3":
+                    self.send_response(206)
+                    self.send_header("Content-Type", "audio/mp4")
+                    self.send_header("Content-Range", f"bytes 0-3/{len(payload)}")
+                    self.send_header("Content-Length", "4")
+                    self.end_headers()
+                    self.wfile.write(payload[:4])
+                else:
+                    self.send_response(200)
+                    self.send_header("Content-Type", "audio/mp4")
+                    self.send_header("Content-Length", str(len(payload)))
+                    self.end_headers()
+                    self.wfile.write(payload)
+
+        srv = ThreadingHTTPServer(("127.0.0.1", 0), _Upstream)
+        port = srv.server_address[1]
+        thr = threading.Thread(target=srv.serve_forever, daemon=True)
+        thr.start()
+        try:
+            # 127.0.0.1 pasa directo; usamos 127.0.0.2 / mock o probamos _proxify_stream_url con expire=
+            upstream_url = f"http://[::1]:{port}/videoplayback?expire=1999999999"
+            proxied, meta = PlayerBar._proxify_stream_url(
+                upstream_url,
+                {"ext": "m4a", "http_headers": {"User-Agent": "TestUA/1.0"}},
+            )
+            self.assertTrue(proxied.startswith("http://127.0.0.1:"))
+            self.assertTrue(proxied.endswith(".m4a"))
+            self.assertEqual(meta.get("expires_at"), 1999999999.0)
+
+            # Verificar reenvío real hacia upstream sobre 127.0.0.1 con host alternativo 127.0.0.2
+            direct_proxy = register_stream_url(
+                f"http://127.0.0.2:{port}/audio",
+                {"User-Agent": "TestUA/2.0"},
+                ext="m4a",
+            )
+            # Reemplazar target en tabla para apuntar a 127.0.0.1 del servidor de prueba
+            from services import stream_proxy
+            token = direct_proxy.rsplit("/", 1)[-1].split(".", 1)[0]
+            with stream_proxy._LOCK:
+                stream_proxy._ROUTES[token] = (
+                    f"http://127.0.0.1:{port}/audio",
+                    {"User-Agent": "TestUA/2.0"},
+                )
+            resp = httpx.get(direct_proxy, headers={"Range": "bytes=0-3"}, timeout=5)
+            self.assertEqual(resp.status_code, 206)
+            self.assertEqual(resp.content, b"0123")
+            self.assertEqual(seen.get("ua"), "TestUA/2.0")
+            self.assertEqual(seen.get("range"), "bytes=0-3")
+        finally:
+            stop_stream_proxy()
+            srv.shutdown()
+            srv.server_close()
+
 
 if __name__ == "__main__":
     unittest.main()
