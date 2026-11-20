@@ -470,15 +470,24 @@ def notify(
     on_action=None,
     duration: int | None = None,
 ) -> ft.SnackBar:
-    """SnackBar canónico FLOATING. Unifica telemetry + main_ui x3."""
+    """Toast flotante en esquina inferior derecha con duración máxima garantizada."""
     from ui.theme.tokens import BG_PANEL as _BG_PANEL, ERROR_COL as _ERR
+
     bgcolor = _ERR if kind == "error" else _BG_PANEL
+    max_ms = int(duration) if duration else (4500 if action else 3000)
+    raw_w = getattr(page, "width", None)
+    page_w = int(raw_w) if isinstance(raw_w, (int, float)) and raw_w > 0 else 0
+    toast_w = 400 if action else 340
+    left_margin = max(24, page_w - toast_w - 20) if page_w > toast_w + 44 else 24
     snack = ft.SnackBar(
-        content=ft.Text(msg, color=ft.Colors.WHITE, font_family=FONT_TEXT, size=12, opacity=1.0),
+        content=ft.Text(msg, color=TEXT_PRIMARY, font_family=FONT_TEXT, size=12, opacity=1.0),
         bgcolor=bgcolor,
-        duration=duration or (6000 if action else 3500),
+        duration=max_ms,
+        persist=False,
         behavior=ft.SnackBarBehavior.FLOATING,
-        width=440 if action else 380,
+        margin=ft.Margin.only(left=left_margin, right=20, bottom=92),
+        shape=ft.RoundedRectangleBorder(radius=RADIUS_SHARP),
+        dismiss_direction=ft.DismissDirection.HORIZONTAL,
         action=action,
         on_action=on_action,
         show_close_icon=True,
