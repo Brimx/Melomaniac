@@ -188,6 +188,35 @@ class PlayQueue:
             return self.select(new_pos)
         return self.current
 
+    def insert_next(self, item: PlayableTrack) -> PlayableTrack | None:
+        """Inserta ``item`` justo después de la pista actual (o lo reproduce si la cola está vacía)."""
+        if not self.order or self.pos < 0:
+            return self.enqueue(item, play_now=True)
+
+        def _same_item(existing: PlayableTrack) -> bool:
+            if existing is item:
+                return True
+            if item.path and existing.path == item.path:
+                return True
+            if existing.is_stream and item.is_stream:
+                et, it = existing.track, item.track
+                if et.id and it.id and et.id == it.id and et.platform == it.platform:
+                    return True
+            return False
+
+        for pos_idx, track_idx in enumerate(self.order):
+            if _same_item(self.tracks[track_idx]):
+                if pos_idx == self.pos:
+                    return self.current
+                dest = self.pos + 1 if pos_idx > self.pos else self.pos
+                self.move(pos_idx, dest)
+                return self.tracks[track_idx]
+
+        new_track_idx = len(self.tracks)
+        self.tracks.append(item)
+        self.order.insert(self.pos + 1, new_track_idx)
+        return item
+
     def select(self, queue_pos: int) -> PlayableTrack | None:
         if not (0 <= queue_pos < len(self.order)):
             return None

@@ -530,6 +530,41 @@ class PlayerBar(ft.Container):
         self._load_and_play_current()
         return len(playables)
 
+    def enqueue_track(self, track: Track, *, include_remote: bool | None = None) -> bool:
+        """Añade ``track`` (local o streaming pendiente) al final de la cola."""
+        if include_remote is None:
+            include_remote = bool(getattr(settings_store, "get_stream_without_download", lambda: True)())
+        playable = build_playable_for_track(track, include_remote=include_remote)
+        if playable is None:
+            notify(self._page_ref, "La pista no está disponible para reproducir", kind="error")
+            return False
+        was_empty = self.queue.current is None
+        self.queue.enqueue(playable, play_now=was_empty)
+        if was_empty:
+            self._load_and_play_current()
+        else:
+            self._sync_ui()
+            self._notify_listeners()
+        return True
+
+    def play_next(self, track: Track, *, include_remote: bool | None = None) -> bool:
+        """Inserta ``track`` (local o streaming) como siguiente pista en la cola."""
+        if include_remote is None:
+            include_remote = bool(getattr(settings_store, "get_stream_without_download", lambda: True)())
+        playable = build_playable_for_track(track, include_remote=include_remote)
+        if playable is None:
+            notify(self._page_ref, "La pista no está disponible para reproducir", kind="error")
+            return False
+        was_empty = self.queue.current is None
+        if was_empty:
+            self.queue.enqueue(playable, play_now=True)
+            self._load_and_play_current()
+        else:
+            self.queue.insert_next(playable)
+            self._sync_ui()
+            self._notify_listeners()
+        return True
+
     def select_queue_index(self, queue_pos: int) -> None:
         target = self.queue.select(queue_pos)
         if target is not None:

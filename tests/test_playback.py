@@ -1208,6 +1208,36 @@ class TestPlayerBarLifecycleAndEdgeCases(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(seen_kwargs[0]["method"], "GET")
         self.assertNotIn("headers", seen_kwargs[0]["kw"])
 
+    def test_insert_next_and_enqueue_track_support_local_and_stream(self) -> None:
+        bar, _calls = self._make_bar()
+        files = self._make_files(2)
+        bar.queue.set_tracks(files, start_index=0)
+
+        stream_next = Track(
+            id="s_next", name="Next Stream", artist="Artist", album="",
+            duration="3:00", img_url="", platform="Spotify", duration_ms=180_000,
+        )
+        stream_end = Track(
+            id="s_end", name="End Stream", artist="Artist", album="",
+            duration="3:00", img_url="", platform="Spotify", duration_ms=180_000,
+        )
+
+        self.assertTrue(bar.play_next(stream_next, include_remote=True))
+        self.assertTrue(bar.enqueue_track(stream_end, include_remote=True))
+
+        ordered_names = [bar.queue.tracks[i].track.name for i in bar.queue.order]
+        self.assertEqual(
+            ordered_names,
+            [files[0].track.name, "Next Stream", files[1].track.name, "End Stream"],
+        )
+        # Re-invocar play_next sobre "End Stream" la mueve justo después de la actual
+        self.assertTrue(bar.play_next(stream_end, include_remote=True))
+        ordered_names_after = [bar.queue.tracks[i].track.name for i in bar.queue.order]
+        self.assertEqual(
+            ordered_names_after,
+            [files[0].track.name, "End Stream", "Next Stream", files[1].track.name],
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
