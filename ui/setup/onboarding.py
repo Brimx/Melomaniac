@@ -281,12 +281,26 @@ def _step_system(view: "OnboardingView") -> list[ft.Control]:
 
 def _step_connect(view: "OnboardingView") -> list[ft.Control]:
     controls: list[ft.Control] = [
-        _feature(PIcons.LOCK, "Es opcional",
-                 "Sin credenciales puedes usar lo local y cargar playlists públicas."),
-        _feature(PIcons.GLOBE, "Sesión del navegador",
-                 "Melomaniac lee primero la sesión de tu navegador, en memoria y sin guardarla."),
-        _feature(PIcons.KEY, "Credenciales manuales",
-                 "Si hace falta, pégalas en el asistente. Se guardan solo en tu equipo, en config/."),
+        _feature(
+            PIcons.LOCK,
+            "Funciona sin cuenta (opcional)",
+            "Reproducir por streaming, buscar, descargar, música local y playlists públicas por URL no requieren sesión.",
+        ),
+        _feature(
+            PIcons.ARROWS_LEFT_RIGHT,
+            "Cuándo necesitas sesión",
+            "Solo para sincronizar tu biblioteca personal, transferir playlists o añadir canciones a tus cuentas.",
+        ),
+        _feature(
+            PIcons.GLOBE,
+            "Vía 1 · Sesión del navegador (en RAM)",
+            "Inicia sesión en tu navegador habitual y Melomaniac la lee en memoria automáticamente, sin guardarla en disco.",
+        ),
+        _feature(
+            PIcons.KEY,
+            "Vía 2 · Credenciales manuales (respaldo)",
+            "Si prefieres o tu navegador no es compatible, pégalas en el asistente; se guardan solo en tu equipo (config/).",
+        ),
     ]
     if view._state is not None:
         view._connect_status_row = ft.Row(
@@ -342,8 +356,8 @@ ONBOARDING_STEPS: tuple[Step, ...] = (
          "Carpeta de descargas, formato de audio y portadas online.", _step_prefs),
     Step("system", PIcons.DESKTOP, "Sistema y actualizaciones",
          "Acceso directo y ciclo de vida de la aplicación.", _step_system),
-    Step("connect", PIcons.LINK, "Conectar plataformas",
-         "Para transferir y sincronizar necesitas una sesión.", _step_connect),
+    Step("connect", PIcons.LINK, "Conectar plataformas (opcional)",
+         "Solo hace falta sesión para sincronizar o escribir en tus cuentas.", _step_connect),
     Step("done", PIcons.ROCKET_LAUNCH, "Listo",
          "Ya puedes empezar.", _step_done),
 )
