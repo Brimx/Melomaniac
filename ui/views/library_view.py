@@ -14,7 +14,7 @@ from core.library_models import LibraryLoadState
 from core.models import PlaylistMeta
 from engine.local_manifests import detect_platform_from_url
 from services import settings_store
-from services.library_state import LibraryState
+from services.library_state import LibraryState, visible_library_sources
 from ui.theme.fonts import FONT_HEADLINE, FONT_HEADLINE_BOLD, FONT_TEXT, mono_family
 from ui.components.playlist_card import PlaylistCard
 from ui.views.playlist_detail_view import PlaylistDetailView
@@ -78,9 +78,10 @@ def _sort_mode_from_settings() -> int:
 class LibraryView(ft.Container):
     def __init__(self, page: ft.Page, library_state: LibraryState, service,
                  app_state=None, on_open_downloads=None, on_open_gestion=None,
-                 player_bar=None):
+                 player_bar=None, on_open_wizard=None):
         super().__init__(expand=True, bgcolor=BG_LIST)
         self._on_open_gestion = on_open_gestion
+        self._on_open_wizard = on_open_wizard
         self._page_ref = page
         self.library_state = library_state
         self.service = service
@@ -91,6 +92,7 @@ class LibraryView(ft.Container):
         page.services.append(self._picker)
         self.library_state.set_service(service)
         self._platform: str | None = None
+        self._visible_sources_cache: tuple[str, ...] = ()
         self._detail = None  # PlaylistDetailView
         self._search_query: str = ""
         self._active_filters: set[str] = set()
@@ -101,12 +103,17 @@ class LibraryView(ft.Container):
             for r in settings_store.get_recent_playlists()
         ][:6]
         self._show_obi: bool = self._read_show_obi()
+        # inicial: primera plataforma con sesión/caché, o Local si no hay ninguna
+        initial_sources = self._visible_sources()
+        self._platform = initial_sources[0] if initial_sources else LOCAL_LIBRARY_LABEL
         self._build()
         self.library_state.subscribe(lambda: self._refresh())
-        # inicial: selecciona primera plataforma si hay
-        if PLATFORM_ORDER:
-            self._platform = PLATFORM_ORDER[0]
+        if self.app_state is not None and hasattr(self.app_state, "subscribe"):
+            self.app_state.subscribe(self._on_app_state_changed)
+        if self._platform and self._platform != LOCAL_LIBRARY_LABEL:
             self.library_state.select_platform(self._platform)
+        else:
+            self._refresh()
 
     def _build(self) -> None:
         # selector plataforma (tab_underline compacto)
@@ -288,20 +295,55 @@ class LibraryView(ft.Container):
         snap = self.library_state.get_snapshot(plat)
         return len(snap.items) if snap and snap.items else 0
 
+    def _visible_sources(self) -> list[str]:
+        return visible_library_sources(self.app_state, self.library_state)
+
+    def _on_app_state_changed(self) -> None:
+        sources = tuple(self._visible_sources())
+        if sources == self._visible_sources_cache:
+            return
+        self._rebuild_platform_selector()
+        if self._detail is None:
+            safe_update(self._platform_row)
+
     def _rebuild_platform_selector(self) -> None:
-        """Pestañas subrayadas compactas con nombre y contador cuando hay elementos."""
-        active_key = self._platform or (SOURCES[0] if SOURCES else "")
+        """Pestañas subrayadas compactas solo para plataformas con sesión/caché + Local."""
+        sources = self._visible_sources()
+        self._visible_sources_cache = tuple(sources)
+        if not self._platform or self._platform not in sources:
+            self._platform = sources[0] if sources else LOCAL_LIBRARY_LABEL
+        active_key = self._platform
         items: list[tuple[str, str]] = []
-        for plat in SOURCES:
+        for plat in sources:
             short = _SHORT_LABELS.get(plat, plat)
             count = self._platform_count(plat)
             label = f"{short}  {count}" if count > 0 else short
             items.append((plat, label))
         tabs = tab_underline(items, active_key, self._on_platform_select)
-        self._platform_row.controls[:] = tabs.controls
+        controls = list(tabs.controls)
+        missing = [p for p in PLATFORM_ORDER if p not in sources]
+        if missing and callable(self._on_open_wizard):
+            controls.append(
+                ft.Container(
+                    content=ft.Row(
+                        controls=[
+                            app_icon(PIcons.PLUS, size=12, color=TEXT_MUTED),
+                            app_text("Conectar cuenta", size=11, color=TEXT_MUTED, font_family=FONT_HEADLINE),
+                        ],
+                        spacing=SPACE_1,
+                        tight=True,
+                        vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                    ),
+                    padding=ft.Padding.symmetric(horizontal=SPACE_2, vertical=SPACE_1),
+                    border_radius=RADIUS_SHARP,
+                    ink=True,
+                    on_click=lambda _e, p=missing[0]: self._on_open_wizard(p),
+                )
+            )
+        self._platform_row.controls[:] = controls
         self._platform_row.spacing = tabs.spacing
         self._platform_row.tight = tabs.tight
-        self._platform_btns = {plat: ctrl for plat, ctrl in zip(SOURCES, self._platform_row.controls)}
+        self._platform_btns = {plat: ctrl for plat, ctrl in zip(sources, tabs.controls)}
 
     def _on_platform_select(self, plat: str) -> None:
         if plat != self._platform:

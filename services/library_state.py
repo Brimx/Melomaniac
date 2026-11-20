@@ -18,6 +18,33 @@ from services import settings_store
 from services.circuit_breaker import RateLimitError
 
 
+def visible_library_sources(app_state=None, library_state=None) -> list[str]:
+    """Plataformas visibles en Biblioteca según sesión activa o caché previa + Local.
+
+    Cuando ``app_state`` está disponible, solo muestra las plataformas de
+    ``PLATFORM_ORDER`` que tienen sesión activa (``auth_session_ok[p] is True``)
+    o playlists ya cacheadas en ``library_state``; siempre incluye ``Local`` al
+    final para que el usuario sin cuentas conectadas abra directo en ``Local``.
+    """
+    if app_state is None:
+        return [*PLATFORM_ORDER, LOCAL_LIBRARY_LABEL]
+    auth_ok = getattr(app_state, "auth_session_ok", None) or {}
+    visible: list[str] = []
+    for plat in PLATFORM_ORDER:
+        has_session = auth_ok.get(plat) is True
+        has_cache = False
+        if library_state is not None:
+            try:
+                snap = library_state.get_snapshot(plat)
+                has_cache = bool(snap and getattr(snap, "items", None))
+            except Exception:
+                has_cache = False
+        if has_session or has_cache:
+            visible.append(plat)
+    visible.append(LOCAL_LIBRARY_LABEL)
+    return visible
+
+
 class LibraryState:
     """Coordina sync_source / get_playlists / refresh. Persistencia atómica."""
 

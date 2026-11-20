@@ -579,6 +579,52 @@ class TestContextMenuLibraryAndSettingsCoercion(unittest.TestCase):
         self.assertIn("sp_1", [r.id for r in recents])
         self.assertIn("yt_1", [r.id for r in recents])
 
+    def test_library_visible_sources_filters_by_session_and_defaults_to_local(self) -> None:
+        from core.config import LOCAL_LIBRARY_LABEL
+        from core.library_models import LibrarySnapshot, PlaylistSummary
+        from services.library_state import LibraryState, visible_library_sources
+        from ui.views.library_view import LibraryView
+
+        # Sin sesiones ni caché -> solo Local y abre directo en Local con "+ Conectar cuenta"
+        empty_lib = LibraryState(service=None)
+        empty_lib._snapshots = {}
+        app_no_auth = SimpleNamespace(
+            auth_session_ok={"YouTube Music": False, "Apple Music": False, "Spotify": False},
+            subscribe=lambda _cb: None,
+        )
+        self.assertEqual(visible_library_sources(app_no_auth, empty_lib), [LOCAL_LIBRARY_LABEL])
+        opened_wizard: list[str] = []
+        lv = LibraryView(
+            _mock_page(),
+            empty_lib,
+            service=None,
+            app_state=app_no_auth,
+            on_open_wizard=lambda p: opened_wizard.append(p),
+        )
+        self.assertEqual(lv._platform, LOCAL_LIBRARY_LABEL)
+        self.assertEqual(list(lv._platform_btns.keys()), [LOCAL_LIBRARY_LABEL])
+        # Último control de _platform_row es "+ Conectar cuenta"
+        self.assertEqual(len(lv._platform_row.controls), 2)
+        lv._platform_row.controls[-1].on_click(None)
+        self.assertEqual(opened_wizard, ["YouTube Music"])
+
+        # Con sesión Spotify + caché YouTube Music -> oculta Apple Music
+        cached_lib = LibraryState(service=None)
+        cached_lib._snapshots = {
+            "YouTube Music": LibrarySnapshot(
+                platform="YouTube Music",
+                items=[PlaylistSummary(id="yt1", name="YT", platform="YouTube Music", track_count=3)],
+            )
+        }
+        app_sp = SimpleNamespace(
+            auth_session_ok={"YouTube Music": False, "Apple Music": False, "Spotify": True},
+            subscribe=lambda _cb: None,
+        )
+        self.assertEqual(
+            visible_library_sources(app_sp, cached_lib),
+            ["YouTube Music", "Spotify", LOCAL_LIBRARY_LABEL],
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

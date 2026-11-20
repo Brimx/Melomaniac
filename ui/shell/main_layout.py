@@ -1328,6 +1328,7 @@ class LayoutController:
                 app_state=ui.state,
                 on_open_downloads=lambda: ui._select_module(2),
                 on_open_gestion=ui._open_folder_in_gestion,
+                on_open_wizard=ui._open_wizard_for_platform,
             )
         except Exception as exc:
             try:
