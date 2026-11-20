@@ -311,22 +311,13 @@ def _put_cached_stream(key: str, payload: dict[str, Any]) -> None:
 def _verify_stream_url(
     url: str,
     timeout_s: float = 4.0,
-    *,
-    headers: dict[str, Any] | None = None,
 ) -> bool:
-    """Comprueba con Range 0-0 que la URL del stream responde 200/206 sin 403."""
+    """Comprueba con GET directo (sin Range, igual que GStreamer/audioplayers) que responde 200/206."""
     if not url.startswith(("http://", "https://")):
         return False
-    req_headers: dict[str, str] = {"Range": "bytes=0-0"}
-    if isinstance(headers, dict):
-        for k, v in headers.items():
-            ks = str(k or "").strip()
-            vs = str(v or "").strip()
-            if ks and vs and ks.lower() not in ("host", "range", "accept-encoding"):
-                req_headers[ks] = vs
     try:
         with httpx.Client(follow_redirects=True, timeout=timeout_s) as client:
-            with client.stream("GET", url, headers=req_headers) as resp:
+            with client.stream("GET", url) as resp:
                 return resp.status_code in (200, 206)
     except Exception:
         return False
@@ -362,12 +353,13 @@ def _extract_stream_url(info: dict[str, Any]) -> tuple[str, dict[str, Any]]:
 
 
 def _stream_strategies(jar: Any) -> list[tuple[list[str], Any]]:
-    """Estrategias ordenadas: anónimo primero (evita SABR), cookies solo si falla."""
+    """Estrategias ordenadas: ``android`` anónimo primero (GET 200 directo en GStreamer)."""
     strategies: list[tuple[list[str], Any]] = [
-        (list(YTDLP_STREAM_PLAYER_CLIENTS), None),
         ([YOUTUBE_PLAYER_CLIENT], None),
+        (list(YTDLP_STREAM_PLAYER_CLIENTS), None),
     ]
     if jar is not None:
+        strategies.append(([YOUTUBE_PLAYER_CLIENT], jar))
         strategies.append((list(YTDLP_STREAM_PLAYER_CLIENTS), jar))
     return strategies
 
@@ -415,14 +407,7 @@ def _resolve_watch_url(
         if not stream_url:
             last_error = "No se encontró flujo de audio reproducible"
             continue
-        raw_headers = chosen.get("http_headers") or info.get("http_headers") or {}
-        http_headers = dict(raw_headers) if isinstance(raw_headers, dict) else {}
-        verified = (
-            _verify_stream_url(stream_url, headers=http_headers)
-            if http_headers
-            else _verify_stream_url(stream_url)
-        )
-        if not verified:
+        if not _verify_stream_url(stream_url):
             last_error = "URL de streaming rechazada o inaccesible"
             continue
 
@@ -436,8 +421,7 @@ def _resolve_watch_url(
         asr_raw = chosen.get("asr") or info.get("asr")
         return {
             "url": stream_url,
-            "http_headers": http_headers,
-            "ext": str(chosen.get("ext") or info.get("ext") or "m4a").lower(),
+            "ext": str(chosen.get("ext") or info.get("ext") or "mp4").lower(),
             "acodec": str(chosen.get("acodec") or info.get("acodec") or "mp4a.40.2").lower(),
             "abr": int(round(float(abr_raw))) if abr_raw else None,
             "asr": int(asr_raw) if asr_raw else None,

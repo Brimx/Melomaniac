@@ -412,31 +412,6 @@ class PlayerBar(ft.Container):
             self.queue.enqueue(playable, play_now=True)
         self._load_and_play_current()
 
-    @staticmethod
-    def _proxify_stream_url(url: str, info: dict | None) -> tuple[str, dict]:
-        """Envuelve URLs remotas con el proxy HTTP local para preservar ``http_headers``."""
-        meta = dict(info) if isinstance(info, dict) else {}
-        headers = meta.get("http_headers")
-        if not isinstance(headers, dict) or not headers:
-            return url, meta
-        # Preservar el parámetro expire= de la URL original antes de reemplazarla por 127.0.0.1
-        if not meta.get("expires_at"):
-            try:
-                from urllib.parse import parse_qs, urlparse
-
-                raw_exp = (parse_qs(urlparse(url).query).get("expire") or [None])[0]
-                if raw_exp:
-                    meta["expires_at"] = float(raw_exp)
-            except (TypeError, ValueError):
-                pass
-        try:
-            from services.stream_proxy import register_stream_url
-
-            proxied = register_stream_url(url, headers, ext=str(meta.get("ext") or "m4a"))
-            return proxied, meta
-        except Exception:
-            return url, meta
-
     def play_stream(
         self,
         stream_url: str,
@@ -446,8 +421,7 @@ class PlayerBar(ft.Container):
         enqueue_only: bool = False,
     ) -> bool:
         """Reproduce o encola una pista remota por streaming sin descargar."""
-        final_url, final_info = self._proxify_stream_url(stream_url, info)
-        playable = build_stream_playable_track(final_url, track, final_info)
+        playable = build_stream_playable_track(stream_url, track, info)
         if playable is None:
             notify(self._page_ref, "URL de streaming inválida", kind="error")
             return False
@@ -994,8 +968,7 @@ class PlayerBar(ft.Container):
             err = str(info.get("error") or "No se pudo resolver el audio")
             self._skip_unresolvable(f"{item.track.name}: {err}")
             return
-        final_url, final_info = self._proxify_stream_url(url, info)
-        fresh = build_stream_playable_track(final_url, item.track, final_info)
+        fresh = build_stream_playable_track(url, item.track, info)
         if fresh is None:
             self._skip_unresolvable(f"{item.track.name}: URL de streaming inválida")
             return
