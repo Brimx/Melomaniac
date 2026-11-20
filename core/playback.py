@@ -354,21 +354,27 @@ class PlayQueue:
         return self.current
 
 
-def build_playable_track(path: str, track: Track | None = None) -> PlayableTrack | None:
-    """Construye un ``PlayableTrack`` leyendo metadatos y stream reales del archivo."""
+def build_playable_track(
+    path: str,
+    track: Track | None = None,
+    *,
+    probe_file: bool = True,
+) -> PlayableTrack | None:
+    """Construye un ``PlayableTrack``; con ``probe_file=False`` evita E/S Mutagen en lotes."""
     if not path or not os.path.isfile(path):
         return None
     abs_path = os.path.abspath(path)
     ext = os.path.splitext(abs_path)[1].lstrip(".").lower()
 
     info: dict = {}
-    try:
-        from engine import audio_metadata
-        reader = getattr(audio_metadata, "read_stream_info", None)
-        if callable(reader):
-            info = reader(abs_path) or {}
-    except Exception:
-        info = {}
+    if probe_file or track is None:
+        try:
+            from engine import audio_metadata
+            reader = getattr(audio_metadata, "read_stream_info", None)
+            if callable(reader):
+                info = reader(abs_path) or {}
+        except Exception:
+            info = {}
 
     if track is None:
         from engine.parsers import build_local_tracks
@@ -434,10 +440,15 @@ def is_streamable_track(track: Track) -> bool:
     )
 
 
-def build_playable_for_track(track: Track, *, include_remote: bool = False) -> PlayableTrack | None:
+def build_playable_for_track(
+    track: Track,
+    *,
+    include_remote: bool = False,
+    probe_file: bool = True,
+) -> PlayableTrack | None:
     """Archivo local si existe; si no, pista pendiente de streaming (solo con ``include_remote``)."""
     if track.source_path and os.path.isfile(track.source_path):
-        built = build_playable_track(track.source_path, track)
+        built = build_playable_track(track.source_path, track, probe_file=probe_file)
         if built is not None:
             return built
     if include_remote and is_streamable_track(track):

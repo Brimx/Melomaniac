@@ -481,12 +481,12 @@ class PlayerBar(ft.Container):
         start_index: int = 0,
     ) -> int:
         playables: list[PlayableTrack] = []
-        for entry in items:
+        for idx, entry in enumerate(items):
             if isinstance(entry, tuple):
                 p, tr = entry
             else:
                 p, tr = str(entry), None
-            pt = build_playable_track(p, tr)
+            pt = build_playable_track(p, tr, probe_file=(idx == start_index))
             if pt is not None:
                 playables.append(pt)
         if not playables:
@@ -513,7 +513,11 @@ class PlayerBar(ft.Container):
         playables: list[PlayableTrack] = []
         start_pos = 0
         for idx, tr in enumerate(tracks):
-            pt = build_playable_for_track(tr, include_remote=include_remote)
+            pt = build_playable_for_track(
+                tr,
+                include_remote=include_remote,
+                probe_file=(idx == start_index),
+            )
             if pt is None:
                 continue
             if idx <= start_index:
@@ -1011,6 +1015,11 @@ class PlayerBar(ft.Container):
                     self._call_audio("pause")
                 self._audio_state = fta.AudioState.STOPPED
                 self._sync_ui()
+                try:
+                    self._artist_txt.value = "Resolviendo audio…"
+                    safe_update(self._artist_txt)
+                except Exception:
+                    pass
                 self._notify_listeners()
                 self._spawn_ui_task(
                     self._refresh_stream_and_play(cur, req_seq, seek_ms=seek_ms, is_retry=_is_retry)
