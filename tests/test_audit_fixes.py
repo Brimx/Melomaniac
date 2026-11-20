@@ -207,12 +207,12 @@ class TestContextMenuLibraryAndSettingsCoercion(unittest.TestCase):
         acts_platform = build_track_context_actions(view_platform, tr_platform, 1)
         self.assertTrue(any(a.label == "Reproducir sin descargar" for a in acts_platform))
 
+        # Manifiesto importado en Local sí permite streaming cuando no hay archivo en disco
         for is_local, is_manifest, track in (
-            (True, False, tr_local),
+            (True, True, tr_local),
             (False, True, tr_platform),
-            (False, False, tr_local),
         ):
-            view_other = SimpleNamespace(
+            view_manifest = SimpleNamespace(
                 _has_file_by_id={id(track): False},
                 _is_local=is_local,
                 _is_manifest=is_manifest,
@@ -222,8 +222,22 @@ class TestContextMenuLibraryAndSettingsCoercion(unittest.TestCase):
                 _selection_mode=False,
                 _page_ref=_mock_page(),
             )
-            acts = build_track_context_actions(view_other, track, 1)
-            self.assertFalse(any(a.label == "Reproducir sin descargar" for a in acts))
+            acts = build_track_context_actions(view_manifest, track, 1)
+            self.assertTrue(any(a.label == "Reproducir sin descargar" for a in acts))
+
+        # Carpeta local pura oculta streaming
+        view_pure_local = SimpleNamespace(
+            _has_file_by_id={id(tr_local): False},
+            _is_local=True,
+            _is_manifest=False,
+            player_bar=object(),
+            _stream_single_track=lambda _t: None,
+            app_state=object(),
+            _selection_mode=False,
+            _page_ref=_mock_page(),
+        )
+        acts_local = build_track_context_actions(view_pure_local, tr_local, 1)
+        self.assertFalse(any(a.label == "Reproducir sin descargar" for a in acts_local))
 
     def test_settings_store_type_coercion_and_library_filter_reset(self) -> None:
         self._settings_path.write_text(
@@ -493,14 +507,14 @@ class TestContextMenuLibraryAndSettingsCoercion(unittest.TestCase):
             v_dl._download_single_track.assert_called_once()
             v_dl._stream_single_track.assert_not_called()
 
-            # Manifiesto local -> descarga aunque streaming esté activo
+            # Manifiesto local con streaming activo -> reproduce sin descargar
             v_man = _make_view(is_local=True, is_manifest=True)
             with patch.object(settings_store, "get_stream_without_download", return_value=True):
                 row = build_detail_track_row(v_man, tr_remote, 1)
                 row.on_click(None)
                 await asyncio.sleep(0.12)
-            v_man._download_single_track.assert_called_once()
-            v_man._stream_single_track.assert_not_called()
+            v_man._stream_single_track.assert_called_once_with(tr_remote)
+            v_man._download_single_track.assert_not_called()
 
             # Carpeta local con archivo ausente -> notifica en vez de descargar de YouTube
             v_loc = _make_view(is_local=True, is_manifest=False)

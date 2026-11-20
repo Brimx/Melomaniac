@@ -19,7 +19,7 @@ import flet as ft
 from core.config import AUDIO_FORMATS, DEFAULT_AUDIO_FORMAT, LOCAL_LIBRARY_LABEL
 from core.library_models import PlaylistSummary
 from core.models import Track, TransferState, filter_tracks
-from core.playback import is_remote_track
+from core.playback import is_streamable_track
 from engine.downloader import open_in_file_manager
 from services import settings_store
 from ui.views.download_recovery import (
@@ -827,9 +827,9 @@ class PlaylistDetailView(ft.Container):
         archivo entran como pendientes y se resuelven cuando les toca sonar.
         """
         local = [t for t in self._tracks if self._has_disk_file(t)]
-        if not self._stream_enabled():
+        if (self._is_local and not self._is_manifest) or not self._stream_enabled():
             return local, False
-        full = [t for t in self._tracks if self._has_disk_file(t) or is_remote_track(t)]
+        full = [t for t in self._tracks if self._has_disk_file(t) or is_streamable_track(t)]
         has_remote = any(not self._has_disk_file(t) for t in full)
         return (full, True) if has_remote else (local, False)
 
@@ -841,7 +841,7 @@ class PlaylistDetailView(ft.Container):
         downloaded = sum(1 for t in self._tracks if file_map.get(id(t), False))
         total = len(self._tracks)
         streamable = (
-            sum(1 for t in self._tracks if not file_map.get(id(t), False) and is_remote_track(t))
+            sum(1 for t in self._tracks if not file_map.get(id(t), False) and is_streamable_track(t))
             if self._stream_enabled() else 0
         )
         playable = downloaded + streamable
@@ -1343,19 +1343,33 @@ class PlaylistDetailView(ft.Container):
                 pass
 
     def _on_batch_play(self, _e=None) -> None:
+        selected = self.selected_tracks()
+        pb = self.player_bar
+        is_pure_local = self._is_local and not self._is_manifest
+        has_remote = any(
+            not self._has_disk_file(t) and is_streamable_track(t)
+            for t in selected
+        )
+        if not is_pure_local and has_remote and self._stream_enabled() and pb is not None and hasattr(pb, "play_tracks"):
+            playable = [t for t in selected if self._has_disk_file(t) or is_streamable_track(t)]
+            if playable:
+                n = pb.play_tracks(playable, start_index=0, include_remote=True)
+                if n:
+                    notify(self._page_ref, f"Reproduciendo {n} seleccionadas")
+                return
         items = [
             (t.source_path, t)
-            for t in self.selected_tracks()
+            for t in selected
             if t.source_path and os.path.isfile(t.source_path)
         ]
         if not items:
             notify(self._page_ref, "Las pistas seleccionadas no están en disco", kind="error")
             return
-        if self.player_bar is not None and hasattr(self.player_bar, "play_files"):
-            self.player_bar.play_files(items, start_index=0)
+        if pb is not None and hasattr(pb, "play_files"):
+            pb.play_files(items, start_index=0)
             notify(self._page_ref, f"Reproduciendo {len(items)} seleccionadas")
-        elif self.player_bar is not None and hasattr(self.player_bar, "play_file"):
-            self.player_bar.play_file(items[0][0], track=items[0][1])
+        elif pb is not None and hasattr(pb, "play_file"):
+            pb.play_file(items[0][0], track=items[0][1])
 
     def _on_batch_enqueue(self, _e=None) -> None:
         items = [

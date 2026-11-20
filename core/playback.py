@@ -422,13 +422,23 @@ def is_remote_track(track: Track) -> bool:
     )
 
 
+def is_streamable_track(track: Track) -> bool:
+    """True si la pista tiene metadatos o URL suficientes para resolverse por streaming."""
+    if track is None:
+        return False
+    return bool(
+        str(getattr(track, "name", "") or "").strip()
+        or str(getattr(track, "source_url", "") or "").strip()
+    )
+
+
 def build_playable_for_track(track: Track, *, include_remote: bool = False) -> PlayableTrack | None:
     """Archivo local si existe; si no, pista pendiente de streaming (solo con ``include_remote``)."""
     if track.source_path and os.path.isfile(track.source_path):
         built = build_playable_track(track.source_path, track)
         if built is not None:
             return built
-    if include_remote and is_remote_track(track):
+    if include_remote and is_streamable_track(track):
         return build_pending_stream_track(track)
     return None
 

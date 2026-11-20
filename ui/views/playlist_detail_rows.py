@@ -9,7 +9,7 @@ from typing import Optional
 import flet as ft
 
 from core.models import Track
-from core.playback import is_remote_track
+from core.playback import is_streamable_track
 from engine.downloader import open_in_file_manager
 from services import settings_store
 from ui.components.context_menu import ContextMenuAction, build_context_menu_button, wrap_with_context_menu
@@ -38,10 +38,15 @@ from ui.theme.tokens import (
 
 
 def _can_stream_track(view, track: Track) -> bool:
-    is_local_or_manifest = bool(getattr(view, "_is_local", False)) or bool(getattr(view, "_is_manifest", False))
+    if track.source_path and os.path.isfile(track.source_path):
+        return False
+    is_pure_local_folder = (
+        bool(getattr(view, "_is_local", False))
+        and not bool(getattr(view, "_is_manifest", False))
+    )
     return (
-        not is_local_or_manifest
-        and is_remote_track(track)
+        not is_pure_local_folder
+        and is_streamable_track(track)
         and getattr(view, "player_bar", None) is not None
         and hasattr(view, "_stream_single_track")
         and bool(getattr(settings_store, "get_stream_without_download", lambda: True)())
@@ -209,12 +214,13 @@ def build_detail_track_row(
     view._row_checkboxes[id(track)] = chk
 
     is_downloading = id(track) in getattr(view, "_downloading_track_ids", set())
+    can_stream = (not has_file) and _can_stream_track(view, track)
     action_icon = ft.Container(
         content=(
             ft.ProgressRing(width=16, height=16, stroke_width=2, color=ACCENT)
             if is_downloading
             else app_icon(
-                PIcons.PLAY if has_file else PIcons.DOWNLOAD_SIMPLE,
+                PIcons.PLAY if (has_file or can_stream) else PIcons.DOWNLOAD_SIMPLE,
                 size=16,
                 color=ACCENT if has_file else TEXT_MUTED,
                 fill=has_file,
@@ -239,6 +245,8 @@ def build_detail_track_row(
     def _on_action_click(_e) -> None:
         if track.source_path and os.path.isfile(track.source_path):
             view._play_single_track(track, index)
+        elif _can_stream_track(view, track):
+            view._stream_single_track(track)
         else:
             view._download_single_track(track, action_icon)
 

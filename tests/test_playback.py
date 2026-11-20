@@ -1118,6 +1118,66 @@ class TestPlayerBarLifecycleAndEdgeCases(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(bar.queue.current.is_stream)
         self.assertEqual(bar.audio.src, audio_path)
 
+    def test_stream_without_download_works_for_platform_and_local_manifest_rows(self) -> None:
+        from unittest.mock import MagicMock, patch
+        from core.config import LOCAL_LIBRARY_LABEL
+        from core.playback import build_playable_for_track, is_streamable_track
+        from ui.views.playlist_detail_rows import _can_stream_track, build_detail_track_row
+
+        local_manifest_tr = Track(
+            id="man_1", name="Imported Track", artist="Artist", album="",
+            duration="3:10", img_url="", platform=LOCAL_LIBRARY_LABEL,
+        )
+        platform_tr = Track(
+            id="plat_1", name="Platform Track", artist="Artist", album="",
+            duration="3:10", img_url="", platform="Spotify",
+        )
+        self.assertTrue(is_streamable_track(local_manifest_tr))
+        self.assertIsNotNone(build_playable_for_track(local_manifest_tr, include_remote=True))
+
+        def _fake_view(*, is_local: bool, is_manifest: bool) -> SimpleNamespace:
+            return SimpleNamespace(
+                _is_local=is_local,
+                _is_manifest=is_manifest,
+                _has_file_by_id={},
+                _selected_ids=set(),
+                _selection_mode=False,
+                _row_checkboxes={},
+                _action_containers={},
+                _row_containers={},
+                _downloading_track_ids=set(),
+                _press_tasks=set(),
+                _page_ref=None,
+                app_state=object(),
+                player_bar=object(),
+                _stream_single_track=MagicMock(),
+                _download_single_track=MagicMock(),
+                _play_single_track=MagicMock(),
+                _track_context_actions=lambda *_a, **_kw: [],
+                toggle_track_selection=MagicMock(),
+            )
+
+        with patch("ui.views.playlist_detail_rows.settings_store.get_stream_without_download", return_value=True):
+            for view, tr in (
+                (_fake_view(is_local=False, is_manifest=False), platform_tr),
+                (_fake_view(is_local=True, is_manifest=True), local_manifest_tr),
+            ):
+                self.assertTrue(_can_stream_track(view, tr))
+                build_detail_track_row(view, tr, 1, has_file=False)
+                action_btn = view._action_containers[id(tr)]
+                action_btn.on_click(None)
+                view._stream_single_track.assert_called_once_with(tr)
+                view._download_single_track.assert_not_called()
+
+        with patch("ui.views.playlist_detail_rows.settings_store.get_stream_without_download", return_value=False):
+            view = _fake_view(is_local=False, is_manifest=False)
+            self.assertFalse(_can_stream_track(view, platform_tr))
+            build_detail_track_row(view, platform_tr, 1, has_file=False)
+            action_btn = view._action_containers[id(platform_tr)]
+            action_btn.on_click(None)
+            view._stream_single_track.assert_not_called()
+            view._download_single_track.assert_called_once_with(platform_tr, action_btn)
+
 
 if __name__ == "__main__":
     unittest.main()

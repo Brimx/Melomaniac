@@ -60,6 +60,7 @@ from typing import Optional
 import flet as ft
 
 from core.models import Track, LoadState, TransferState
+from core.playback import is_streamable_track
 from core.state import AppState
 from core.config import EXPORT_DEST_LABEL, LOCAL_LIBRARY_LABEL
 from services import settings_store
@@ -1345,9 +1346,7 @@ class PlaylistManagerUI:
             has_pb = getattr(self, "player_bar", None) is not None
             for i, track in enumerate(tracks, 1):
                 has_local = bool(track.source_path and os.path.isfile(track.source_path))
-                plat = str(getattr(track, "platform", "") or "").strip()
-                is_remote = plat not in ("", "local", "Archivo Local", "Pegar Texto", LOCAL_LIBRARY_LABEL)
-                can_play = has_pb and (has_local or (is_remote and stream_enabled))
+                can_play = has_pb and (has_local or (stream_enabled and is_streamable_track(track)))
                 lv.controls.append(
                     SongRow(
                         track, i, self.state.toggle_track,
@@ -1403,8 +1402,7 @@ class PlaylistManagerUI:
         if track.source_path and os.path.isfile(track.source_path):
             pb.play_file(track.source_path, track)
             return
-        plat = str(getattr(track, "platform", "") or "").strip()
-        if plat in ("", "local", "Archivo Local", "Pegar Texto", LOCAL_LIBRARY_LABEL):
+        if not is_streamable_track(track):
             notify(self.page, "Archivo local no disponible en disco", kind="error")
             return
         if not hasattr(pb, "play_remote_track"):
