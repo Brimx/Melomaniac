@@ -379,14 +379,19 @@ class PlayerBar(ft.Container):
             self._log(f"[AUDIO] Fallo al invocar {getattr(fn, '__name__', fn)}: {exc}")
             return
         if asyncio.iscoroutine(result):
+            async def _run_audio_coro() -> None:
+                try:
+                    await result
+                except asyncio.CancelledError:
+                    raise
+                except Exception as exc:  # noqa: BLE001
+                    self._log(f"[AUDIO] Error en {getattr(fn, '__name__', fn)}: {exc}")
+
             try:
-                self._track_task(asyncio.get_running_loop().create_task(result))
+                self._track_task(asyncio.get_running_loop().create_task(_run_audio_coro()))
             except RuntimeError:
                 try:
-                    async def _consume() -> None:
-                        await result
-
-                    self._page_ref.run_task(_consume)
+                    self._page_ref.run_task(_run_audio_coro)
                 except Exception:
                     try:
                         result.close()

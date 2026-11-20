@@ -840,9 +840,14 @@ class PlaylistDetailView(ft.Container):
         archivo entran como pendientes y se resuelven cuando les toca sonar.
         """
         local = [t for t in self._tracks if self._has_disk_file(t)]
-        if (self._is_local and not self._is_manifest) or not self._stream_enabled():
+        if not self._stream_enabled():
             return local, False
-        full = [t for t in self._tracks if self._has_disk_file(t) or is_streamable_track(t)]
+        is_pure_local = self._is_local and not self._is_manifest
+        full = [
+            t for t in self._tracks
+            if self._has_disk_file(t)
+            or (is_streamable_track(t) and not (is_pure_local and bool(t.source_path)))
+        ]
         has_remote = any(not self._has_disk_file(t) for t in full)
         return (full, True) if has_remote else (local, False)
 

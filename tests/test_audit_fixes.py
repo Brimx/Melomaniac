@@ -225,9 +225,15 @@ class TestContextMenuLibraryAndSettingsCoercion(unittest.TestCase):
             acts = build_track_context_actions(view_manifest, track, 1)
             self.assertTrue(any(a.label == "Reproducir sin descargar" for a in acts))
 
-        # Carpeta local pura oculta streaming
+        # Carpeta local pura con archivo borrado (source_path ausente) oculta streaming;
+        # playlist descargada parcialmente (sin source_path) sí permite streaming.
+        tr_deleted = Track(
+            id="l_del", name="Local Borrada", artist="Artista", album="",
+            duration="3:00", img_url="", platform=tr_local.platform,
+            source_path="/tmp/archivo_que_ya_no_existe_12345.mp3",
+        )
         view_pure_local = SimpleNamespace(
-            _has_file_by_id={id(tr_local): False},
+            _has_file_by_id={id(tr_deleted): False, id(tr_local): False},
             _is_local=True,
             _is_manifest=False,
             player_bar=object(),
@@ -236,8 +242,10 @@ class TestContextMenuLibraryAndSettingsCoercion(unittest.TestCase):
             _selection_mode=False,
             _page_ref=_mock_page(),
         )
-        acts_local = build_track_context_actions(view_pure_local, tr_local, 1)
-        self.assertFalse(any(a.label == "Reproducir sin descargar" for a in acts_local))
+        acts_deleted = build_track_context_actions(view_pure_local, tr_deleted, 1)
+        self.assertFalse(any(a.label == "Reproducir sin descargar" for a in acts_deleted))
+        acts_partial = build_track_context_actions(view_pure_local, tr_local, 1)
+        self.assertTrue(any(a.label == "Reproducir sin descargar" for a in acts_partial))
 
     def test_settings_store_type_coercion_and_library_filter_reset(self) -> None:
         self._settings_path.write_text(

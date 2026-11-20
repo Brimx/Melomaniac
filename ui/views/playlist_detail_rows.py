@@ -44,9 +44,13 @@ def _can_stream_track(view, track: Track) -> bool:
         bool(getattr(view, "_is_local", False))
         and not bool(getattr(view, "_is_manifest", False))
     )
+    # En una carpeta local pura, una pista cuyo source_path ya no existe en disco
+    # es un archivo borrado (debe avisar, no buscar en YouTube). En cambio, las
+    # pistas sin source_path de una playlist descargada parcialmente sí son streamables.
+    if is_pure_local_folder and bool(getattr(track, "source_path", "")):
+        return False
     return (
-        not is_pure_local_folder
-        and is_streamable_track(track)
+        is_streamable_track(track)
         and getattr(view, "player_bar", None) is not None
         and hasattr(view, "_stream_single_track")
         and bool(getattr(settings_store, "get_stream_without_download", lambda: True)())
