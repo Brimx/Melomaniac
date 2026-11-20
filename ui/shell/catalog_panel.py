@@ -394,12 +394,68 @@ class CatalogController:
                     _ghost_btn(
                         "Añadir",
                         PIcons.PLUS,
-                        lambda _, track=tr: asyncio.create_task(
-                            ui._open_add_to_playlist_dialog([track])
-                        ),
+                        lambda _, track=tr: self._open_unified_add_dialog([track]),
                         height=30,
                     ),
                 ]
+                from ui.components.context_menu import (
+                    ContextMenuAction,
+                    build_context_menu_button,
+                    wrap_with_context_menu,
+                )
+
+                def _song_ctx_actions(track=tr, p=platform) -> list[ContextMenuAction]:
+                    pb = getattr(ui, "player_bar", None)
+                    ctx_items: list[ContextMenuAction] = []
+                    if pb is not None:
+                        ctx_items.extend([
+                            ContextMenuAction(
+                                "Reproducir",
+                                icon=PIcons.PLAY,
+                                on_click=lambda tr_=track: ui._on_row_play(tr_),
+                            ),
+                            ContextMenuAction(
+                                "Reproducir siguiente",
+                                icon=PIcons.SKIP_FORWARD,
+                                on_click=lambda tr_=track: ui._on_row_play_next(tr_),
+                            ),
+                            ContextMenuAction(
+                                "Añadir a la cola",
+                                icon=PIcons.QUEUE,
+                                on_click=lambda tr_=track: ui._on_row_enqueue(tr_),
+                            ),
+                        ])
+                    ctx_items.extend([
+                        ContextMenuAction(
+                            "Añadir a playlist…",
+                            icon=PIcons.PLAYLIST,
+                            on_click=lambda tr_=track: self._open_unified_add_dialog([tr_]),
+                        ),
+                        ContextMenuAction(
+                            "Descargar canción",
+                            icon=PIcons.DOWNLOAD_SIMPLE,
+                            on_click=lambda tr_=track: self._download_catalog_tracks([tr_], tr_.name),
+                        ),
+                        ContextMenuAction(
+                            "Cargar en Gestión",
+                            icon=PIcons.ARROWS_LEFT_RIGHT,
+                            on_click=lambda tr_=track, pl_=p: self._load_catalog_tracks_into_gestion(
+                                [tr_], tr_.name, platform=pl_
+                            ),
+                        ),
+                    ])
+                    return ctx_items
+
+                actions.append(
+                    build_context_menu_button(
+                        _song_ctx_actions,
+                        width=28,
+                        height=28,
+                        icon_size=16,
+                        title=tr.name,
+                        get_page=lambda: ui.page,
+                    )
+                )
             elif kind == "albums":
                 actions = [
                     _ghost_btn(
@@ -423,20 +479,39 @@ class CatalogController:
                     ),
                 ]
 
+            row_body: ft.Control = ft.Row(
+                [thumb, info, *actions],
+                spacing=SPACE_3,
+                vertical_alignment=ft.CrossAxisAlignment.CENTER,
+            )
+            if kind == "songs":
+                row_body = wrap_with_context_menu(
+                    row_body,
+                    _song_ctx_actions,
+                    title=name,
+                    get_page=lambda: ui.page,
+                )
             lv.controls.append(
                 ft.Container(
                     bgcolor=BG_SURFACE,
                     border=ft.Border.all(0.6, BORDER_MUTED),
                     border_radius=RADIUS_SHARP,
                     padding=ft.Padding.symmetric(horizontal=10, vertical=8),
-                    content=ft.Row(
-                        [thumb, info, *actions],
-                        spacing=SPACE_3,
-                        vertical_alignment=ft.CrossAxisAlignment.CENTER,
-                    ),
+                    content=row_body,
                 )
             )
         safe_update(ui._catalog_panel)
+
+    def _open_unified_add_dialog(self, tracks: list[Track]) -> None:
+        from ui.dialogs.add_to_playlist_dialog import show_add_to_playlist_dialog
+
+        ui = self._ui
+        show_add_to_playlist_dialog(
+            ui.page,
+            tracks,
+            app_state=ui.state,
+            library_state=getattr(ui, "library_state", None),
+        )
 
     async def _open_catalog_album(
         self, platform: str, album_id: str, fallback_name: str = ""

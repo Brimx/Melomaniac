@@ -76,7 +76,7 @@ _ROW_CHUNK_SIZE = 40
 
 class PlaylistDetailView(ft.Container):
     def __init__(self, page: ft.Page, summary: PlaylistSummary, service, on_back: Callable[[], None],
-                 app_state=None, loader: Optional[Callable] = None,
+                 app_state=None, library_state=None, loader: Optional[Callable] = None,
                  on_remove: Optional[Callable[[], None]] = None,
                  on_open_downloads: Optional[Callable[[], None]] = None,
                  on_open_gestion: Optional[Callable[[str, list], None]] = None,
@@ -84,6 +84,7 @@ class PlaylistDetailView(ft.Container):
                  is_imported_manifest: bool = False):
         super().__init__(expand=True, bgcolor=BG_LIST)
         self.app_state = app_state
+        self.library_state = library_state
         self.player_bar = player_bar
         self._loader = loader
         self._on_open_downloads = on_open_downloads
@@ -1508,20 +1509,35 @@ class PlaylistDetailView(ft.Container):
     # ── Acciones contextuales por pista ────────────────────────────────
 
     def _enqueue_single_track(self, track: Track) -> None:
-        if not track.source_path or not os.path.isfile(track.source_path):
-            notify(self._page_ref, "Archivo no encontrado en disco", kind="error")
-            return
         pb = self.player_bar
-        if pb is not None and hasattr(pb, "enqueue_file"):
-            if pb.enqueue_file(track.source_path, track=track, play_now=False):
+        if pb is None:
+            return
+        if track.source_path and os.path.isfile(track.source_path):
+            if hasattr(pb, "enqueue_file"):
+                if pb.enqueue_file(track.source_path, track=track, play_now=False):
+                    notify(self._page_ref, f"Añadida a la cola: {track.name}")
+                return
+        if hasattr(pb, "enqueue_track"):
+            if pb.enqueue_track(track):
                 notify(self._page_ref, f"Añadida a la cola: {track.name}")
+            return
+        notify(self._page_ref, "Archivo no encontrado en disco", kind="error")
 
     def _play_next_track(self, track: Track) -> None:
-        if not track.source_path or not os.path.isfile(track.source_path):
+        pb = self.player_bar
+        if pb is None:
+            return
+        has_file = bool(track.source_path and os.path.isfile(track.source_path))
+        if not has_file and hasattr(pb, "play_next"):
+            if pb.play_next(track):
+                notify(self._page_ref, f"Siguiente en cola: {track.name}")
+            return
+        if not has_file:
             notify(self._page_ref, "Archivo no encontrado en disco", kind="error")
             return
-        pb = self.player_bar
-        if pb is None or not hasattr(pb, "enqueue_file"):
+        if not hasattr(pb, "enqueue_file"):
+            if hasattr(pb, "play_next") and pb.play_next(track):
+                notify(self._page_ref, f"Siguiente en cola: {track.name}")
             return
         q = getattr(pb, "queue", None)
         had_current = q is not None and getattr(q, "current", None) is not None
@@ -1539,6 +1555,16 @@ class PlaylistDetailView(ft.Container):
                 dest = cur_pos + 1 if idx > cur_pos else cur_pos
                 pb.move_queue_item(idx, dest)
         notify(self._page_ref, f"Siguiente en cola: {track.name}")
+
+    def _add_track_to_playlist(self, track: Track) -> None:
+        from ui.dialogs.add_to_playlist_dialog import show_add_to_playlist_dialog
+
+        show_add_to_playlist_dialog(
+            self._page_ref,
+            [track],
+            app_state=self.app_state,
+            library_state=getattr(self, "library_state", None),
+        )
 
     def _track_context_actions(self, track: Track, index: int, action_icon: ft.Control | None = None) -> list[ContextMenuAction]:
         return build_track_context_actions(self, track, index, action_icon)

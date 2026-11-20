@@ -528,6 +528,7 @@ class LibraryView(ft.Container):
         self._detail = PlaylistDetailView(
             self._page_ref, summary, self.service, on_back=self._on_back_from_detail,
             app_state=self.app_state,
+            library_state=self.library_state,
             loader=loader,
             on_remove=on_remove,
             on_open_downloads=self._on_open_downloads,

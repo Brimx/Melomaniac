@@ -251,6 +251,7 @@ class SongRow(ft.Container):
         on_play: Callable[[Track], Any] | None = None,
         on_play_next: Callable[[Track], Any] | None = None,
         on_add_to_queue: Callable[[Track], Any] | None = None,
+        on_add_to_playlist: Callable[[Track], Any] | None = None,
         on_open_external: Callable[[Track], Any] | None = None,
         extra_actions: Sequence[ContextMenuAction] | None = None,
         show_album: bool = True,
@@ -280,6 +281,7 @@ class SongRow(ft.Container):
         self._on_play = on_play
         self._on_play_next = on_play_next
         self._on_add_to_queue = on_add_to_queue
+        self._on_add_to_playlist = on_add_to_playlist
         self._on_open_external = on_open_external
         self._extra_actions = list(extra_actions or ())
         self._index = index
@@ -523,6 +525,14 @@ class SongRow(ft.Container):
                     "Añadir a la cola",
                     icon=PIcons.QUEUE,
                     on_click=lambda: self._on_add_to_queue(tr),
+                )
+            )
+        if self._on_add_to_playlist is not None:
+            actions.append(
+                ContextMenuAction(
+                    "Añadir a playlist…",
+                    icon=PIcons.PLAYLIST,
+                    on_click=lambda: self._on_add_to_playlist(tr),
                 )
             )
         if self._on_download is not None:

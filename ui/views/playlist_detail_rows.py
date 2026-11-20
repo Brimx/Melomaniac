@@ -102,13 +102,23 @@ def build_track_context_actions(
         ])
     else:
         if _can_stream_track(view, track):
-            actions.append(
+            actions.extend([
                 ContextMenuAction(
                     "Reproducir sin descargar",
                     icon=PIcons.PLAY,
                     on_click=lambda: view._stream_single_track(track),
-                )
-            )
+                ),
+                ContextMenuAction(
+                    "Reproducir siguiente",
+                    icon=PIcons.SKIP_FORWARD,
+                    on_click=lambda: view._play_next_track(track),
+                ),
+                ContextMenuAction(
+                    "Añadir a la cola",
+                    icon=PIcons.QUEUE,
+                    on_click=lambda: view._enqueue_single_track(track),
+                ),
+            ])
         actions.extend([
             ContextMenuAction(
                 "Descargar canción",
@@ -129,6 +139,14 @@ def build_track_context_actions(
                 disabled=view.app_state is None,
             ),
         ])
+    if hasattr(view, "_add_track_to_playlist"):
+        actions.append(
+            ContextMenuAction(
+                "Añadir a playlist…",
+                icon=PIcons.PLAYLIST,
+                on_click=lambda: view._add_track_to_playlist(track),
+            )
+        )
     if track.source_url:
         actions.append(
             ContextMenuAction(

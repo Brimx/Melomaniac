@@ -1355,6 +1355,9 @@ class PlaylistManagerUI:
                         on_move=self.state.move_track_to_position,
                         on_download=self._on_row_download,
                         on_play=self._on_row_play if can_play else None,
+                        on_play_next=self._on_row_play_next if can_play else None,
+                        on_add_to_queue=self._on_row_enqueue if can_play else None,
+                        on_add_to_playlist=self._on_row_add_to_playlist,
                         download_busy=download_busy,
                         download_done=(track.id in done_by_id),
                         show_album=show_album,
@@ -1422,6 +1425,31 @@ class PlaylistManagerUI:
                 asyncio.create_task(_run())
             except Exception as exc:  # noqa: BLE001
                 notify(self.page, f"No se pudo iniciar la reproducción: {exc}", kind="error")
+
+    def _on_row_play_next(self, track: Track) -> None:
+        """Inserta una fila de Gestión como siguiente en la cola (local o streaming)."""
+        pb = getattr(self, "player_bar", None)
+        if pb is not None and hasattr(pb, "play_next"):
+            if pb.play_next(track):
+                notify(self.page, f"Siguiente en cola: {track.name}")
+
+    def _on_row_enqueue(self, track: Track) -> None:
+        """Añade una fila de Gestión al final de la cola (local o streaming)."""
+        pb = getattr(self, "player_bar", None)
+        if pb is not None and hasattr(pb, "enqueue_track"):
+            if pb.enqueue_track(track):
+                notify(self.page, f"Añadida a la cola: {track.name}")
+
+    def _on_row_add_to_playlist(self, track: Track) -> None:
+        """Abre el diálogo unificado «Añadir a playlist…» para la pista."""
+        from ui.dialogs.add_to_playlist_dialog import show_add_to_playlist_dialog
+
+        show_add_to_playlist_dialog(
+            self.page,
+            [track],
+            app_state=self.state,
+            library_state=getattr(self, "library_state", None),
+        )
 
     # ── selector de playlists de la biblioteca ─────────────────────────
 
