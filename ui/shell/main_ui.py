@@ -105,7 +105,7 @@ from ui.shell.keymap import (
 )
 from ui.shell.main_actions import ActionsController
 from ui.shell.main_layout import LayoutController, compute_contextual_actions_state
-from ui.shell.nav_rail import HOME_MODULE_IDX
+from ui.shell.nav_rail import HOME_MODULE_IDX, SEARCH_MODULE_IDX
 from ui.views.home_view import HomeView
 
 # Por encima de este número conviene un único update del ListView en vez de
@@ -667,6 +667,7 @@ class PlaylistManagerUI:
             panels.append(home)
             if home not in stack.controls:
                 stack.controls.append(home)
+        self._mount_search_view()
         if (
             self.on_show_welcome is not None
             and getattr(self, "_current_module", 0) == 0
@@ -675,6 +676,40 @@ class PlaylistManagerUI:
             and hasattr(self, "_select_module")
         ):
             self._select_module(HOME_MODULE_IDX)
+
+    def _mount_search_view(self) -> None:
+        """Construye SearchView (Buscar 3.11) y lo registra en ``SEARCH_MODULE_IDX``."""
+        panels = getattr(self, "_module_panels", None)
+        stack = getattr(self, "_module_stack", None)
+        if panels is None or stack is None:
+            return
+        from ui.views.search_view import SearchView
+
+        def _load_in_gestion(tracks: list[Track], title: str, platform: str) -> None:
+            cat = getattr(self, "_catalog", None)
+            if cat is not None and hasattr(cat, "_load_catalog_tracks_into_gestion"):
+                cat._load_catalog_tracks_into_gestion(tracks, title, platform=platform)
+            if hasattr(self, "_select_module"):
+                self._select_module(0)
+
+        search = SearchView(
+            self.page,
+            self.state,
+            library_state=getattr(self, "library_state", None),
+            player_bar=getattr(self, "player_bar", None),
+            on_load_in_gestion=_load_in_gestion,
+            on_open_downloads=lambda: self._select_module(2) if hasattr(self, "_select_module") else None,
+        )
+        search.visible = False
+        self._panel_buscar = search
+        if len(panels) > SEARCH_MODULE_IDX:
+            panels[SEARCH_MODULE_IDX] = search
+            if len(stack.controls) > SEARCH_MODULE_IDX:
+                stack.controls[SEARCH_MODULE_IDX] = search
+        else:
+            panels.append(search)
+            if search not in stack.controls:
+                stack.controls.append(search)
 
     def _open_playlist_from_home(self, summary) -> None:
         """Abre una playlist reciente desde Inicio saltando a Biblioteca."""
@@ -688,7 +723,7 @@ class PlaylistManagerUI:
     def _setup_keyboard_and_regions(self) -> None:
         """Configura foco por regiones (2+2 px a 0 ms) y atajos globales."""
         self._focus_regions = RegionFocusController()
-        rail_order = (HOME_MODULE_IDX, 0, 1, 2, 3)
+        rail_order = (HOME_MODULE_IDX, SEARCH_MODULE_IDX, 0, 1, 2, 3)
 
         def _rail_default_idx() -> int:
             cur = getattr(self, "_current_module", 0)
@@ -826,8 +861,13 @@ class PlaylistManagerUI:
                 detail = getattr(lib, "_detail", None) if lib is not None else None
                 src = detail if detail is not None else lib
                 target = getattr(src, "_search_field", None) or getattr(src, "_search_input", None)
-            elif mod == 0:
+            elif mod == 0 and getattr(self.state, "tracks", None):
                 target = getattr(self, "_search_field", None)
+            else:
+                if mod != SEARCH_MODULE_IDX and hasattr(self, "_select_module"):
+                    self._select_module(SEARCH_MODULE_IDX)
+                sv = getattr(self, "_panel_buscar", None)
+                target = getattr(sv, "_search_field", None) if sv is not None else None
             if target is not None and hasattr(target, "focus"):
                 try:
                     target.focus()
@@ -865,7 +905,7 @@ class PlaylistManagerUI:
                 bool(getattr(e, "ctrl", False))
                 and not bool(getattr(e, "alt", False))
                 and not bool(getattr(e, "meta", False))
-                and key_norm in {"1", "2", "3", "4", "5"}
+                and key_norm in {"1", "2", "3", "4", "5", "6"}
                 and hasattr(self, "_select_module")
             ):
                 target_idx = rail_order[int(key_norm) - 1]

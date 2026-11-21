@@ -29,7 +29,7 @@ from ui.shell.keymap import (
     match_shortcut,
 )
 from ui.shell.main_ui import PlaylistManagerUI
-from ui.shell.nav_rail import HOME_MODULE_IDX, _RAIL_COLLAPSED_KEY, build_nav_rail
+from ui.shell.nav_rail import HOME_MODULE_IDX, SEARCH_MODULE_IDX, _RAIL_COLLAPSED_KEY, build_nav_rail
 from ui.theme.tokens import (
     ACCENT,
     BG_PANEL,
@@ -161,9 +161,10 @@ class TestCollapsibleNavRail(unittest.TestCase):
 
     def test_five_destinations_brand_slot_and_persisted_collapse(self) -> None:
         ui = self._build_rail_harness(width=1280.0)
-        self.assertEqual(len(ui._rail_dests), 5)
-        self.assertEqual(len(ui._rail_item_refs), 5)
+        self.assertEqual(len(ui._rail_dests), 6)
+        self.assertEqual(len(ui._rail_item_refs), 6)
         self.assertEqual(ui._rail_dests[0][0], HOME_MODULE_IDX)
+        self.assertEqual(ui._rail_dests[1][0], SEARCH_MODULE_IDX)
         self.assertEqual(ui._rail_dests[-1][0], 3)
         self.assertFalse(ui._rail_collapsed)
         self.assertEqual(ui._nav_rail.width, RAIL_W_EXPANDED)
@@ -289,35 +290,41 @@ class TestHomeViewAndMainUIIntegration(unittest.TestCase):
 
         self.assertEqual(ui._current_module, 0)
         self.assertIsNotNone(getattr(ui, "_panel_inicio", None))
-        self.assertEqual(len(ui._module_panels), 5)
-        self.assertEqual(len(ui._module_stack.controls), 5)
+        self.assertIsNotNone(getattr(ui, "_panel_buscar", None))
+        self.assertEqual(len(ui._module_panels), 6)
+        self.assertEqual(len(ui._module_stack.controls), 6)
         self.assertIs(ui._module_panels[HOME_MODULE_IDX], ui._panel_inicio)
+        self.assertIs(ui._module_panels[SEARCH_MODULE_IDX], ui._panel_buscar)
         self.assertIs(ui._panel_config.service, dummy_service)
         self.assertIsNotNone(ui._panel_config._on_open_wizard)
 
         ui._select_module(HOME_MODULE_IDX)
         self.assertTrue(ui._panel_inicio.visible)
+        ui._select_module(SEARCH_MODULE_IDX)
+        self.assertTrue(ui._panel_buscar.visible)
+        self.assertFalse(ui._panel_inicio.visible)
         ui._select_module(0)
         self.assertFalse(ui._panel_inicio.visible)
+        self.assertFalse(ui._panel_buscar.visible)
 
         auth_mgr = MagicMock()
         ui.auth_manager = auth_mgr
         self.assertIs(ui._panel_config.auth_manager, auth_mgr)
 
-        # Ctrl+5 -> Config, '[' -> colapsa rail, Ctrl+1 -> Inicio
-        ui._on_keyboard_event(_key_event("5", ctrl=True))
+        # Ctrl+6 -> Config, '[' -> colapsa rail, Ctrl+1 -> Inicio
+        ui._on_keyboard_event(_key_event("6", ctrl=True))
         self.assertEqual(ui._current_module, 3)
         ui._on_keyboard_event(_key_event("["))
         self.assertTrue(ui._rail_collapsed)
         ui._on_keyboard_event(_key_event("1", ctrl=True))
         self.assertEqual(ui._current_module, HOME_MODULE_IDX)
 
-        # Tab -> Arrow Down -> Enter en rail navega a Gestión (visual idx 1)
+        # Tab -> Arrow Down -> Enter en rail navega a Buscar (visual idx 1)
         ui._on_keyboard_event(_key_event("Tab"))
         self.assertEqual(ui._focus_regions.active_region, "rail")
         ui._on_keyboard_event(_key_event("Arrow Down"))
         ui._on_keyboard_event(_key_event("Enter"))
-        self.assertEqual(ui._current_module, 0)
+        self.assertEqual(ui._current_module, SEARCH_MODULE_IDX)
 
         # Abrir playlist desde Inicio salta a Biblioteca y delega al panel
         sample = PlaylistSummary(

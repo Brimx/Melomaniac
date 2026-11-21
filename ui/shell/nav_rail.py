@@ -62,6 +62,7 @@ from ui.theme.tokens import (
 )
 
 HOME_MODULE_IDX = 4
+SEARCH_MODULE_IDX = 5
 _RAIL_COLLAPSED_KEY = "rail_collapsed"
 _RAIL_AUTO_COLLAPSE_BP = 1100.0
 _HOUSE_GLYPH = getattr(PIcons, "HOUSE", "\ue2c2")
@@ -144,9 +145,10 @@ def build_nav_rail(ui) -> None:
     ui._rail_user_pref_collapsed = ui._rail_collapsed
     ui._rail_w_collapsed = RAIL_W_COLLAPSED
     ui._rail_w_expanded = RAIL_W_EXPANDED
-    # Orden visual en el rail: Inicio arriba -> Gestión -> Biblioteca -> Descargas -> Config al pie.
+    # Orden visual en el rail: Inicio -> Buscar -> Gestión -> Biblioteca -> Descargas -> Config.
     ui._rail_dests = [
         (HOME_MODULE_IDX, "Inicio", _HOUSE_GLYPH, _HOUSE_GLYPH),
+        (SEARCH_MODULE_IDX, "Buscar", PIcons.MAGNIFYING_GLASS, PIcons.MAGNIFYING_GLASS),
         (0, "Gestión", PIcons.ARROWS_LEFT_RIGHT, PIcons.ARROWS_LEFT_RIGHT),
         (1, "Biblioteca", PIcons.BOOKS, PIcons.BOOKS),
         (2, "Descargas", PIcons.DOWNLOAD_SIMPLE, PIcons.DOWNLOAD_SIMPLE),
@@ -489,9 +491,9 @@ def build_nav_rail(ui) -> None:
 
     rail_items = [
         _rail_item(v_idx, mod_idx, lbl, ico, sel)
-        for v_idx, (mod_idx, lbl, ico, sel) in enumerate(ui._rail_dests[:4])
+        for v_idx, (mod_idx, lbl, ico, sel) in enumerate(ui._rail_dests[:-1])
     ]
-    config_item = _rail_item(4, *ui._rail_dests[4])
+    config_item = _rail_item(len(ui._rail_dests) - 1, *ui._rail_dests[-1])
 
     def _refresh_rail_selection() -> None:
         for v_idx, ((mod_idx, _lbl, ico, sel), cont) in enumerate(
