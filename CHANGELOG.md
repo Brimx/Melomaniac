@@ -1,5 +1,32 @@
 # Changelog
 
+## 4.12.0 — 2026-11-20 · Uso diario, Neo-Ukiyo, Vista Buscar y Streaming fiable
+
+> Cierra las Fases 1–4 del plan de evolución (sesiones opcionales, Recientes reales, estética *Neo-Ukiyo*, control completo de cola, diálogo unificado «Añadir a playlist…» y vista dedicada «Buscar»), junto con la corrección del almacén plano de descargas y el streaming sin ventana de vídeo.
+
+### Vista dedicada «Buscar» y Gestión
+
+- **Vista «Buscar» en el rail lateral (`ui/views/search_view.py`):** nuevo módulo de primer nivel (`Inicio → Buscar → Gestión → Biblioteca → Descargas → Config`), accesible también con `Ctrl+K` y `Ctrl+1..6`, con pestañas `Canciones / Álbumes / Artistas`, vista de detalle de álbum/artista y acciones completas (reproducir en streaming, `Reproducir siguiente`, `Añadir a la cola`, `Añadir a playlist…`, descargar, guardar colección en Biblioteca Local y cargar en Gestión). El buscador de catálogo dentro de Gestión se mantiene disponible.
+- **Diálogo unificado «Añadir a playlist…» (`ui/dialogs/add_to_playlist_dialog.py`):** pestaña **Local** siempre disponible sin sesión (añade a manifiestos existentes en `Local > Playlists` o crea una nueva playlist) y pestaña **Plataformas** filtrada solo a cuentas con sesión activa.
+
+### Reproducción, Streaming y Cola
+
+- **Streaming sin descarga corregido (`engine/download_search.py`, `core/playback.py`, `ui/views/playlist_detail_rows.py`):** habilitado en filas de plataformas, manifiestos locales, playlists descargadas parcialmente y Gestión; priorización del cliente `android` con validación `GET` directo sin `Range`, y extracción de solo pista de audio (`ffmpeg -vn -c:a copy`) en caché efímero (`tempfile.gettempdir()/melomaniac_stream_cache/`, limpiado al cerrar) cuando el formato incluye vídeo para evitar ventanas adicionales de GStreamer.
+- **Control de cola y rendimiento (`core/playback.py`, `ui/player/player_bar.py`, `ui/player/player_queue.py`):** `PlayQueue.insert_next()` y `PlayerBar.play_next()` / `enqueue_track()` para pistas locales y streaming; menús contextuales completos en Gestión, Biblioteca y Buscar; panel de cola separado en **Reproduciendo** (fijo arriba), **A continuación** (reordenable) e **Historial** (pistas anteriores); y encolado rápido sin lectura Mutagen síncrona en lote (`probe_file=(idx == start_index)`), con feedback inmediato «Resolviendo audio…».
+
+### Sesiones inteligentes, Biblioteca, Descargas y Onboarding
+
+- **Recientes reales (`services/settings_store.py`, `ui/views/home_view.py`, `ui/views/library_view.py`):** persistencia de `recent_playlists` al abrir detalle o reproducir y relleno balanceado en *round-robin* en Inicio.
+- **Biblioteca filtrada por sesión real (`services/library_state.py`, `ui/views/library_view.py`):** muestra solo plataformas con sesión activa o caché previa más `Local` (abriendo directo en `Local` cuando no hay sesiones) con acceso discreto `+ Conectar cuenta`.
+- **Almacén plano de descargas y exportación por playlist (`core/download_flow.py`, `engine/downloader.py`, `services/settings_store.py`, `ui/views/playlist_detail_view.py`):** todas las descargas van a la carpeta fija configurada sin crear subcarpetas por playlist; cambiar la carpeta de descargas conserva la anterior en `local_folders`; nueva acción **«Exportar audios»** en el detalle de playlist para copiar solo las pistas descargadas numeradas en orden a cualquier carpeta destino.
+- **Onboarding claro (`ui/setup/onboarding.py`):** explica qué funciona sin cuenta, qué exige sesión y las dos vías (sesión del navegador en RAM vs credenciales manuales en `config/`).
+
+### Estética *Neo-Ukiyo* y pulido UI
+
+- **Controles *Neo-Ukiyo* (`ui/player/bar_layout.py`, `ui/player/now_playing_scene.py`, `ui/components/widgets.py`):** nuevo fader rectangular de volumen (`NeoVolumeFader`), helper `app_segmented_toggle()` con `RADIUS_SHARP` aplicado en `Organizar`, `Catálogo`, `Buscar` y selector `Lista/Doble/Preview`, textura opcional `Seigaiha` en la cabecera del rail, y toast `notify()` en esquina inferior derecha con `persist=False` y duración máxima acotada.
+- **Nuevo diálogo `Organizar` (`ui/dialogs/organize_panel.py`):** simplificado en dos modos excluyentes (`Ordenar lista` vs `Solo agrupar dispersos`) con resumen en vivo de 1 línea y sin fuentes hardcodeadas.
+- **Skeletons `ascii-reveal` (`ui/components/skeletons.py`, `ui/shell/main_ui.py`):** barrido diagonal determinista en 3 `TextSpan` con un único loop compartido (respetando `reduce_motion`) y cierre automático del catálogo al cargar una playlist.
+
 ## 4.11.1 — 2026-11-18 · Fiabilidad de transferencias, matching, descargas y onboarding
 
 > Versión de mantenimiento con correcciones de concurrencia, coincidencia entre plataformas, descargas, streaming en Biblioteca y detección de sesiones en el onboarding acumuladas desde `4.11.0`.
